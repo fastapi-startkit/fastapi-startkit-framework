@@ -66,9 +66,7 @@ class LogSlackDriver(BaseDriver):
         Returns:
             self
         """
-        response = requests.post(
-            "https://slack.com/api/channels.list", {"token": self.token}
-        )
+        response = requests.post("https://slack.com/api/channels.list", {"token": self.token})
 
         for channel in response.json()["channels"]:
             if channel["name"] == name.split("#")[1]:

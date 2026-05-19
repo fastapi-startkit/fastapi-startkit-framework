@@ -26,9 +26,7 @@ class TestMySQLSchemaBuilderAlter(unittest.TestCase):
 
         self.assertEqual(len(blueprint.table.added_columns), 2)
 
-        sql = [
-            "ALTER TABLE [users] ADD [name] VARCHAR(255) NOT NULL, [age] INT NOT NULL"
-        ]
+        sql = ["ALTER TABLE [users] ADD [name] VARCHAR(255) NOT NULL, [age] INT NOT NULL"]
 
         self.assertEqual(blueprint.to_sql(), sql)
 
@@ -81,9 +79,7 @@ class TestMySQLSchemaBuilderAlter(unittest.TestCase):
     def test_alter_add_column_and_foreign_key(self):
         with self.schema.table("users") as blueprint:
             blueprint.unsigned_integer("playlist_id").nullable()
-            blueprint.foreign("playlist_id").references("id").on("playlists").on_delete(
-                "cascade"
-            )
+            blueprint.foreign("playlist_id").references("id").on("playlists").on_delete("cascade")
 
         sql = [
             "ALTER TABLE [users] ADD [playlist_id] INT NULL",
@@ -132,9 +128,7 @@ class TestMySQLSchemaBuilderAlter(unittest.TestCase):
         with self.schema.table("users") as blueprint:
             blueprint.primary("playlist_id")
 
-        sql = [
-            "ALTER TABLE [users] ADD CONSTRAINT users_playlist_id_primary PRIMARY KEY (playlist_id)"
-        ]
+        sql = ["ALTER TABLE [users] ADD CONSTRAINT users_playlist_id_primary PRIMARY KEY (playlist_id)"]
 
         self.assertEqual(blueprint.to_sql(), sql)
 

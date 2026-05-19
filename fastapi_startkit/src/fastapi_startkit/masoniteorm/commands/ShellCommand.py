@@ -42,9 +42,7 @@ class ShellCommand(Command):
             connection = resolver.get_connection_details()["default"]
         config = resolver.get_connection_information(connection)
         if not config.get("full_details"):
-            self.line(
-                f"<error>Connection configuration for '{connection}' not found !</error>"
-            )
+            self.line(f"<error>Connection configuration for '{connection}' not found !</error>")
             exit(-1)
 
         command, env = self.get_command(config)
@@ -78,19 +76,14 @@ class ShellCommand(Command):
         try:
             get_driver_args = getattr(self, f"get_{driver}_args")
         except AttributeError:
-            self.line(
-                f"<error>Connecting with driver '{driver}' is not implemented !</error>"
-            )
+            self.line(f"<error>Connecting with driver '{driver}' is not implemented !</error>")
             exit(-1)
         args, options = get_driver_args(config)
         # process positional arguments
         args = " ".join(args)
         # process optional arguments
         options = self.remove_empty_options(options)
-        options_string = " ".join(
-            f"{option} {value}" if value else option
-            for option, value in options.items()
-        )
+        options_string = " ".join(f"{option} {value}" if value else option for option, value in options.items())
         # finally build command string
         command = program
         if args:

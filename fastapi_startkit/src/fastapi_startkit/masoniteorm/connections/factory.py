@@ -38,6 +38,7 @@ class ConnectionFactory:
         url = cls.build_url(cfg)
         kwargs: dict[str, Any] = {"echo": True}
         from fastapi_startkit.application import app
+
         if app().is_testing():
             kwargs["poolclass"] = NullPool
         elif cfg["driver"] == "sqlite":
@@ -57,4 +58,3 @@ class ConnectionFactory:
                 return MySQLConnection(engine, config)
 
         raise ValueError(f"Unsupported driver: {driver}")
-

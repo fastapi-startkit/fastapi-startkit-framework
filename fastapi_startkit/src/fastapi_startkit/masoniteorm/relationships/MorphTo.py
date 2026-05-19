@@ -32,10 +32,7 @@ class MorphTo(BaseRelationship):
         if instance.relationship_loaded(self.attribute):
             return instance.get_relationship(self.attribute)
 
-        return self.apply_query(
-            self._related_builder,
-            instance
-        )
+        return self.apply_query(self._related_builder, instance)
 
     def __getattr__(self, attribute):
         relationship = registry.Registry.resolve(self.fn)()
@@ -55,9 +52,7 @@ class MorphTo(BaseRelationship):
                 relations.merge(
                     await morphed_model.where_in(
                         f"{morphed_model.__table__}.{morphed_model.__primary_key__}",
-                        Collection(items)
-                        .pluck(self.morph_id, keep_nulls=False)
-                        .unique(),
+                        Collection(items).pluck(self.morph_id, keep_nulls=False).unique(),
                     ).get()
                 )
             return relations
@@ -69,9 +64,7 @@ class MorphTo(BaseRelationship):
     def register_related(self, key, model, collection):
         morphed_model = self.morph_map().get(getattr(model, self.morph_key))
 
-        related = collection.where(
-            morphed_model.__primary_key__, getattr(model, self.morph_id)
-        ).first()
+        related = collection.where(morphed_model.__primary_key__, getattr(model, self.morph_id)).first()
 
         model.add_relation({key: related})
 

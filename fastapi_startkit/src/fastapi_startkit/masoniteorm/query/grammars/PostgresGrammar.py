@@ -6,6 +6,7 @@ from .BaseGrammar import BaseGrammar
 if TYPE_CHECKING:
     from ...models.builder import QueryBuilder
 
+
 class PostgresGrammar(BaseGrammar):
     """Postgres grammar class."""
 
@@ -110,9 +111,7 @@ class PostgresGrammar(BaseGrammar):
         return "SELECT column_name FROM information_schema.columns WHERE table_name='{clean_table}' AND column_name={value}"
 
     def table_exists_string(self):
-        return (
-            "SELECT * FROM information_schema.tables WHERE table_name='{clean_table}'"
-        )
+        return "SELECT * FROM information_schema.tables WHERE table_name='{clean_table}'"
 
     def create_column_length(self, column_type):
         if column_type in self.types_without_lengths:
@@ -209,15 +208,12 @@ class PostgresGrammar(BaseGrammar):
         return f"TRUNCATE TABLE {self.wrap_table(table)}"
 
     def compile_insert_get_id(
-            self,
-            query: "QueryBuilder",
-            values: dict[str, Any] | list[dict[str, Any]],
-            sequences: str | None = None,
+        self,
+        query: "QueryBuilder",
+        values: dict[str, Any] | list[dict[str, Any]],
+        sequences: str | None = None,
     ) -> str:
-        return (
-                self.compile_insert(query, values)
-                + f" RETURNING {self.wrap_table(sequences or 'id')}"
-        )
+        return self.compile_insert(query, values) + f" RETURNING {self.wrap_table(sequences or 'id')}"
 
     def compile_random(self):
         return "random()"

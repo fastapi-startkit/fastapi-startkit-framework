@@ -4,9 +4,7 @@ from fastapi_startkit.masoniteorm.models import registry
 class BaseRelationship:
     def __init__(self, fn: str | list[str], local_key=None, foreign_key=None):
         if not isinstance(fn, str):
-            raise TypeError(
-                f"Relationship {self.__class__.__name__} expects a string as the first argument"
-            )
+            raise TypeError(f"Relationship {self.__class__.__name__} expects a string as the first argument")
         fn_str: str = fn  # For type checking
         self.fn = lambda: registry.Registry.resolve(fn_str)
 
@@ -61,16 +59,12 @@ class BaseRelationship:
             dict -- A dictionary of data which will be hydrated.
         """
         klass = self.__class__.__name__
-        raise NotImplementedError(
-            f"{klass} relationship does not implement the 'apply_query' method"
-        )
+        raise NotImplementedError(f"{klass} relationship does not implement the 'apply_query' method")
 
     def query_where_exists(self, builder, callback, method="where_exists"):
         """Adds a criteria clause to the query filter for existing related records"""
         klass = self.__class__.__name__
-        raise NotImplementedError(
-            f"{klass} relationship does not implement the 'query_where_exists' method"
-        )
+        raise NotImplementedError(f"{klass} relationship does not implement the 'query_where_exists' method")
 
     def joins(self, builder, clause=None):
         """Helper method for adding join clauses to a relationship"""
@@ -87,59 +81,41 @@ class BaseRelationship:
     def get_with_count_query(self, builder, callback):
         """Adds a clause to the query to get the record count of the relationship"""
         klass = self.__class__.__name__
-        raise NotImplementedError(
-            f"{klass} relationship does not implement the 'get_with_count_query' method"
-        )
+        raise NotImplementedError(f"{klass} relationship does not implement the 'get_with_count_query' method")
 
     def attach(self, current_model, related_record):
         """Link a related model to the current model"""
         klass = self.__class__.__name__
-        raise NotImplementedError(
-            f"{klass} relationship does not implement the 'attach' method"
-        )
+        raise NotImplementedError(f"{klass} relationship does not implement the 'attach' method")
 
     def get_related(self, query, relation, eagers=None, callback=None):
         klass = self.__class__.__name__
-        raise NotImplementedError(
-            f"{klass} relationship does not implement the 'get_related' method"
-        )
+        raise NotImplementedError(f"{klass} relationship does not implement the 'get_related' method")
 
     def relate(self, related_record):
         klass = self.__class__.__name__
-        raise NotImplementedError(
-            f"{klass} relationship does not implement the 'relate' method"
-        )
+        raise NotImplementedError(f"{klass} relationship does not implement the 'relate' method")
 
     def detach(self, current_model, related_record):
         """Unlink a related model from the current model"""
         klass = self.__class__.__name__
-        raise NotImplementedError(
-            f"{klass} relationship does not implement the 'detach' method"
-        )
+        raise NotImplementedError(f"{klass} relationship does not implement the 'detach' method")
 
     def attach_related(self, current_model, related_record):
         """Unlink a related model from the current model"""
         klass = self.__class__.__name__
-        raise NotImplementedError(
-            f"{klass} relationship does not implement the 'attach_related' method"
-        )
+        raise NotImplementedError(f"{klass} relationship does not implement the 'attach_related' method")
 
     def detach_related(self, current_model, related_record):
         """Unlink a related model from the current model"""
         klass = self.__class__.__name__
-        raise NotImplementedError(
-            f"{klass} relationship does not implement the 'detach_related' method"
-        )
+        raise NotImplementedError(f"{klass} relationship does not implement the 'detach_related' method")
 
     def query_has(self, current_query_builder, method="where_exists"):
         """Adds a clause to the query to check if a relation exists"""
         klass = self.__class__.__name__
-        raise NotImplementedError(
-            f"{klass} relationship does not implement the 'query_has' method"
-        )
+        raise NotImplementedError(f"{klass} relationship does not implement the 'query_has' method")
 
     def map_related(self, related_result):
         klass = self.__class__.__name__
-        raise NotImplementedError(
-            f"{klass} relationship does not implement the 'map_related' method"
-        )
+        raise NotImplementedError(f"{klass} relationship does not implement the 'map_related' method")

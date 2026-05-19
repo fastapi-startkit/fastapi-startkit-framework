@@ -165,7 +165,7 @@ class BaseGrammar:
 
         return self
 
-    def compile_insert(self, query: QueryBuilder, values:dict[str, Any] | list[dict[str, Any]]):
+    def compile_insert(self, query: QueryBuilder, values: dict[str, Any] | list[dict[str, Any]]):
         table = self.wrap_table(query._table)
 
         if not values:
@@ -178,10 +178,7 @@ class BaseGrammar:
 
         columns = self.columnize_bulk_columns(list(values[0].keys()))
 
-        parameters = ", ".join(
-            "({})".format(", ".join("?" for _ in record))
-            for record in values
-        )
+        parameters = ", ".join("({})".format(", ".join("?" for _ in record)) for record in values)
 
         return f"INSERT INTO {table} ({columns}) VALUES {parameters}"
 
@@ -192,7 +189,6 @@ class BaseGrammar:
         sequences: str | None = None,
     ) -> str:
         return self.compile_insert(query, values)
-
 
     def _compile_bulk_create(self, qmark=False):
         """Compiles an insert expression.
@@ -211,9 +207,7 @@ class BaseGrammar:
         return self
 
     def columnize_bulk_columns(self, columns=[]):
-        return ", ".join(
-            self.column_string().format(column=x, separator="") for x in columns
-        ).rstrip(",")
+        return ", ".join(self.column_string().format(column=x, separator="") for x in columns).rstrip(",")
 
     def columnize_bulk_values(self, columns=[], qmark=False):
         sql = ""
@@ -223,24 +217,14 @@ class BaseGrammar:
                 for y in x:
                     if qmark:
                         self.add_binding(y)
-                    inner += (
-                        "?, "
-                        if qmark
-                        else self.value_string().format(value=y, separator=", ")
-                    )
+                    inner += "?, " if qmark else self.value_string().format(value=y, separator=", ")
 
                 inner = inner.rstrip(", ")
                 sql += self.process_value_string().format(value=inner, separator=", ")
             else:
                 if qmark:
                     self.add_binding(x)
-                sql += (
-                    "?, "
-                    if qmark
-                    else self.process_value_string().format(
-                        value="?" if qmark else x, separator=", "
-                    )
-                )
+                sql += "?, " if qmark else self.process_value_string().format(value="?" if qmark else x, separator=", ")
 
         return sql.rstrip(", ")
 
@@ -313,13 +297,13 @@ class BaseGrammar:
                                 self.add_binding(clause.value)
                             else:
                                 value = self._compile_value(clause.value)
-                            on_string += f"{keyword} {self._table_column_string(clause.column)} {clause.equality} {value} "
+                            on_string += (
+                                f"{keyword} {self._table_column_string(clause.column)} {clause.equality} {value} "
+                            )
 
                 sql += self.join_string().format(
                     foreign_table=self.process_table(join.table),
-                    alias=(
-                        f" AS {self.process_table(join.alias)}" if join.alias else ""
-                    ),
+                    alias=(f" AS {self.process_table(join.alias)}" if join.alias else ""),
                     on=on_string,
                     keyword=self.join_keywords[join.clause],
                 )
@@ -359,11 +343,7 @@ class BaseGrammar:
                     else:
                         sql += sql_string.format(
                             column=self._table_column_string(key),
-                            value=(
-                                self.value_string().format(value=value, separator="")
-                                if not qmark
-                                else "?"
-                            ),
+                            value=(self.value_string().format(value=value, separator="") if not qmark else "?"),
                             separator=", ",
                         )
 
@@ -372,11 +352,7 @@ class BaseGrammar:
             else:
                 sql += sql_string.format(
                     column=self._table_column_string(column),
-                    value=(
-                        self.value_string().format(value=value, separator=", ")
-                        if not qmark
-                        else "?"
-                    ),
+                    value=(self.value_string().format(value=value, separator=", ") if not qmark else "?"),
                     separator=", ",
                 )
                 if qmark:
@@ -404,9 +380,7 @@ class BaseGrammar:
             sql += (
                 aggregate_string.format(
                     aggregate_function=aggregate_function,
-                    column=(
-                        "*" if column == "*" else self._table_column_string(column)
-                    ),
+                    column=("*" if column == "*" else self._table_column_string(column)),
                     alias=self.process_alias(aggregates.alias or column),
                 )
                 + ", "
@@ -427,9 +401,7 @@ class BaseGrammar:
                 if order_bys.raw:
                     order_crit += order_bys.column
                     if not isinstance(order_bys.bindings, (list, tuple)):
-                        raise ValueError(
-                            f"Bindings must be tuple or list. Received {type(order_bys.bindings)}"
-                        )
+                        raise ValueError(f"Bindings must be tuple or list. Received {type(order_bys.bindings)}")
 
                     if order_bys.bindings:
                         self.add_binding(*order_bys.bindings)
@@ -443,12 +415,8 @@ class BaseGrammar:
                 if "." in column:
                     column_string = self._table_column_string(column)
                 else:
-                    column_string = self.column_string().format(
-                        column=column, separator=""
-                    )
-                order_crit += self.order_by_format().format(
-                    column=column_string, direction=direction.upper()
-                )
+                    column_string = self.column_string().format(column=column, separator="")
+                order_crit += self.order_by_format().format(column=column_string, direction=direction.upper())
 
             sql += self.order_by_string().format(order_columns=order_crit)
         return sql
@@ -618,14 +586,10 @@ class BaseGrammar:
                 """If we have a raw query we just want to use the query supplied
                 and don't need to compile anything.
                 """
-                sql += self.raw_query_string().format(
-                    keyword=keyword, query=where.column
-                )
+                sql += self.raw_query_string().format(keyword=keyword, query=where.column)
 
                 if not isinstance(where.bindings, (list, tuple)):
-                    raise ValueError(
-                        f"Bindings must be tuple or list. Received {type(where.bindings)}"
-                    )
+                    raise ValueError(f"Bindings must be tuple or list. Received {type(where.bindings)}")
 
                 if where.bindings:
                     self.add_binding(*where.bindings)
@@ -670,9 +634,7 @@ class BaseGrammar:
                     keyword=keyword,
                 )
             elif value_type == "value_equals":
-                sql_string = self.value_equal_string().format(
-                    value1=where.column, value2=where.value, keyword=keyword
-                )
+                sql_string = self.value_equal_string().format(value1=where.column, value2=where.value, keyword=keyword)
             elif value_type == "NULL":
                 sql_string = self.where_null_string()
             elif value_type == "DATE":
@@ -700,11 +662,7 @@ class BaseGrammar:
                 grammar = value.builder.get_grammar()
                 query_value = (
                     self.subquery_string()
-                    .format(
-                        query=grammar.process_wheres(
-                            qmark=qmark, strip_first_where=True
-                        )
-                    )
+                    .format(query=grammar.process_wheres(qmark=qmark, strip_first_where=True))
                     .replace("(  ", "(")
                 )
                 if grammar._bindings:
@@ -725,9 +683,7 @@ class BaseGrammar:
                         query_value += "?, "
                         self.add_binding(val)
                     else:
-                        query_value += self.value_string().format(
-                            value=val, separator=","
-                        )
+                        query_value += self.value_string().format(value=val, separator=",")
                 query_value = query_value.rstrip(",").rstrip(", ") + ")"
             elif value is True and value_type != "NOT NULL":
                 sql_string = self.get_true_column_string()
@@ -932,9 +888,7 @@ class BaseGrammar:
         table = None
         if column and "." in column:
             table, column = column.split(".")
-        return self.column_string().format(
-            column=column, separator=separator, table=table or self.table
-        )
+        return self.column_string().format(column=column, separator=separator, table=table or self.table)
 
     def _table_column_string(self, column, alias=None, separator=""):
         """Compiles a column into the column syntax.
@@ -1003,9 +957,7 @@ class BaseGrammar:
         Returns:
             self
         """
-        self._sql = self.drop_table_if_exists_string().format(
-            table=self.process_column(table)
-        )
+        self._sql = self.drop_table_if_exists_string().format(table=self.process_column(table))
         return self
 
     def rename_table(self, current_table_name, new_table_name):
@@ -1033,9 +985,7 @@ class BaseGrammar:
         Returns:
             self
         """
-        raise NotImplementedError(
-            f"'{self.__class__.__name__}' does not support truncating"
-        )
+        raise NotImplementedError(f"'{self.__class__.__name__}' does not support truncating")
 
     def where_regexp_string(self):
         return "{keyword} {column} REGEXP {value}"

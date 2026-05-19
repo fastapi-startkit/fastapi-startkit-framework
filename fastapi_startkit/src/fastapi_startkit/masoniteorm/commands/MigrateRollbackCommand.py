@@ -48,10 +48,10 @@ class MigrateRollbackCommand(Command):
         await migration.rollback(migration=self.option("migration"))
 
     def resolve_migration_path(self) -> str:
-        path = self.option('directory')
+        path = self.option("directory")
 
-        config = self.container.make('config').get('database.migrations')
-        default_directory = config.get('directory')
+        config = self.container.make("config").get("database.migrations")
+        default_directory = config.get("directory")
 
         migration_directory = path or default_directory
         return self.container.use_base_path(migration_directory)

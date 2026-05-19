@@ -114,6 +114,7 @@ class Storage:
 
     def __init__(self):
         from fastapi_startkit.application import app
+
         self.app = app()
         self.storage: StorageManager = self.app.make("storage")
 

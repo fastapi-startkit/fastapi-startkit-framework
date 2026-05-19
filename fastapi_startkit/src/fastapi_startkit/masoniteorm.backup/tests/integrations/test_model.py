@@ -3,18 +3,14 @@ from fastapi_startkit.masoniteorm.tests.integrations.model import User, Gender, 
 
 
 class TestModelCast(TestCase):
-    migration_directory = (
-        "src/fastapi_startkit/masoniteorm/tests/integrations/databases/migrations"
-    )
+    migration_directory = "src/fastapi_startkit/masoniteorm/tests/integrations/databases/migrations"
 
     async def test_database_is_isolated(self):
         user = await User.first()
         self.assertIsNone(user)
 
     async def test_first_record_can_be_fetch(self):
-        await User.create(
-            name="Joe", username="joe", email="joe@test.com", password="password"
-        )
+        await User.create(name="Joe", username="joe", email="joe@test.com", password="password")
 
         user = await User.first()
         self.assertEqual(user.name, "Joe")

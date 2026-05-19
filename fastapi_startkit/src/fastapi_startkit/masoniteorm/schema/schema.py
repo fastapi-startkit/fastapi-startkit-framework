@@ -112,9 +112,7 @@ class Schema:
         if self._connection is None:
             self._connection = self._manager.connection(None)
 
-        sql = self._connection.get_default_platform()().compile_drop_table_if_exists(
-            table
-        )
+        sql = self._connection.get_default_platform()().compile_drop_table_if_exists(table)
         await self._connection.statement(sql, ())
 
     async def has_table(self, table: str) -> bool:
@@ -129,9 +127,7 @@ class Schema:
         if self._connection is None:
             self._connection = self._manager.connection(None)
 
-        sql = self._connection.get_default_platform()().compile_rename_table(
-            table, new_name
-        )
+        sql = self._connection.get_default_platform()().compile_rename_table(table, new_name)
         await self._connection.run(sql, ())
 
     async def truncate(self, table: str, foreign_keys: bool = False) -> None:

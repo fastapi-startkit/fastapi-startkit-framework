@@ -75,30 +75,18 @@ class PostgresPlatform(Platform):
 
     def compile_create_sql(self, table, if_not_exists=False):
         sql = []
-        table_create_format = (
-            self.create_if_not_exists_format()
-            if if_not_exists
-            else self.create_format()
-        )
+        table_create_format = self.create_if_not_exists_format() if if_not_exists else self.create_format()
         sql.append(
             table_create_format.format(
                 table=self.wrap_table(table.name),
                 columns=", ".join(self.columnize(table.get_added_columns())).strip(),
                 constraints=(
-                    ", "
-                    + ", ".join(
-                        self.constraintize(table.get_added_constraints(), table)
-                    )
+                    ", " + ", ".join(self.constraintize(table.get_added_constraints(), table))
                     if table.get_added_constraints()
                     else ""
                 ),
                 foreign_keys=(
-                    ", "
-                    + ", ".join(
-                        self.foreign_key_constraintize(
-                            table.name, table.added_foreign_keys
-                        )
-                    )
+                    ", " + ", ".join(self.foreign_key_constraintize(table.name, table.added_foreign_keys))
                     if table.added_foreign_keys
                     else ""
                 ),
@@ -117,9 +105,7 @@ class PostgresPlatform(Platform):
 
         for name, column in table.get_added_columns().items():
             if column.comment:
-                sql.append(
-                    f"""COMMENT ON COLUMN "{table.name}"."{name}" is '{column.comment}'"""
-                )
+                sql.append(f"""COMMENT ON COLUMN "{table.name}"."{name}" is '{column.comment}'""")
 
         if table.comment:
             sql.append(f"""COMMENT ON TABLE "{table.name}" is '{table.comment}'""")
@@ -130,9 +116,7 @@ class PostgresPlatform(Platform):
         sql = []
         for name, column in columns.items():
             if column.length:
-                length = self.create_column_length(column.column_type).format(
-                    length=column.length
-                )
+                length = self.create_column_length(column.column_type).format(length=column.length)
             else:
                 length = ""
 
@@ -183,9 +167,7 @@ class PostgresPlatform(Platform):
 
             for name, column in table.get_added_columns().items():
                 if column.length:
-                    length = self.create_column_length(column.column_type).format(
-                        length=column.length
-                    )
+                    length = self.create_column_length(column.column_type).format(length=column.length)
                 else:
                     length = ""
 
@@ -240,9 +222,7 @@ class PostgresPlatform(Platform):
 
             for name, column in table.get_renamed_columns().items():
                 if column.length:
-                    length = self.create_column_length(column.column_type).format(
-                        length=column.length
-                    )
+                    length = self.create_column_length(column.column_type).format(length=column.length)
                 else:
                     length = ""
 
@@ -266,11 +246,7 @@ class PostgresPlatform(Platform):
             dropped_sql = []
 
             for name in table.get_dropped_columns():
-                dropped_sql.append(
-                    self.drop_column_string()
-                    .format(name=self.wrap_column(name))
-                    .strip()
-                )
+                dropped_sql.append(self.drop_column_string().format(name=self.wrap_column(name)).strip())
 
             sql.append(
                 self.alter_format().format(
@@ -305,18 +281,12 @@ class PostgresPlatform(Platform):
                 )
 
                 if column.is_null:
-                    changed_sql.append(
-                        f"ALTER COLUMN {self.wrap_column(name)} DROP NOT NULL"
-                    )
+                    changed_sql.append(f"ALTER COLUMN {self.wrap_column(name)} DROP NOT NULL")
                 else:
-                    changed_sql.append(
-                        f"ALTER COLUMN {self.wrap_column(name)} SET NOT NULL"
-                    )
+                    changed_sql.append(f"ALTER COLUMN {self.wrap_column(name)} SET NOT NULL")
 
                 if column.default is not None:
-                    changed_sql.append(
-                        f"ALTER COLUMN {self.wrap_column(name)} SET DEFAULT {column.default}"
-                    )
+                    changed_sql.append(f"ALTER COLUMN {self.wrap_column(name)} SET DEFAULT {column.default}")
 
             sql.append(
                 self.alter_format().format(
@@ -331,21 +301,21 @@ class PostgresPlatform(Platform):
             ) in table.get_added_foreign_keys().items():
                 cascade = ""
                 if foreign_key_constraint.delete_action:
-                    cascade += f" ON DELETE {self.foreign_key_actions.get(foreign_key_constraint.delete_action.lower())}"
+                    cascade += (
+                        f" ON DELETE {self.foreign_key_actions.get(foreign_key_constraint.delete_action.lower())}"
+                    )
                 if foreign_key_constraint.update_action:
-                    cascade += f" ON UPDATE {self.foreign_key_actions.get(foreign_key_constraint.update_action.lower())}"
+                    cascade += (
+                        f" ON UPDATE {self.foreign_key_actions.get(foreign_key_constraint.update_action.lower())}"
+                    )
                 sql.append(
                     f"ALTER TABLE {self.wrap_table(table.name)} ADD "
                     + self.get_foreign_key_constraint_string().format(
                         column=self.wrap_column(column),
                         constraint_name=foreign_key_constraint.constraint_name,
                         table=self.wrap_table(table.name),
-                        foreign_table=self.wrap_table(
-                            foreign_key_constraint.foreign_table
-                        ),
-                        foreign_column=self.wrap_column(
-                            foreign_key_constraint.foreign_column
-                        ),
+                        foreign_table=self.wrap_table(foreign_key_constraint.foreign_table),
+                        foreign_column=self.wrap_column(foreign_key_constraint.foreign_column),
                         cascade=cascade,
                     )
                 )
@@ -355,18 +325,12 @@ class PostgresPlatform(Platform):
             for constraint in constraints:
                 sql.append(f"DROP INDEX {constraint}")
 
-        if (
-            table.dropped_foreign_keys
-            or table.removed_unique_indexes
-            or table.dropped_primary_keys
-        ):
+        if table.dropped_foreign_keys or table.removed_unique_indexes or table.dropped_primary_keys:
             constraints = table.dropped_foreign_keys
             constraints += table.removed_unique_indexes
             constraints += table.dropped_primary_keys
             for constraint in constraints:
-                sql.append(
-                    f"ALTER TABLE {self.wrap_table(table.name)} DROP CONSTRAINT {constraint}"
-                )
+                sql.append(f"ALTER TABLE {self.wrap_table(table.name)} DROP CONSTRAINT {constraint}")
 
         if table.added_indexes:
             for name, index in table.added_indexes.items():
@@ -396,9 +360,7 @@ class PostgresPlatform(Platform):
                 )
 
         if table.comment:
-            sql.append(
-                f"""COMMENT ON TABLE {self.wrap_table(table.name)} is '{table.comment}'"""
-            )
+            sql.append(f"""COMMENT ON TABLE {self.wrap_table(table.name)} is '{table.comment}'""")
 
         return sql
 
@@ -427,9 +389,7 @@ class PostgresPlatform(Platform):
         sql = []
         for name, constraint in constraints.items():
             sql.append(
-                getattr(
-                    self, f"get_{constraint.constraint_type}_constraint_string"
-                )().format(
+                getattr(self, f"get_{constraint.constraint_type}_constraint_string")().format(
                     columns=", ".join(constraint._columns),
                     name_columns="_".join(constraint._columns),
                     constraint_name=constraint.name,
@@ -442,12 +402,12 @@ class PostgresPlatform(Platform):
         return "CREATE TABLE {table} ({columns}{constraints}{foreign_keys})"
 
     def create_if_not_exists_format(self):
-        return (
-            "CREATE TABLE IF NOT EXISTS {table} ({columns}{constraints}{foreign_keys})"
-        )
+        return "CREATE TABLE IF NOT EXISTS {table} ({columns}{constraints}{foreign_keys})"
 
     def get_foreign_key_constraint_string(self):
-        return "CONSTRAINT {constraint_name} FOREIGN KEY ({column}) REFERENCES {foreign_table}({foreign_column}){cascade}"
+        return (
+            "CONSTRAINT {constraint_name} FOREIGN KEY ({column}) REFERENCES {foreign_table}({foreign_column}){cascade}"
+        )
 
     def get_primary_key_constraint_string(self):
         return "CONSTRAINT {constraint_name} PRIMARY KEY ({columns})"
@@ -487,15 +447,15 @@ class PostgresPlatform(Platform):
         return f"DROP TABLE {self.wrap_table(table)} CASCADE"
 
     def compile_column_exists(self, table, column):
-        return f"SELECT column_name FROM information_schema.columns WHERE table_name='{table}' and column_name='{column}'"
+        return (
+            f"SELECT column_name FROM information_schema.columns WHERE table_name='{table}' and column_name='{column}'"
+        )
 
     def compile_get_all_tables(self, database=None, schema=None):
         return f"SELECT table_name FROM information_schema.tables WHERE table_schema = '{schema or 'public'}' AND table_catalog = '{database}' AND table_type = 'BASE TABLE'"
 
     async def get_current_schema(self, connection, table_name, schema=None):
-        sql = self.table_information_string().format(
-            table=table_name, schema=schema or "public"
-        )
+        sql = self.table_information_string().format(table=table_name, schema=schema or "public")
 
         reversed_type_map = {v: k for k, v in self.type_map.items()}
         reversed_type_map.update(self.table_info_map)

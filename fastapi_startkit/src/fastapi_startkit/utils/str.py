@@ -15,9 +15,7 @@ def random_string(length=4):
     Returns:
         string
     """
-    return "".join(
-        random.choice(string.ascii_uppercase + string.digits) for _ in range(length)
-    )
+    return "".join(random.choice(string.ascii_uppercase + string.digits) for _ in range(length))
 
 
 def modularize(file_path, suffix=".py"):
@@ -81,9 +79,7 @@ def add_query_params(url: str, query_params: dict) -> str:
     """Add query params dict to a given url (which can already contain some query parameters)."""
     path_result = parse.urlsplit(url)
 
-    base_url = (
-        f"{path_result.scheme}://{path_result.hostname}" if path_result.hostname else ""
-    )
+    base_url = f"{path_result.scheme}://{path_result.hostname}" if path_result.hostname else ""
     base_path = path_result.path
 
     # parse existing query parameters if any

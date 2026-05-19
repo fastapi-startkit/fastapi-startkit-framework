@@ -12,9 +12,9 @@ class SlackChannel(BaseChannel):
         emoji = Config.get("logging.channels.slack.emoji")
         username = Config.get("logging.channels.slack.username")
         self.max_level = Config.get("logging.channels.slack.level")
-        self.driver = DriverFactory.make(
-            driver or Config.get("logging.channels.slack.driver")
-        )(emoji=emoji, username=username, token=token, channel=channel)
+        self.driver = DriverFactory.make(driver or Config.get("logging.channels.slack.driver"))(
+            emoji=emoji, username=username, token=token, channel=channel
+        )
 
     def debug(self, message, *args, **kwargs):
         return self.driver.debug(message, *args, **kwargs)

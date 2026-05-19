@@ -10,12 +10,8 @@ class Loader:
         class_name: str,
         raise_exception: bool = False,
     ) -> "None|Any": ...
-    def find_all(
-        class_instance: Any, paths: list, raise_exception: bool = False
-    ) -> dict: ...
-    def get_object(
-        path_or_module: "str|Any", object_name: str, raise_exception: bool = False
-    ) -> Any:
+    def find_all(class_instance: Any, paths: list, raise_exception: bool = False) -> dict: ...
+    def get_object(path_or_module: "str|Any", object_name: str, raise_exception: bool = False) -> Any:
         """Load the given object from a Python module located at path and returns a default value if
         not found. If no object name is provided, returns the loaded module."""
         ...

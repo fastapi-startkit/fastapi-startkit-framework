@@ -20,9 +20,7 @@ class Hash:
     ) -> bool:
         """Verify that a given string matches its hashed version (based on configured hashing protocol)."""
         ...
-    def needs_rehash(
-        hashed_string: str, options: dict = {}, driver: str = None
-    ) -> bool:
+    def needs_rehash(hashed_string: str, options: dict = {}, driver: str = None) -> bool:
         """Verify that a given hash needs to be hashed again because parameters for generating
         the hash have changed."""
         ...

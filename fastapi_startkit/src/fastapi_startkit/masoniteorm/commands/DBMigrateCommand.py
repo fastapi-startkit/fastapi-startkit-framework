@@ -66,10 +66,10 @@ class DBMigrateCommand(Command):
         await migration.migrate(migration=migration_name)
 
     def resolve_migration_path(self) -> str:
-        path = self.option('directory')
+        path = self.option("directory")
 
-        config = self.container.make('config').get('database.migrations')
-        default_directory = config.get('directory')
+        config = self.container.make("config").get("database.migrations")
+        default_directory = config.get("directory")
 
         migration_directory = path or default_directory
         return self.container.use_base_path(migration_directory)
@@ -79,9 +79,7 @@ class DBMigrateCommand(Command):
         if os.getenv("APP_ENV") == "production" and not self.option("force"):
             answer = ""
             while answer not in ["y", "n"]:
-                answer = input(
-                    "Do you want to run migrations in PRODUCTION ? (y/n)\n"
-                ).lower()
+                answer = input("Do you want to run migrations in PRODUCTION ? (y/n)\n").lower()
             if answer != "y":
                 self.info("Migrations cancelled")
                 exit(0)

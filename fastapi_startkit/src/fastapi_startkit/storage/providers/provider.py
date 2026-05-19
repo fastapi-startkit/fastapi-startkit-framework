@@ -17,13 +17,7 @@ class StorageProvider(Provider):
         self.app.bind("storage", storage)
 
     def boot(self):
-        self.publishes(
-            {
-                Path(__file__)
-                .resolve()
-                .parent.parent.joinpath("config/storage.py"): "config/storage.py"
-            }
-        )
+        self.publishes({Path(__file__).resolve().parent.parent.joinpath("config/storage.py"): "config/storage.py"})
 
         if not self.app.fastapi:
             return
@@ -54,6 +48,4 @@ class StorageProvider(Provider):
                 media_type=media_type or "application/octet-stream",
             )
 
-        self.app.fastapi.get("/storage/{path:path}", include_in_schema=False)(
-            serve_storage_file
-        )
+        self.app.fastapi.get("/storage/{path:path}", include_in_schema=False)(serve_storage_file)

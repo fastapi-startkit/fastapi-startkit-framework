@@ -31,9 +31,7 @@ class ExceptionHandler:
         response = self.application.make("response")
         request = self.application.make("request")
 
-        self.application.make("event").fire(
-            f"masonite.exception.{exception.__class__.__name__}", exception
-        )
+        self.application.make("event").fire(f"masonite.exception.{exception.__class__.__name__}", exception)
 
         # add headers to response if any
         if hasattr(exception, "get_headers"):
@@ -47,17 +45,13 @@ class ExceptionHandler:
             response.with_headers(headers)
 
         if self.application.has(f"{exception.__class__.__name__}Handler"):
-            return self.application.make(
-                f"{exception.__class__.__name__}Handler"
-            ).handle(exception)
+            return self.application.make(f"{exception.__class__.__name__}Handler").handle(exception)
 
         # handle exception in production
         if not self.application.is_debug():
             # for HTTP error codes (500, 404, 403...) a specific page should be displayed
             # if a renderable exception is raised let it be displayed
-            if hasattr(exception, "is_http_exception") or hasattr(
-                exception, "get_response"
-            ):
+            if hasattr(exception, "is_http_exception") or hasattr(exception, "get_response"):
                 return self.application.make("HttpExceptionHandler").handle(exception)
 
             # else fallback to an unknown exception that should be displayed as a 500 error

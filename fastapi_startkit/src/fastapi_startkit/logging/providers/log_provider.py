@@ -20,13 +20,7 @@ class LogProvider(Provider):
         self.app.bind("LoggingManager", LoggingManager(ChannelFactory, DriverFactory))
 
     def boot(self):
-        self.publishes(
-            {
-                Path(__file__)
-                .resolve()
-                .parent.parent.joinpath("config/logging.py"): "config/logging.py"
-            }
-        )
+        self.publishes({Path(__file__).resolve().parent.parent.joinpath("config/logging.py"): "config/logging.py"})
         config = self.app.make("config")
         if not config.get("logging.default"):
             return

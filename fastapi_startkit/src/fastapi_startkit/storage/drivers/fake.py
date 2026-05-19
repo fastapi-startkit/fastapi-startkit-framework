@@ -29,10 +29,7 @@ class FakeDriver(LocalDriver):
             paths = [paths]
 
         for path in paths:
-            assert self.exists(path), (
-                f"Storage::fake({self._disk_name!r}): "
-                f"failed asserting that [{path!r}] exists."
-            )
+            assert self.exists(path), f"Storage::fake({self._disk_name!r}): failed asserting that [{path!r}] exists."
             if content is not None:
                 actual = self.get(path)
                 assert actual == content, (
@@ -50,8 +47,7 @@ class FakeDriver(LocalDriver):
 
         for path in paths:
             assert self.missing(path), (
-                f"Storage::fake({self._disk_name!r}): "
-                f"failed asserting that [{path!r}] is missing."
+                f"Storage::fake({self._disk_name!r}): failed asserting that [{path!r}] is missing."
             )
 
         return self

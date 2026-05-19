@@ -63,9 +63,7 @@ class MySQLPlatform(Platform):
         sql = []
         for name, column in columns.items():
             if column.length:
-                length = self.create_column_length(column.column_type).format(
-                    length=column.length
-                )
+                length = self.create_column_length(column.column_type).format(length=column.length)
             else:
                 length = ""
 
@@ -101,12 +99,8 @@ class MySQLPlatform(Platform):
                     constraint=constraint,
                     nullable=self.premapped_nulls.get(column.is_null) or "",
                     default=default,
-                    signed=(
-                        " " + self.signed.get(column._signed) if column._signed else ""
-                    ),
-                    comment=(
-                        "COMMENT '" + column.comment + "'" if column.comment else ""
-                    ),
+                    signed=(" " + self.signed.get(column._signed) if column._signed else ""),
+                    comment=("COMMENT '" + column.comment + "'" if column.comment else ""),
                 )
                 .strip()
             )
@@ -115,30 +109,18 @@ class MySQLPlatform(Platform):
 
     def compile_create_sql(self, table, if_not_exists=False):
         sql = []
-        table_create_format = (
-            self.create_if_not_exists_format()
-            if if_not_exists
-            else self.create_format()
-        )
+        table_create_format = self.create_if_not_exists_format() if if_not_exists else self.create_format()
         sql.append(
             table_create_format.format(
                 table=self.get_table_string().format(table=table.name),
                 columns=", ".join(self.columnize(table.get_added_columns())).strip(),
                 constraints=(
-                    ", "
-                    + ", ".join(
-                        self.constraintize(table.get_added_constraints(), table)
-                    )
+                    ", " + ", ".join(self.constraintize(table.get_added_constraints(), table))
                     if table.get_added_constraints()
                     else ""
                 ),
                 foreign_keys=(
-                    ", "
-                    + ", ".join(
-                        self.foreign_key_constraintize(
-                            table.name, table.added_foreign_keys
-                        )
-                    )
+                    ", " + ", ".join(self.foreign_key_constraintize(table.name, table.added_foreign_keys))
                     if table.added_foreign_keys
                     else ""
                 ),
@@ -166,9 +148,7 @@ class MySQLPlatform(Platform):
 
             for name, column in table.get_added_columns().items():
                 if column.length:
-                    length = self.create_column_length(column.column_type).format(
-                        length=column.length
-                    )
+                    length = self.create_column_length(column.column_type).format(length=column.length)
                 else:
                     length = ""
 
@@ -199,21 +179,9 @@ class MySQLPlatform(Platform):
                         constraint="PRIMARY KEY" if column.primary else "",
                         nullable="NULL" if column.is_null else "NOT NULL",
                         default=default,
-                        signed=(
-                            " " + self.signed.get(column._signed)
-                            if column._signed
-                            else ""
-                        ),
-                        after=(
-                            (" AFTER " + self.wrap_column(column._after))
-                            if column._after
-                            else ""
-                        ),
-                        comment=(
-                            " COMMENT '" + column.comment + "'"
-                            if column.comment
-                            else ""
-                        ),
+                        signed=(" " + self.signed.get(column._signed) if column._signed else ""),
+                        after=((" AFTER " + self.wrap_column(column._after)) if column._after else ""),
+                        comment=(" COMMENT '" + column.comment + "'" if column.comment else ""),
                     )
                     .strip()
                 )
@@ -231,9 +199,7 @@ class MySQLPlatform(Platform):
 
             for name, column in table.get_renamed_columns().items():
                 if column.length:
-                    length = self.create_column_length(column.column_type).format(
-                        length=column.length
-                    )
+                    length = self.create_column_length(column.column_type).format(length=column.length)
                 else:
                     length = ""
 
@@ -257,9 +223,7 @@ class MySQLPlatform(Platform):
             sql.append(
                 self.alter_format().format(
                     table=self.wrap_table(table.name),
-                    columns=", ".join(
-                        f"MODIFY {x}" for x in self.columnize(table.changed_columns)
-                    ),
+                    columns=", ".join(f"MODIFY {x}" for x in self.columnize(table.changed_columns)),
                 )
             )
 
@@ -268,9 +232,7 @@ class MySQLPlatform(Platform):
 
             for name in table.get_dropped_columns():
                 dropped_sql.append(
-                    self.drop_column_string()
-                    .format(name=self.get_column_string().format(column=name))
-                    .strip()
+                    self.drop_column_string().format(name=self.get_column_string().format(column=name)).strip()
                 )
 
             sql.append(
@@ -287,9 +249,13 @@ class MySQLPlatform(Platform):
             ) in table.get_added_foreign_keys().items():
                 cascade = ""
                 if foreign_key_constraint.delete_action:
-                    cascade += f" ON DELETE {self.foreign_key_actions.get(foreign_key_constraint.delete_action.lower())}"
+                    cascade += (
+                        f" ON DELETE {self.foreign_key_actions.get(foreign_key_constraint.delete_action.lower())}"
+                    )
                 if foreign_key_constraint.update_action:
-                    cascade += f" ON UPDATE {self.foreign_key_actions.get(foreign_key_constraint.update_action.lower())}"
+                    cascade += (
+                        f" ON UPDATE {self.foreign_key_actions.get(foreign_key_constraint.update_action.lower())}"
+                    )
                 sql.append(
                     f"ALTER TABLE {self.wrap_table(table.name)} ADD "
                     + self.get_foreign_key_constraint_string().format(
@@ -305,9 +271,7 @@ class MySQLPlatform(Platform):
         if table.dropped_foreign_keys:
             constraints = table.dropped_foreign_keys
             for constraint in constraints:
-                sql.append(
-                    f"ALTER TABLE {self.wrap_table(table.name)} DROP FOREIGN KEY {constraint}"
-                )
+                sql.append(f"ALTER TABLE {self.wrap_table(table.name)} DROP FOREIGN KEY {constraint}")
 
         if table.added_indexes:
             for name, index in table.added_indexes.items():
@@ -334,22 +298,14 @@ class MySQLPlatform(Platform):
                         f"ALTER TABLE {self.wrap_table(table.name)} ADD CONSTRAINT {constraint.name} PRIMARY KEY ({','.join(constraint._columns)})"
                     )
 
-        if (
-            table.removed_indexes
-            or table.removed_unique_indexes
-            or table.dropped_primary_keys
-        ):
+        if table.removed_indexes or table.removed_unique_indexes or table.dropped_primary_keys:
             constraints = table.removed_indexes
             constraints += table.removed_unique_indexes
             constraints += table.dropped_primary_keys
             for constraint in constraints:
-                sql.append(
-                    f"ALTER TABLE {self.wrap_table(table.name)} DROP INDEX {constraint}"
-                )
+                sql.append(f"ALTER TABLE {self.wrap_table(table.name)} DROP INDEX {constraint}")
         if table.comment:
-            sql.append(
-                f"ALTER TABLE {self.wrap_table(table.name)} COMMENT '{table.comment}'"
-            )
+            sql.append(f"ALTER TABLE {self.wrap_table(table.name)} COMMENT '{table.comment}'")
         return sql
 
     def add_column_string(self):
@@ -371,9 +327,7 @@ class MySQLPlatform(Platform):
         sql = []
         for name, constraint in constraints.items():
             sql.append(
-                getattr(
-                    self, f"get_{constraint.constraint_type}_constraint_string"
-                )().format(
+                getattr(self, f"get_{constraint.constraint_type}_constraint_string")().format(
                     columns=", ".join(constraint._columns),
                     name_columns="_".join(constraint._columns),
                     table=table.name,
@@ -399,7 +353,9 @@ class MySQLPlatform(Platform):
         return "ALTER TABLE {table} {columns}"
 
     def get_foreign_key_constraint_string(self):
-        return "CONSTRAINT {constraint_name} FOREIGN KEY ({column}) REFERENCES {foreign_table}({foreign_column}){cascade}"
+        return (
+            "CONSTRAINT {constraint_name} FOREIGN KEY ({column}) REFERENCES {foreign_table}({foreign_column}){cascade}"
+        )
 
     def get_primary_key_constraint_string(self):
         return "CONSTRAINT {constraint_name} PRIMARY KEY ({columns})"
@@ -430,7 +386,9 @@ class MySQLPlatform(Platform):
         return f"DROP TABLE {self.wrap_table(table)}"
 
     def compile_column_exists(self, table, column):
-        return f"SELECT column_name FROM information_schema.columns WHERE table_name='{table}' and column_name='{column}'"
+        return (
+            f"SELECT column_name FROM information_schema.columns WHERE table_name='{table}' and column_name='{column}'"
+        )
 
     def compile_get_all_tables(self, database, schema=None):
         return f"SELECT table_name FROM information_schema.tables WHERE table_schema = '{database}'"
@@ -442,9 +400,7 @@ class MySQLPlatform(Platform):
         reversed_type_map = {v: k for k, v in self.type_map.items()}
 
         for column in result:
-            column_type = self.get_column_type(
-                reversed_type_map, column["Type"].upper()
-            )
+            column_type = self.get_column_type(reversed_type_map, column["Type"].upper())
             length = self.get_column_length(column["Type"])
             default = column.get("Default")
 

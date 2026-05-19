@@ -63,9 +63,7 @@ class HasOneThrough(BaseRelationship):
         int_table = intermediary_builder.get_table_name()
 
         return (
-            distant_builder.select(
-                f"{dist_table}.*, {int_table}.{self.local_owner_key} as {self.local_key}"
-            )
+            distant_builder.select(f"{dist_table}.*, {int_table}.{self.local_owner_key} as {self.local_key}")
             .join(
                 f"{int_table}",
                 f"{int_table}.{self.foreign_key}",
@@ -139,9 +137,7 @@ class HasOneThrough(BaseRelationship):
         if callback:
             callback(current_builder)
 
-        distant_builder.select(
-            f"{dist_table}.*, {int_table}.{self.local_owner_key} as {self.local_key}"
-        ).join(
+        distant_builder.select(f"{dist_table}.*, {int_table}.{self.local_owner_key} as {self.local_key}").join(
             f"{int_table}",
             f"{int_table}.{self.foreign_key}",
             "=",

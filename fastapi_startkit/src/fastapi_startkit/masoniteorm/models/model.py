@@ -174,15 +174,11 @@ class Model(Attribute, Relationship, ObservesEvents):
         return cls().new_query()
 
     @classmethod
-    async def first_or_create(
-        cls, search: dict, attributes: dict | None = None
-    ) -> "Model":
+    async def first_or_create(cls, search: dict, attributes: dict | None = None) -> "Model":
         return await cls.query().first_or_create(search, attributes)
 
     @classmethod
-    async def update_or_create(
-        cls, search: dict, attributes: dict | None = None
-    ) -> "Model":
+    async def update_or_create(cls, search: dict, attributes: dict | None = None) -> "Model":
         return await cls.query().update_or_create(search, attributes)
 
     @classmethod

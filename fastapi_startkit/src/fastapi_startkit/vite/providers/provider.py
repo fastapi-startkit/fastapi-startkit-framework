@@ -36,9 +36,7 @@ class ViteProvider(Provider):
         self.mount_static_file_if_require(config)
         self.register_jinja_directives(vite)
 
-        source = os.path.abspath(
-            str(os.path.join(str(os.path.dirname(__file__)), "../config/vite.py"))
-        )
+        source = os.path.abspath(str(os.path.join(str(os.path.dirname(__file__)), "../config/vite.py")))
         self.publishes({source: "config/vite.py"})
 
         stubs_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../stubs"))
@@ -82,6 +80,4 @@ class ViteProvider(Provider):
 
                 templates.env.globals["vite"] = lambda *a, **kw: Markup(vite(*a, **kw))
                 templates.env.globals["vite_asset"] = vite.asset
-                templates.env.globals["vite_react_refresh"] = lambda: Markup(
-                    vite.react_refresh()
-                )
+                templates.env.globals["vite_react_refresh"] = lambda: Markup(vite.react_refresh())

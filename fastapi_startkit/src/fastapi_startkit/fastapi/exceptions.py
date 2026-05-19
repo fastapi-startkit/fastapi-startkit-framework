@@ -17,10 +17,7 @@ class HTTPExceptionHandler:
                 "exception": f"{type(exc).__module__}.{type(exc).__qualname__}",
                 "file": frames[-1].filename if frames else None,
                 "line": frames[-1].lineno if frames else None,
-                "trace": [
-                    {"file": f.filename, "line": f.lineno, "function": f.name}
-                    for f in frames
-                ],
+                "trace": [{"file": f.filename, "line": f.lineno, "function": f.name} for f in frames],
             }
         else:
             content = {"message": "Server Error"}
@@ -44,10 +41,7 @@ class ValidationExceptionHandler:
         accept = request.headers.get("accept", "")
         content_type = request.headers.get("content-type", "")
 
-        wants_json = (
-            "application/json" in accept
-            or content_type.startswith("application/json")
-        )
+        wants_json = "application/json" in accept or content_type.startswith("application/json")
 
         errors = {}
         for err in exc.errors():

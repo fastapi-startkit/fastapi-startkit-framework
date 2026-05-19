@@ -7,12 +7,12 @@ class HasManyThrough(BaseRelationship):
     """HasManyThrough Relationship Class."""
 
     def __init__(
-            self,
-            fn=list[str],
-            local_foreign_key=None,
-            other_foreign_key=None,
-            local_owner_key=None,
-            other_owner_key=None,
+        self,
+        fn=list[str],
+        local_foreign_key=None,
+        other_foreign_key=None,
+        local_owner_key=None,
+        other_owner_key=None,
     ):
         self.fn = fn
 
@@ -61,9 +61,7 @@ class HasManyThrough(BaseRelationship):
         intermediate_table = intermediary_builder.get_table_name()
 
         return (
-            distant_builder.select(
-                f"{distant_table}.*, {intermediate_table}.{self.local_key}"
-            )
+            distant_builder.select(f"{distant_table}.*, {intermediate_table}.{self.local_key}")
             .join(
                 f"{intermediate_table}",
                 f"{intermediate_table}.{self.foreign_key}",
@@ -113,9 +111,7 @@ class HasManyThrough(BaseRelationship):
         if callback:
             callback(current_builder)
 
-        distant_builder.select(
-            f"{distant_table}.*, {intermediate_table}.{self.local_key}"
-        ).join(
+        distant_builder.select(f"{distant_table}.*, {intermediate_table}.{self.local_key}").join(
             f"{intermediate_table}",
             f"{intermediate_table}.{self.foreign_key}",
             "=",

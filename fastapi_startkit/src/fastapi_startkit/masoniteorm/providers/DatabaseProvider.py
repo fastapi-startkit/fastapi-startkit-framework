@@ -33,13 +33,7 @@ class DatabaseProvider(Provider):
         Migrator.db_manager = db
 
     def boot(self) -> None:
-        self.publishes(
-            {
-                Path(__file__)
-                .resolve()
-                .parent.parent.joinpath("config/database.py"): "config/database.py"
-            }
-        )
+        self.publishes({Path(__file__).resolve().parent.parent.joinpath("config/database.py"): "config/database.py"})
 
         self.commands(
             [

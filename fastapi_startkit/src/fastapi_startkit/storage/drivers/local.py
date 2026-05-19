@@ -127,7 +127,5 @@ class LocalDriver:
 
     def download(self, file_path, name=None, force=False):
         from fastapi.responses import FileResponse
-        return FileResponse(
-            self.get_path(file_path),
-            filename=name or os.path.basename(file_path)
-        )
+
+        return FileResponse(self.get_path(file_path), filename=name or os.path.basename(file_path))

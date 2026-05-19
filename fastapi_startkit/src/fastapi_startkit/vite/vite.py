@@ -77,9 +77,7 @@ class Vite:
         self._entry_points = entry_points
         return self
 
-    def create_asset_paths_using(
-        self, resolver: Optional[Callable[[str], str]]
-    ) -> "Vite":
+    def create_asset_paths_using(self, resolver: Optional[Callable[[str], str]]) -> "Vite":
         """Override the default asset URL builder with a custom callable."""
         self._asset_path_resolver = resolver
         return self
@@ -119,15 +117,9 @@ class Vite:
 
         if self.is_running_hot():
             hot_origin = self._read_hot_origin()
-            tags = [
-                self._make_tag_for_chunk(
-                    "@vite/client", f"{hot_origin}/@vite/client", None, None
-                )
-            ]
+            tags = [self._make_tag_for_chunk("@vite/client", f"{hot_origin}/@vite/client", None, None)]
             for ep in entrypoints:
-                tags.append(
-                    self._make_tag_for_chunk(ep, f"{hot_origin}/{ep}", None, None)
-                )
+                tags.append(self._make_tag_for_chunk(ep, f"{hot_origin}/{ep}", None, None))
             return "".join(tags)
 
         manifest = self._manifest(build_directory)
@@ -284,9 +276,7 @@ class Vite:
         path = self._manifest_path(build_directory)
         if path not in Vite._manifests:
             if not os.path.isfile(path):
-                raise ViteManifestNotFoundException(
-                    f"Vite manifest not found at: {path}"
-                )
+                raise ViteManifestNotFoundException(f"Vite manifest not found at: {path}")
             with open(path) as f:
                 Vite._manifests[path] = json.load(f)
         return Vite._manifests[path]
@@ -321,9 +311,7 @@ class Vite:
             seen[import_key] = True
             imports.append(import_key)
             if import_key in manifest:
-                imports.extend(
-                    self._resolve_imports(manifest, manifest[import_key], seen)
-                )
+                imports.extend(self._resolve_imports(manifest, manifest[import_key], seen))
         return imports
 
     def _make_tag_for_chunk(
@@ -354,9 +342,7 @@ class Vite:
         if attributes is False:
             return ""
 
-        self._preloaded_assets[url] = self._parse_attributes(
-            {k: v for k, v in attributes.items() if k != "href"}
-        )
+        self._preloaded_assets[url] = self._parse_attributes({k: v for k, v in attributes.items() if k != "href"})
         return f"<link {' '.join(self._parse_attributes(attributes))} />"
 
     def _resolve_script_tag_attributes(self, src, url, chunk, manifest) -> dict:
@@ -382,18 +368,16 @@ class Vite:
                 "as": "style",
                 "href": url,
                 "nonce": self._nonce or False,
-                "crossorigin": self._resolve_stylesheet_tag_attributes(
-                    src, url, chunk, manifest
-                ).get("crossorigin", False),
+                "crossorigin": self._resolve_stylesheet_tag_attributes(src, url, chunk, manifest).get(
+                    "crossorigin", False
+                ),
             }
         else:
             attrs = {
                 "rel": "modulepreload",
                 "href": url,
                 "nonce": self._nonce or False,
-                "crossorigin": self._resolve_script_tag_attributes(
-                    src, url, chunk, manifest
-                ).get("crossorigin", False),
+                "crossorigin": self._resolve_script_tag_attributes(src, url, chunk, manifest).get("crossorigin", False),
             }
 
         if self._integrity_key is not False:

@@ -19,6 +19,7 @@ class PublicDiskConfig(LocalDiskConfig):
     visibility: str = "public"
     url: str = "/storage"
 
+
 @dataclass
 class S3Config:
     driver: str = field(default="s3")
