@@ -79,18 +79,12 @@ class ProductNames(Model):
 
 class TestModel(unittest.TestCase):
     def test_create_can_use_fillable(self):
-        sql = ProfileFillable.create(
-            {"name": "Joe", "email": "user@example.com"}, query=True
-        ).to_sql()
+        sql = ProfileFillable.create({"name": "Joe", "email": "user@example.com"}, query=True).to_sql()
 
-        self.assertEqual(
-            sql, "INSERT INTO `profiles` (`profiles`.`name`) VALUES ('Joe')"
-        )
+        self.assertEqual(sql, "INSERT INTO `profiles` (`profiles`.`name`) VALUES ('Joe')")
 
     def test_create_can_use_fillable_asterisk(self):
-        sql = ProfileFillAsterisk.create(
-            {"name": "Joe", "email": "user@example.com"}, query=True
-        ).to_sql()
+        sql = ProfileFillAsterisk.create({"name": "Joe", "email": "user@example.com"}, query=True).to_sql()
 
         self.assertEqual(
             sql,
@@ -98,18 +92,12 @@ class TestModel(unittest.TestCase):
         )
 
     def test_create_can_use_guarded(self):
-        sql = ProfileGuarded.create(
-            {"name": "Joe", "email": "user@example.com"}, query=True
-        ).to_sql()
+        sql = ProfileGuarded.create({"name": "Joe", "email": "user@example.com"}, query=True).to_sql()
 
-        self.assertEqual(
-            sql, "INSERT INTO `profiles` (`profiles`.`name`) VALUES ('Joe')"
-        )
+        self.assertEqual(sql, "INSERT INTO `profiles` (`profiles`.`name`) VALUES ('Joe')")
 
     def test_create_can_use_guarded_asterisk(self):
-        sql = ProfileGuardedAsterisk.create(
-            {"name": "Joe", "email": "user@example.com"}, query=True
-        ).to_sql()
+        sql = ProfileGuardedAsterisk.create({"name": "Joe", "email": "user@example.com"}, query=True).to_sql()
 
         # An asterisk guarded attribute excludes all fields from mass-assignment.
         # This would raise a DB error if there are any required fields.
@@ -169,14 +157,10 @@ class TestModel(unittest.TestCase):
         # An asterisk guarded attribute excludes all fields from mass-assignment.
         # This would obviously raise an invalid SQL syntax error.
         # TODO: Raise a clearer error?
-        self.assertEqual(
-            query_builder.to_sql(), "INSERT INTO `profiles` () VALUES (), ()"
-        )
+        self.assertEqual(query_builder.to_sql(), "INSERT INTO `profiles` () VALUES (), ()")
 
     def test_update_can_use_fillable(self):
-        query_builder = ProfileFillable().update(
-            {"name": "Joe", "email": "user@example.com"}, dry=True
-        )
+        query_builder = ProfileFillable().update({"name": "Joe", "email": "user@example.com"}, dry=True)
 
         self.assertEqual(
             query_builder.to_sql(),
@@ -184,9 +168,7 @@ class TestModel(unittest.TestCase):
         )
 
     def test_update_can_use_fillable_asterisk(self):
-        query_builder = ProfileFillAsterisk().update(
-            {"name": "Joe", "email": "user@example.com"}, dry=True
-        )
+        query_builder = ProfileFillAsterisk().update({"name": "Joe", "email": "user@example.com"}, dry=True)
 
         self.assertEqual(
             query_builder.to_sql(),
@@ -194,9 +176,7 @@ class TestModel(unittest.TestCase):
         )
 
     def test_update_can_use_guarded(self):
-        query_builder = ProfileGuarded().update(
-            {"name": "Joe", "email": "user@example.com"}, dry=True
-        )
+        query_builder = ProfileGuarded().update({"name": "Joe", "email": "user@example.com"}, dry=True)
 
         self.assertEqual(
             query_builder.to_sql(),
@@ -206,9 +186,7 @@ class TestModel(unittest.TestCase):
     def test_update_can_use_guarded_asterisk(self):
         profile = ProfileGuardedAsterisk()
         initial_sql = profile.get_builder().to_sql()
-        query_builder = profile.update(
-            {"name": "Joe", "email": "user@example.com"}, dry=True
-        )
+        query_builder = profile.update({"name": "Joe", "email": "user@example.com"}, dry=True)
 
         # An asterisk guarded attribute excludes all fields from mass-assignment.
         # The query builder's sql should not have been altered in any way.
@@ -235,9 +213,7 @@ class TestModel(unittest.TestCase):
         self.assertEqual(profile.to_json(), '{"name": "Joe", "id": 1}')
 
     def test_serialize_with_hidden(self):
-        profile = ProfileSerialize.hydrate(
-            {"name": "Joe", "id": 1, "password": "secret"}
-        )
+        profile = ProfileSerialize.hydrate({"name": "Joe", "id": 1, "password": "secret"})
 
         self.assertTrue(profile.serialize().get("name"))
         self.assertTrue(profile.serialize().get("id"))
@@ -252,9 +228,7 @@ class TestModel(unittest.TestCase):
                 "email": "joe@masonite.com",
             }
         )
-        self.assertTrue(
-            {"name": "Joe", "email": "joe@masonite.com"}, profile.serialize()
-        )
+        self.assertTrue({"name": "Joe", "email": "joe@masonite.com"}, profile.serialize())
 
     def test_serialize_with_visible_and_hidden_raise_error(self):
         profile = ProfileSerializeWithVisibleAndHidden.hydrate(

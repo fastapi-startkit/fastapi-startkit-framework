@@ -75,9 +75,7 @@ class MorphMany(BaseRelationship):
                         record_type,
                     ).where_in(
                         self.morph_id,
-                        relation.pluck(
-                            relation.first().get_primary_key(), keep_nulls=False
-                        ).unique(),
+                        relation.pluck(relation.first().get_primary_key(), keep_nulls=False).unique(),
                     )
                 ).get()
             return (
@@ -87,9 +85,7 @@ class MorphMany(BaseRelationship):
                 )
                 .where_in(
                     self.morph_id,
-                    relation.pluck(
-                        relation.first().get_primary_key(), keep_nulls=False
-                    ).unique(),
+                    relation.pluck(relation.first().get_primary_key(), keep_nulls=False).unique(),
                 )
                 .get()
             )
@@ -111,9 +107,7 @@ class MorphMany(BaseRelationship):
 
     def register_related(self, key, model, collection):
         record_type = self.get_record_key_lookup(model)
-        related = collection.where(self.morph_key, record_type).where(
-            self.morph_id, model.get_primary_key_value()
-        )
+        related = collection.where(self.morph_key, record_type).where(self.morph_id, model.get_primary_key_value())
 
         model.add_relation({key: related})
 
@@ -128,8 +122,6 @@ class MorphMany(BaseRelationship):
                 break
 
         if not record_type:
-            raise ValueError(
-                f"Could not find the record type key for the {relation} class"
-            )
+            raise ValueError(f"Could not find the record type key for the {relation} class")
 
         return record_type

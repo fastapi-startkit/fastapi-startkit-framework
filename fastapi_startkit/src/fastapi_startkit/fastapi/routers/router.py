@@ -78,39 +78,25 @@ class Router:
             **kwargs,
         )
 
-    def get(
-        self, path: str, endpoint: Callable[..., Any], **kwargs: Unpack[RouteOptions]
-    ) -> None:
+    def get(self, path: str, endpoint: Callable[..., Any], **kwargs: Unpack[RouteOptions]) -> None:
         self._add_route(path, endpoint, ["GET"], **kwargs)
 
-    def post(
-        self, path: str, endpoint: Callable[..., Any], **kwargs: Unpack[RouteOptions]
-    ) -> None:
+    def post(self, path: str, endpoint: Callable[..., Any], **kwargs: Unpack[RouteOptions]) -> None:
         self._add_route(path, endpoint, ["POST"], **kwargs)
 
-    def put(
-        self, path: str, endpoint: Callable[..., Any], **kwargs: Unpack[RouteOptions]
-    ) -> None:
+    def put(self, path: str, endpoint: Callable[..., Any], **kwargs: Unpack[RouteOptions]) -> None:
         self._add_route(path, endpoint, ["PUT"], **kwargs)
 
-    def patch(
-        self, path: str, endpoint: Callable[..., Any], **kwargs: Unpack[RouteOptions]
-    ) -> None:
+    def patch(self, path: str, endpoint: Callable[..., Any], **kwargs: Unpack[RouteOptions]) -> None:
         self._add_route(path, endpoint, ["PATCH"], **kwargs)
 
-    def delete(
-        self, path: str, endpoint: Callable[..., Any], **kwargs: Unpack[RouteOptions]
-    ) -> None:
+    def delete(self, path: str, endpoint: Callable[..., Any], **kwargs: Unpack[RouteOptions]) -> None:
         self._add_route(path, endpoint, ["DELETE"], **kwargs)
 
-    def head(
-        self, path: str, endpoint: Callable[..., Any], **kwargs: Unpack[RouteOptions]
-    ) -> None:
+    def head(self, path: str, endpoint: Callable[..., Any], **kwargs: Unpack[RouteOptions]) -> None:
         self._add_route(path, endpoint, ["HEAD"], **kwargs)
 
-    def options(
-        self, path: str, endpoint: Callable[..., Any], **kwargs: Unpack[RouteOptions]
-    ) -> None:
+    def options(self, path: str, endpoint: Callable[..., Any], **kwargs: Unpack[RouteOptions]) -> None:
         self._add_route(path, endpoint, ["OPTIONS"], **kwargs)
 
     def resource(
@@ -154,9 +140,7 @@ class Router:
             )
 
         if include("store") and hasattr(controller, "store"):
-            self.post(
-                f"/{name}", fn("store"), name=route_name("store", f"{name}.store")
-            )
+            self.post(f"/{name}", fn("store"), name=route_name("store", f"{name}.store"))
 
         if include("show") and hasattr(controller, "show"):
             self.get(

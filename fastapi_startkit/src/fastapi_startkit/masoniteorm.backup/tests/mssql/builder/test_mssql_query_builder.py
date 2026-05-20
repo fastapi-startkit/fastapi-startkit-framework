@@ -38,9 +38,7 @@ class TestMSSQLQueryBuilder(unittest.TestCase):
         builder = self.get_builder()
         builder.sum("age")
 
-        self.assertEqual(
-            builder.to_sql(), "SELECT SUM([users].[age]) AS age FROM [users]"
-        )
+        self.assertEqual(builder.to_sql(), "SELECT SUM([users].[age]) AS age FROM [users]")
 
     def test_where_like(self):
         builder = self.get_builder()
@@ -64,25 +62,19 @@ class TestMSSQLQueryBuilder(unittest.TestCase):
         builder = self.get_builder()
         builder.max("age")
 
-        self.assertEqual(
-            builder.to_sql(), "SELECT MAX([users].[age]) AS age FROM [users]"
-        )
+        self.assertEqual(builder.to_sql(), "SELECT MAX([users].[age]) AS age FROM [users]")
 
     def test_min(self):
         builder = self.get_builder()
         builder.min("age")
 
-        self.assertEqual(
-            builder.to_sql(), "SELECT MIN([users].[age]) AS age FROM [users]"
-        )
+        self.assertEqual(builder.to_sql(), "SELECT MIN([users].[age]) AS age FROM [users]")
 
     def test_avg(self):
         builder = self.get_builder()
         builder.avg("age")
 
-        self.assertEqual(
-            builder.to_sql(), "SELECT AVG([users].[age]) AS age FROM [users]"
-        )
+        self.assertEqual(builder.to_sql(), "SELECT AVG([users].[age]) AS age FROM [users]")
 
     def test_all(self):
         builder = self.get_builder()
@@ -130,9 +122,7 @@ class TestMSSQLQueryBuilder(unittest.TestCase):
         builder = self.get_builder()
         builder.select_raw("count(email) as email_count")
 
-        self.assertEqual(
-            builder.to_sql(), "SELECT count(email) as email_count FROM [users]"
-        )
+        self.assertEqual(builder.to_sql(), "SELECT count(email) as email_count FROM [users]")
 
     def test_create(self):
         builder = self.get_builder().without_global_scopes()
@@ -209,9 +199,7 @@ class TestMSSQLQueryBuilder(unittest.TestCase):
         )
 
     def test_update(self):
-        builder = self.get_builder().update(
-            {"name": "Joe", "email": "joe@yopmail.com"}, dry=True
-        )
+        builder = self.get_builder().update({"name": "Joe", "email": "joe@yopmail.com"}, dry=True)
         self.assertEqual(
             builder.to_sql(),
             "UPDATE [users] SET [users].[name] = 'Joe', [users].[email] = 'joe@yopmail.com'",
@@ -234,9 +222,7 @@ class TestMSSQLQueryBuilder(unittest.TestCase):
     def test_count(self):
         builder = self.get_builder()
         builder.count("id")
-        self.assertEqual(
-            builder.to_sql(), "SELECT COUNT([users].[id]) AS id FROM [users]"
-        )
+        self.assertEqual(builder.to_sql(), "SELECT COUNT([users].[id]) AS id FROM [users]")
 
     def test_order_by_asc(self):
         builder = self.get_builder()
@@ -246,9 +232,7 @@ class TestMSSQLQueryBuilder(unittest.TestCase):
     def test_order_by_desc(self):
         builder = self.get_builder()
         builder.order_by("email", "desc")
-        self.assertEqual(
-            builder.to_sql(), "SELECT * FROM [users] ORDER BY [email] DESC"
-        )
+        self.assertEqual(builder.to_sql(), "SELECT * FROM [users] ORDER BY [email] DESC")
 
     def test_where_column(self):
         builder = self.get_builder()
@@ -311,9 +295,7 @@ class TestMSSQLQueryBuilder(unittest.TestCase):
 
     def test_having(self):
         builder = self.get_builder(table="payments")
-        builder.select("user_id").avg("salary").group_by("user_id").having(
-            "salary", ">=", "1000"
-        )
+        builder.select("user_id").avg("salary").group_by("user_id").having("salary", ">=", "1000")
 
         self.assertEqual(
             builder.to_sql(),
@@ -400,12 +382,7 @@ class TestMSSQLQueryBuilder(unittest.TestCase):
 
     def test_can_call_with_schema(self):
         builder = self.get_builder()
-        sql = (
-            builder.table("information_schema.columns")
-            .select("table_name")
-            .where("table_name", "users")
-            .to_sql()
-        )
+        sql = builder.table("information_schema.columns").select("table_name").where("table_name", "users").to_sql()
         self.assertEqual(
             sql,
             """SELECT [information_schema].[columns].[table_name] FROM [information_schema].[columns] WHERE [information_schema].[columns].[table_name] = 'users'""",
@@ -424,9 +401,7 @@ class TestMSSQLQueryBuilder(unittest.TestCase):
     def test_latest(self):
         builder = self.get_builder()
         builder.latest("email")
-        self.assertEqual(
-            builder.to_sql(), "SELECT * FROM [users] ORDER BY [email] DESC"
-        )
+        self.assertEqual(builder.to_sql(), "SELECT * FROM [users] ORDER BY [email] DESC")
 
     def test_latest_multiple(self):
         builder = self.get_builder()

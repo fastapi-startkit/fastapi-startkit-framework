@@ -25,4 +25,3 @@ class InertiaProvider(Provider):
 
             templates.env.globals["inertia"] = inertia_helper
             templates.env.globals["Inertia"] = self.app.make("inertia")
-

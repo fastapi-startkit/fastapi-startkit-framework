@@ -1,5 +1,3 @@
 from .test_case import TestCase
 
-__all__ = [
-    'TestCase'
-]
+__all__ = ["TestCase"]

@@ -1,6 +1,4 @@
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Any
 
 from fastapi_startkit.application import Application
 from fastapi_startkit.masoniteorm import SQLiteConfig
@@ -14,15 +12,18 @@ def create_app() -> Application:
     return Application(
         base_path=BASE_DIR,
         providers=[
-            (DatabaseProvider, {
-                "default": "sqlite",
-                "connections": {
-                    "sqlite": SQLiteConfig(
-                        driver="sqlite",
-                        url=f"sqlite+aiosqlite:///{DB_PATH}",
-                        options=None,
-                    ),
-                }
-            }),
+            (
+                DatabaseProvider,
+                {
+                    "default": "sqlite",
+                    "connections": {
+                        "sqlite": SQLiteConfig(
+                            driver="sqlite",
+                            url=f"sqlite+aiosqlite:///{DB_PATH}",
+                            options=None,
+                        ),
+                    },
+                },
+            ),
         ],
     )

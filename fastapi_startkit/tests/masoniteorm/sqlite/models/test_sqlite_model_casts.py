@@ -79,12 +79,14 @@ class SqliteModelCastsTest(TestCase):
     async def test_sqlite_model_casts_pydantic_object_insert_with_instance(self):
         address = Address(address="456 Queen St", city="Melbourne", state="VIC", country="Australia")
 
-        await User.create({
-            "email": "instance@example.com",
-            "name": "Instance User",
-            "is_admin": False,
-            "address": address,
-        })
+        await User.create(
+            {
+                "email": "instance@example.com",
+                "name": "Instance User",
+                "is_admin": False,
+                "address": address,
+            }
+        )
 
         fetched = await User.where("email", "instance@example.com").first()
 
@@ -93,12 +95,14 @@ class SqliteModelCastsTest(TestCase):
         self.assertEqual(fetched.address.city, "Melbourne")
 
     async def test_sqlite_model_casts_pydantic_object_insert_with_dict(self):
-        await User.create({
-            "email": "dict@example.com",
-            "name": "Dict User",
-            "is_admin": False,
-            "address": {"address": "789 King St", "city": "Brisbane", "state": "QLD", "country": "Australia"},
-        })
+        await User.create(
+            {
+                "email": "dict@example.com",
+                "name": "Dict User",
+                "is_admin": False,
+                "address": {"address": "789 King St", "city": "Brisbane", "state": "QLD", "country": "Australia"},
+            }
+        )
 
         fetched = await User.where("email", "dict@example.com").first()
 
@@ -107,13 +111,15 @@ class SqliteModelCastsTest(TestCase):
         self.assertEqual(fetched.address.city, "Brisbane")
 
     async def test_sqlite_model_casts_datetime(self):
-        await User.create({
-            "email": "datetime@example.com",
-            "name": "DateTime User",
-            "is_admin": False,
-            "email_verified_at": "2024-06-15 12:30:00",
-            "date_of_birth": datetime.datetime.now(datetime.timezone.utc),
-        })
+        await User.create(
+            {
+                "email": "datetime@example.com",
+                "name": "DateTime User",
+                "is_admin": False,
+                "email_verified_at": "2024-06-15 12:30:00",
+                "date_of_birth": datetime.datetime.now(datetime.timezone.utc),
+            }
+        )
 
         user = await User.where("email", "datetime@example.com").first()
 

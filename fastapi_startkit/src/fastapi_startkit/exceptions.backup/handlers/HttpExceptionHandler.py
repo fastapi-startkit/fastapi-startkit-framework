@@ -18,9 +18,7 @@ class HttpExceptionHandler:
         # Renders HTTP exception as HTML with predefined error page if exists
         if self.application.make("view").exists(view_name):
             return response.view(
-                self.application.make("view").render(
-                    f"errors/{status_code}", {"message": exception.get_response()}
-                ),
+                self.application.make("view").render(f"errors/{status_code}", {"message": exception.get_response()}),
                 status_code,
             )
         else:

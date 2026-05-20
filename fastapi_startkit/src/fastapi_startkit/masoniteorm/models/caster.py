@@ -209,15 +209,11 @@ class Caster:
                         annotations[name] = hint
 
         annotations = {
-            k: v
-            for k, v in annotations.items()
-            if not isinstance(getattr(model, k, None), BaseRelationship)
+            k: v for k, v in annotations.items() if not isinstance(getattr(model, k, None), BaseRelationship)
         }
 
         # Ignore the builder
-        annotations = {
-            k: v for k, v in annotations.items() if k not in cls.IGNORE_CASTS
-        }
+        annotations = {k: v for k, v in annotations.items() if k not in cls.IGNORE_CASTS}
         from .fields import ModelField, FieldDescriptor
 
         # 1. Collect all potential fields (annotations + descriptors)
@@ -238,11 +234,7 @@ class Caster:
                 casts[field_name] = ModelCast(model_class=typ)
                 continue
 
-            field_info = (
-                descriptor.field_info
-                if isinstance(descriptor, FieldDescriptor)
-                else None
-            )
+            field_info = descriptor.field_info if isinstance(descriptor, FieldDescriptor) else None
 
             caster = Caster.normalize_type(typ)
             if caster in Caster.cast_class_map:
@@ -264,12 +256,7 @@ class Caster:
             return "bool"
         if t is dict or t is list:
             return "json"
-        if (
-            t is pendulum.DateTime
-            or t is datetime.datetime
-            or t is datetime.date
-            or t is Carbon
-        ):
+        if t is pendulum.DateTime or t is datetime.datetime or t is datetime.date or t is Carbon:
             return "date"
         if t is datetime.time:
             return "time"

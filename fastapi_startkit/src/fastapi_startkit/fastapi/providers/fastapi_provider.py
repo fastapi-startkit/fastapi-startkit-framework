@@ -27,9 +27,7 @@ class FastAPIProvider(Provider):
         self.commands([ServeCommand])
         self._register_exception_handlers()
 
-        source = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "../config/fastapi.py")
-        )
+        source = os.path.abspath(os.path.join(os.path.dirname(__file__), "../config/fastapi.py"))
         self.publishes({source: "config/fastapi.py"})
 
     def _register_exception_handlers(self):

@@ -54,14 +54,10 @@ class Container:
         """
         if inspect.ismodule(class_obj):
             raise StrictContainerException(
-                "Cannot bind module '{}' with key '{}' into the container".format(
-                    class_obj, name
-                )
+                "Cannot bind module '{}' with key '{}' into the container".format(class_obj, name)
             )
         if self.strict and name in self.objects:
-            raise StrictContainerException(
-                "You cannot override a key inside a strict container"
-            )
+            raise StrictContainerException("You cannot override a key inside a strict container")
 
         if self.override or name not in self.objects:
             self.fire_hook("bind", name, class_obj)
@@ -145,9 +141,7 @@ class Container:
                 obj = self.resolve(name, *arguments)
             return obj
 
-        raise MissingContainerBindingNotFound(
-            "{0} key was not found in the container".format(name)
-        )
+        raise MissingContainerBindingNotFound("{0} key was not found in the container".format(name))
 
     def has(self, name):
         """Check if a key exists in the container.
@@ -200,14 +194,9 @@ class Container:
             self.remember
             and not passing_arguments
             and inspect.ismethod(obj)
-            and "{}.{}.{}".format(
-                obj.__module__, obj.__self__.__class__.__name__, obj.__name__
-            )
-            in self._remembered
+            and "{}.{}.{}".format(obj.__module__, obj.__self__.__class__.__name__, obj.__name__) in self._remembered
         ):
-            location = "{}.{}.{}".format(
-                obj.__module__, obj.__self__.__class__.__name__, obj.__name__
-            )
+            location = "{}.{}.{}".format(obj.__module__, obj.__self__.__class__.__name__, obj.__name__)
             objects = self._remembered[location]
             try:
                 return obj(*objects)
@@ -271,9 +260,7 @@ class Container:
             if not inspect.ismethod(obj):
                 self._remembered[obj] = objects
             else:
-                signature = "{}.{}.{}".format(
-                    obj.__module__, obj.__self__.__class__.__name__, obj.__name__
-                )
+                signature = "{}.{}.{}".format(obj.__module__, obj.__self__.__class__.__name__, obj.__name__)
                 self._remembered[signature] = objects
         return obj(*objects)
 
@@ -305,20 +292,15 @@ class Container:
                             providers.update({key: value})
                     elif "*" in search:
                         split_search = search.split("*")
-                        if key.startswith(split_search[0]) and key.endswith(
-                            split_search[1]
-                        ):
+                        if key.startswith(split_search[0]) and key.endswith(split_search[1]):
                             providers.update({key: value})
                     else:
-                        raise AttributeError(
-                            "There is no '*' in your collection search"
-                        )
+                        raise AttributeError("There is no '*' in your collection search")
         else:
             for provider_key, provider_class in self.objects.items():
-                if (
-                    inspect.isclass(provider_class)
-                    and issubclass(provider_class, search)
-                ) or isinstance(provider_class, search):
+                if (inspect.isclass(provider_class) and issubclass(provider_class, search)) or isinstance(
+                    provider_class, search
+                ):
                     providers.update({provider_key: provider_class})
 
         return providers
@@ -344,10 +326,7 @@ class Container:
             return obj
 
         for _, provider_class in self.objects.items():
-            if (
-                parameter.annotation == provider_class
-                or parameter.annotation == provider_class.__class__
-            ):
+            if parameter.annotation == provider_class or parameter.annotation == provider_class.__class__:
                 obj = provider_class
                 self.fire_hook("resolve", parameter, obj)
 
@@ -362,9 +341,7 @@ class Container:
                 return obj
 
         raise ContainerError(
-            "The dependency with the {0} annotation could not be resolved by the container".format(
-                parameter
-            )
+            "The dependency with the {0} annotation could not be resolved by the container".format(parameter)
         )
 
     def get_parameters(self, obj):
@@ -392,9 +369,7 @@ class Container:
             return keyword.default
 
         raise ContainerError(
-            "The parameter dependency with the key of {0} could not be found in the container".format(
-                parameter
-            )
+            "The parameter dependency with the key of {0} could not be found in the container".format(parameter)
         )
 
     def on_bind(self, key, obj):
@@ -503,9 +478,7 @@ class Container:
                 return return_obj
 
         raise MissingContainerBindingNotFound(
-            "The dependency with the {0} annotation could not be resolved by the container".format(
-                obj
-            )
+            "The dependency with the {0} annotation could not be resolved by the container".format(obj)
         )
 
     def __contains__(self, obj):

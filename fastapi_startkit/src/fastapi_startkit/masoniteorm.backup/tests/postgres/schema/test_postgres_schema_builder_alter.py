@@ -26,9 +26,7 @@ class TestPostgresSchemaBuilderAlter(unittest.TestCase):
 
         self.assertEqual(len(blueprint.table.added_columns), 2)
 
-        sql = [
-            'ALTER TABLE "users" ADD COLUMN "name" VARCHAR(255) NOT NULL, ADD COLUMN "age" INTEGER NOT NULL'
-        ]
+        sql = ['ALTER TABLE "users" ADD COLUMN "name" VARCHAR(255) NOT NULL, ADD COLUMN "age" INTEGER NOT NULL']
 
         self.assertEqual(blueprint.to_sql(), sql)
 
@@ -98,9 +96,7 @@ class TestPostgresSchemaBuilderAlter(unittest.TestCase):
     def test_alter_add_column_and_foreign_key(self):
         with self.schema.table("users") as blueprint:
             blueprint.unsigned_integer("playlist_id").nullable()
-            blueprint.foreign("playlist_id").references("id").on("playlists").on_delete(
-                "cascade"
-            )
+            blueprint.foreign("playlist_id").references("id").on("playlists").on_delete("cascade")
 
         sql = [
             'ALTER TABLE "users" ADD COLUMN "playlist_id" INTEGER NULL',
@@ -164,9 +160,7 @@ class TestPostgresSchemaBuilderAlter(unittest.TestCase):
         with self.schema.table("users") as blueprint:
             blueprint.primary("playlist_id")
 
-        sql = [
-            'ALTER TABLE "users" ADD CONSTRAINT users_playlist_id_primary PRIMARY KEY (playlist_id)'
-        ]
+        sql = ['ALTER TABLE "users" ADD CONSTRAINT users_playlist_id_primary PRIMARY KEY (playlist_id)']
 
         self.assertEqual(blueprint.to_sql(), sql)
 
@@ -245,9 +239,7 @@ class TestPostgresSchemaBuilderAlter(unittest.TestCase):
 
         blueprint.table.from_table = table
 
-        sql = [
-            'ALTER TABLE "users" ALTER COLUMN "name" TYPE VARCHAR(93), ALTER COLUMN "name" SET NOT NULL'
-        ]
+        sql = ['ALTER TABLE "users" ALTER COLUMN "name" TYPE VARCHAR(93), ALTER COLUMN "name" SET NOT NULL']
 
         self.assertEqual(blueprint.to_sql(), sql)
 

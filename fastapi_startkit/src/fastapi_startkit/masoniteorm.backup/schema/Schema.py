@@ -98,9 +98,7 @@ class Schema:
         if connection_detail:
             self._connection_driver = connection_detail.get("driver")
         else:
-            raise ConnectionNotRegistered(
-                f"Could not find the '{connection_key}' connection details"
-            )
+            raise ConnectionNotRegistered(f"Could not find the '{connection_key}' connection details")
 
         self.connection_class = resolver._drivers.get(self._connection_driver)
 
@@ -186,18 +184,12 @@ class Schema:
     def get_connection_information(self):
         return {
             "host": self.connection_details.get(self.connection, {}).get("host"),
-            "database": self.connection_details.get(self.connection, {}).get(
-                "database"
-            ),
+            "database": self.connection_details.get(self.connection, {}).get("database"),
             "user": self.connection_details.get(self.connection, {}).get("user"),
             "port": self.connection_details.get(self.connection, {}).get("port"),
-            "password": self.connection_details.get(self.connection, {}).get(
-                "password"
-            ),
+            "password": self.connection_details.get(self.connection, {}).get("password"),
             "prefix": self.connection_details.get(self.connection, {}).get("prefix"),
-            "options": self.connection_details.get(self.connection, {}).get(
-                "options", {}
-            ),
+            "options": self.connection_details.get(self.connection, {}).get("options", {}),
             "full_details": self.connection_details.get(self.connection),
         }
 
@@ -208,9 +200,7 @@ class Schema:
         # TODO: review
         if not self._connection:
             connection_details = self.get_connection_information().get("full_details")
-            self._connection = self.connection_class(
-                connection_details=connection_details, name=self.connection
-            )
+            self._connection = self.connection_class(connection_details=connection_details, name=self.connection)
             if hasattr(self._connection, "set_schema"):
                 self._connection.set_schema(self.schema)
             await self._connection.make_connection()
@@ -235,9 +225,7 @@ class Schema:
         return bool(await (await self.new_connection()).query(sql, ()))
 
     async def get_columns(self, table, dict=True):
-        table = self.platform().get_current_schema(
-            await self.new_connection(), table, schema=self.get_schema()
-        )
+        table = self.platform().get_current_schema(await self.new_connection(), table, schema=self.get_schema())
         result = {}
         if dict:
             for column in table.get_added_columns().items():
@@ -292,9 +280,7 @@ class Schema:
 
     def get_schema(self):
         """Gets the schema set on the migration class"""
-        return self.schema or self.get_connection_information().get("full_details").get(
-            "schema"
-        )
+        return self.schema or self.get_connection_information().get("full_details").get("schema")
 
     async def get_all_tables(self):
         """Gets all tables in the database"""

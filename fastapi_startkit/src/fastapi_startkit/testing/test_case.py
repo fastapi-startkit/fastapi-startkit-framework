@@ -8,16 +8,16 @@ if TYPE_CHECKING:
 
 
 class TestCase(IsolatedAsyncioTestCase):
-    @pytest.fixture(scope='session', autouse=True)
+    @pytest.fixture(scope="session", autouse=True)
     async def app(self):
         self.application = self.get_application()
 
     def setUp(self):
-        if hasattr(self, 'startTestRun'):
+        if hasattr(self, "startTestRun"):
             self.startTestRun()
 
     def tearDown(self):
-        if hasattr(self, 'stopTestRun'):
+        if hasattr(self, "stopTestRun"):
             self.stopTestRun()
 
     async def asyncSetUp(self):
@@ -29,5 +29,4 @@ class TestCase(IsolatedAsyncioTestCase):
             await self.asyncStopTestRun()
 
     @abstractmethod
-    def get_application(self) -> 'Application':
-        ...
+    def get_application(self) -> "Application": ...

@@ -12,17 +12,13 @@ class BaseInsertGrammarTest:
     def test_can_compile_insert(self):
         to_sql = self.builder.create({"name": "Joe"}, query=True).to_sql()
 
-        sql = getattr(
-            self, inspect.currentframe().f_code.co_name.replace("test_", "")
-        )()
+        sql = getattr(self, inspect.currentframe().f_code.co_name.replace("test_", ""))()
         self.assertEqual(to_sql, sql)
 
     def test_can_compile_insert_with_keywords(self):
         to_sql = self.builder.create(name="Joe", query=True).to_sql()
 
-        sql = getattr(
-            self, inspect.currentframe().f_code.co_name.replace("test_", "")
-        )()
+        sql = getattr(self, inspect.currentframe().f_code.co_name.replace("test_", ""))()
         self.assertEqual(to_sql, sql)
 
     def test_can_compile_bulk_create(self):
@@ -36,19 +32,13 @@ class BaseInsertGrammarTest:
             query=True,
         ).to_sql()
 
-        sql = getattr(
-            self, inspect.currentframe().f_code.co_name.replace("test_", "")
-        )()
+        sql = getattr(self, inspect.currentframe().f_code.co_name.replace("test_", ""))()
         self.assertEqual(to_sql, sql)
 
     def test_can_compile_bulk_create_qmark(self):
-        to_sql = self.builder.bulk_create(
-            [{"name": "Joe"}, {"name": "Bill"}, {"name": "John"}], query=True
-        ).to_qmark()
+        to_sql = self.builder.bulk_create([{"name": "Joe"}, {"name": "Bill"}, {"name": "John"}], query=True).to_qmark()
 
-        sql = getattr(
-            self, inspect.currentframe().f_code.co_name.replace("test_", "")
-        )()
+        sql = getattr(self, inspect.currentframe().f_code.co_name.replace("test_", ""))()
         self.assertEqual(to_sql, sql)
 
 

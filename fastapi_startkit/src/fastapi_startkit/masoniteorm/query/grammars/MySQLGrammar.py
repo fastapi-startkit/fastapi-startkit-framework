@@ -120,14 +120,10 @@ class MySQLGrammar(BaseGrammar):
         if not table:
             return ""
         if isinstance(table, str):
-            return ".".join(
-                self.table_string().format(table=t) for t in table.split(".")
-            )
+            return ".".join(self.table_string().format(table=t) for t in table.split("."))
         if table.raw:
             return table.name
-        return ".".join(
-            self.table_string().format(table=t) for t in table.name.split(".")
-        )
+        return ".".join(self.table_string().format(table=t) for t in table.name.split("."))
 
     def subquery_alias_string(self):
         return "AS {alias}"
@@ -151,7 +147,9 @@ class MySQLGrammar(BaseGrammar):
         return "SHOW COLUMNS FROM {table} LIKE {value}"
 
     def table_exists_string(self):
-        return "SELECT * from information_schema.tables where table_name='{clean_table}' AND table_schema = '{database}'"
+        return (
+            "SELECT * from information_schema.tables where table_name='{clean_table}' AND table_schema = '{database}'"
+        )
 
     def create_column_length(self, column_type):
         return "({length})"

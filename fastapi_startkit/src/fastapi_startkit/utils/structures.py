@@ -6,7 +6,6 @@ from dotty_dict import dotty
 from ..exceptions.exceptions import LoaderNotFound
 
 
-
 def load(path, object_name=None, default=None, raise_exception=False):
     """Load the given object from a Python module located at path and returns a default
     value if not found. If no object name is provided, loads the module.
@@ -19,11 +18,7 @@ def load(path, object_name=None, default=None, raise_exception=False):
         {object} -- The value (or default) read in the module or the module if no object name
     """
     try:
-        name = (
-            path.split("/")[-1].replace(".py", "")
-            if "/" in path
-            else path.replace(".py", "")
-        )
+        name = path.split("/")[-1].replace(".py", "") if "/" in path else path.replace(".py", "")
         spec = importlib.util.spec_from_file_location(name, path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)

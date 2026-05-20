@@ -25,6 +25,4 @@ class UpdatedAtObserver:
 
     def updating(self, model):
         if model.__timestamps__:
-            model.builder._updates += (
-                UpdateQueryExpression({self.field_name: pendulum.now(self.tz)}),
-            )
+            model.builder._updates += (UpdateQueryExpression({self.field_name: pendulum.now(self.tz)}),)

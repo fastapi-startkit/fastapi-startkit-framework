@@ -22,7 +22,7 @@ services:
             POSTGRES_USER: app
             POSTGRES_PASSWORD: secret
         ports:
-            - "5432:5432"
+            - "15432:5432"
         healthcheck:
             test: [ "CMD", "pg_isready", "-U", "app", "-d", "database_app_test" ]
             interval: 5s

@@ -1,6 +1,7 @@
 import unittest
 from fastapi_startkit.inertia.inertia import Inertia, ResponseFactory, InertiaResponse
 
+
 class TestInertia(unittest.TestCase):
     def setUp(self):
         # Reset the singleton instance before each test
@@ -31,7 +32,7 @@ class TestInertia(unittest.TestCase):
         factory = ResponseFactory()
         factory.share("auth", {"user": None})
         response = factory.render("Dashboard", {"count": 10})
-        
+
         self.assertIsInstance(response, InertiaResponse)
         self.assertEqual(response.component, "Dashboard")
         self.assertEqual(response.props, {"count": 10})
@@ -45,9 +46,9 @@ class TestInertia(unittest.TestCase):
     def test_facade_proxies_to_instance(self):
         Inertia.share("foo", "bar")
         self.assertEqual(Inertia.instance().shared_props["foo"], "bar")
-        
+
         Inertia.version("v1")
         self.assertEqual(Inertia.get_version(), "v1")
-        
+
         Inertia.set_root_view("app.html")
         self.assertEqual(Inertia.instance().root_view, "app.html")

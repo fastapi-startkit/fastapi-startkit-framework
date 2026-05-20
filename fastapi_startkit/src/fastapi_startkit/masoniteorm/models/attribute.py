@@ -29,11 +29,7 @@ class Attribute:
     def __setattr__(self, key: str, value):
         # Before _dirty_attributes is initialised (early __init__), or for
         # internal/meta attributes, fall back to normal object assignment.
-        if (
-            key.startswith("_")
-            or key in self._META_ATTRIBUTES
-            or "_dirty_attributes" not in self.__dict__
-        ):
+        if key.startswith("_") or key in self._META_ATTRIBUTES or "_dirty_attributes" not in self.__dict__:
             super().__setattr__(key, value)
         else:
             self.set_attribute(key, value)
@@ -65,10 +61,7 @@ class Attribute:
         if "_attributes" in self.__dict__ and key in self.__dict__["_attributes"]:
             value = self.__dict__["_attributes"][key]
 
-        if (
-            "_dirty_attributes" in self.__dict__
-            and key in self.__dict__["_dirty_attributes"]
-        ):
+        if "_dirty_attributes" in self.__dict__ and key in self.__dict__["_dirty_attributes"]:
             value = self.__dict__["_dirty_attributes"][key]
 
         return self.caster.get(key, value)
@@ -98,11 +91,7 @@ class Attribute:
         return bool(self.get_dirty())
 
     def get_dirty(self) -> dict:
-        return {
-            key: value
-            for key, value in self.get_attributes().items()
-            if not self.original_is_equivalent(key)
-        }
+        return {key: value for key, value in self.get_attributes().items() if not self.original_is_equivalent(key)}
 
     def get_attributes_for_insert(self) -> dict:
         # _dirty_attributes already went through set_attribute (casts applied on assignment).

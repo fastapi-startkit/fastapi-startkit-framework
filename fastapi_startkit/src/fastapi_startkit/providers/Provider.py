@@ -16,12 +16,7 @@ class Provider:
         self.config = config or {}
 
         if self.provider_key is None:
-            self.provider_key = str(
-                Str.of(self.__class__.__name__)
-                .trim("ServiceProvider")
-                .trim("Provider")
-                .slugify()
-            )
+            self.provider_key = str(Str.of(self.__class__.__name__).trim("ServiceProvider").trim("Provider").slugify())
 
     def register(self) -> None:
         pass

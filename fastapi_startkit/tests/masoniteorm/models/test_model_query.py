@@ -105,9 +105,7 @@ class TestWhere:
         results = await UserModel.where({"name": "Alice", "is_admin": True}).get()
         assert len(results) == 1
 
-    async def test_where_returns_empty_collection_when_no_match(
-        self, UserModel, seeded_users
-    ):
+    async def test_where_returns_empty_collection_when_no_match(self, UserModel, seeded_users):
         results = await UserModel.where("name", "Nobody").get()
         assert len(results) == 0
 
@@ -124,18 +122,12 @@ class TestOrWhere:
         assert names == {"Alice", "Bob"}
 
     async def test_or_where_no_match_returns_empty(self, UserModel, seeded_users):
-        results = (
-            await UserModel.where("name", "Nobody").or_where("name", "Ghost").get()
-        )
+        results = await UserModel.where("name", "Nobody").or_where("name", "Ghost").get()
         assert len(results) == 0
 
     async def test_or_where_like(self, UserModel, seeded_users):
         # Match names starting with 'A' OR ending with 'e'
-        results = (
-            await UserModel.where("name", "like", "A%")
-            .or_where("name", "like", "%e")
-            .get()
-        )
+        results = await UserModel.where("name", "like", "A%").or_where("name", "like", "%e").get()
         names = {u.name for u in results}
         # "Alice" matches both; "Charlie" matches '%e'
         assert "Alice" in names
@@ -329,10 +321,5 @@ class TestCombinedQueries:
         assert results.first().name == "Alice"
 
     async def test_or_where_and_limit(self, UserModel, seeded_users):
-        results = (
-            await UserModel.where("name", "Alice")
-            .or_where("name", "Charlie")
-            .limit(1)
-            .get()
-        )
+        results = await UserModel.where("name", "Alice").or_where("name", "Charlie").limit(1).get()
         assert len(results) == 1

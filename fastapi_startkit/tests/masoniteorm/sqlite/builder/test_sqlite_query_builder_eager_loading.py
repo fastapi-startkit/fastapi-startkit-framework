@@ -1,6 +1,4 @@
-from unittest.mock import AsyncMock
-
-from ...fixtures.model import User, Articles, Profile
+from ...fixtures.model import User
 from ..fixtures.db import DB
 from ..test_case import TestCase
 

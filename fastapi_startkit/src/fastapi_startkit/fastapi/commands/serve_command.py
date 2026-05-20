@@ -75,9 +75,7 @@ class ServeCommand(Command):
             if cfg_reload_excludes is not None:
                 kwargs["reload_excludes"] = cfg_reload_excludes
 
-            self.line(
-                f"<info>Starting Uvicorn server on {host}:{port} [{app}]...</info>"
-            )
+            self.line(f"<info>Starting Uvicorn server on {host}:{port} [{app}]...</info>")
 
         else:
             self.line(f"<info>Starting Uvicorn server on {host}:{port}...</info>")
@@ -101,8 +99,6 @@ class ServeCommand(Command):
         except (ImportError, ValueError):
             pass
 
-        self.line(
-            "<fg=yellow>Unable to detect the application, run the command with --app={app}</>"
-        )
+        self.line("<fg=yellow>Unable to detect the application, run the command with --app={app}</>")
 
         return False

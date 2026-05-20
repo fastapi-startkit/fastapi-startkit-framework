@@ -16,10 +16,10 @@ class Migrator:
     db_manager: "DatabaseManager"
 
     def __init__(
-            self,
-            migration_directory: str,
-            connection="default",
-            command_class=None,
+        self,
+        migration_directory: str,
+        connection="default",
+        command_class=None,
     ):
         self.connection = connection
         self.migration_directory = migration_directory
@@ -42,9 +42,7 @@ class Migrator:
         all_migrations = [
             f.replace(".py", "")
             for f in listdir(directory_path)
-            if isfile(join(directory_path, f))
-               and f != "__init__.py"
-               and not f.startswith(".")
+            if isfile(join(directory_path, f)) and f != "__init__.py" and not f.startswith(".")
         ]
         all_migrations.sort()
         unran_migrations = []
@@ -57,16 +55,12 @@ class Migrator:
     async def get_rollback_migrations(self):
         all_migrations = await self.migration_model.all()
         return (
-            await self.migration_model.where("batch", all_migrations.max("batch"))
-            .order_by("id", "desc")
-            .get()
+            await self.migration_model.where("batch", all_migrations.max("batch")).order_by("id", "desc").get()
         ).pluck("migration")
 
     async def get_all_migrations(self, reverse=False):
         if reverse:
-            return (
-                await self.migration_model.new_query().order_by("id", "desc").get()
-            ).pluck("migration")
+            return (await self.migration_model.new_query().order_by("id", "desc").get()).pluck("migration")
 
         return (await self.migration_model.all()).pluck("migration")
 
@@ -78,12 +72,13 @@ class Migrator:
 
     def locate(self, file_name):
         import sys
+
         migration_name = camelize("_".join(file_name.split("_")[4:]).replace(".py", ""))
         file_name = file_name.replace(".py", "")
         migration_directory = str(self.migration_directory)
         for sys_path in sorted(sys.path, key=len, reverse=True):
             if sys_path and migration_directory.startswith(sys_path):
-                migration_directory = migration_directory[len(sys_path):].lstrip("/\\")
+                migration_directory = migration_directory[len(sys_path) :].lstrip("/\\")
                 break
         migration_directory = migration_directory.replace("/", ".").replace("\\", ".")
         return locate(f"{migration_directory}.{file_name}.{migration_name}")
@@ -93,18 +88,14 @@ class Migrator:
         all_migrations = [
             f.replace(".py", "")
             for f in listdir(directory_path)
-            if isfile(join(directory_path, f))
-               and f != "__init__.py"
-               and not f.startswith(".")
+            if isfile(join(directory_path, f)) and f != "__init__.py" and not f.startswith(".")
         ]
         all_migrations.sort()
         ran = []
 
         database_migrations = await self.migration_model.all()
         for migration in all_migrations:
-            matched_migration = database_migrations.where(
-                "migration", migration
-            ).first()
+            matched_migration = database_migrations.where("migration", migration).first()
             if matched_migration:
                 ran.append(
                     {
@@ -133,9 +124,7 @@ class Migrator:
 
             self.last_migrations_ran.append(migration)
             if self.command_class:
-                self.command_class.line(
-                    f"<comment>Migrating:</comment> <question>{migration}</question>"
-                )
+                self.command_class.line(f"<comment>Migrating:</comment> <question>{migration}</question>")
 
             migration_class = migration_class(connection=self.connection, schema=self.schema)
 
@@ -159,13 +148,9 @@ class Migrator:
                     print(migration_class.schema._blueprint.to_sql())
 
             if self.command_class:
-                self.command_class.line(
-                    f"<info>Migrated:</info> <question>{migration}</question> ({duration}s)"
-                )
+                self.command_class.line(f"<info>Migrated:</info> <question>{migration}</question> ({duration}s)")
 
-            await self.migration_model.create(
-                {"batch": batch, "migration": migration.replace(".py", "")}
-            )
+            await self.migration_model.create({"batch": batch, "migration": migration.replace(".py", "")})
 
     async def rollback(self, migration="all", output=False):
         default_migrations = await self.get_rollback_migrations()
@@ -176,9 +161,7 @@ class Migrator:
                 migration = migration.replace(".py", "")
 
             if self.command_class:
-                self.command_class.line(
-                    f"<comment>Rolling back:</comment> <question>{migration}</question>"
-                )
+                self.command_class.line(f"<comment>Rolling back:</comment> <question>{migration}</question>")
 
             try:
                 migration_class = self.locate(migration)
@@ -186,9 +169,7 @@ class Migrator:
                 self.command_class.line(f"<error>Not Found: {migration}</error>")
                 continue
 
-            migration_class = migration_class(
-                connection=self.connection, schema=self.schema
-            )
+            migration_class = migration_class(connection=self.connection, schema=self.schema)
 
             if output:
                 migration_class.schema.dry()
@@ -201,10 +182,7 @@ class Migrator:
                 if self.command_class:
                     table = self.command_class.table()
                     table.set_headers(["SQL"])
-                    if (
-                            hasattr(migration_class.schema, "_blueprint")
-                            and migration_class.schema._blueprint
-                    ):
+                    if hasattr(migration_class.schema, "_blueprint") and migration_class.schema._blueprint:
                         sql = migration_class.schema._blueprint.to_sql()
                         if isinstance(sql, list):
                             sql = ",".join(sql)
@@ -220,19 +198,13 @@ class Migrator:
             await self.delete_migration(migration)
 
             if self.command_class:
-                self.command_class.line(
-                    f"<info>Rolled back:</info> <question>{migration}</question> ({duration}s)"
-                )
+                self.command_class.line(f"<info>Rolled back:</info> <question>{migration}</question> ({duration}s)")
 
     async def delete_migrations(self, migrations=None):
-        return await self.migration_model.where_in(
-            "migration", migrations or []
-        ).delete()
+        return await self.migration_model.where_in("migration", migrations or []).delete()
 
     async def delete_last_batch(self):
-        return await self.migration_model.where(
-            "batch", await self.get_last_batch_number()
-        ).delete()
+        return await self.migration_model.where("batch", await self.get_last_batch_number()).delete()
 
     async def reset(self, migration="all"):
         default_migrations = await self.get_all_migrations(reverse=True)
@@ -246,14 +218,10 @@ class Migrator:
 
         for migration in migrations:
             if self.command_class:
-                self.command_class.line(
-                    f"<comment>Rolling back:</comment> <question>{migration}</question>"
-                )
+                self.command_class.line(f"<comment>Rolling back:</comment> <question>{migration}</question>")
 
             try:
-                migration_instance = self.locate(migration)(
-                    connection=self.connection, schema=self.schema
-                )
+                migration_instance = self.locate(migration)(connection=self.connection, schema=self.schema)
                 await migration_instance.down()
             except TypeError:
                 self.command_class.line(f"<error>Not Found: {migration}</error>")
@@ -264,9 +232,7 @@ class Migrator:
             await self.delete_migration(migration)
 
             if self.command_class:
-                self.command_class.line(
-                    f"<info>Rolled back:</info> <question>{migration}</question>"
-                )
+                self.command_class.line(f"<info>Rolled back:</info> <question>{migration}</question>")
 
             await self.delete_migrations([migration])
 

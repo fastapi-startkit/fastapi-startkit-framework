@@ -33,9 +33,7 @@ class InertiaMiddleware(BaseHTTPMiddleware):
         """Return the root template name for the first page visit."""
         return cls._root_view
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         Inertia.version(lambda: self.version(request))
         Inertia.share(self.share(request))
         Inertia.set_root_view(self.root_view(request))
@@ -56,9 +54,7 @@ class InertiaMiddleware(BaseHTTPMiddleware):
             return response
 
         # Version conflict — ask client to do a full page reload
-        if request.method == "GET" and request.headers.get(
-            Header.INERTIA_VERSION, ""
-        ) != (Inertia.get_version() or ""):
+        if request.method == "GET" and request.headers.get(Header.INERTIA_VERSION, "") != (Inertia.get_version() or ""):
             return self.on_version_change(request, response)
 
         # 302 → 303 for PUT/PATCH/DELETE so browser issues a GET

@@ -14,14 +14,10 @@ class Seeder:
             await seeder_class(connection=self.connection).run()
 
     async def run_database_seed(self):
-        database_seeder = pydoc.locate(
-            f"{self.seed_module}.database_seeder.DatabaseSeeder"
-        )
+        database_seeder = pydoc.locate(f"{self.seed_module}.database_seeder.DatabaseSeeder")
 
         if not database_seeder:
-            raise ValueError(
-                f"Could not find the DatabaseSeeder class in {self.seed_module}.database_seeder"
-            )
+            raise ValueError(f"Could not find the DatabaseSeeder class in {self.seed_module}.database_seeder")
 
         self.ran_seeds.append(database_seeder)
 

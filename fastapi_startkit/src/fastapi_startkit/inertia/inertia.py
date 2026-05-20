@@ -63,9 +63,7 @@ class InertiaResponse(Response):
         self.root_view = root_view
         self.version = version
 
-    def with_(
-        self, key: Union[str, Dict[str, Any]], value: Any = None
-    ) -> "InertiaResponse":
+    def with_(self, key: Union[str, Dict[str, Any]], value: Any = None) -> "InertiaResponse":
         if isinstance(key, dict):
             self.props = {**self.props, **key}
         else:
@@ -125,9 +123,7 @@ class InertiaResponse(Response):
         from fastapi_startkit.application import app as container
 
         if not container().has("templates"):
-            raise RuntimeError(
-                "Inertia requires 'templates' to be bound in the container for initial rendering."
-            )
+            raise RuntimeError("Inertia requires 'templates' to be bound in the container for initial rendering.")
 
         return (
             container()
@@ -187,7 +183,5 @@ class Inertia:
         return OptionalProp(callback)
 
     @staticmethod
-    def render(
-        component: str, props: Optional[Dict[str, Any]] = None
-    ) -> InertiaResponse:
+    def render(component: str, props: Optional[Dict[str, Any]] = None) -> InertiaResponse:
         return Inertia.instance().render(component, props or {})

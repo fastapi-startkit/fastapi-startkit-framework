@@ -105,11 +105,7 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
         models = await self.connection.select(self.to_qmark(), self.get_bindings())
         collection = self._model.hydrate(models)
 
-        if (
-                self._eager_relation.eagers
-                or self._eager_relation.nested_eagers
-                or self._eager_relation.callback_eagers
-        ):
+        if self._eager_relation.eagers or self._eager_relation.nested_eagers or self._eager_relation.callback_eagers:
             await self._load_eagers(collection, self._model)
 
         return collection
@@ -285,9 +281,9 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
         return await self.connection.insert(sql, bindings)
 
     async def insert_get_id(
-            self,
-            values: dict[str, Any] | list[dict[str, Any]],
-            sequences: str | None = None,
+        self,
+        values: dict[str, Any] | list[dict[str, Any]],
+        sequences: str | None = None,
     ) -> int | None:
         sql = self.grammar().compile_insert_get_id(self, values, sequences)
         bindings = self.clean_bindings(values)
@@ -342,25 +338,19 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
 
         if inspect.isfunction(column):
             builder = column(self.new())
-            self._wheres += (
-                (QueryExpression(None, operator, SubGroupExpression(builder))),
-            )
+            self._wheres += ((QueryExpression(None, operator, SubGroupExpression(builder))),)
         elif isinstance(column, dict):
             for key, value in column.items():
                 self._wheres += ((QueryExpression(key, "=", value, "value")),)
         elif isinstance(value, QueryBuilder):
-            self._wheres += (
-                (QueryExpression(column, operator, SubSelectExpression(value))),
-            )
+            self._wheres += ((QueryExpression(column, operator, SubSelectExpression(value))),)
         else:
             self._wheres += ((QueryExpression(column, operator, value, "value")),)
         return self
 
     def or_where(self, column, *args) -> "QueryBuilder":
         operator, value = self._extract_operator_value(*args)
-        self._wheres += (
-            (QueryExpression(column, operator, value, "value", keyword="or")),
-        )
+        self._wheres += ((QueryExpression(column, operator, value, "value", keyword="or")),)
         return self
 
     def join(self, table: str, column1: str, equality: str, column2: str, clause: str = "join") -> "QueryBuilder":
@@ -383,9 +373,7 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
         return self
 
     def or_where_exists(self, builder: "QueryBuilder") -> "QueryBuilder":
-        self._wheres += (
-            QueryExpression(None, "EXISTS", SubSelectExpression(builder), keyword="or"),
-        )
+        self._wheres += (QueryExpression(None, "EXISTS", SubSelectExpression(builder), keyword="or"),)
         return self
 
     def where_has(self, relation: str, callback=None) -> "QueryBuilder":

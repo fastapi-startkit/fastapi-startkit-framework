@@ -37,9 +37,7 @@ class PublishCommand(Command):
         if provider_arg:
             target = Str.slugify(provider_arg)
             resources = {
-                name: files
-                for name, files in application.published_resources.items()
-                if Str.slugify(name) == target
+                name: files for name, files in application.published_resources.items() if Str.slugify(name) == target
             }
             if not resources:
                 self.line(f"<error>No provider found matching '{provider_arg}'.</error>")
