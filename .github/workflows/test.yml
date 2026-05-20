@@ -15,6 +15,7 @@ jobs:
             DB_DATABASE: database_app_test
             DB_USERNAME: app
             DB_PASSWORD: secret
+            POSTGRES_PORT: 15432
 
         steps:
             -   uses: actions/checkout@v4
@@ -33,7 +34,7 @@ jobs:
             # ── fastapi_startkit package ──────────────────────────────────────────
             -   name: Install dependencies (fastapi_startkit)
                 working-directory: fastapi_startkit
-                run: uv sync --group dev --extra database --extra sqlite --extra fastapi --extra vite
+                run: uv sync --group dev --extra database --extra sqlite --extra fastapi --extra vite --extra postgres
 
             -   name: Run tests (fastapi_startkit)
                 working-directory: fastapi_startkit
