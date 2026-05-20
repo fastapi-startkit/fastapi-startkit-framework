@@ -3,6 +3,12 @@ set -e
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# ── Lint ──────────────────────────────────────────────────────────────────────
+echo "============================================================"
+echo " Running: ruff lint checks"
+echo "============================================================"
+(cd "$ROOT/fastapi_startkit" && uv run ruff check src/ tests/)
+
 # ── Start MySQL via Docker Compose ────────────────────────────────────────────
 echo "Starting test services..."
 docker compose -f "$ROOT/docker-compose.yml" down --remove-orphans
@@ -14,6 +20,7 @@ trap 'echo "Stopping test services..."; docker compose -f "$ROOT/docker-compose.
 # ── Common DB env vars (match docker-compose.test.yml) ───────────────────────
 export DB_HOST=127.0.0.1
 export DB_PORT=3306
+export POSTGRES_PORT=15432
 export DB_DATABASE=database_app_test
 export DB_USERNAME=app
 export DB_PASSWORD=secret

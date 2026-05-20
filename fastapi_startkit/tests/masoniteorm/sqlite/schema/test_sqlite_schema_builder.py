@@ -1,7 +1,5 @@
 from unittest.mock import AsyncMock, MagicMock
 
-from fastapi_startkit.masoniteorm.migrations.Migration import Migration
-from fastapi_startkit.masoniteorm.models.MigrationModel import MigrationModel
 
 from ..test_case import TestCase
 

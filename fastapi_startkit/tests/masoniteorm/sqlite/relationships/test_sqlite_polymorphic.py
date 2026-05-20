@@ -1,4 +1,3 @@
-from dumpdie import dd
 from fastapi_startkit.masoniteorm.models.registry import Registry
 from ...fixtures.model import Articles, Like, Product
 from ..test_case import TestCase

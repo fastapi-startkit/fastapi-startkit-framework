@@ -1,6 +1,4 @@
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Any
 
 from fastapi_startkit.application import Application
 from fastapi_startkit.masoniteorm import SQLiteConfig
