@@ -7,6 +7,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 echo "============================================================"
 echo " Running: ruff lint checks"
 echo "============================================================"
+(cd "$ROOT/fastapi_startkit" && uv run ruff format --check src/ tests/)
 (cd "$ROOT/fastapi_startkit" && uv run ruff check src/ tests/)
 
 # ── Start MySQL via Docker Compose ────────────────────────────────────────────

@@ -34,9 +34,7 @@ class TestConfiguration:
         config.set("testkey", {"existing": "orig"})
 
         # Mock Loader to return params from file
-        with patch(
-            "fastapi_startkit.configuration.Configuration.Loader"
-        ) as MockLoaderClass:
+        with patch("fastapi_startkit.configuration.Configuration.Loader") as MockLoaderClass:
             mock_loader = MockLoaderClass.return_value
             mock_loader.get_parameters.return_value = {
                 "New": "from_file",

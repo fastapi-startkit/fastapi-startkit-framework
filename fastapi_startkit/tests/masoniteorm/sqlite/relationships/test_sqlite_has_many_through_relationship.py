@@ -35,7 +35,5 @@ class TestHasManyThroughRelationship(TestCase):
         assert logos.count() == 1
 
     async def test_has_many_through_has_query(self):
-        users = await User.where_has(
-            "logos", lambda query: query
-        ).get()
+        users = await User.where_has("logos", lambda query: query).get()
         assert users.count() == 1

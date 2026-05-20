@@ -12,15 +12,18 @@ def create_app() -> Application:
     return Application(
         base_path=BASE_DIR,
         providers=[
-            (DatabaseProvider, {
-                "default": "sqlite",
-                "connections": {
-                    "sqlite": SQLiteConfig(
-                        driver="sqlite",
-                        url=f"sqlite+aiosqlite:///{DB_PATH}",
-                        options=None,
-                    ),
-                }
-            }),
+            (
+                DatabaseProvider,
+                {
+                    "default": "sqlite",
+                    "connections": {
+                        "sqlite": SQLiteConfig(
+                            driver="sqlite",
+                            url=f"sqlite+aiosqlite:///{DB_PATH}",
+                            options=None,
+                        ),
+                    },
+                },
+            ),
         ],
     )

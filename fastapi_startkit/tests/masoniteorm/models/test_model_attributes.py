@@ -48,9 +48,7 @@ def UserModel(db):
 
 class TestConnectionFactory:
     def test_build_url_uses_explicit_url(self):
-        url = ConnectionFactory.build_url(
-            {"driver": "sqlite", "url": "sqlite+aiosqlite:///test.db"}
-        )
+        url = ConnectionFactory.build_url({"driver": "sqlite", "url": "sqlite+aiosqlite:///test.db"})
         assert url == "sqlite+aiosqlite:///test.db"
 
     def test_build_url_constructs_from_parts(self):
@@ -152,10 +150,7 @@ class TestDateTimeField:
             email="alex@gmail.com",
             email_verified_at="2026-10-01 12:12:12",
         )
-        assert (
-            user.email_verified_at.format("YYYY-MM-DD HH:mm:ss")
-            == "2026-10-01 12:12:12"
-        )
+        assert user.email_verified_at.format("YYYY-MM-DD HH:mm:ss") == "2026-10-01 12:12:12"
 
     def test_email_verified_at_none_when_not_set(self, UserModel):
         user = UserModel(name="Alex", email="alex@gmail.com")

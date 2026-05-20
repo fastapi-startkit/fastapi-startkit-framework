@@ -13,26 +13,22 @@ class TestQueryBuilderRelationshipsSQL(unittest.TestCase):
         sql = User.query().where_has("articles").to_sql()
         self.assertEqual(
             sql,
-            'SELECT * FROM "users" WHERE EXISTS '
-            '(SELECT * FROM "articles" WHERE articles.user_id = users.id)',
+            'SELECT * FROM "users" WHERE EXISTS (SELECT * FROM "articles" WHERE articles.user_id = users.id)',
         )
 
     def test_where_has_with_callback_appends_condition(self):
-        sql = User.query().where_has(
-            "articles", lambda q: q.where("id", 1)
-        ).to_sql()
+        sql = User.query().where_has("articles", lambda q: q.where("id", 1)).to_sql()
         self.assertEqual(
             sql,
             'SELECT * FROM "users" WHERE EXISTS '
-            "(SELECT * FROM \"articles\" WHERE articles.user_id = users.id AND \"articles\".\"id\" = '1')",
+            '(SELECT * FROM "articles" WHERE articles.user_id = users.id AND "articles"."id" = \'1\')',
         )
 
     def test_where_has_profile_uses_correct_table(self):
         sql = User.query().where_has("profile").to_sql()
         self.assertEqual(
             sql,
-            'SELECT * FROM "users" WHERE EXISTS '
-            '(SELECT * FROM "profiles" WHERE profiles.user_id = users.id)',
+            'SELECT * FROM "users" WHERE EXISTS (SELECT * FROM "profiles" WHERE profiles.user_id = users.id)',
         )
 
 
@@ -49,8 +45,7 @@ class TestQueryBuilderRelationshipsExecution(TestCase):
         sql, bindings = mock_select.call_args[0]
         self.assertEqual(
             sql,
-            'SELECT * FROM "users" WHERE EXISTS '
-            "(SELECT * FROM \"articles\" WHERE articles.user_id = users.id)",
+            'SELECT * FROM "users" WHERE EXISTS (SELECT * FROM "articles" WHERE articles.user_id = users.id)',
         )
         self.assertEqual(list(bindings), [])
 
@@ -65,6 +60,6 @@ class TestQueryBuilderRelationshipsExecution(TestCase):
         self.assertEqual(
             sql,
             'SELECT * FROM "users" WHERE EXISTS '
-            "(SELECT * FROM \"articles\" WHERE articles.user_id = users.id AND \"articles\".\"id\" = ?)",
+            '(SELECT * FROM "articles" WHERE articles.user_id = users.id AND "articles"."id" = ?)',
         )
         self.assertEqual(list(bindings), [1])

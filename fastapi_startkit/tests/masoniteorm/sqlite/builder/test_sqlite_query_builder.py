@@ -52,11 +52,11 @@ class TestSQLiteQueryBuilder(TestCase):
 
     async def test_between(self):
         sql = User.query().between("id", 2, 5).to_sql()
-        self.assertEqual(sql, "SELECT * FROM \"users\" WHERE \"users\".\"id\" BETWEEN '2' AND '5'")
+        self.assertEqual(sql, 'SELECT * FROM "users" WHERE "users"."id" BETWEEN \'2\' AND \'5\'')
 
     async def test_not_between(self):
         sql = User.query().not_between("id", 2, 5).to_sql()
-        self.assertEqual(sql, "SELECT * FROM \"users\" WHERE \"users\".\"id\" NOT BETWEEN '2' AND '5'")
+        self.assertEqual(sql, 'SELECT * FROM "users" WHERE "users"."id" NOT BETWEEN \'2\' AND \'5\'')
 
     async def test_join(self):
         sql = User.query().join("profiles", "users.id", "=", "profiles.user_id").to_sql()
@@ -76,7 +76,7 @@ class TestSQLiteQueryBuilder(TestCase):
         sql = User.query().where("age", "20").or_where("age", "<", 20).to_sql()
         self.assertEqual(
             sql,
-            "SELECT * FROM \"users\" WHERE \"users\".\"age\" = '20' OR \"users\".\"age\" < '20'",
+            'SELECT * FROM "users" WHERE "users"."age" = \'20\' OR "users"."age" < \'20\'',
         )
 
     async def test_where_column(self):
@@ -85,7 +85,7 @@ class TestSQLiteQueryBuilder(TestCase):
 
     async def test_when_true_applies_condition(self):
         sql = User.query().when(True, lambda q: q.where("is_admin", 1)).to_sql()
-        self.assertEqual(sql, "SELECT * FROM \"users\" WHERE \"users\".\"is_admin\" = '1'")
+        self.assertEqual(sql, 'SELECT * FROM "users" WHERE "users"."is_admin" = \'1\'')
 
     async def test_when_false_skips_condition(self):
         sql = User.query().when(False, lambda q: q.where("is_admin", 1)).to_sql()
