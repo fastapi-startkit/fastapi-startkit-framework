@@ -97,6 +97,16 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
             )
         return result
 
+    async def first_or_fail(self, columns=None):
+        from fastapi_startkit.masoniteorm.exceptions import ModelNotFoundException
+
+        result = await self.first(columns)
+        if result is None:
+            raise ModelNotFoundException(
+                f"{self._model.__name__} not found."
+            )
+        return result
+
     async def first(self, columns=None):
         if not columns:
             columns = []
