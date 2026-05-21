@@ -102,9 +102,7 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
 
         result = await self.first(columns)
         if result is None:
-            raise ModelNotFoundException(
-                f"{self._model.__name__} not found."
-            )
+            raise ModelNotFoundException(f"{self._model.__name__} not found.")
         return result
 
     async def first(self, columns=None):
