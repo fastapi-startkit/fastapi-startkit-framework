@@ -14,3 +14,4 @@ laravel-repo
 application
 .agents
 .uv_cache
+.claude/
