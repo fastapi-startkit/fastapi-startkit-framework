@@ -1,8 +1,6 @@
 import unittest
 from unittest.mock import AsyncMock
 
-import pytest
-
 from ..fixtures.db import DB
 from ...fixtures.model import User
 from ..test_case import TestCase
