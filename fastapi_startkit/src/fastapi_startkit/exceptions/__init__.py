@@ -30,6 +30,5 @@ from .exceptions import (
     ValidationException,
     AmbiguousError,
     MethodNotAllowedException,
-    ModelNotFoundException,
     ThrottleRequestsException,
 )

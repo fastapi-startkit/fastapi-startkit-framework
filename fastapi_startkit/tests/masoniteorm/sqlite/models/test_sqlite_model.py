@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 from ..fixtures.db import DB
 from ...fixtures.model import User
 from ..test_case import TestCase
+from fastapi_startkit.masoniteorm import ModelNotFoundException
 
 
 class SqliteTestQueryBuilderModel(TestCase):
@@ -42,6 +43,27 @@ class SqliteTestQueryBuilderModel(TestCase):
         sql, bindings = mock_select.call_args[0]
         self.assertEqual(sql, 'SELECT * FROM "users" WHERE "users"."id" = ? LIMIT 1')
         self.assertIn(1, bindings)
+
+    async def test_find_or_fail_returns_model_when_found(self):
+        user = await User.find_or_fail(1)
+        self.assertIsInstance(user, User)
+        self.assertEqual(user.id, 1)
+
+    async def test_find_or_fail_raises_when_not_found(self):
+        with self.assertRaises(ModelNotFoundException):
+            await User.find_or_fail(99999)
+
+    async def test_find_or_fail_exception_has_404_status(self):
+        try:
+            await User.find_or_fail(99999)
+        except ModelNotFoundException as e:
+            self.assertEqual(e.get_status(), 404)
+
+    async def test_find_or_fail_exception_message_contains_key(self):
+        try:
+            await User.find_or_fail(99999)
+        except ModelNotFoundException as e:
+            self.assertIn("99999", str(e))
 
     async def test_can_set_and_retrieve_attribute(self):
         user = await User.first()
