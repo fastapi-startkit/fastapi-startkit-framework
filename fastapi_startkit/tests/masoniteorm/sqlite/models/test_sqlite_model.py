@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 from ..fixtures.db import DB
 from ...fixtures.model import User
 from ..test_case import TestCase
-from fastapi_startkit.exceptions.exceptions import ModelNotFoundException
+from fastapi_startkit.masoniteorm import ModelNotFoundException
 
 
 class SqliteTestQueryBuilderModel(TestCase):

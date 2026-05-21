@@ -88,7 +88,7 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
         return await self.where(self._model.__primary_key__, primary_key).first(columns)
 
     async def find_or_fail(self, primary_key: str | int, columns=None):
-        from fastapi_startkit.exceptions.exceptions import ModelNotFoundException
+        from fastapi_startkit.masoniteorm.exceptions import ModelNotFoundException
 
         result = await self.find(primary_key, columns)
         if result is None:
