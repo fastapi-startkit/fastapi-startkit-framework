@@ -144,9 +144,6 @@ class NotificationException(Exception):
     pass
 
 
-from fastapi_startkit.masoniteorm.exceptions import ModelNotFoundException  # noqa: F401
-
-
 class AuthorizationException(Exception):
     is_http_exception = True
 
