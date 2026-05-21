@@ -65,6 +65,26 @@ class SqliteTestQueryBuilderModel(TestCase):
         except ModelNotFoundException as e:
             self.assertIn("99999", str(e))
 
+    async def test_first_or_fail_returns_model_when_found(self):
+        user = await User.where("id", 1).first_or_fail()
+        self.assertIsInstance(user, User)
+        self.assertEqual(user.id, 1)
+
+    async def test_first_or_fail_raises_when_no_match(self):
+        with self.assertRaises(ModelNotFoundException):
+            await User.where("name", "NonExistent").first_or_fail()
+
+    async def test_first_or_fail_exception_has_404_status(self):
+        try:
+            await User.where("name", "NonExistent").first_or_fail()
+        except ModelNotFoundException as e:
+            self.assertEqual(e.get_status(), 404)
+
+    async def test_first_or_fail_class_method_raises_when_table_empty(self):
+        await User.query().delete()
+        with self.assertRaises(ModelNotFoundException):
+            await User.first_or_fail()
+
     async def test_can_set_and_retrieve_attribute(self):
         user = await User.first()
         user.name = "updated"

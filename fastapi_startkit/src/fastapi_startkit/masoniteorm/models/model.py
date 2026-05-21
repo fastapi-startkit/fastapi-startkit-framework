@@ -108,6 +108,10 @@ class Model(Attribute, Relationship, ObservesEvents):
         return await cls.query().find_or_fail(primary_key, columns)
 
     @classmethod
+    async def first_or_fail(cls, columns=None):
+        return await cls.query().first_or_fail(columns)
+
+    @classmethod
     async def first(cls, columns=None):
         return await cls.query().first(columns)
 
