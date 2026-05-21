@@ -147,8 +147,12 @@ class NotificationException(Exception):
 class ModelNotFoundException(Exception):
     is_http_exception = True
 
+    def __init__(self, message="Model Not Found"):
+        super().__init__(message)
+        self.message = message
+
     def get_response(self):
-        return "Model Not Found"
+        return self.message
 
     def get_status(self):
         return 404

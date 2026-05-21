@@ -87,6 +87,16 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
     async def find(self, primary_key: str | int, columns=None):
         return await self.where(self._model.__primary_key__, primary_key).first(columns)
 
+    async def find_or_fail(self, primary_key: str | int, columns=None):
+        from fastapi_startkit.exceptions.exceptions import ModelNotFoundException
+
+        result = await self.find(primary_key, columns)
+        if result is None:
+            raise ModelNotFoundException(
+                f"{self._model.__class__.__name__} with primary key {primary_key!r} not found."
+            )
+        return result
+
     async def first(self, columns=None):
         if not columns:
             columns = []
