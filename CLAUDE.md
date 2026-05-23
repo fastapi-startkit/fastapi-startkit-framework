@@ -73,6 +73,44 @@ cd fastapi_startkit.github.io.git && npm run dev
 
 Tests run with `asyncio_mode = "auto"` (configured in `pyproject.toml`), so all tests are async-capable by default.
 
+## Test Coverage
+
+Coverage is tracked with `pytest-cov`. All commands must be run from inside the `fastapi_startkit/` directory.
+
+```bash
+# Run tests with coverage — prints a summary table to the terminal
+uv run pytest --cov
+
+# Show which lines are not covered
+uv run pytest --cov --cov-report=term-missing
+
+# Generate an HTML report (opens in browser from htmlcov/index.html)
+uv run pytest --cov --cov-report=html
+open htmlcov/index.html
+
+# Run both terminal and HTML reports at once
+uv run pytest --cov --cov-report=term-missing --cov-report=html
+
+# Skip tests that require a live Postgres connection (safe for local dev)
+uv run pytest --ignore=tests/masoniteorm/postgres --cov --cov-report=term-missing --cov-report=html
+
+# Run a specific test file with coverage
+uv run pytest tests/core/test_container.py --cov --cov-report=term-missing
+```
+
+### Coverage configuration
+
+Configured in `pyproject.toml` under `[tool.coverage.*]`:
+
+| Setting | Value |
+|---|---|
+| Source tracked | `src/fastapi_startkit/` |
+| Omitted | `*/tests/*`, `*/migrations/*`, `*/__init__.py`, `*.pyi` |
+| Minimum threshold | `fail_under = 40` |
+| HTML output dir | `htmlcov/` |
+
+The test suite **fails** if total coverage drops below the `fail_under` threshold. Raise this value in `pyproject.toml` as coverage improves.
+
 ## Architecture (Core Package)
 
 ### Application Lifecycle
