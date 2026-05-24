@@ -1,6 +1,5 @@
 """Tests for the FastAPI routing layer (task #9)."""
 
-import pytest
 from fastapi import FastAPI, Depends
 from fastapi.testclient import TestClient
 

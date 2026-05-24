@@ -222,7 +222,7 @@ class TestDuplicateKey:
 
 class TestResolveConfig:
     def test_resolve_config_merges_user_over_default(self, app):
-        from dataclasses import dataclass, field
+        from dataclasses import dataclass
 
         @dataclass
         class DefaultConfig:

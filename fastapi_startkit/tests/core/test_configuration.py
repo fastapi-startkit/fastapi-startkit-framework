@@ -1,10 +1,7 @@
 """Tests for the Configuration system (task #8)."""
 
-import os
-
 import pytest
 
-from fastapi_startkit.configuration.Configuration import Configuration
 from fastapi_startkit.configuration.config import Config
 from fastapi_startkit.configuration.helpers import config
 from fastapi_startkit.container.container import Container
