@@ -11,6 +11,14 @@ from fastapi_startkit.exceptions import ContainerError, MissingContainerBindingN
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def restore_container_instance():
+    """Save and restore Container._instance around every test to prevent leakage."""
+    original = Container._instance
+    yield
+    Container._instance = original
+
+
 class TestInstance:
     def test_instance_raises_when_not_set(self):
         Container._instance = None
@@ -21,7 +29,6 @@ class TestInstance:
         c = Container()
         Container.set_instance(c)
         assert Container.instance() is c
-        Container._instance = None  # reset after test
 
 
 # ---------------------------------------------------------------------------
