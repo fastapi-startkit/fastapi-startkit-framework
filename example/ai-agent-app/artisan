@@ -1,0 +1,8 @@
+#!/usr/bin/env python3
+
+import sys
+from bootstrap.application import app
+
+if __name__ == "__main__":
+    status = app.handle_command()
+    sys.exit(status if isinstance(status, int) else 0)
