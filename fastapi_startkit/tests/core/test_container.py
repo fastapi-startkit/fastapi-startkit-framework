@@ -49,6 +49,7 @@ class ServiceB:
 
 class ServiceC(ServiceA):
     """Subclass of ServiceA."""
+
     pass
 
 
@@ -78,6 +79,7 @@ class TestBind:
 
     def test_bind_module_raises_strict_exception(self, container):
         import os
+
         with pytest.raises(StrictContainerException):
             container.bind("os", os)
 
