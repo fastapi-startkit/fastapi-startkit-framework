@@ -7,6 +7,24 @@ from fastapi_startkit.exceptions import ContainerError, MissingContainerBindingN
 
 
 # ---------------------------------------------------------------------------
+# Container.instance() — singleton class-level accessor
+# ---------------------------------------------------------------------------
+
+
+class TestInstance:
+    def test_instance_raises_when_not_set(self):
+        Container._instance = None
+        with pytest.raises(RuntimeError, match="Container not initialized"):
+            Container.instance()
+
+    def test_set_instance_and_retrieve(self):
+        c = Container()
+        Container.set_instance(c)
+        assert Container.instance() is c
+        Container._instance = None  # reset after test
+
+
+# ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
 
@@ -73,6 +91,28 @@ class TestBind:
         with pytest.raises(MissingContainerBindingNotFound):
             container.make("nonexistent")
 
+    def test_make_resolves_class_binding(self, container):
+        # When the bound value is a class, make() should auto-resolve it
+        container.bind("svc", ServiceA)
+        result = container.make("svc")
+        assert isinstance(result, ServiceA)
+
+    def test_make_returns_swap_value(self, container):
+        container.swap("special", "swapped_value")
+        result = container.make("special")
+        assert result == "swapped_value"
+
+    def test_make_by_class_key_finds_via_find_obj(self, container):
+        svc = ServiceA()
+        container.bind("svc", svc)
+        result = container.make(ServiceA)
+        assert result is svc
+
+    def test_make_by_class_key_falls_back_to_resolve(self, container):
+        # Class not explicitly bound — falls back to resolve()
+        result = container.make(ServiceA)
+        assert isinstance(result, ServiceA)
+
 
 # ---------------------------------------------------------------------------
 # has / __contains__
@@ -86,6 +126,14 @@ class TestHas:
 
     def test_has_returns_false_for_missing_key(self, container):
         assert container.has("missing") is False
+
+    def test_has_by_class_returns_true_when_found(self, container):
+        svc = ServiceA()
+        container.bind("svc", svc)
+        assert container.has(ServiceA) is True
+
+    def test_has_by_class_returns_false_when_not_found(self, container):
+        assert container.has(ServiceA) is False
 
     def test_contains_operator(self, container):
         container.bind("svc", ServiceA())
@@ -159,6 +207,94 @@ class TestResolve:
 
         result = container.resolve(fn, "hello")
         assert result == "hello"
+
+    def test_resolve_primitive_hint_with_no_argument_skips(self, container):
+        # str-hinted param with no passing argument — IndexError branch, silently skipped
+        def fn(name: str = "default"):
+            return name
+
+        result = container.resolve(fn)
+        assert result == "default"
+
+    def test_resolve_with_default_value_param(self, container):
+        def fn(value=42):
+            return value
+
+        result = container.resolve(fn)
+        assert result == 42
+
+    def test_resolve_with_self_param_injects_callable(self, container):
+        class MyClass:
+            def method(self):
+                return "called"
+
+        obj = MyClass()
+        result = container.resolve(obj.method)
+        assert result == "called"
+
+    def test_resolve_unknown_param_raises_container_error(self, container):
+        def fn(unknown):
+            return unknown
+
+        with pytest.raises(ContainerError):
+            container.resolve(fn)
+
+    def test_resolve_with_resolve_parameters_enabled(self, container):
+        container.resolve_parameters = True
+        container.bind("value", 99)
+
+        def fn(value):
+            return value
+
+        result = container.resolve(fn)
+        assert result == 99
+
+    def test_resolve_annotated_param_not_in_container_falls_back(self, container):
+        # ContainerError from _find_annotated_parameter — falls back to value.annotation (the class)
+        def fn(a: ServiceA):
+            return a
+
+        result = container.resolve(fn)
+        assert isinstance(result, ServiceA)
+
+    def test_resolve_with_resolving_arguments_passed(self, container):
+        svc = ServiceA()
+        container.bind("svc", svc)
+
+        def fn(a: ServiceA):
+            return a
+
+        result = container.resolve(fn, svc)
+        assert isinstance(result, ServiceA)
+
+    def test_resolve_remember_stores_and_reuses_arguments(self, container):
+        # remember=True caches resolved dependency arguments, not the return value
+        container.remember = True
+        svc = ServiceA()
+        container.bind("svc", svc)
+
+        def fn(a: ServiceA):
+            return a
+
+        result1 = container.resolve(fn)
+        result2 = container.resolve(fn)
+        assert result1 is svc
+        assert result2 is svc
+
+    def test_resolve_remember_caches_method(self, container):
+        container.remember = True
+        svc = ServiceA()
+        container.bind("svc", svc)
+
+        class MyClass:
+            def method(self, a: ServiceA):
+                return a
+
+        obj = MyClass()
+        result1 = container.resolve(obj.method)
+        result2 = container.resolve(obj.method)
+        assert result1 is svc
+        assert result2 is svc
 
 
 # ---------------------------------------------------------------------------
@@ -237,6 +373,27 @@ class TestHooks:
 
         assert len(fired) == 1
 
+    def test_on_resolve_hook_fires(self, container):
+        fired = []
+        svc = ServiceA()
+        container.bind("svc", svc)
+        container.on_resolve("svc", lambda obj, c: fired.append(obj))
+        container.resolve(lambda a: a, svc)
+
+        assert len(fired) == 0  # on_resolve fires via _find_annotated_parameter path
+
+    def test_on_resolve_hook_via_annotated_param(self, container):
+        fired = []
+        svc = ServiceA()
+        container.bind("svc", svc)
+        container.on_resolve(ServiceA, lambda obj, c: fired.append(obj))
+
+        def fn(a: ServiceA):
+            return a
+
+        container.resolve(fn)
+        assert len(fired) >= 1
+
     def test_multiple_hooks_on_same_key(self, container):
         fired = []
         container.on_bind("svc", lambda obj, c: fired.append("first"))
@@ -274,3 +431,78 @@ class TestSingleton:
         container.singleton("svc_a", ServiceA)
         result = container.make("svc_a")
         assert isinstance(result, ServiceA)
+
+
+# ---------------------------------------------------------------------------
+# helper()
+# ---------------------------------------------------------------------------
+
+
+class TestHelper:
+    def test_helper_returns_self(self, container):
+        assert container.helper() is container
+
+
+# ---------------------------------------------------------------------------
+# _find_obj — subclass and not-found branches
+# ---------------------------------------------------------------------------
+
+
+class TestFindObj:
+    def test_find_obj_matches_subclass(self, container):
+        svc = ServiceC()
+        container.bind("svc_c", svc)
+        # make(ServiceA) triggers _find_obj which should find ServiceC (subclass)
+        result = container.make(ServiceA)
+        assert isinstance(result, ServiceA)
+
+    def test_find_obj_raises_when_not_found(self, container):
+        # Class with an unresolvable dependency — _find_obj fails, resolve also fails
+        class NeedsUnresolvable:
+            def __init__(self, dep):
+                self.dep = dep
+
+        with pytest.raises((MissingContainerBindingNotFound, ContainerError)):
+            container.make(NeedsUnresolvable)
+
+
+# ---------------------------------------------------------------------------
+# _find_annotated_parameter — swap non-callable and string annotation
+# ---------------------------------------------------------------------------
+
+
+class TestFindAnnotatedParameter:
+    def test_swap_non_callable_returns_value(self, container):
+        container.swap(ServiceA, "replaced")
+
+        def fn(a: ServiceA):
+            return a
+
+        result = container.resolve(fn)
+        assert result == "replaced"
+
+
+# ---------------------------------------------------------------------------
+# resolve_parameters — _find_parameter branches
+# ---------------------------------------------------------------------------
+
+
+class TestFindParameter:
+    def test_find_parameter_by_name(self, container):
+        container.resolve_parameters = True
+        container.bind("value", 123)
+
+        def fn(value):
+            return value
+
+        result = container.resolve(fn)
+        assert result == 123
+
+    def test_find_parameter_raises_when_not_found(self, container):
+        container.resolve_parameters = True
+
+        def fn(unknown_param):
+            return unknown_param
+
+        with pytest.raises(ContainerError):
+            container.resolve(fn)
