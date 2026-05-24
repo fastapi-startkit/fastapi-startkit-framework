@@ -52,6 +52,54 @@ Self-contained apps demonstrating specific features. Each subdirectory is an ind
 
 The template users clone when starting a new project. Contains the minimal scaffolding: `artisan` entrypoint, `bootstrap/`, `config/`, `providers/`, `routes/`, and `storage/`. It mirrors a typical project layout and is a uv workspace member of this monorepo.
 
+## Task Tracking (Keera Agent MCP)
+
+Planned work for this project is tracked in **Keera Agent** via an MCP server running locally at `http://127.0.0.1:4545`.
+
+### Load tasks at the start of a session
+
+```bash
+# List all tasks for this project
+curl -s -X POST http://127.0.0.1:4545/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"list_tasks","arguments":{"project_path":"/Users/ellite/code/packages/fastapi-startkit-framework/fastapi_startkit"}},"id":1}'
+```
+
+Or open the Keera Agent UI at: `http://127.0.0.1:4545/framework`
+
+### Available MCP tools
+
+| Tool | Purpose |
+|---|---|
+| `list_tasks` | List tasks (filter by `status`: pending / in_progress / completed / cancelled) |
+| `get_task` | Get full details of a task by numeric ID |
+| `create_task` | Create a new task with title, description, acceptance criteria, testing methods, and validation steps |
+| `update_task` | Update any field of a task |
+| `update_task_status` | Change a task's status |
+| `send_message_to_agent` | Send a message to another project's agent |
+| `get_agent_messages` | Read messages in this project's agent inbox |
+
+### MCP JSON-RPC usage
+
+All calls follow the JSON-RPC 2.0 protocol — `POST http://127.0.0.1:4545/mcp` with `Content-Type: application/json`:
+
+```bash
+# Initialize (once per session)
+curl -s -X POST http://127.0.0.1:4545/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"claude-code","version":"1.0"}},"id":0}'
+
+# Call a tool
+curl -s -X POST http://127.0.0.1:4545/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"<tool_name>","arguments":{...}},"id":1}'
+```
+
+The `project_path` for this repo is always:
+```
+/Users/ellite/code/packages/fastapi-startkit-framework/fastapi_startkit
+```
+
 ## Commands
 
 ```bash
