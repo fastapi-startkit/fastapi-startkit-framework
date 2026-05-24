@@ -137,15 +137,15 @@ class TestMergeWith:
         configuration.set("cache", {"driver": "memory", "ttl": 300})
         configuration.merge_with("cache", {"DRIVER": "redis", "TTL": "60"})
         result = configuration.get("cache")
-        assert result["driver"] == "memory"   # existing wins
-        assert result["ttl"] == 300           # existing wins
+        assert result["driver"] == "memory"  # existing wins
+        assert result["ttl"] == 300  # existing wins
 
     def test_merge_with_adds_missing_keys(self, configuration):
         # Keys not in existing config are added from external
         configuration.set("mail", {"from": "app@example.com"})
         configuration.merge_with("mail", {"DRIVER": "smtp"})
         result = configuration.get("mail")
-        assert result["driver"] == "smtp"     # new key added
+        assert result["driver"] == "smtp"  # new key added
         assert result["from"] == "app@example.com"  # existing preserved
 
     def test_merge_with_non_reserved_key_works(self, configuration):
