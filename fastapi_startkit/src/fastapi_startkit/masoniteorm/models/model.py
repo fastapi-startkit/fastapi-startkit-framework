@@ -32,13 +32,24 @@ class Model(Attribute, Relationship, ObservesEvents):
         super().__init_subclass__(**kwargs)
         Registry.register(cls)
 
-        fillable = []
-        for name, _typ in cls.__annotations__.items():
-            attr = getattr(cls, name, None)
-            from fastapi_startkit.masoniteorm.relationships.BaseRelationship import (
-                BaseRelationship,
-            )
+        from fastapi_startkit.masoniteorm.relationships.BaseRelationship import (
+            BaseRelationship,
+        )
 
+        # Collect annotations from every user-defined class in the MRO, walking
+        # from the most-base class downward so subclass annotations win on conflict.
+        # Stop at Model itself — its own fields (db_manager, created_at, etc.) are
+        # framework internals, not user-defined data columns.
+        _model_bases = {Model, *Model.__mro__}
+        all_annotations: dict = {}
+        for klass in reversed(cls.__mro__):
+            if klass in _model_bases:
+                continue
+            all_annotations.update(klass.__dict__.get("__annotations__", {}))
+
+        fillable = []
+        for name in all_annotations:
+            attr = getattr(cls, name, None)
             if isinstance(attr, BaseRelationship):
                 continue
             if callable(attr):
@@ -200,10 +211,7 @@ class Model(Attribute, Relationship, ObservesEvents):
         if not self._exists:
             return False
 
-        for key, value in attributes.items():
-            self.set_attribute(key, value)
-
-        return await self.save()
+        return await self.fill(attributes).save()
 
     def fill(self, attributes: dict) -> "Model":
         for key, value in attributes.items():

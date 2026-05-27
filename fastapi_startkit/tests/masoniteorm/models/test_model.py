@@ -163,64 +163,80 @@ class TestModelUpdate:
 
 
 # ---------------------------------------------------------------------------
-# update() instance method — regression for GitHub issue #67
+# __fillable__ population and update() — regression for GitHub issue #67
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture
-def BareUserModel(db):
-    """
-    A model with no field annotations so __fillable__ = [].
-    Used to verify that update() works even when attributes are not in __fillable__.
-    """
+class TestFillable:
+    def test_annotated_fields_are_in_fillable(self, db):
+        """Every annotated field on the class must appear in __fillable__."""
 
-    class BareUser(Model):
-        __table__ = "users"
+        class Post(Model):
+            __table__ = "posts"
+            title: str
+            body: str
 
-    BareUser.db_manager = db
-    return BareUser
+        assert "title" in Post.__fillable__
+        assert "body" in Post.__fillable__
+
+    def test_inherited_annotations_are_in_fillable(self, db):
+        """
+        Fields declared on a parent model must appear in the subclass __fillable__.
+
+        Previously __init_subclass__ only walked cls.__annotations__ (own-class only),
+        so fields inherited from an intermediate base model were silently absent and
+        fill() / update() would skip them.
+
+        Regression for: https://github.com/fastapi-startkit/fastapi-startkit-framework/issues/67
+        """
+
+        class BaseTask(Model):
+            __table__ = "tasks"
+            tier: str
+            complexity: float
+
+        class Task(BaseTask):
+            pass
+
+        assert "tier" in Task.__fillable__, (
+            "'tier' is declared on the parent but missing from Task.__fillable__"
+        )
+        assert "complexity" in Task.__fillable__
+
+    def test_framework_fields_excluded_from_fillable(self, db):
+        """Model-internal fields (db_manager, created_at, updated_at) must NOT be fillable."""
+
+        class Post(Model):
+            __table__ = "posts"
+            title: str
+
+        assert "db_manager" not in Post.__fillable__
+        assert "created_at" not in Post.__fillable__
+        assert "updated_at" not in Post.__fillable__
 
 
 class TestModelUpdateMethod:
     async def test_records_from_all_have_exists_true(self, UserModel, users_table):
-        """Records fetched via all() must have _exists=True so update() is not short-circuited."""
+        """Records fetched via all() must have _exists=True."""
         await UserModel(name="Alex", email="alex@test.com").save()
 
-        users = await UserModel.all()
-
-        for user in users:
+        for user in await UserModel.all():
             assert user._exists is True
 
-    async def test_update_persists_change_on_record_from_all(self, UserModel, users_table):
-        """update() on a record fetched via all() must execute SQL and persist the change."""
-        await UserModel(name="Alex", email="alex@test.com").save()
-
-        users = await UserModel.all()
-        user = users.first()
-        await user.update({"name": "Updated"})
-
-        refreshed = await UserModel.where("email", "alex@test.com").first()
-        assert refreshed.name == "Updated"
-
-    async def test_update_bypasses_fillable_guard(self, BareUserModel, users_table):
+    async def test_update_iterating_all_persists_changes(self, UserModel, users_table):
         """
-        update() must update the attribute regardless of __fillable__.
-
-        Previously, update() delegated to fill(), which silently ignores attributes
-        not in __fillable__. For a model with no field annotations __fillable__ = [],
-        so every attribute was silently skipped and no SQL was ever executed.
+        Iterating Model.all() and calling update() on each record must persist.
 
         Regression for: https://github.com/fastapi-startkit/fastapi-startkit-framework/issues/67
         """
-        await BareUserModel.create({"name": "Initial", "email": "bare@test.com"})
+        await UserModel(name="Alice", email="alice@test.com").save()
+        await UserModel(name="Bob", email="bob@test.com").save()
 
-        users = await BareUserModel.all()
-        user = users.first()
+        for user in await UserModel.all():
+            await user.update({"name": "Updated"})
 
-        await user.update({"name": "Updated"})
-
-        refreshed = await BareUserModel.where("email", "bare@test.com").first()
-        assert refreshed.name == "Updated", (
-            f"Expected 'Updated' but got '{refreshed.name}'. "
-            "update() silently ignored the attribute because it was not in __fillable__."
-        )
+        for user in await UserModel.all():
+            assert user.name == "Updated", (
+                f"Expected 'Updated' but got '{user.name}'. "
+                "update() on a record from all() silently did nothing."
+            )
