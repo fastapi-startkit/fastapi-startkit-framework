@@ -200,7 +200,10 @@ class Model(Attribute, Relationship, ObservesEvents):
         if not self._exists:
             return False
 
-        return await self.fill(attributes).save()
+        for key, value in attributes.items():
+            self.set_attribute(key, value)
+
+        return await self.save()
 
     def fill(self, attributes: dict) -> "Model":
         for key, value in attributes.items():

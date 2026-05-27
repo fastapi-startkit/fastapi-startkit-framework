@@ -160,3 +160,67 @@ class TestModelUpdate:
         await user.save()
 
         assert user.id == original_id
+
+
+# ---------------------------------------------------------------------------
+# update() instance method — regression for GitHub issue #67
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def BareUserModel(db):
+    """
+    A model with no field annotations so __fillable__ = [].
+    Used to verify that update() works even when attributes are not in __fillable__.
+    """
+
+    class BareUser(Model):
+        __table__ = "users"
+
+    BareUser.db_manager = db
+    return BareUser
+
+
+class TestModelUpdateMethod:
+    async def test_records_from_all_have_exists_true(self, UserModel, users_table):
+        """Records fetched via all() must have _exists=True so update() is not short-circuited."""
+        await UserModel(name="Alex", email="alex@test.com").save()
+
+        users = await UserModel.all()
+
+        for user in users:
+            assert user._exists is True
+
+    async def test_update_persists_change_on_record_from_all(self, UserModel, users_table):
+        """update() on a record fetched via all() must execute SQL and persist the change."""
+        await UserModel(name="Alex", email="alex@test.com").save()
+
+        users = await UserModel.all()
+        user = users.first()
+        await user.update({"name": "Updated"})
+
+        refreshed = await UserModel.where("email", "alex@test.com").first()
+        assert refreshed.name == "Updated"
+
+    async def test_update_bypasses_fillable_guard(self, BareUserModel, users_table):
+        """
+        update() must update the attribute regardless of __fillable__.
+
+        Previously, update() delegated to fill(), which silently ignores attributes
+        not in __fillable__. For a model with no field annotations __fillable__ = [],
+        so every attribute was silently skipped and no SQL was ever executed.
+
+        Regression for: https://github.com/fastapi-startkit/fastapi-startkit-framework/issues/67
+        """
+        await BareUserModel.create({"name": "Initial", "email": "bare@test.com"})
+
+        users = await BareUserModel.all()
+        user = users.first()
+
+        await user.update({"name": "Updated"})
+
+        refreshed = await BareUserModel.where("email", "bare@test.com").first()
+        assert refreshed.name == "Updated", (
+            f"Expected 'Updated' but got '{refreshed.name}'. "
+            "update() silently ignored the attribute because it was not in __fillable__."
+        )
