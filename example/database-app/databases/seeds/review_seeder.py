@@ -26,5 +26,9 @@ class ReviewSeeder(Seeder):
             contents = reviews_by_title.get(course.title, [])
             for content in contents:
                 await Review.first_or_create(
-                    {"reviewable_type": "courses", "reviewable_id": course.id, "content": content}
+                    {
+                        "reviewable_type": "courses",
+                        "reviewable_id": course.id,
+                        "content": content,
+                    }
                 )
