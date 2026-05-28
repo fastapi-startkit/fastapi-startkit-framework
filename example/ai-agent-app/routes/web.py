@@ -7,9 +7,12 @@ router = Router()
 
 
 async def index(request: Request):
-    return Inertia.render("Dashboard/Index", {
-        "message": "Welcome to AI Agent App",
-    })
+    return Inertia.render(
+        "Dashboard/Index",
+        {
+            "message": "Welcome to AI Agent App",
+        },
+    )
 
 
 async def chat_page(request: Request):
@@ -37,4 +40,3 @@ async def chat_send(request: Request, body: ChatRequest):
 router.get("/", index)
 router.get("/chat", chat_page)
 router.post("/chat", chat_send)
-

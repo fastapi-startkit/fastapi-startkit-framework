@@ -43,57 +43,71 @@ from typing import Any, Callable, Iterator, Optional, Type
 
 def provider(name: str):
     """Set the LLM provider: 'anthropic', 'openai', 'google', etc."""
+
     def decorator(cls):
         cls._provider = name
         return cls
+
     return decorator
 
 
 def model(name: str = ""):
     """Set the model identifier (e.g. 'claude-sonnet-4-6', 'gpt-4o')."""
+
     def decorator(cls):
         cls._model = name
         return cls
+
     return decorator
 
 
 def max_steps(n: int = 10):
     """Maximum agentic loop iterations before stopping."""
+
     def decorator(cls):
         cls._max_steps = n
         return cls
+
     return decorator
 
 
 def max_tokens(n: int = 4096):
     """Maximum output tokens per response."""
+
     def decorator(cls):
         cls._max_tokens = n
         return cls
+
     return decorator
 
 
 def timeout(seconds: float = 30.0):
     """Request timeout in seconds."""
+
     def decorator(cls):
         cls._timeout = seconds
         return cls
+
     return decorator
 
 
 def top_p(value: float = 1.0):
     """Top-p nucleus sampling parameter."""
+
     def decorator(cls):
         cls._top_p = value
         return cls
+
     return decorator
 
 
 def memory(backend: str = ""):
     """Attach a named memory backend to this agent."""
+
     def decorator(cls):
         cls._memory_backend = backend
         return cls
+
     return decorator
 
 
@@ -103,6 +117,7 @@ def memory(backend: str = ""):
 @dataclass
 class AgentResponse:
     """Returned by Agent.prompt(). Wraps the LLM response."""
+
     content: str = ""
     tool_calls: list[dict] = field(default_factory=list)
     usage: dict = field(default_factory=dict)
@@ -140,6 +155,7 @@ class AgentSnapshot:
 
         agent.fake({"*analyze*": AgentSnapshot(path="tests/fixtures/analysis.json")})
     """
+
     path: str
 
     def exists(self) -> bool:
@@ -209,7 +225,11 @@ class Document:
         """Return an Anthropic-compatible content block for this document."""
         return {
             "type": "document",
-            "source": {"type": "text", "media_type": self.media_type, "data": self.content},
+            "source": {
+                "type": "text",
+                "media_type": self.media_type,
+                "data": self.content,
+            },
             "title": self.name,
         }
 
@@ -420,7 +440,9 @@ class Agent:
         """
         message = self.before(message)
         self._log_call("stream", message)
-        yield from self._stream(message, system=system, model=model, provider_options=provider_options)
+        yield from self._stream(
+            message, system=system, model=model, provider_options=provider_options
+        )
 
     def fake(self, patterns: dict[str, AgentResponse | AgentSnapshot]) -> "Agent":
         """
@@ -451,9 +473,13 @@ class Agent:
         """
         calls = [c for c in self._call_log if c["method"] in ("prompt", "stream")]
         if times is not None:
-            assert len(calls) == times, f"Expected {times} prompt call(s), got {len(calls)}"
+            assert len(calls) == times, (
+                f"Expected {times} prompt call(s), got {len(calls)}"
+            )
         else:
-            assert len(calls) > 0, "Expected at least one prompt() or stream() call, but none were made"
+            assert len(calls) > 0, (
+                "Expected at least one prompt() or stream() call, but none were made"
+            )
 
     def assert_not_prompted(self) -> None:
         """Assert that prompt() and stream() were never called."""
@@ -545,6 +571,7 @@ class Agent:
     def _tools_schema(self) -> list[dict]:
         """Convert tools() callables to Anthropic-style tool definitions."""
         import inspect
+
         result = []
         for tool in self.tools():
             if not callable(tool):
@@ -552,6 +579,7 @@ class Agent:
             sig = inspect.signature(tool)
             try:
                 import typing
+
                 hints = typing.get_type_hints(tool)
             except Exception:
                 hints = {}
@@ -559,18 +587,21 @@ class Agent:
                 name: {"type": _python_type_to_json(hints.get(name, str))}
                 for name in sig.parameters
             }
-            result.append({
-                "name": tool.__name__,
-                "description": inspect.getdoc(tool) or tool.__name__,
-                "input_schema": {
-                    "type": "object",
-                    "properties": properties,
-                    "required": [
-                        n for n, p in sig.parameters.items()
-                        if p.default is inspect.Parameter.empty
-                    ],
-                },
-            })
+            result.append(
+                {
+                    "name": tool.__name__,
+                    "description": inspect.getdoc(tool) or tool.__name__,
+                    "input_schema": {
+                        "type": "object",
+                        "properties": properties,
+                        "required": [
+                            n
+                            for n, p in sig.parameters.items()
+                            if p.default is inspect.Parameter.empty
+                        ],
+                    },
+                }
+            )
         return result
 
     # ── Provider dispatch ───────────────────────────────────────────────────
@@ -584,15 +615,21 @@ class Agent:
         attachments: list[Document] | None,
         provider_options: dict | None,
     ) -> AgentResponse:
-        resolved_system, messages = self._build_messages(message, system, extra_messages, attachments)
+        resolved_system, messages = self._build_messages(
+            message, system, extra_messages, attachments
+        )
         resolved_model = self._resolve_model(model)
         options = self._get_provider_options(provider_options)
 
         if self._provider == "anthropic":
-            return self._run_anthropic(resolved_system, messages, resolved_model, options)
+            return self._run_anthropic(
+                resolved_system, messages, resolved_model, options
+            )
         if self._provider == "openai":
             return self._run_openai(resolved_system, messages, resolved_model, options)
-        raise ValueError(f"Unsupported provider: {self._provider!r}. Use 'anthropic' or 'openai'.")
+        raise ValueError(
+            f"Unsupported provider: {self._provider!r}. Use 'anthropic' or 'openai'."
+        )
 
     def _stream(
         self,
@@ -606,11 +643,17 @@ class Agent:
         options = self._get_provider_options(provider_options)
 
         if self._provider == "anthropic":
-            yield from self._stream_anthropic(resolved_system, messages, resolved_model, options)
+            yield from self._stream_anthropic(
+                resolved_system, messages, resolved_model, options
+            )
         elif self._provider == "openai":
-            yield from self._stream_openai(resolved_system, messages, resolved_model, options)
+            yield from self._stream_openai(
+                resolved_system, messages, resolved_model, options
+            )
         else:
-            raise ValueError(f"Unsupported provider: {self._provider!r}. Use 'anthropic' or 'openai'.")
+            raise ValueError(
+                f"Unsupported provider: {self._provider!r}. Use 'anthropic' or 'openai'."
+            )
 
     # ── Anthropic ──────────────────────────────────────────────────────────
 
@@ -651,11 +694,13 @@ class Agent:
                     result = self._execute_tool(tu.name, tu.input)
                 except Exception as exc:
                     result = f"Error: {exc}"
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": tu.id,
-                    "content": str(result),
-                })
+                tool_results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": tu.id,
+                        "content": str(result),
+                    }
+                )
 
             # Feed results back into the conversation
             params["messages"] = [
@@ -664,17 +709,19 @@ class Agent:
                 {"role": "user", "content": tool_results},
             ]
 
-        content = "".join(
-            b.text for b in resp.content if hasattr(b, "text")
-        )
+        content = "".join(b.text for b in resp.content if hasattr(b, "text"))
         tool_calls = [
             {"name": b.name, "input": b.input}
-            for b in resp.content if b.type == "tool_use"
+            for b in resp.content
+            if b.type == "tool_use"
         ]
         return AgentResponse(
             content=content,
             tool_calls=tool_calls,
-            usage={"input": resp.usage.input_tokens, "output": resp.usage.output_tokens},
+            usage={
+                "input": resp.usage.input_tokens,
+                "output": resp.usage.output_tokens,
+            },
             raw=resp,
         )
 

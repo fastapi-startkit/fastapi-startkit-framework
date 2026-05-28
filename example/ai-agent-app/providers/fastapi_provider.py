@@ -20,4 +20,5 @@ class FastAPIProvider(BaseFastAPIProvider):
         inertia.version("1.0.0")
 
         from routes.web import router
+
         self.app.include_router(router)
