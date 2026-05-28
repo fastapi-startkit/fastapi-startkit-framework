@@ -32,20 +32,13 @@ class Model(Attribute, Relationship, ObservesEvents):
         super().__init_subclass__(**kwargs)
         Registry.register(cls)
 
-        from fastapi_startkit.masoniteorm.relationships.BaseRelationship import (
-            BaseRelationship,
-        )
-
-        _model_bases = {Model, *Model.__mro__}
-        all_annotations: dict = {}
-        for klass in reversed(cls.__mro__):
-            if klass in _model_bases:
-                continue
-            all_annotations.update(klass.__dict__.get("__annotations__", {}))
-
         fillable = []
-        for name in all_annotations:
+        for name, _typ in cls.__annotations__.items():
             attr = getattr(cls, name, None)
+            from fastapi_startkit.masoniteorm.relationships.BaseRelationship import (
+                BaseRelationship,
+            )
+
             if isinstance(attr, BaseRelationship):
                 continue
             if callable(attr):
