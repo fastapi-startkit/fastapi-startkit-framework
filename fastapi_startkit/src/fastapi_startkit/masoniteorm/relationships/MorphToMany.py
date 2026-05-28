@@ -100,6 +100,4 @@ class MorphToMany(BaseRelationship):
         model.add_relation({key: related})
 
     def morph_map(self):
-        from fastapi_startkit.masoniteorm.models import registry
-
-        return registry.Registry.get_morph_map()
+        return load_config().DB._morph_map

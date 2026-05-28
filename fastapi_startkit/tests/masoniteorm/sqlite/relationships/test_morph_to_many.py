@@ -63,7 +63,6 @@ class TestMorphToManyRelationship(TestCase):
         self.assertIn("product_m2m", morph_map)
 
     async def test_apply_query_resolves_article(self):
-        from fastapi_startkit.masoniteorm.models.model import Model as BaseModel
 
         like = await LikeModelMorphToMany.create({"likeable_type": "article_m2m", "likeable_id": self.article.id})
         like_loaded = await LikeModelMorphToMany.where("id", like.id).first()

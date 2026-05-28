@@ -1,16 +1,17 @@
 from __future__ import annotations
-import inflection
 
 from typing import TYPE_CHECKING
 
+import inflection
+
 from fastapi_startkit.carbon import Carbon
 from fastapi_startkit.masoniteorm.collection import Collection
-from fastapi_startkit.masoniteorm.models.fields import CreatedAtField, UpdatedAtField
-from fastapi_startkit.masoniteorm.models.registry import Registry
-from fastapi_startkit.masoniteorm.observers import ObservesEvents
 from fastapi_startkit.masoniteorm.connections.manager import DatabaseManager
 from fastapi_startkit.masoniteorm.models.attribute import Attribute
+from fastapi_startkit.masoniteorm.models.fields import CreatedAtField, UpdatedAtField
+from fastapi_startkit.masoniteorm.models.registry import Registry
 from fastapi_startkit.masoniteorm.models.relationship import Relationship
+from fastapi_startkit.masoniteorm.observers import ObservesEvents
 
 if TYPE_CHECKING:
     from fastapi_startkit.masoniteorm.models.builder import QueryBuilder
@@ -130,6 +131,14 @@ class Model(Attribute, Relationship, ObservesEvents):
     @classmethod
     async def count(cls, column: str = "*"):
         return await cls.query().count(column)
+
+    def table(self, table: str):
+        self.__table__ = table
+        return self
+
+    def timestamps(self, timestamps: bool = True):
+        self.__timestamps__ = timestamps
+        return self
 
     def set_connection(self, connection: str):
         self.connection = connection
