@@ -1,9 +1,3 @@
-"""Tests for Vite integration (task #17).
-
-Covers: manifest loading, production asset URLs, HMR (dev mode) URLs,
-missing manifest error, manifest_hash, and ViteProvider registration.
-"""
-
 import json
 
 import pytest
