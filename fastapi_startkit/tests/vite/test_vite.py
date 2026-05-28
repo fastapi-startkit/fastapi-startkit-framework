@@ -233,9 +233,7 @@ class TestViteProvider:
         from fastapi_startkit.application import Application
         from fastapi_startkit.vite.providers.provider import ViteProvider
 
-        app = Application(base_path=tmp_path, env="testing", providers=[
-            ViteProvider
-        ])
+        app = Application(base_path=tmp_path, env="testing", providers=[ViteProvider])
 
         assert app.has("vite")
         vite = app.make("vite")
