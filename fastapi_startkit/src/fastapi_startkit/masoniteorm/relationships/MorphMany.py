@@ -18,9 +18,12 @@ class MorphMany(BaseRelationship):
         return self
 
     def __get__(self, instance, owner):
+        if instance is None:
+            return self
+
         attribute = self.fn.__name__
-        self._related_builder = instance.builder
-        self.polymorphic_builder = self.fn(self)()
+        self._related_builder = instance.get_builder()
+        self.polymorphic_builder = self.fn(self).query()
         self.set_keys(owner, self.fn)
 
         if not instance.is_loaded():
@@ -32,8 +35,7 @@ class MorphMany(BaseRelationship):
         return self.apply_query(self._related_builder, instance)
 
     def __getattr__(self, attribute):
-        relationship = self.fn(self)()
-        return getattr(relationship.builder, attribute)
+        return getattr(self.fn(self).query(), attribute)
 
     def apply_query(self, builder, instance):
         """Apply the query and return a dictionary to be hydrated
@@ -45,7 +47,7 @@ class MorphMany(BaseRelationship):
         Returns:
             dict -- A dictionary of data which will be hydrated.
         """
-        polymorphic_key = self.get_record_key_lookup(builder._model)
+        polymorphic_key = self.get_record_key_lookup(instance)
         polymorphic_builder = self.polymorphic_builder
         return (
             polymorphic_builder.where(self.morph_key, polymorphic_key)
@@ -115,13 +117,7 @@ class MorphMany(BaseRelationship):
         return registry.Registry.get_morph_map()
 
     def get_record_key_lookup(self, relation):
-        record_type = None
-        for record_type_loop, model in self.morph_map().items():
-            if model == relation.__class__:
-                record_type = record_type_loop
-                break
-
-        if not record_type:
+        morph_name = registry.Registry._reverse_map.get(relation.__class__)
+        if morph_name is None:
             raise ValueError(f"Could not find the record type key for the {relation} class")
-
-        return record_type
+        return morph_name

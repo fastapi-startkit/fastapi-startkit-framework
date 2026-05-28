@@ -93,6 +93,11 @@ class Attribute:
     def get_dirty(self) -> dict:
         return {key: value for key, value in self.get_attributes().items() if not self.original_is_equivalent(key)}
 
+    def delete_attribute(self, key: str):
+        """Remove a transient attribute that was added during query processing."""
+        self._attributes.pop(key, None)
+        self._dirty_attributes.pop(key, None)
+
     def get_attributes_for_insert(self) -> dict:
         # _dirty_attributes already went through set_attribute (casts applied on assignment).
         # _attributes is set raw via new_model_instance, so apply set casts here.
