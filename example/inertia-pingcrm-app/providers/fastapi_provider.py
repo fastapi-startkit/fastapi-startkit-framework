@@ -25,13 +25,23 @@ class FastAPIProvider(BaseFastAPIProvider):
         inertia = self.app.make("inertia")
         inertia.share("app_name", "Inertia Demo")
         inertia.version("v1.0.0")
-        inertia.share("auth", lambda request: {"user": getattr(request.state, "user", None)})
-        inertia.share("flash", lambda request: {
-            "success": request.session.get("flash_success") if "session" in request.scope else None,
-            "error": request.session.get("flash_error") if "session" in request.scope else None,
-        })
+        inertia.share(
+            "auth", lambda request: {"user": getattr(request.state, "user", None)}
+        )
+        inertia.share(
+            "flash",
+            lambda request: {
+                "success": request.session.get("flash_success")
+                if "session" in request.scope
+                else None,
+                "error": request.session.get("flash_error")
+                if "session" in request.scope
+                else None,
+            },
+        )
         inertia.share("errors", {})
 
         from routes.web import guest, auth
+
         self.app.include_router(guest)
         self.app.include_router(auth)

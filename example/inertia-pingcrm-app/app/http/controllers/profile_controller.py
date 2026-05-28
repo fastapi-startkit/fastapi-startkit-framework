@@ -25,16 +25,19 @@ async def save_photo(photo: Optional[UploadFile]) -> Optional[str]:
 async def edit(request: Request):
     user = await User.find(request.state.user["id"])
     photo_url = f"/images/{user.photo_path}" if user.photo_path else None
-    return Inertia.render('Profile/Edit', {
-        'user': {
-            'id': user.id,
-            'first_name': user.first_name,
-            'last_name': user.last_name,
-            'email': user.email,
-            'photo': photo_url,
-            'password': '',
-        }
-    })
+    return Inertia.render(
+        "Profile/Edit",
+        {
+            "user": {
+                "id": user.id,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "email": user.email,
+                "photo": photo_url,
+                "password": "",
+            }
+        },
+    )
 
 
 async def update(
@@ -48,7 +51,7 @@ async def update(
 
     update_data = form.validated()
     if photo_path:
-        update_data['photo_path'] = photo_path
+        update_data["photo_path"] = photo_path
 
     await user.update(update_data)
     return RedirectResponse(url="/profile", status_code=303)

@@ -4,6 +4,7 @@ from fastapi_startkit.masoniteorm.models import Model
 
 class Organization(Model):
     """Organization Model."""
+
     __table__ = "organizations"
 
     id: int

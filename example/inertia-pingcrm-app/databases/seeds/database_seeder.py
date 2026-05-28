@@ -14,27 +14,31 @@ class DatabaseSeeder(Seeder):
         """Run the database seeds."""
         # Create Account
         account = await Account.create({"name": "Acme Corporation"})
-        
+
         # Create User
-        await User.first_or_create({
-             "email": "johndoe@example.com",
-        }, {
-              "account_id": account.id,
-            "first_name": "John",
-            "last_name": "Doe",
-            "password": "secret", # TODO: Use hash
-            "owner": True
-        })
+        await User.first_or_create(
+            {
+                "email": "johndoe@example.com",
+            },
+            {
+                "account_id": account.id,
+                "first_name": "John",
+                "last_name": "Doe",
+                "password": "secret",  # TODO: Use hash
+                "owner": True,
+            },
+        )
 
         # Create 5 more users
         await UserFactory.new().count(5).create(account_id=account.id)
 
         # Create 100 organizations
-        organizations = await OrganizationFactory.new().count(100).create(account_id=account.id)
+        organizations = (
+            await OrganizationFactory.new().count(100).create(account_id=account.id)
+        )
 
         # Create 100 contacts
         for _ in range(100):
             await ContactFactory.new().create(
-                account_id=account.id,
-                organization_id=random.choice(organizations).id
+                account_id=account.id, organization_id=random.choice(organizations).id
             )

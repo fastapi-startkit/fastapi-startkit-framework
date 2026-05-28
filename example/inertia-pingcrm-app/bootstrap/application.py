@@ -17,11 +17,12 @@ from fastapi_startkit.storage.providers.provider import StorageProvider
 from fastapi_startkit.vite import ViteProvider
 from starlette.responses import RedirectResponse
 
+
 class ExceptionHandler(BaseHandler):
     def register(self):
         self.register_render(
             NotAuthenticated,
-            lambda request, exc: RedirectResponse(url="/login", status_code=303)
+            lambda request, exc: RedirectResponse(url="/login", status_code=303),
         )
 
 
