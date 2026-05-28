@@ -2,7 +2,6 @@ import json
 
 import pytest
 
-from fastapi_startkit.container.container import Container
 from fastapi_startkit.vite.exceptions import ViteException, ViteManifestNotFoundException
 from fastapi_startkit.vite.vite import Vite
 
@@ -230,37 +229,13 @@ class TestManifestHash:
 
 
 class TestViteProvider:
-    @pytest.fixture(autouse=True)
-    def restore_container(self):
-        original = Container._instance
-        yield
-        Container._instance = original
-
     def test_vite_provider_binds_vite_to_container(self, tmp_path):
         from fastapi_startkit.application import Application
-
-        app = Application(base_path=tmp_path, env="testing")
-        cfg = app.make("config")
-
-        cfg.set(
-            "vite",
-            {
-                "public_path": str(tmp_path / "public"),
-                "build_directory": "build",
-                "hot_file": "hot",
-                "manifest_filename": "manifest.json",
-                "asset_url": "",
-                "static_url": "/build",
-                "mount_static": False,
-            },
-        )
-
-        (tmp_path / "public").mkdir(exist_ok=True)
-
         from fastapi_startkit.vite.providers.provider import ViteProvider
 
-        provider = ViteProvider(app)
-        provider.register()
+        app = Application(base_path=tmp_path, env="testing", providers=[
+            ViteProvider
+        ])
 
         assert app.has("vite")
         vite = app.make("vite")
