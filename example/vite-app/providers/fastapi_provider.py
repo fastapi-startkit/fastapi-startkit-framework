@@ -23,4 +23,5 @@ class FastAPIProvider(BaseFastAPIProvider):
         super().boot()
 
         from routes.web import web
+
         self.app.include_router(web)
