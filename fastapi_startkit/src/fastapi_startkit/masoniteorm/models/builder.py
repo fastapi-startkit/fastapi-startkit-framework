@@ -63,6 +63,10 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
     def get_table_name(self) -> str:
         return self._table
 
+    def table(self, table: str) -> "QueryBuilder":
+        self._table = table
+        return self
+
     def where_in(self, column: str, values) -> "QueryBuilder":
         if hasattr(values, "_items"):
             values = values._items
@@ -132,6 +136,10 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
     def run_scopes(self) -> "QueryBuilder":
         for name, scope in self._global_scopes.get(self._action, {}).items():
             scope(self)
+        return self
+
+    def without_global_scopes(self) -> "QueryBuilder":
+        self._global_scopes = {}
         return self
 
     def get_grammar(self):
