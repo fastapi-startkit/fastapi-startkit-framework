@@ -65,9 +65,7 @@ class TestMorphToManyRelationship(TestCase):
     async def test_apply_query_resolves_article(self):
         from fastapi_startkit.masoniteorm.models.model import Model as BaseModel
 
-        like = await LikeModelMorphToMany.create(
-            {"likeable_type": "article_m2m", "likeable_id": self.article.id}
-        )
+        like = await LikeModelMorphToMany.create({"likeable_type": "article_m2m", "likeable_id": self.article.id})
         like_loaded = await LikeModelMorphToMany.where("id", like.id).first()
 
         rel = LikeModelMorphToMany.record
@@ -78,9 +76,7 @@ class TestMorphToManyRelationship(TestCase):
         self.assertIsInstance(resolved, Articles)
 
     async def test_apply_query_resolves_product(self):
-        like = await LikeModelMorphToMany.create(
-            {"likeable_type": "product_m2m", "likeable_id": self.product.id}
-        )
+        like = await LikeModelMorphToMany.create({"likeable_type": "product_m2m", "likeable_id": self.product.id})
         like_loaded = await LikeModelMorphToMany.where("id", like.id).first()
 
         rel = LikeModelMorphToMany.record
@@ -91,12 +87,8 @@ class TestMorphToManyRelationship(TestCase):
         self.assertIsInstance(resolved, Product)
 
     async def test_get_related_with_collection(self):
-        await LikeModelMorphToMany.create(
-            {"likeable_type": "article_m2m", "likeable_id": self.article.id}
-        )
-        await LikeModelMorphToMany.create(
-            {"likeable_type": "product_m2m", "likeable_id": self.product.id}
-        )
+        await LikeModelMorphToMany.create({"likeable_type": "article_m2m", "likeable_id": self.article.id})
+        await LikeModelMorphToMany.create({"likeable_type": "product_m2m", "likeable_id": self.product.id})
 
         likes = await LikeModelMorphToMany.get()
         rel = LikeModelMorphToMany.record
@@ -107,9 +99,7 @@ class TestMorphToManyRelationship(TestCase):
         self.assertGreaterEqual(resolved.count(), 1)
 
     async def test_get_related_with_single_model_no_match(self):
-        like = await LikeModelMorphToMany.create(
-            {"likeable_type": "unknown_type", "likeable_id": 999}
-        )
+        like = await LikeModelMorphToMany.create({"likeable_type": "unknown_type", "likeable_id": 999})
         like_loaded = await LikeModelMorphToMany.where("id", like.id).first()
 
         rel = LikeModelMorphToMany.record
@@ -118,12 +108,8 @@ class TestMorphToManyRelationship(TestCase):
         self.assertIsNone(result)
 
     async def test_register_related_maps_to_model(self):
-        await LikeModelMorphToMany.create(
-            {"likeable_type": "article_m2m", "likeable_id": self.article.id}
-        )
-        await LikeModelMorphToMany.create(
-            {"likeable_type": "product_m2m", "likeable_id": self.product.id}
-        )
+        await LikeModelMorphToMany.create({"likeable_type": "article_m2m", "likeable_id": self.article.id})
+        await LikeModelMorphToMany.create({"likeable_type": "product_m2m", "likeable_id": self.product.id})
 
         all_articles = await Articles.get()
         like_article = await LikeModelMorphToMany.where("likeable_type", "article_m2m").first()
