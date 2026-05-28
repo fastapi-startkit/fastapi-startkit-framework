@@ -223,20 +223,36 @@ class TestModelUpdateMethod:
         for user in await UserModel.all():
             assert user._exists is True
 
-    async def test_update_iterating_all_persists_changes(self, UserModel, users_table):
+    async def test_update_iterating_all_persists_changes(self, db, users_table):
         """
-        Iterating Model.all() and calling update() on each record must persist.
+        Iterating Model.all() and calling update() on each record must persist,
+        even when the model's fields are declared on a parent class (not directly
+        on the concrete model).  Without the MRO fix, the subclass __fillable__
+        would be empty, fill() would silently discard every attribute, and no
+        SQL would run.
 
         Regression for: https://github.com/fastapi-startkit/fastapi-startkit-framework/issues/67
         """
-        await UserModel(name="Alice", email="alice@test.com").save()
-        await UserModel(name="Bob", email="bob@test.com").save()
 
-        for user in await UserModel.all():
+        class BaseUser(Model):
+            __table__ = "users"
+            name: str
+            email: str
+
+        class ConcreteUser(BaseUser):
+            # No own annotations — relies entirely on inherited fields being fillable
+            pass
+
+        ConcreteUser.db_manager = db
+
+        await ConcreteUser.create({"name": "Alice", "email": "alice@test.com"})
+        await ConcreteUser.create({"name": "Bob", "email": "bob@test.com"})
+
+        for user in await ConcreteUser.all():
             await user.update({"name": "Updated"})
 
-        for user in await UserModel.all():
+        for user in await ConcreteUser.all():
             assert user.name == "Updated", (
                 f"Expected 'Updated' but got '{user.name}'. "
-                "update() on a record from all() silently did nothing."
+                "Inherited field 'name' was absent from __fillable__ so fill() silently skipped it."
             )

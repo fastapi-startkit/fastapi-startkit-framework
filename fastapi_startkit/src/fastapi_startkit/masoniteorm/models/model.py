@@ -36,10 +36,6 @@ class Model(Attribute, Relationship, ObservesEvents):
             BaseRelationship,
         )
 
-        # Collect annotations from every user-defined class in the MRO, walking
-        # from the most-base class downward so subclass annotations win on conflict.
-        # Stop at Model itself — its own fields (db_manager, created_at, etc.) are
-        # framework internals, not user-defined data columns.
         _model_bases = {Model, *Model.__mro__}
         all_annotations: dict = {}
         for klass in reversed(cls.__mro__):
