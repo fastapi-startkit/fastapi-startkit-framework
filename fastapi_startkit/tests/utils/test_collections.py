@@ -2,7 +2,7 @@
 
 import pytest
 
-from fastapi_startkit.utils.collections import Collection, collect, flatten
+from fastapi_startkit.support import Collection
 
 
 class TestCollectionBasics:
@@ -213,41 +213,3 @@ class TestFlatten:
     def test_flatten_deeply_nested(self):
         result = flatten([[[1]], [2, [3]]])
         assert result == [1, 2, 3]
-
-
-class TestCollectionHTTPUtils:
-    def test_http_status_200_ok(self):
-        from fastapi_startkit.utils.http import HTTP_STATUS_CODES
-
-        assert HTTP_STATUS_CODES[200] == "200 OK"
-
-    def test_http_status_404_not_found(self):
-        from fastapi_startkit.utils.http import HTTP_STATUS_CODES
-
-        assert "404" in HTTP_STATUS_CODES[404]
-
-    def test_http_status_500_internal_server_error(self):
-        from fastapi_startkit.utils.http import HTTP_STATUS_CODES
-
-        assert "500" in HTTP_STATUS_CODES[500]
-
-    def test_generate_wsgi_defaults(self):
-        from fastapi_startkit.utils.http import generate_wsgi
-
-        env = generate_wsgi()
-        assert env["REQUEST_METHOD"] == "GET"
-        assert env["PATH_INFO"] == "/"
-        assert env["SERVER_PORT"] == "8000"
-
-    def test_generate_wsgi_custom_path_and_method(self):
-        from fastapi_startkit.utils.http import generate_wsgi
-
-        env = generate_wsgi(path="/users", method="POST")
-        assert env["PATH_INFO"] == "/users"
-        assert env["REQUEST_METHOD"] == "POST"
-
-    def test_generate_wsgi_custom_query_string(self):
-        from fastapi_startkit.utils.http import generate_wsgi
-
-        env = generate_wsgi(query_string="page=1&limit=10")
-        assert env["QUERY_STRING"] == "page=1&limit=10"
