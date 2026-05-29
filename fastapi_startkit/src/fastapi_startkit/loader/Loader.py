@@ -4,7 +4,6 @@ import inspect
 import pkgutil
 
 from ..exceptions import LoaderNotFound
-from ..support.string import as_filepath
 from ..utils.structures import load
 
 
@@ -18,7 +17,7 @@ class Loader:
             files_or_directories = [files_or_directories]
 
         _modules = {}
-        module_paths = list(map(as_filepath, files_or_directories))
+        module_paths = list(map(lambda p: p.replace(".", "/"), files_or_directories))
         for module_loader, name, _ in pkgutil.iter_modules(module_paths):
             module = load(
                 f"{module_loader.path}/{name}.py",
