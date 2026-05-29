@@ -4,7 +4,7 @@ import inspect
 import pkgutil
 
 from ..exceptions import LoaderNotFound
-from ..utils.str import as_filepath
+from ..support.string import as_filepath
 from ..utils.structures import load
 
 

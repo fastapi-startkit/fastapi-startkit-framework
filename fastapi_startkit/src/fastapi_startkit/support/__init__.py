@@ -1,3 +1,3 @@
-from .collection import Collection
+from .collection import Collection, collect, flatten
 
-__all__ = ["Collection"]
+__all__ = ["Collection", "collect", "flatten"]

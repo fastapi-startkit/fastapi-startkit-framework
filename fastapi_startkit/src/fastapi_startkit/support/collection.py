@@ -555,7 +555,11 @@ class Collection:
             ">": operator.gt,
             ">=": operator.ge,
         }
-        return operators[op](str(a), str(b))
+        # Use numeric comparison when both values are numeric
+        try:
+            return operators[op](float(a), float(b))
+        except (TypeError, ValueError):
+            return operators[op](str(a), str(b))
 
     def __iter__(self):
         for item in self._items:
@@ -611,3 +615,20 @@ class Collection:
             items = items.all()
 
         return items
+
+
+def collect(items=None) -> Collection:
+    """Wrap items in a Collection."""
+    return Collection(items or [])
+
+
+def flatten(items) -> list:
+    """Recursively flatten a nested list."""
+    def _flatten(lst):
+        for item in lst:
+            if isinstance(item, list):
+                yield from _flatten(item)
+            else:
+                yield item
+
+    return list(_flatten(items))

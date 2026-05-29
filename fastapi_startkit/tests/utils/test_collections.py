@@ -2,7 +2,7 @@
 
 import pytest
 
-from fastapi_startkit.support import Collection
+from fastapi_startkit.support import Collection, collect, flatten
 
 
 class TestCollectionBasics:

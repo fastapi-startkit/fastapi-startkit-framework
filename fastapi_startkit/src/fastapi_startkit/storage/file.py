@@ -1,6 +1,6 @@
 import hashlib
 
-from ..utils.filesystem import get_extension
+from .helper import get_extension
 
 
 class File:

@@ -1,6 +1,11 @@
 import re
 
 
+def as_filepath(dotted_path: str) -> str:
+    """Transform a dotted module path to a file path (with /)."""
+    return dotted_path.replace(".", "/")
+
+
 class Stringable:
     def __init__(self, text: str):
         self.text = text

@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-from fastapi_startkit.helpers.string import Str
+from fastapi_startkit.support.string import Str
 
 from fastapi_startkit.helpers.dataclass import Dataclass
 

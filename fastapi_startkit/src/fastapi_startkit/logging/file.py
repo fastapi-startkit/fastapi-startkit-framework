@@ -1,7 +1,4 @@
 import os
-import platform
-import pathlib
-import mimetypes
 
 def make_directory(directory):
     """Create a directory at the given path for a file if it does not exist"""

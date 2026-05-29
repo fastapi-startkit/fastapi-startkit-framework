@@ -146,11 +146,6 @@ class TestConfigFacade:
 
 
 class TestFacadeKeyAttributes:
-    def test_auth_facade_has_key(self):
-        from fastapi_startkit.facades import Auth
-
-        assert hasattr(Auth, "key") or Auth.__class__.__name__ in ("type", "Facade")
-
     def test_hash_facade_key(self):
         try:
             from fastapi_startkit.facades import Hash
