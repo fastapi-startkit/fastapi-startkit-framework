@@ -2,12 +2,13 @@ from typing import TYPE_CHECKING
 
 from .can_override_config import CanOverrideConfig
 from .can_override_default_options import CanOverrideOptionsDefault
+from .has_colored_output import HasColoredOutput
 
 if TYPE_CHECKING:
     from fastapi_startkit import Application
 
 
-class Command(CanOverrideOptionsDefault, CanOverrideConfig):
+class Command(HasColoredOutput, CanOverrideOptionsDefault, CanOverrideConfig):
     container: "Application"
 
     def set_container(self, container: "Application") -> None:
