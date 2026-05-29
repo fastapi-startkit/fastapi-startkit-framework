@@ -618,17 +618,5 @@ class Collection:
 
 
 def collect(items=None) -> Collection:
-    """Wrap items in a Collection."""
+    """Shortcut to wrap items in a Collection."""
     return Collection(items or [])
-
-
-def flatten(items) -> list:
-    """Recursively flatten a nested list."""
-    def _flatten(lst):
-        for item in lst:
-            if isinstance(item, list):
-                yield from _flatten(item)
-            else:
-                yield item
-
-    return list(_flatten(items))

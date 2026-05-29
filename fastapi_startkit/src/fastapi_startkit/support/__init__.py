@@ -1,3 +1,4 @@
-from .collection import Collection, collect, flatten
+from .collection import Collection, collect
+from .string import Str, Stringable
 
-__all__ = ["Collection", "collect", "flatten"]
+__all__ = ["Collection", "collect", "Str", "Stringable"]

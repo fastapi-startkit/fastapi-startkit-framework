@@ -2,7 +2,7 @@
 
 import pytest
 
-from fastapi_startkit.support import Collection, collect, flatten
+from fastapi_startkit.support import Collection, collect
 
 
 class TestCollectionBasics:
@@ -200,16 +200,16 @@ class TestCollect:
 
 class TestFlatten:
     def test_flatten_nested_lists(self):
-        result = flatten([[1, 2], [3, [4, 5]]])
-        assert result == [1, 2, 3, 4, 5]
+        result = Collection([[1, 2], [3, [4, 5]]]).flatten()
+        assert result.all() == [1, 2, 3, 4, 5]
 
     def test_flatten_already_flat(self):
-        result = flatten([1, 2, 3])
-        assert result == [1, 2, 3]
+        result = Collection([1, 2, 3]).flatten()
+        assert result.all() == [1, 2, 3]
 
     def test_flatten_empty(self):
-        assert flatten([]) == []
+        assert Collection([]).flatten().all() == []
 
     def test_flatten_deeply_nested(self):
-        result = flatten([[[1]], [2, [3]]])
-        assert result == [1, 2, 3]
+        result = Collection([[[1]], [2, [3]]]).flatten()
+        assert result.all() == [1, 2, 3]
