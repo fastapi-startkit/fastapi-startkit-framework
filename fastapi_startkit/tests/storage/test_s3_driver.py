@@ -252,9 +252,10 @@ class TestS3DriverContentTypes:
 
 class TestS3DriverMoveAtomicity:
     def test_move_does_not_delete_source_when_copy_fails(self, driver):
-        with patch.object(driver, "copy", side_effect=Exception("copy failed")), patch.object(
-            driver, "delete"
-        ) as mock_delete:
+        with (
+            patch.object(driver, "copy", side_effect=Exception("copy failed")),
+            patch.object(driver, "delete") as mock_delete,
+        ):
             with pytest.raises(Exception, match="copy failed"):
                 driver.move("src.txt", "dst.txt")
             mock_delete.assert_not_called()
