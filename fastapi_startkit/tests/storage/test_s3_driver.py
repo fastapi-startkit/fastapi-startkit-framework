@@ -179,3 +179,101 @@ class TestS3DriverUrl:
 class TestS3DriverGetBucket:
     def test_get_bucket_returns_configured_bucket(self, driver):
         assert driver.get_bucket() == "test-bucket"
+
+    def test_get_bucket_returns_none_when_not_configured(self):
+        app = MagicMock()
+        d = S3Driver(app)
+        d.set_options({})
+        assert d.get_bucket() is None
+
+
+# ---------------------------------------------------------------------------
+# Edge cases: unexpected exceptions must propagate (not be swallowed)
+# ---------------------------------------------------------------------------
+
+
+class TestS3DriverExceptionPropagation:
+    def test_get_raises_unexpected_exception(self, driver, mock_resource):
+        class DatabaseError(Exception):
+            pass
+
+        mock_resource.Bucket().Object().get.side_effect = DatabaseError("unexpected")
+
+        with patch.object(driver, "missing_file_exceptions", return_value=(FileNotFoundError,)):
+            with pytest.raises(DatabaseError):
+                driver.get("file.txt")
+
+    def test_exists_raises_unexpected_exception(self, driver, mock_resource):
+        class AWSDown(Exception):
+            pass
+
+        mock_resource.Bucket().Object().load.side_effect = AWSDown("service down")
+
+        with patch.object(driver, "missing_file_exceptions", return_value=(FileNotFoundError,)):
+            with pytest.raises(AWSDown):
+                driver.exists("file.txt")
+
+
+# ---------------------------------------------------------------------------
+# URL normalization
+# ---------------------------------------------------------------------------
+
+
+class TestS3DriverUrlNormalization:
+    def test_url_with_trailing_slash(self, driver):
+        driver.set_options({**driver.options, "url": "https://cdn.example.com/"})
+        assert driver.url("file.txt") == "https://cdn.example.com//file.txt"
+
+    def test_url_without_trailing_slash(self, driver):
+        driver.set_options({**driver.options, "url": "https://cdn.example.com"})
+        assert driver.url("file.txt") == "https://cdn.example.com/file.txt"
+
+
+# ---------------------------------------------------------------------------
+# Empty and binary content
+# ---------------------------------------------------------------------------
+
+
+class TestS3DriverContentTypes:
+    def test_put_empty_content(self, driver, mock_resource):
+        driver.put("empty.txt", "")
+        mock_resource.Bucket().put_object.assert_called_with(Key="empty.txt", Body="")
+
+    def test_put_binary_content(self, driver, mock_resource):
+        content = b"\x00\x01\x02"
+        driver.put("binary.bin", content)
+        mock_resource.Bucket().put_object.assert_called_with(Key="binary.bin", Body=content)
+
+
+# ---------------------------------------------------------------------------
+# Move atomicity: copy failure must not delete source
+# ---------------------------------------------------------------------------
+
+
+class TestS3DriverMoveAtomicity:
+    def test_move_does_not_delete_source_when_copy_fails(self, driver):
+        with patch.object(driver, "copy", side_effect=Exception("copy failed")), patch.object(
+            driver, "delete"
+        ) as mock_delete:
+            with pytest.raises(Exception, match="copy failed"):
+                driver.move("src.txt", "dst.txt")
+            mock_delete.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Connection caching
+# ---------------------------------------------------------------------------
+
+
+class TestS3DriverConnectionCaching:
+    def test_get_connection_returns_same_session(self):
+        mock_boto3 = MagicMock()
+        app = MagicMock()
+        d = S3Driver(app)
+        d.set_options({"key": "k", "secret": "s", "region": "us-east-1"})
+
+        with patch.dict("sys.modules", {"boto3": mock_boto3}):
+            c1 = d.get_connection()
+            c2 = d.get_connection()
+            assert c1 is c2
+            mock_boto3.Session.assert_called_once()
