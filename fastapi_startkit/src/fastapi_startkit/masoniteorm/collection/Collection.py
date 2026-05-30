@@ -1,4 +1,4 @@
-from fastapi_startkit.collection import Collection as BaseCollection
+from fastapi_startkit.support.collection import Collection as BaseCollection
 
 
 class Collection(BaseCollection):

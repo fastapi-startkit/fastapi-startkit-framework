@@ -1,10 +1,7 @@
 import json
-import random
 import operator
+import random
 from functools import reduce
-from dotty_dict import Dotty
-
-from .structures import data_get
 
 
 class Collection:
@@ -43,9 +40,13 @@ class Collection:
         if callback:
             filtered = self.filter(callback)
         response = None
+
         if filtered:
             response = filtered[0]
         return response
+
+    def items(self):
+        return self._items.items()
 
     def last(self, callback=None):
         """Takes the last result in the items.
@@ -91,21 +92,41 @@ class Collection:
         return result
 
     def max(self, key=None):
-        """Returns the average of the items.
+        """Returns the max of the items.
 
-        If a key is given it will return the average of all the values of the key.
+        If a key is given it will return the max of all the values of the key.
 
         Keyword Arguments:
-            key {string} -- The key to use to find the average of all the values of that key. (default: {None})
+            key {string} -- The key to use to find the max of all the values of that key. (default: {None})
 
         Returns:
-            int -- Returns the average.
+            int -- Returns the max.
         """
         result = 0
         items = self._get_value(key) or self._items
 
         try:
             return max(items)
+        except (TypeError, ValueError):
+            pass
+        return result
+
+    def min(self, key=None):
+        """Returns the min of the items.
+
+        If a key is given it will return the min of all the values of the key.
+
+        Keyword Arguments:
+            key {string} -- The key to use to find the min of all the values of that key. (default: {None})
+
+        Returns:
+            int -- Returns the min.
+        """
+        result = 0
+        items = self._get_value(key) or self._items
+
+        try:
+            return min(items)
         except (TypeError, ValueError):
             pass
         return result
@@ -222,7 +243,9 @@ class Collection:
         return self.__class__(results)
 
     def merge(self, items):
-        if not isinstance(items, list):
+        if isinstance(items, Collection):
+            items = items._items
+        elif not isinstance(items, list):
             raise ValueError("Unable to merge uncompatible types")
 
         items = self.__get_items(items)
@@ -230,7 +253,7 @@ class Collection:
         self._items += items
         return self
 
-    def pluck(self, value, key=None):
+    def pluck(self, value, key=None, keep_nulls=True):
         if key:
             attributes = {}
         else:
@@ -248,6 +271,9 @@ class Collection:
                 iterable = self.all().items()
 
             for k, v in iterable:
+                if keep_nulls is False and v is None:
+                    continue
+
                 if k == value:
                     if key:
                         attributes[self._data_get(item, key)] = self._data_get(item, value)
@@ -273,7 +299,7 @@ class Collection:
         self._items.append(value)
 
     def put(self, key, value):
-        self[key] = value
+        self._items[key] = value
         return self
 
     def random(self, count=None):
@@ -301,13 +327,13 @@ class Collection:
     def reverse(self):
         self._items = self[::-1]
 
-    def serialize(self):
+    def serialize(self, *args, **kwargs):
         def _serialize(item):
             if self.__appends__:
                 item.set_appends(self.__appends__)
 
             if hasattr(item, "serialize"):
-                return item.serialize()
+                return item.serialize(*args, **kwargs)
             elif hasattr(item, "to_dict"):
                 return item.to_dict()
             return item
@@ -316,19 +342,34 @@ class Collection:
 
     def add_relation(self, result=None):
         for model in self._items:
-            model.add_relations(result or {})
+            model.add_relation(result or {})
 
         return self
 
     def shift(self):
         return self.pull(0)
 
-    def sort(self, key=None):
-        if key:
-            self._items.sort(key=lambda x: x[key], reverse=False)
-            return self
+    @staticmethod
+    def val(item, key):
+        if callable(key):
+            return key(item)
 
-        self._items = sorted(self)
+        if key is None:
+            return item
+
+        if isinstance(item, dict):
+            return item.get(key)
+
+        if isinstance(item, (list, tuple)):
+            try:
+                return item[key]
+            except (IndexError, TypeError):
+                return None
+
+        return getattr(item, key, None)
+
+    def sort(self, key=None, reverse=False):
+        self._items.sort(key=lambda item: self.val(item, key), reverse=reverse)
         return self
 
     def sum(self, key=None):
@@ -344,14 +385,12 @@ class Collection:
         return json.dumps(self.serialize(), **kwargs)
 
     def group_by(self, key):
-
         from itertools import groupby
 
         self.sort(key)
 
         new_dict = {}
-
-        for k, v in groupby(self._items, key=lambda x: x[key]):
+        for k, v in groupby(self._items, key=lambda x: self.val(x, key)):
             new_dict.update({k: list(v)})
 
         return Collection(new_dict)
@@ -397,8 +436,53 @@ class Collection:
             if isinstance(item, dict):
                 comparison = item.get(key)
             else:
-                comparison = getattr(item, key)
+                comparison = getattr(item, key) if hasattr(item, key) else False
             if self._make_comparison(comparison, value, op):
+                attributes.append(item)
+        return self.__class__(attributes)
+
+    def where_in(self, key, args: list) -> "Collection":
+        # Compatibility patch - allow numeric strings to match integers
+        # (if all args are numeric strings)
+        if all([isinstance(arg, str) and arg.isnumeric() for arg in args]):
+            return self.where_in(key, [int(arg) for arg in args])
+
+        attributes = []
+
+        for item in self._items:
+            if isinstance(item, dict):
+                if key not in item:
+                    continue
+                comparison = item.get(key)
+            else:
+                if not hasattr(item, key):
+                    continue
+                comparison = getattr(item, key)
+
+            if comparison in args:
+                attributes.append(item)
+
+        return self.__class__(attributes)
+
+    def where_not_in(self, key, args: list) -> "Collection":
+        # Compatibility patch - allow numeric strings to match integers
+        # (if all args are numeric strings)
+        if all([isinstance(arg, str) and arg.isnumeric() for arg in args]):
+            return self.where_not_in(key, [int(arg) for arg in args])
+
+        attributes = []
+
+        for item in self._items:
+            if isinstance(item, dict):
+                if key not in item:
+                    continue
+                comparison = item.get(key)
+            else:
+                if not hasattr(item, key):
+                    continue
+                comparison = getattr(item, key)
+
+            if comparison not in args:
                 attributes.append(item)
 
         return self.__class__(attributes)
@@ -429,8 +513,10 @@ class Collection:
         items = []
         for item in self:
             if isinstance(key, str):
-                if hasattr(item, key) or (key in item):
-                    items.append(getattr(item, key, item[key]))
+                if hasattr(item, key):
+                    items.append(getattr(item, key))
+                elif isinstance(item, dict) and key in item:
+                    items.append(item[key])
             elif callable(key):
                 result = key(item)
                 if result:
@@ -439,10 +525,8 @@ class Collection:
 
     def _data_get(self, item, key, default=None):
         try:
-            if isinstance(item, (list, tuple)):
+            if isinstance(item, (list, tuple, dict)):
                 item = item[key]
-            elif isinstance(item, (dict, Dotty)):
-                item = data_get(item, key, default)
             elif isinstance(item, object):
                 item = getattr(item, key)
         except (IndexError, AttributeError, KeyError, TypeError):
@@ -471,22 +555,30 @@ class Collection:
             ">": operator.gt,
             ">=": operator.ge,
         }
-        return operators[op](a, b)
+        # Use numeric comparison when both values are numeric
+        try:
+            return operators[op](float(a), float(b))
+        except (TypeError, ValueError):
+            return operators[op](str(a), str(b))
 
     def __iter__(self):
         for item in self._items:
             yield item
 
     def __eq__(self, other):
-        if isinstance(other, Collection):
-            return other == other.all()
+        other = self.__get_items(other)
         return other == self._items
 
     def __getitem__(self, item):
         if isinstance(item, slice):
             return self.__class__(self._items[item])
+        if isinstance(item, dict):
+            return self._items.get(item, None)
 
-        return self._items[item]
+        try:
+            return self._items[item]
+        except KeyError:
+            return None
 
     def __setitem__(self, key, value):
         self._items[key] = value
@@ -525,19 +617,6 @@ class Collection:
         return items
 
 
-def collect(iterable):
-    """Transform an iterable into a collection."""
-    return Collection(iterable)
-
-
-def flatten(iterable):
-    """Flatten all sub-iterables of an iterable structure (recursively)."""
-    flat_list = []
-    for item in iterable:
-        if isinstance(item, list):
-            for subitem in flatten(item):
-                flat_list.append(subitem)
-        else:
-            flat_list.append(item)
-
-    return flat_list
+def collect(items=None) -> Collection:
+    """Shortcut to wrap items in a Collection."""
+    return Collection(items or [])
