@@ -1,0 +1,13 @@
+[project]
+name = "mcp-app"
+version = "0.1.0"
+description = "Example MCP server built with fastapi-startkit"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi-startkit[fastapi]",
+    "uvicorn[standard]>=0.34.0",
+]
+
+[tool.uv.sources]
+fastapi-startkit = { path = "../../fastapi_startkit", editable = true }
