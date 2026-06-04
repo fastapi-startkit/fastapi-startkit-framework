@@ -1,54 +1,44 @@
-"""Abstract base class for MCP tools."""
+from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Optional, Type
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
-from .response import Response
+if TYPE_CHECKING:
+    from .response import Response
 
 
 class Tool(ABC):
     """Base class for MCP tools.
 
-    Subclasses must set ``name`` and ``description``, and implement ``handle()``.
-    Optionally override ``schema()`` to declare the input schema and
-    ``output_schema()`` to declare the output schema.
+    Subclasses must set ``name`` and ``description`` and implement ``handle``.
     """
 
-    name: str
-    description: str
+    name: str | None = None
+    description: str | None = None
 
-    def schema(self) -> Optional[Type[BaseModel]]:
-        """Return a Pydantic BaseModel subclass describing the input, or None."""
-        return None
+    def schema(self) -> type[BaseModel]:
+        """Return the Pydantic model describing the tool's input parameters."""
+        return BaseModel
 
-    def output_schema(self) -> Optional[Type[BaseModel]]:
-        """Return a Pydantic BaseModel subclass describing the output, or None."""
+    def output_schema(self) -> type[BaseModel] | None:
+        """Optional output schema as a Pydantic model. Return ``None`` to omit."""
         return None
 
     @abstractmethod
     async def handle(self, arguments: dict) -> Response:
-        """Execute the tool with the given arguments and return a Response."""
-        raise NotImplementedError
+        """Execute the tool and return a ``Response``."""
+        ...
 
     def to_json(self) -> dict:
-        """Serialise to the MCP tools/list format."""
-        input_schema: dict
-        schema_cls = self.schema()
-        if schema_cls is not None:
-            input_schema = schema_cls.model_json_schema()
-        else:
-            input_schema = {"type": "object", "properties": {}}
-
-        data: dict = {
+        """Build the full MCP tool definition for ``tools/list``."""
+        entry = {
             "name": self.name,
             "description": self.description,
-            "inputSchema": input_schema,
+            "inputSchema": self.schema().model_json_schema(),
         }
-
-        output_schema_cls = self.output_schema()
-        if output_schema_cls is not None:
-            data["outputSchema"] = output_schema_cls.model_json_schema()
-
-        return data
+        output = self.output_schema()
+        if output is not None:
+            entry["outputSchema"] = output.model_json_schema()
+        return entry

@@ -1,37 +1,28 @@
-"""Internal JSON-RPC 2.0 dispatcher for MCP."""
+"""JSON-RPC 2.0 dispatcher for MCP Streamable HTTP transport."""
 
-from typing import Any, Optional, TYPE_CHECKING
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .server import Server
+    from .tool import Tool
+    from .prompt import Prompt
+    from .resource import Resource
 
-
-MCP_PROTOCOL_VERSION = "2024-11-05"
+PROTOCOL_VERSION = "2024-11-05"
 
 
 class Protocol:
-    """Dispatches JSON-RPC 2.0 method calls to MCP handlers.
+    """Dispatches JSON-RPC 2.0 method calls to the appropriate MCP handler."""
 
-    Handles the following methods:
-    - initialize
-    - tools/list
-    - tools/call
-    - prompts/list
-    - prompts/get
-    - resources/list
-    - resources/read
-    """
+    def __init__(self, server: Server):
+        self.server = server
+        self._tools: dict = {}
+        self._prompts: dict = {}
+        self._resources: dict = {}
 
-    def __init__(self, server: "Server") -> None:
-        self._server = server
-
-    # ------------------------------------------------------------------
-    # Public dispatch entry point
-    # ------------------------------------------------------------------
-
-    async def dispatch(self, method: str, params: Optional[dict], request_id: Any) -> dict:
-        """Dispatch a JSON-RPC method and return a full JSON-RPC response dict."""
-        handler = {
+        self._methods = {
             "initialize": self._initialize,
             "tools/list": self._tools_list,
             "tools/call": self._tools_call,
@@ -39,105 +30,134 @@ class Protocol:
             "prompts/get": self._prompts_get,
             "resources/list": self._resources_list,
             "resources/read": self._resources_read,
-        }.get(method)
-
-        if handler is None:
-            return self._error(request_id, -32601, f"Method not found: {method}")
-
-        try:
-            result = await handler(params or {})
-            return {"jsonrpc": "2.0", "id": request_id, "result": result}
-        except Exception as exc:  # pragma: no cover
-            return self._error(request_id, -32000, str(exc))
-
-    # ------------------------------------------------------------------
-    # Handlers
-    # ------------------------------------------------------------------
-
-    async def _initialize(self, params: dict) -> dict:
-        server = self._server
-        result: dict = {
-            "protocolVersion": MCP_PROTOCOL_VERSION,
-            "serverInfo": {"name": server.name, "version": "1.0"},
-            "capabilities": {
-                "tools": {"listChanged": False},
-                "prompts": {"listChanged": False},
-                "resources": {"listChanged": False},
-            },
         }
-        if getattr(server, "description", None):
-            result["description"] = server.description
-        if getattr(server, "instructions", None):
-            result["instructions"] = server.instructions
-        return result
 
-    async def _tools_list(self, params: dict) -> dict:
-        tools = self._server.tools() or []
-        return {"tools": [t().to_json() for t in tools]}
+    # ── builder ──────────────────────────────────────────────────────────
 
-    async def _tools_call(self, params: dict) -> dict:
-        name = params.get("name")
-        arguments = params.get("arguments") or {}
-        tools = self._server.tools() or []
-        for tool_cls in tools:
-            tool = tool_cls()
-            if tool.name == name:
-                response = await tool.handle(arguments)
-                return {"content": response.to_content()}
-        return self._error_result(-32602, f"Tool not found: {name}")
+    def tools(self, tools: list[Tool]) -> Protocol:
+        """Register tool instances; returns ``self`` for chaining."""
+        self._tools.update((t.name, t) for t in tools)
+        return self
 
-    async def _prompts_list(self, params: dict) -> dict:
-        prompts = self._server.prompts() or []
-        registered = [p().to_json() for p in prompts if p().should_register()]
-        return {"prompts": registered}
+    def prompts(self, prompts: list[Prompt]) -> Protocol:
+        """Register prompt instances; returns ``self`` for chaining."""
+        self._prompts.update((p.name, p) for p in prompts)
+        return self
 
-    async def _prompts_get(self, params: dict) -> dict:
-        name = params.get("name")
-        arguments = params.get("arguments") or {}
-        prompts = self._server.prompts() or []
-        for prompt_cls in prompts:
-            prompt = prompt_cls()
-            if prompt.name == name and prompt.should_register():
-                response = await prompt.handle(arguments)
-                messages = [{"role": "user", "content": item} for item in response.to_content()]
-                return {"messages": messages}
-        return self._error_result(-32602, f"Prompt not found: {name}")
+    def resources(self, resources: list[Resource]) -> Protocol:
+        """Register resource instances; returns ``self`` for chaining."""
+        self._resources.update((r.uri, r) for r in resources)
+        return self
 
-    async def _resources_list(self, params: dict) -> dict:
-        resources = self._server.resources() or []
-        return {"resources": [r().to_json() for r in resources]}
-
-    async def _resources_read(self, params: dict) -> dict:
-        uri = params.get("uri")
-        resources = self._server.resources() or []
-        for resource_cls in resources:
-            resource = resource_cls()
-            if resource.uri == uri:
-                content = await resource.read()
-                return {
-                    "contents": [
-                        {
-                            "uri": resource.uri,
-                            "mimeType": resource.mime_type,
-                            "text": content,
-                        }
-                    ]
-                }
-        return self._error_result(-32602, f"Resource not found: {uri}")
-
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
+    # ── JSON-RPC helpers ─────────────────────────────────────────────────
 
     @staticmethod
-    def _error(request_id: Any, code: int, message: str) -> dict:
+    def ok(rpc_id, result: dict) -> dict:
+        return {"jsonrpc": "2.0", "id": rpc_id, "result": result}
+
+    @staticmethod
+    def err(rpc_id, code: int, message: str) -> dict:
         return {
             "jsonrpc": "2.0",
-            "id": request_id,
+            "id": rpc_id,
             "error": {"code": code, "message": message},
         }
 
-    @staticmethod
-    def _error_result(code: int, message: str) -> dict:
-        """Return an error payload as a *result* (for tool/prompt/resource not found)."""
-        return {"error": {"code": code, "message": message}}
+    # ── method handlers ──────────────────────────────────────────────────
+
+    async def _initialize(self, rpc_id, params: dict, **ctx) -> dict:
+        return self.ok(rpc_id, {
+            "protocolVersion": PROTOCOL_VERSION,
+            "serverInfo": {
+                "name": self.server.name or "mcp-server",
+                "version": "1.0.0",
+            },
+            "capabilities": self.server.capabilities(),
+        })
+
+    async def _tools_list(self, rpc_id, params: dict, **ctx) -> dict:
+        tools = [t.to_json() for t in self._tools.values()]
+        return self.ok(rpc_id, {"tools": tools})
+
+    async def _tools_call(self, rpc_id, params: dict, **ctx) -> dict:
+        name = params.get("name", "")
+        arguments = params.get("arguments") or {}
+
+        tool = self._tools.get(name)
+        if not tool:
+            return self.err(rpc_id, -32601, f"Unknown tool: {name}")
+
+        try:
+            response = await tool.handle(arguments)
+            return self.ok(rpc_id, {"content": response.to_content()})
+        except Exception as exc:
+            return self.ok(rpc_id, {
+                "content": [{"type": "text", "text": f"Error: {exc}"}],
+            })
+
+    async def _prompts_list(self, rpc_id, params: dict, **ctx) -> dict:
+        prompts = [p.to_json() for p in self._prompts.values()]
+        return self.ok(rpc_id, {"prompts": prompts})
+
+    async def _prompts_get(self, rpc_id, params: dict, **ctx) -> dict:
+        name = params.get("name", "")
+        arguments = params.get("arguments") or {}
+
+        prompt = self._prompts.get(name)
+        if not prompt:
+            return self.err(rpc_id, -32601, f"Unknown prompt: {name}")
+
+        try:
+            response = await prompt.handle(arguments)
+            return self.ok(rpc_id, {
+                "description": prompt.description,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": response.to_content(),
+                    }
+                ],
+            })
+        except Exception as exc:
+            return self.ok(rpc_id, {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": f"Error: {exc}"}],
+                    }
+                ],
+            })
+
+    async def _resources_list(self, rpc_id, params: dict, **ctx) -> dict:
+        resources = [r.to_json() for r in self._resources.values()]
+        return self.ok(rpc_id, {"resources": resources})
+
+    async def _resources_read(self, rpc_id, params: dict, **ctx) -> dict:
+        uri = params.get("uri", "")
+
+        resource = self._resources.get(uri)
+        if not resource:
+            return self.err(rpc_id, -32602, f"Unknown resource URI: {uri}")
+
+        try:
+            text = await resource.read(**ctx)
+            return self.ok(rpc_id, {
+                "contents": [
+                    {
+                        "uri": resource.uri,
+                        "mimeType": resource.mime_type,
+                        "text": text,
+                    }
+                ],
+            })
+        except Exception as exc:
+            return self.err(rpc_id, -32603, f"Error reading resource: {exc}")
+
+    # ── dispatcher ───────────────────────────────────────────────────────
+
+    async def dispatch(self, method: str, rpc_id, params: dict, **context) -> dict:
+        """Route a JSON-RPC method to the appropriate handler."""
+        fn = self._methods.get(method)
+        if not fn:
+            return self.err(rpc_id, -32601, f"Method not found: {method}")
+        return await fn(rpc_id, params, **context)

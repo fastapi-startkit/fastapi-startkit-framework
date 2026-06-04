@@ -1,20 +1,19 @@
-"""Argument dataclass for MCP prompt arguments."""
+from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 
 @dataclass
 class Argument:
-    """Represents a single argument accepted by a Prompt."""
+    """A single prompt argument definition."""
 
     name: str
-    description: Optional[str] = field(default=None)
-    required: bool = field(default=False)
+    description: str | None = None
+    required: bool = False
 
     def to_json(self) -> dict:
-        """Serialise to MCP-compatible JSON."""
-        data: dict = {"name": self.name, "required": self.required}
-        if self.description is not None:
-            data["description"] = self.description
-        return data
+        """Build the MCP argument definition for ``prompts/list``."""
+        entry: dict = {"name": self.name, "required": self.required}
+        if self.description:
+            entry["description"] = self.description
+        return entry

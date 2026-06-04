@@ -1,45 +1,41 @@
-"""Abstract base class for MCP prompts."""
+from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import TYPE_CHECKING
 
 from .argument import Argument
-from .response import Response
+
+if TYPE_CHECKING:
+    from .response import Response
 
 
 class Prompt(ABC):
     """Base class for MCP prompts.
 
-    Subclasses must set ``name`` and implement ``handle()``.
-    Override ``arguments()`` to declare accepted arguments.
-    Override ``should_register()`` to conditionally skip registration.
+    Subclasses must set ``name`` and implement ``handle``.
     """
 
-    name: str
-    description: Optional[str] = None
-    title: Optional[str] = None
-
-    def arguments(self) -> list[Argument]:
-        """Return the list of arguments this prompt accepts."""
-        return []
+    title: str | None = None
+    name: str | None = None
+    description: str | None = None
 
     def should_register(self) -> bool:
-        """Return False to prevent this prompt from being registered."""
+        """Return ``False`` to conditionally skip registration."""
         return True
+
+    def arguments(self) -> list[Argument]:
+        """Return the prompt's argument definitions."""
+        return []
 
     @abstractmethod
     async def handle(self, arguments: dict) -> Response:
-        """Render the prompt with the given arguments and return a Response."""
-        raise NotImplementedError
+        """Generate the prompt content. Returns a ``Response``."""
+        ...
 
     def to_json(self) -> dict:
-        """Serialise to the MCP prompts/list format."""
-        data: dict = {"name": self.name}
-        if self.description is not None:
-            data["description"] = self.description
-        if self.title is not None:
-            data["title"] = self.title
-        args = self.arguments()
-        if args:
-            data["arguments"] = [arg.to_json() for arg in args]
-        return data
+        """Build the MCP prompt definition for ``prompts/list``."""
+        return {
+            "name": self.name,
+            "description": self.description,
+            "arguments": [a.to_json() for a in self.arguments()],
+        }

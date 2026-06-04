@@ -1,79 +1,115 @@
-"""MCP Server base class."""
+from __future__ import annotations
 
-from typing import Optional, Type
+from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse, Response as StarletteResponse
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 
 from .protocol import Protocol
 from .request import JsonRpcRequest
-from .tool import Tool
-from .prompt import Prompt
-from .resource import Resource
+
+if TYPE_CHECKING:
+    from .tool import Tool
+    from .prompt import Prompt
+    from .resource import Resource
 
 
 class Server:
     """Base class for MCP servers.
 
-    Subclasses must set ``name`` and override ``tools()``, ``prompts()``,
-    and/or ``resources()`` to register capabilities.
-
-    Usage::
+    Subclasses set ``name``/``description``/``instructions`` and override
+    ``tools()``, ``prompts()``, and ``resources()`` to return lists of the
+    corresponding subclasses to register, then mount the server on a
+    FastAPI app::
 
         class MyServer(Server):
             name = "my-server"
+            def tools(self): return [MyTool]
 
-            def tools(self):
-                return [AddTool]
-
-        server = MyServer()
-        app.include_router(server.router("/mcp"))
+        mcp = MyServer()
+        app.include_router(mcp.router("/mcp"))
     """
 
-    name: str
-    description: Optional[str] = None
-    instructions: Optional[str] = None
+    name: str | None = None
+    description: str | None = None
+    instructions: str | None = None
 
-    def tools(self) -> Optional[list[Type[Tool]]]:
-        """Return a list of Tool classes to register, or None."""
+    def tools(self) -> list[type[Tool]] | None:
+        """Return Tool subclasses to register."""
         return None
 
-    def prompts(self) -> Optional[list[Type[Prompt]]]:
-        """Return a list of Prompt classes to register, or None."""
+    def prompts(self) -> list[type[Prompt]] | None:
+        """Return Prompt subclasses to register."""
         return None
 
-    def resources(self) -> Optional[list[Type[Resource]]]:
-        """Return a list of Resource classes to register, or None."""
+    def resources(self) -> list[type[Resource]] | None:
+        """Return Resource subclasses to register."""
         return None
 
-    def router(self, prefix: str = "/mcp") -> APIRouter:
-        """Build and return a FastAPI APIRouter for this server.
+    def schema(self) -> dict | None:
+        """Optional custom server schema."""
+        return None
 
-        The router exposes:
-        - ``POST {prefix}`` — JSON-RPC 2.0 endpoint
-        - ``GET {prefix}``  — returns 405 with ``Allow: POST``
+    def middleware(self) -> list | None:
+        """Optional middleware callables for request processing."""
+        return None
+
+    def capabilities(self) -> dict:
+        """Build MCP capabilities dict from registered components."""
+        caps: dict = {}
+        if self.tools():
+            caps["tools"] = {}
+        if self.prompts():
+            caps["prompts"] = {}
+        if self.resources():
+            caps["resources"] = {}
+        return caps
+
+    def _build_protocol(self) -> Protocol:
+        tools = [cls() for cls in (self.tools() or [])]
+
+        prompts = []
+        for cls in self.prompts() or []:
+            instance = cls()
+            if instance.should_register():
+                prompts.append(instance)
+
+        resources = [cls() for cls in (self.resources() or [])]
+
+        return (
+            Protocol(self)
+            .tools(tools)
+            .prompts(prompts)
+            .resources(resources)
+        )
+
+    def router(self, prefix: str) -> APIRouter:
+        """Return a FastAPI ``APIRouter`` exposing the MCP JSON-RPC endpoints.
+
+        Mount it with ``app.include_router(server.router("/mcp"))`` on a
+        ``FastAPI`` app or any ``APIRouter``. Pass ``""`` to mount at the root.
         """
-        protocol = Protocol(self)
-        api_router = APIRouter(prefix=prefix)
+        router = APIRouter()
+        protocol = self._build_protocol()
+        path = prefix or "/"
 
-        @api_router.post("")
-        async def handle_post(request: Request) -> StarletteResponse:
-            body = await request.json()
-            rpc = JsonRpcRequest(**body)
+        @router.post(path)
+        async def handle_post(request: JsonRpcRequest):
+            # Notifications (no id) — acknowledge
+            if request.is_notification:
+                return JSONResponse({}, status_code=202)
 
-            if rpc.is_notification:
-                # Fire-and-forget: dispatch but return 202 immediately
-                await protocol.dispatch(rpc.method, rpc.params, rpc.id)
-                return StarletteResponse(status_code=202)
+            result = await protocol.dispatch(
+                request.method, request.id, request.params
+            )
+            return JSONResponse(result)
 
-            result = await protocol.dispatch(rpc.method, rpc.params, rpc.id)
-            return JSONResponse(content=result)
-
-        @api_router.get("")
-        async def handle_get() -> StarletteResponse:
-            return StarletteResponse(
+        @router.get(path)
+        async def handle_get():
+            return JSONResponse(
+                {"error": "Use POST for JSON-RPC requests"},
                 status_code=405,
                 headers={"Allow": "POST"},
             )
 
-        return api_router
+        return router

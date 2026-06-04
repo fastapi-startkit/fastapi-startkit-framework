@@ -1,19 +1,17 @@
-"""JSON-RPC 2.0 request model."""
+from __future__ import annotations
 
-from typing import Any, Optional, Union
-
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class JsonRpcRequest(BaseModel):
-    """Represents a JSON-RPC 2.0 request or notification."""
+    """A JSON-RPC 2.0 request envelope for the MCP transport."""
 
     jsonrpc: str = "2.0"
-    method: str
-    params: Optional[dict[str, Any]] = None
-    id: Optional[Union[str, int]] = None
+    method: str = ""
+    id: str | int | None = None
+    params: dict = Field(default_factory=dict)
 
     @property
     def is_notification(self) -> bool:
-        """Return True when the request has no id (i.e. it is a notification)."""
+        """Requests without an ``id`` are notifications (no response expected)."""
         return self.id is None
