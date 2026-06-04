@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from .resource import Resource
 
 PROTOCOL_VERSION = "2024-11-05"
+MCP_PROTOCOL_VERSION = PROTOCOL_VERSION
 
 
 class Protocol:
