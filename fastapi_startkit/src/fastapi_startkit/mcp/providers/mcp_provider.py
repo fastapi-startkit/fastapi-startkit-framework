@@ -1,34 +1,19 @@
 from fastapi_startkit.providers import Provider
-from fastapi_startkit.mcp.server import Server
 
 
 class McpProvider(Provider):
-    """Base provider for mounting an MCP server on the FastAPI application.
+    """Provider that bootstraps the MCP component for fastapi-startkit.
 
-    Subclass this provider, override ``server()`` to return your ``Server``
-    instance, and register it alongside ``FastAPIProvider``::
+    Register it alongside ``FastAPIProvider`` to make MCP available in
+    your application::
 
-        class AppMcpProvider(McpProvider):
-            def server(self) -> Server:
-                return DevToolsServer()
-
-        app = Application(providers=[FastAPIProvider, AppMcpProvider])
-
-    The router is mounted at ``/mcp`` by default. Override ``prefix`` to
-    change it.
+        app = Application(providers=[FastAPIProvider, McpProvider])
     """
 
-    prefix: str = "/mcp"
-
-    def server(self) -> Server:
-        """Return the Server instance to mount. Must be overridden."""
-        raise NotImplementedError("Subclasses must implement server()")
+    provider_key = "mcp"
 
     def register(self) -> None:
-        """Bind the MCP server instance into the container."""
-        self.app.bind("mcp.server", self.server())
+        """Register MCP bindings into the container."""
 
     def boot(self) -> None:
-        """Mount the MCP router on the FastAPI application."""
-        server = self.app.make("mcp.server")
-        self.app.include_router(server.router(prefix=self.prefix))
+        """Boot the MCP component."""
