@@ -11,10 +11,12 @@ from .resource import Resource
 from .response import Response
 from .server import Server
 from .tool import Tool
+from .providers.mcp_provider import McpProvider
 
 __all__ = [
     "Argument",
     "JsonRpcRequest",
+    "McpProvider",
     "Prompt",
     "Resource",
     "Response",
