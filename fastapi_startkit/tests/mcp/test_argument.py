@@ -1,6 +1,5 @@
 """Tests for the Argument dataclass."""
 
-import pytest
 
 from fastapi_startkit.mcp.argument import Argument
 

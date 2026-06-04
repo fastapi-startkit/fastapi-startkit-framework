@@ -1,6 +1,5 @@
 """Tests for the Tool base class."""
 
-import pytest
 from pydantic import BaseModel
 
 from fastapi_startkit.mcp.tool import Tool

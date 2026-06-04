@@ -1,6 +1,5 @@
 """Tests for the Resource base class."""
 
-import pytest
 
 from fastapi_startkit.mcp.resource import Resource
 

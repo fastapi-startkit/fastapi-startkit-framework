@@ -1,6 +1,5 @@
 """Tests for the JsonRpcRequest model."""
 
-import pytest
 
 from fastapi_startkit.mcp.request import JsonRpcRequest
 

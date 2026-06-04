@@ -1,7 +1,5 @@
 """Tests for the Server class and its FastAPI router."""
 
-import json
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from fastapi.routing import APIRouter
@@ -10,7 +8,6 @@ from fastapi_startkit.mcp.server import Server
 from fastapi_startkit.mcp.tool import Tool
 from fastapi_startkit.mcp.prompt import Prompt
 from fastapi_startkit.mcp.resource import Resource
-from fastapi_startkit.mcp.argument import Argument
 from fastapi_startkit.mcp.response import Response
 
 

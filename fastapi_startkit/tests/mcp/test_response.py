@@ -1,7 +1,6 @@
 """Tests for the Response class."""
 
 import json
-import pytest
 
 from fastapi_startkit.mcp.response import Response
 
