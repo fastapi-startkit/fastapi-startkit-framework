@@ -86,6 +86,7 @@ class TestToolHandle:
 
     async def test_add_handle(self):
         import json
+
         tool = AddTool()
         result = await tool.handle({"a": 3, "b": 4})
         content = result.to_content()[0]

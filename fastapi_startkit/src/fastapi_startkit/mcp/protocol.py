@@ -99,10 +99,7 @@ class Protocol:
             prompt = prompt_cls()
             if prompt.name == name and prompt.should_register():
                 response = await prompt.handle(arguments)
-                messages = [
-                    {"role": "user", "content": item}
-                    for item in response.to_content()
-                ]
+                messages = [{"role": "user", "content": item} for item in response.to_content()]
                 return {"messages": messages}
         return self._error_result(-32602, f"Prompt not found: {name}")
 

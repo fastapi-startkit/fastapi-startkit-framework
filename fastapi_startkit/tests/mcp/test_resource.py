@@ -1,6 +1,5 @@
 """Tests for the Resource base class."""
 
-
 from fastapi_startkit.mcp.resource import Resource
 
 
@@ -62,6 +61,7 @@ class TestResourceRead:
     async def test_read_returns_json_string(self):
         result = await JsonResource().read()
         import json
+
         assert json.loads(result) == {"key": "value"}
 
     async def test_read_accepts_kwargs(self):

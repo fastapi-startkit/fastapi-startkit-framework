@@ -1,6 +1,5 @@
 """Tests for the Prompt base class."""
 
-
 from fastapi_startkit.mcp.prompt import Prompt
 from fastapi_startkit.mcp.argument import Argument
 from fastapi_startkit.mcp.response import Response

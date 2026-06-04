@@ -103,11 +103,17 @@ class TestServerRouter:
 class TestPostDispatch:
     def test_initialize(self):
         client = make_client()
-        resp = client.post("/mcp", json=rpc("initialize", {
-            "protocolVersion": "2024-11-05",
-            "capabilities": {},
-            "clientInfo": {"name": "test", "version": "1.0"},
-        }))
+        resp = client.post(
+            "/mcp",
+            json=rpc(
+                "initialize",
+                {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {"name": "test", "version": "1.0"},
+                },
+            ),
+        )
         assert resp.status_code == 200
         body = resp.json()
         assert body["result"]["serverInfo"]["name"] == "test-server"
