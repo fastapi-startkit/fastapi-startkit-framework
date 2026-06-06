@@ -243,6 +243,8 @@ class Migrator:
         await self.reset(migration)
         await self.migrate(migration)
 
+    _SQLITE_SYSTEM_TABLES = {"sqlite_sequence", "sqlite_stat1", "sqlite_stat2", "sqlite_stat3", "sqlite_stat4"}
+
     async def drop_all_tables(self, ignore_fk=False):
         if self.command_class:
             self.command_class.line("<comment>Dropping all tables</comment>")
@@ -251,6 +253,8 @@ class Migrator:
             await self.schema.disable_foreign_key_constraints()
 
         for table in await self.schema.get_all_tables():
+            if table in self._SQLITE_SYSTEM_TABLES or table.startswith("sqlite_"):
+                continue
             await self.schema.drop(table)
 
         if ignore_fk:
