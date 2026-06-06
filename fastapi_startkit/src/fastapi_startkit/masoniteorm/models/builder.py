@@ -93,7 +93,7 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
         result = await self.find(primary_key, columns)
         if result is None:
             raise ModelNotFoundException(
-                f"{self._model.__class__.__name__} with primary key {primary_key!r} not found."
+                f"{self._model.__name__} with primary key {primary_key!r} not found."
             )
         return result
 
@@ -238,6 +238,10 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
 
     async def count(self, column: str = "*"):
         return await self.aggregate("COUNT", column)
+
+    async def exists(self) -> bool:
+        """Return True if any record matches the current query, False otherwise."""
+        return (await self.count() or 0) > 0
 
     async def sum(self, column: str):
         return await self.aggregate("SUM", column)
