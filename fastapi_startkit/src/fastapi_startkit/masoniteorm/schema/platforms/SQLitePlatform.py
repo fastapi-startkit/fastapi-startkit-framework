@@ -63,16 +63,32 @@ class SQLitePlatform(Platform):
 
     premapped_nulls = {True: "NULL", False: "NOT NULL"}
 
+    _autoincrement_types = {"big_increments", "increments"}
+
     def compile_create_sql(self, table, if_not_exists=False):
         sql = []
         table_create_format = self.create_if_not_exists_format() if if_not_exists else self.create_format()
+
+        # Exclude the PRIMARY KEY table constraint for autoincrement columns — it is
+        # emitted inline as INTEGER PRIMARY KEY AUTOINCREMENT instead.
+        autoincrement_cols = {
+            col_name
+            for col_name, col in table.get_added_columns().items()
+            if col.column_type in self._autoincrement_types
+        }
+        non_autoincrement_constraints = {
+            k: v
+            for k, v in table.get_added_constraints().items()
+            if not (v.constraint_type == "primary_key" and set(v.columns) & autoincrement_cols)
+        }
+
         sql.append(
             table_create_format.format(
                 table=self.get_table_string().format(table=table.name).strip(),
                 columns=", ".join(self.columnize(table.get_added_columns())).strip(),
                 constraints=(
-                    ", " + ", ".join(self.constraintize(table.get_added_constraints()))
-                    if table.get_added_constraints()
+                    ", " + ", ".join(self.constraintize(non_autoincrement_constraints))
+                    if non_autoincrement_constraints
                     else ""
                 ),
                 foreign_keys=(
@@ -92,6 +108,11 @@ class SQLitePlatform(Platform):
     def columnize(self, columns):
         sql = []
         for name, column in columns.items():
+            # SQLite requires AUTOINCREMENT inline: INTEGER PRIMARY KEY AUTOINCREMENT
+            if column.column_type in self._autoincrement_types:
+                sql.append(f"{self.wrap_column(column.name)} INTEGER PRIMARY KEY AUTOINCREMENT")
+                continue
+
             if column.length:
                 length = self.create_column_length(column.column_type).format(length=column.length)
             else:
