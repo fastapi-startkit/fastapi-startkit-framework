@@ -35,10 +35,7 @@ def test_ping_pong(client):
 def test_subscribe_to_channel(client):
     with client.websocket_connect("/app/local") as ws:
         ws.receive_text()  # connection_established
-        ws.send_text(json.dumps({
-            "event": "pusher:subscribe",
-            "data": {"channel": "orders.1"}
-        }))
+        ws.send_text(json.dumps({"event": "pusher:subscribe", "data": {"channel": "orders.1"}}))
         msg = json.loads(ws.receive_text())
         assert msg["event"] == "pusher_internal:subscription_succeeded"
         assert msg["channel"] == "orders.1"
@@ -52,14 +49,12 @@ def test_broadcast_delivers_to_subscriber(server):
         ws.receive_text()  # connection_established
 
         # Subscribe
-        ws.send_text(json.dumps({
-            "event": "pusher:subscribe",
-            "data": {"channel": "orders.1"}
-        }))
+        ws.send_text(json.dumps({"event": "pusher:subscribe", "data": {"channel": "orders.1"}}))
         ws.receive_text()  # subscription_succeeded
 
         # Broadcast from server side
         import asyncio
+
         asyncio.get_event_loop().run_until_complete(
             server.broadcast_to_channel("orders.1", "OrderShipped", {"order_id": 1})
         )

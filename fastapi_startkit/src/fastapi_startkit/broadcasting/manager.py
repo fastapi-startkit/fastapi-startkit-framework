@@ -7,9 +7,11 @@ class BroadcastManager:
         name = name or self._config.get("default", "log")
         if name == "log":
             from .drivers.log_driver import LogDriver
+
             return LogDriver()
         elif name == "reverb":
             from .drivers.reverb_driver import ReverbDriver
+
             return ReverbDriver(self._server)
         raise ValueError(f"Unknown broadcast driver: {name}")
 

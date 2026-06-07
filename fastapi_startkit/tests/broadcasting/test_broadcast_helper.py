@@ -20,6 +20,7 @@ async def test_broadcast_helper_calls_manager_event():
 
     with patch("fastapi_startkit.broadcasting.helpers.app", mock_app):
         from fastapi_startkit.broadcasting.helpers import broadcast
+
         event = OrderShipped(1)
         await broadcast(event)
         mock_manager.event.assert_awaited_once_with(event)
@@ -34,6 +35,7 @@ async def test_broadcast_helper_resolves_broadcasting_key():
 
     with patch("fastapi_startkit.broadcasting.helpers.app", mock_app):
         from fastapi_startkit.broadcasting.helpers import broadcast
+
         await broadcast(OrderShipped(2))
         mock_app_instance.make.assert_called_once_with("broadcasting")
 
@@ -47,6 +49,7 @@ async def test_broadcast_helper_passes_event_to_manager():
 
     with patch("fastapi_startkit.broadcasting.helpers.app", mock_app):
         from fastapi_startkit.broadcasting.helpers import broadcast
+
         event = OrderShipped(99)
         await broadcast(event)
         args = mock_manager.event.call_args[0]

@@ -30,6 +30,7 @@ def test_manager_resolves_log_driver_by_name():
 
 def test_manager_resolves_reverb_driver():
     from fastapi_startkit.broadcasting.drivers.reverb_driver import ReverbDriver
+
     config = {"default": "reverb"}
     mock_server = MagicMock()
     manager = BroadcastManager(config, server=mock_server)

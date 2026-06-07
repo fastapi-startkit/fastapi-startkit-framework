@@ -4,6 +4,4 @@ class ReverbDriver:
 
     async def broadcast(self, event) -> None:
         for channel in event.broadcast_on():
-            await self.server.broadcast_to_channel(
-                channel.name, event.broadcast_as(), event.broadcast_with()
-            )
+            await self.server.broadcast_to_channel(channel.name, event.broadcast_as(), event.broadcast_with())

@@ -1,7 +1,6 @@
 from fastapi_startkit.broadcasting.channels import Channel
 from fastapi_startkit.broadcasting.event import BroadcastEvent
 
-
 class Broadcast:
     """Facade for broadcasting events over WebSocket channels."""
 

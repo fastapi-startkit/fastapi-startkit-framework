@@ -14,10 +14,14 @@ class ReverbServer:
     async def handle(self, websocket: WebSocket):
         await websocket.accept()
         socket_id = self.connections.add(websocket)
-        await websocket.send_text(json.dumps({
-            "event": "pusher:connection_established",
-            "data": json.dumps({"socket_id": socket_id, "activity_timeout": 120})
-        }))
+        await websocket.send_text(
+            json.dumps(
+                {
+                    "event": "pusher:connection_established",
+                    "data": json.dumps({"socket_id": socket_id, "activity_timeout": 120}),
+                }
+            )
+        )
         try:
             while True:
                 data = await websocket.receive_text()
@@ -34,11 +38,9 @@ class ReverbServer:
         elif event == "pusher:subscribe":
             channel = message.get("data", {}).get("channel", "")
             self.channels.subscribe(channel, socket_id)
-            await websocket.send_text(json.dumps({
-                "event": "pusher_internal:subscription_succeeded",
-                "channel": channel,
-                "data": {}
-            }))
+            await websocket.send_text(
+                json.dumps({"event": "pusher_internal:subscription_succeeded", "channel": channel, "data": {}})
+            )
 
     async def broadcast_to_channel(self, channel_name: str, event_name: str, data: dict):
         payload = json.dumps({"event": event_name, "channel": channel_name, "data": data})
