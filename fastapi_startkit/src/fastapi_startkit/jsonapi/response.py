@@ -51,6 +51,7 @@ from urllib.parse import unquote_plus
 # Query-param helpers
 # ---------------------------------------------------------------------------
 
+
 def parse_include(param: str | None) -> list[str]:
     """Parse ``?include=author,comments`` into ``["author", "comments"]``.
 
@@ -103,9 +104,7 @@ def parse_fields(raw_query: dict[str, str]) -> dict[str, list[str]]:
         if key.startswith("fields[") and key.endswith("]"):
             resource_type = key[7:-1].strip()
             if resource_type:
-                result[resource_type] = [
-                    f.strip() for f in value.split(",") if f.strip()
-                ]
+                result[resource_type] = [f.strip() for f in value.split(",") if f.strip()]
     return result
 
 
@@ -159,14 +158,16 @@ try:
                 self.serialize(include=include, fields=fields)  # type: ignore[attr-defined]
             ).encode("utf-8")
 
-            await send({
-                "type": "http.response.start",
-                "status": 200,
-                "headers": [
-                    [b"content-type", b"application/vnd.api+json"],
-                    [b"content-length", str(len(body)).encode()],
-                ],
-            })
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 200,
+                    "headers": [
+                        [b"content-type", b"application/vnd.api+json"],
+                        [b"content-length", str(len(body)).encode()],
+                    ],
+                }
+            )
             await send({"type": "http.response.body", "body": body})
 
 except ImportError:  # starlette / fastapi not installed
@@ -182,6 +183,7 @@ except ImportError:  # starlette / fastapi not installed
 # ---------------------------------------------------------------------------
 # Core classes
 # ---------------------------------------------------------------------------
+
 
 class JsonAPIResponse(_FastAPICallable):
     """Base class for a single JSON:API resource.
@@ -275,8 +277,7 @@ class JsonAPIResponse(_FastAPICallable):
         rel_objs = self.to_relationships()
         if rel_objs:
             data["relationships"] = {
-                name: {"data": {"type": resource.type, "id": str(resource.id)}}
-                for name, resource in rel_objs.items()
+                name: {"data": {"type": resource.type, "id": str(resource.id)}} for name, resource in rel_objs.items()
             }
 
         return data
@@ -310,11 +311,7 @@ class JsonAPIResponse(_FastAPICallable):
             included.append(resource._build_data(fields=fields))
 
             # Recurse for nested dot-notation includes (e.g. "author.company").
-            nested = [
-                part[len(name) + 1:]
-                for part in include
-                if part.startswith(f"{name}.")
-            ]
+            nested = [part[len(name) + 1 :] for part in include if part.startswith(f"{name}.")]
             if nested:
                 included.extend(resource._collect_included(nested, seen, fields=fields))
 

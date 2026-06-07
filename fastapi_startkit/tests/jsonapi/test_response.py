@@ -8,6 +8,7 @@ from fastapi_startkit.jsonapi import JsonAPIResponse
 # Fixture resources
 # ---------------------------------------------------------------------------
 
+
 class UserResource(JsonAPIResponse):
     type = "users"
     attributes = ["name", "email"]
@@ -51,6 +52,7 @@ class PostWithLinksResource(PostResource):
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 class TestJsonAPIResponseStructure:
     def test_serialize_returns_dict(self):

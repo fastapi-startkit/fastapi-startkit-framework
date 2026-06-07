@@ -8,6 +8,7 @@ from fastapi_startkit.jsonapi import JsonAPIResponse, JsonAPIListResponse
 # Fixture resources — three-level hierarchy: Post → Author → Company
 # ---------------------------------------------------------------------------
 
+
 class CompanyResource(JsonAPIResponse):
     type = "companies"
     attributes = ["name"]
@@ -76,16 +77,14 @@ class PostResource(JsonAPIResponse):
 # Tests
 # ---------------------------------------------------------------------------
 
+
 class TestIncludeSingleRelationship:
     def test_include_author_present(self):
         author = AuthorResource(1, "alice")
         post = PostResource(10, "My Post", author=author)
         doc = post.serialize(include=["author"])
         assert "included" in doc
-        assert any(
-            inc["type"] == "authors" and inc["id"] == "1"
-            for inc in doc["included"]
-        )
+        assert any(inc["type"] == "authors" and inc["id"] == "1" for inc in doc["included"])
 
     def test_include_uses_resource_attributes(self):
         author = AuthorResource(1, "alice")

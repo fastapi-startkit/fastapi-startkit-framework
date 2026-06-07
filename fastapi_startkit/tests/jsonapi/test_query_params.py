@@ -15,6 +15,7 @@ from fastapi_startkit.jsonapi import (
 # Fixture resources
 # ---------------------------------------------------------------------------
 
+
 class UserResource(JsonAPIResponse):
     type = "users"
     attributes = ["name", "email", "role"]
@@ -53,6 +54,7 @@ class PostResource(JsonAPIResponse):
 # parse_include() tests
 # ---------------------------------------------------------------------------
 
+
 class TestParseInclude:
     def test_single_name(self):
         assert parse_include("author") == ["author"]
@@ -80,6 +82,7 @@ class TestParseInclude:
 # parse_fields() tests
 # ---------------------------------------------------------------------------
 
+
 class TestParseFields:
     def test_single_type_single_field(self):
         result = parse_fields({"fields[posts]": "title"})
@@ -90,10 +93,12 @@ class TestParseFields:
         assert result == {"posts": ["title", "body"]}
 
     def test_multiple_types(self):
-        result = parse_fields({
-            "fields[posts]": "title,created_at",
-            "fields[users]": "name",
-        })
+        result = parse_fields(
+            {
+                "fields[posts]": "title,created_at",
+                "fields[users]": "name",
+            }
+        )
         assert result == {"posts": ["title", "created_at"], "users": ["name"]}
 
     def test_strips_whitespace_in_fields(self):
@@ -114,6 +119,7 @@ class TestParseFields:
 # ---------------------------------------------------------------------------
 # Sparse fieldset serialization tests
 # ---------------------------------------------------------------------------
+
 
 class TestSparseFieldsets:
     def test_single_resource_fields_filtered(self):
@@ -168,6 +174,7 @@ class TestSparseFieldsets:
 # ---------------------------------------------------------------------------
 # FastAPI ASGI __call__ integration tests
 # ---------------------------------------------------------------------------
+
 
 class TestFastAPIAsgiResponse:
     """Test that JsonAPIResponse instances can be returned directly from

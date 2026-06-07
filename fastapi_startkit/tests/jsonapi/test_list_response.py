@@ -8,6 +8,7 @@ from fastapi_startkit.jsonapi import JsonAPIListResponse, JsonAPIResponse
 # Fixture resources
 # ---------------------------------------------------------------------------
 
+
 class AuthorResource(JsonAPIResponse):
     type = "authors"
     attributes = ["name"]
@@ -49,6 +50,7 @@ class ArticleListWithMeta(JsonAPIListResponse):
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 class TestJsonAPIListResponseStructure:
     def test_data_is_list(self):
