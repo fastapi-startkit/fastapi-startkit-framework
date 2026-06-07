@@ -1,4 +1,3 @@
-import pytest
 from fastapi_startkit.broadcasting.channels import Channel, PrivateChannel, PresenceChannel
 
 

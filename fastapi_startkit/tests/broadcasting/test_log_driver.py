@@ -1,6 +1,5 @@
 import pytest
-import logging
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from fastapi_startkit.broadcasting.drivers.log_driver import LogDriver
 from fastapi_startkit.broadcasting.channels import Channel
 from fastapi_startkit.broadcasting.event import BroadcastEvent
