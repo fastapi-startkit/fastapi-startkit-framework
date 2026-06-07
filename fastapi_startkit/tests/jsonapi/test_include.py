@@ -1,6 +1,5 @@
 """Tests for include= sideloading logic in JsonAPIResponse."""
 
-import pytest
 from fastapi_startkit.jsonapi import JsonAPIResponse, JsonAPIListResponse
 
 

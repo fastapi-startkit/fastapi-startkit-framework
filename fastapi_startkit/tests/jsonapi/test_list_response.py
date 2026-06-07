@@ -1,6 +1,5 @@
 """Tests for JsonAPIListResponse serialization."""
 
-import pytest
 from fastapi_startkit.jsonapi import JsonAPIListResponse, JsonAPIResponse
 
 
