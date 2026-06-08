@@ -1,6 +1,6 @@
 """Tests for include sideloading via the .include() chain method."""
 
-from fastapi_startkit.jsonapi import JsonResource, _ResourceCollection
+from fastapi_startkit.jsonapi import JsonResource, ResourceCollection
 
 
 # ---------------------------------------------------------------------------
@@ -137,7 +137,7 @@ class TestIncludeDeduplication:
             PostResource(FakePost(1, "P1", author=author)),
             PostResource(FakePost(2, "P2", author=author)),
         ]
-        doc = _ResourceCollection(posts).include("author").serialize()
+        doc = ResourceCollection(posts).include("author").serialize()
         author_entries = [i for i in doc["included"] if i["type"] == "authors"]
         assert len(author_entries) == 1
 

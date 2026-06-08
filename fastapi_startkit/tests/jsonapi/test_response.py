@@ -1,6 +1,6 @@
 """Tests for JsonResource serialization."""
 
-from fastapi_startkit.jsonapi import JsonResource, _ResourceCollection
+from fastapi_startkit.jsonapi import JsonResource, ResourceCollection
 
 
 # ---------------------------------------------------------------------------
@@ -168,5 +168,5 @@ class TestJsonAPIResponseInclude:
         author = FakeUser(10, "Alice")
         post1 = PostResource(FakePost(1, "P1", "B1", author=author))
         post2 = PostResource(FakePost(2, "P2", "B2", author=author))
-        doc = _ResourceCollection([post1, post2]).include("author").serialize()
+        doc = ResourceCollection([post1, post2]).include("author").serialize()
         assert len(doc["included"]) == 1

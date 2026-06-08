@@ -207,7 +207,7 @@ class JsonResource(Generic[T], _FastAPICallable):
     -------------
     collection(items)
         Wrap a plain list **or** a ``LengthAwarePaginator`` / ``SimplePaginator``
-        in a :class:`_ResourceCollection`.  Pagination meta is included
+        in a :class:`ResourceCollection`.  Pagination meta is included
         automatically.
 
     Overridable hooks
@@ -429,8 +429,8 @@ class JsonResource(Generic[T], _FastAPICallable):
     # ------------------------------------------------------------------
 
     @classmethod
-    def collection(cls, items: Any) -> "_ResourceCollection":
-        """Wrap *items* in a :class:`_ResourceCollection`.
+    def collection(cls, items: Any) -> "ResourceCollection":
+        """Wrap *items* in a :class:`ResourceCollection`.
 
         *items* may be:
 
@@ -449,19 +449,19 @@ class JsonResource(Generic[T], _FastAPICallable):
 
             if isinstance(items, BasePaginator):
                 resource_items = [cls(model) for model in items]
-                return _ResourceCollection(resource_items, paginator=items, primary_type=cls.type)
+                return ResourceCollection(resource_items, paginator=items, primary_type=cls.type)
         except ImportError:
             pass
 
-        return _ResourceCollection([cls(model) for model in items], primary_type=cls.type)
+        return ResourceCollection([cls(model) for model in items], primary_type=cls.type)
 
 
 # ---------------------------------------------------------------------------
-# _ResourceCollection
+# ResourceCollection
 # ---------------------------------------------------------------------------
 
 
-class _ResourceCollection(_FastAPICallable):
+class ResourceCollection(_FastAPICallable):
     """Wraps a list of :class:`JsonResource` instances as a JSON:API collection.
 
     Prefer creating instances via :meth:`JsonResource.collection`::
@@ -491,7 +491,7 @@ class _ResourceCollection(_FastAPICallable):
     # Fluent chain API
     # ------------------------------------------------------------------
 
-    def include(self, *relationships: str) -> "_ResourceCollection":
+    def include(self, *relationships: str) -> "ResourceCollection":
         """Sideload one or more relationships into ``included[]``.
 
         :param relationships: relationship names to sideload.
@@ -501,7 +501,7 @@ class _ResourceCollection(_FastAPICallable):
         self._chain_state_set = True
         return self
 
-    def fields(self, *field_specs: str) -> "_ResourceCollection":
+    def fields(self, *field_specs: str) -> "ResourceCollection":
         """Restrict which attributes are returned (JSON:API sparse fieldsets).
 
         Same dot-notation as :meth:`JsonResource.fields` — plain names apply

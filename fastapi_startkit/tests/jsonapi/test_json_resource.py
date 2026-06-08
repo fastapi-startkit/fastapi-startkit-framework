@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from fastapi_startkit.jsonapi import (
     JsonResource,
-    _ResourceCollection,
+    ResourceCollection,
 )
 from fastapi_startkit.masoniteorm.pagination.LengthAwarePaginator import (
     LengthAwarePaginator,
@@ -313,7 +313,7 @@ class TestCollectionList:
     def test_returns_resource_collection(self):
         models = [FakeModel(i, title=f"Post {i}") for i in range(3)]
         coll = PostResource.collection(models)
-        assert isinstance(coll, _ResourceCollection)
+        assert isinstance(coll, ResourceCollection)
 
     def test_data_length(self):
         models = [FakeModel(i, title=f"Post {i}") for i in range(5)]
@@ -350,7 +350,7 @@ class TestCollectionLengthAwarePaginator:
     def test_returns_resource_collection(self):
         pag = self._make_paginator()
         coll = PostResource.collection(pag)
-        assert isinstance(coll, _ResourceCollection)
+        assert isinstance(coll, ResourceCollection)
 
     def test_items_wrapped(self):
         pag = self._make_paginator(n=3)
@@ -399,7 +399,7 @@ class TestCollectionSimplePaginator:
     def test_returns_resource_collection(self):
         pag = self._make_paginator()
         coll = PostResource.collection(pag)
-        assert isinstance(coll, _ResourceCollection)
+        assert isinstance(coll, ResourceCollection)
 
     def test_meta_present(self):
         pag = self._make_paginator(n=3, per_page=2, page=1)

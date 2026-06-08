@@ -1,6 +1,6 @@
-"""Tests for _ResourceCollection serialization."""
+"""Tests for ResourceCollection serialization."""
 
-from fastapi_startkit.jsonapi import JsonResource, _ResourceCollection
+from fastapi_startkit.jsonapi import JsonResource, ResourceCollection
 
 
 # ---------------------------------------------------------------------------
@@ -43,7 +43,7 @@ class ArticleResource(JsonResource[FakeArticle]):
         return {"author": AuthorResource(self.model.author)}
 
 
-class ArticleListWithMeta(_ResourceCollection):
+class ArticleListWithMeta(ResourceCollection):
     def to_meta(self):
         return {"total": len(self._items)}
 
@@ -59,37 +59,37 @@ class ArticleListWithMeta(_ResourceCollection):
 class TestJsonAPIListResponseStructure:
     def test_data_is_list(self):
         items = [ArticleResource(FakeArticle(1, "A")), ArticleResource(FakeArticle(2, "B"))]
-        doc = _ResourceCollection(items).serialize()
+        doc = ResourceCollection(items).serialize()
         assert isinstance(doc["data"], list)
 
     def test_data_length(self):
         items = [ArticleResource(FakeArticle(i, f"Article {i}")) for i in range(3)]
-        doc = _ResourceCollection(items).serialize()
+        doc = ResourceCollection(items).serialize()
         assert len(doc["data"]) == 3
 
     def test_each_item_has_type_and_id(self):
         items = [ArticleResource(FakeArticle(1, "A")), ArticleResource(FakeArticle(2, "B"))]
-        doc = _ResourceCollection(items).serialize()
+        doc = ResourceCollection(items).serialize()
         for item_data in doc["data"]:
             assert "type" in item_data
             assert "id" in item_data
 
     def test_data_types(self):
         items = [ArticleResource(FakeArticle(1, "A"))]
-        doc = _ResourceCollection(items).serialize()
+        doc = ResourceCollection(items).serialize()
         assert doc["data"][0]["type"] == "articles"
 
     def test_empty_list(self):
-        doc = _ResourceCollection([]).serialize()
+        doc = ResourceCollection([]).serialize()
         assert doc["data"] == []
         assert "included" not in doc
 
     def test_no_links_by_default(self):
-        doc = _ResourceCollection([ArticleResource(FakeArticle(1, "A"))]).serialize()
+        doc = ResourceCollection([ArticleResource(FakeArticle(1, "A"))]).serialize()
         assert "links" not in doc
 
     def test_no_meta_by_default(self):
-        doc = _ResourceCollection([ArticleResource(FakeArticle(1, "A"))]).serialize()
+        doc = ResourceCollection([ArticleResource(FakeArticle(1, "A"))]).serialize()
         assert "meta" not in doc
 
     def test_links_when_overridden(self):
@@ -107,14 +107,14 @@ class TestJsonAPIListResponseInclude:
     def test_included_when_include_specified(self):
         author = FakeAuthor(5, "Bob")
         items = [ArticleResource(FakeArticle(1, "A", author=author))]
-        doc = _ResourceCollection(items).include("author").serialize()
+        doc = ResourceCollection(items).include("author").serialize()
         assert "included" in doc
         assert len(doc["included"]) == 1
 
     def test_included_contains_correct_resource(self):
         author = FakeAuthor(5, "Bob")
         items = [ArticleResource(FakeArticle(1, "A", author=author))]
-        doc = _ResourceCollection(items).include("author").serialize()
+        doc = ResourceCollection(items).include("author").serialize()
         inc = doc["included"][0]
         assert inc["type"] == "authors"
         assert inc["id"] == "5"
@@ -127,7 +127,7 @@ class TestJsonAPIListResponseInclude:
             ArticleResource(FakeArticle(1, "A", author=author)),
             ArticleResource(FakeArticle(2, "B", author=author)),
         ]
-        doc = _ResourceCollection(items).include("author").serialize()
+        doc = ResourceCollection(items).include("author").serialize()
         assert len(doc["included"]) == 1
 
     def test_multiple_distinct_authors_included(self):
@@ -137,7 +137,7 @@ class TestJsonAPIListResponseInclude:
             ArticleResource(FakeArticle(1, "A", author=alice)),
             ArticleResource(FakeArticle(2, "B", author=bob)),
         ]
-        doc = _ResourceCollection(items).include("author").serialize()
+        doc = ResourceCollection(items).include("author").serialize()
         assert len(doc["included"]) == 2
         ids = {inc["id"] for inc in doc["included"]}
         assert ids == {"1", "2"}
@@ -145,11 +145,11 @@ class TestJsonAPIListResponseInclude:
     def test_no_included_when_not_in_include(self):
         author = FakeAuthor(5, "Bob")
         items = [ArticleResource(FakeArticle(1, "A", author=author))]
-        doc = _ResourceCollection(items).include("comments").serialize()
+        doc = ResourceCollection(items).include("comments").serialize()
         assert "included" not in doc
 
     def test_no_included_on_empty_include(self):
         author = FakeAuthor(5, "Bob")
         items = [ArticleResource(FakeArticle(1, "A", author=author))]
-        doc = _ResourceCollection(items).serialize()
+        doc = ResourceCollection(items).serialize()
         assert "included" not in doc

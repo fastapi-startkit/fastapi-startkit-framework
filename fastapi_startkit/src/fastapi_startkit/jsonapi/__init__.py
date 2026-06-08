@@ -2,14 +2,14 @@
 
 from .response import (
     JsonResource,
-    _ResourceCollection,
+    ResourceCollection,
     parse_fields,
     parse_include,
 )
 
 __all__ = [
     "JsonResource",
-    "_ResourceCollection",
+    "ResourceCollection",
     "parse_include",
     "parse_fields",
 ]
