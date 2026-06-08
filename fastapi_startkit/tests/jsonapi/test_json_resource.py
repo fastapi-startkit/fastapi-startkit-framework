@@ -1,4 +1,4 @@
-"""Tests for the new JsonResource[T] generic base class.
+"""Tests for the JsonResource[T] generic base class.
 
 Covers:
 - Auto-type derivation from class name via inflection
@@ -7,14 +7,11 @@ Covers:
 - hidden class var blacklist
 - with_() method merging into top-level envelope
 - JsonResource.collection() with plain lists and paginators
-- Backward-compat aliases: JsonAPIResponse, JsonAPIListResponse
 """
 
 from __future__ import annotations
 
 from fastapi_startkit.jsonapi import (
-    JsonAPIListResponse,
-    JsonAPIResponse,
     JsonResource,
     _ResourceCollection,
 )
@@ -404,72 +401,7 @@ class TestCollectionSimplePaginator:
 
 
 # ---------------------------------------------------------------------------
-# 9. Backward-compat aliases
-# ---------------------------------------------------------------------------
-
-
-class TestBackwardCompatAliases:
-    def test_json_api_response_is_json_resource(self):
-        assert JsonAPIResponse is JsonResource
-
-    def test_json_api_list_response_is_resource_collection(self):
-        assert JsonAPIListResponse is _ResourceCollection
-
-    def test_old_style_subclass_still_works(self):
-        """Old-style JsonAPIResponse subclass with custom __init__ must still work."""
-
-        class LegacyUser(JsonAPIResponse):
-            type = "users"
-            attributes = ["name", "email"]
-
-            def __init__(self, id_, name, email):
-                self.id = id_
-                self.name = name
-                self.email = email
-
-            def to_attributes(self):
-                return {"name": self.name, "email": self.email}
-
-        resource = LegacyUser(1, "Alice", "alice@example.com")
-        doc = resource.serialize()
-        assert doc["data"]["type"] == "users"
-        assert doc["data"]["id"] == "1"
-        assert doc["data"]["attributes"] == {"name": "Alice", "email": "alice@example.com"}
-
-    def test_old_style_list_response(self):
-        """JsonAPIListResponse([...]) still works as before."""
-
-        class LegacyPost(JsonAPIResponse):
-            type = "posts"
-            attributes = ["title"]
-
-            def __init__(self, id_, title):
-                self.id = id_
-                self.title = title
-
-            def to_attributes(self):
-                return {"title": self.title}
-
-        posts = [LegacyPost(i, f"Title {i}") for i in range(3)]
-        doc = JsonAPIListResponse(posts).serialize()
-        assert isinstance(doc["data"], list)
-        assert len(doc["data"]) == 3
-
-    def test_old_style_explicit_type_not_overridden(self):
-        """__init_subclass__ must NOT override an explicit type = "..." class attr."""
-
-        class ThingResource(JsonAPIResponse):
-            type = "special_things"
-
-            def __init__(self):
-                self.id = 1
-
-        r = ThingResource()
-        assert r.type == "special_things"
-
-
-# ---------------------------------------------------------------------------
-# 10. Full serialize() document shape
+# 9. Full serialize() document shape
 # ---------------------------------------------------------------------------
 
 

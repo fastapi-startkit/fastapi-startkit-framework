@@ -2,7 +2,7 @@
 
 https://jsonapi.org
 
-Quick-start — new generic style::
+Quick-start::
 
     from fastapi_startkit.jsonapi import JsonResource
 
@@ -36,19 +36,6 @@ Quick-start — new generic style::
     async def list_posts_paginated(page: int = 1):
         posts = await Post.paginate(15, page)   # returns LengthAwarePaginator
         return PostResource.collection(posts)   # meta{total, per_page, ...} added automatically
-
-Backward-compatible aliases are still exported::
-
-    from fastapi_startkit.jsonapi import JsonAPIResponse, JsonAPIListResponse
-
-    class UserResource(JsonAPIResponse):
-        type = "users"
-        attributes = ["name", "email"]
-
-        def __init__(self, id_, name, email="user@example.com"):
-            self.id = id_
-            self.name = name
-            self.email = email
 
 Both classes implement the ASGI ``__call__`` protocol, so they can be
 returned from FastAPI endpoints without any extra wiring.  ``?include=`` and
@@ -206,14 +193,14 @@ except ImportError:  # starlette / fastapi not installed
 
 
 # ---------------------------------------------------------------------------
-# JsonResource — new generic base class
+# JsonResource — generic base class
 # ---------------------------------------------------------------------------
 
 
 class JsonResource(Generic[T], _FastAPICallable):
     """Generic base class for a single JSON:API resource.
 
-    **New style** — pass the model directly::
+    Pass the model directly::
 
         class PostResource(JsonResource[Post]):
             pass  # auto-type="posts", auto-attributes from Post.serialize()
@@ -225,32 +212,16 @@ class JsonResource(Generic[T], _FastAPICallable):
             def with_(self):
                 return {"meta": {"version": "1.0"}}  # extra top-level keys
 
-    **Old style** — still supported for backward compatibility::
-
-        class UserResource(JsonResource):      # or JsonAPIResponse
-            type = "users"
-            attributes = ["name", "email"]
-
-            def __init__(self, id_, name, email):
-                self.id = id_
-                self.name = name
-                self.email = email
-
     Class-level attributes
     ----------------------
     type : str
         Resource type string.  Auto-derived from the class name when not set
         (``AgentResource`` -> ``"agents"``).
     id : int | str
-        Resource identifier.  Auto-set from ``model.id`` in ``__init__`` when
-        using the new generic style.
+        Resource identifier.  Auto-set from ``model.id`` in ``__init__``.
     hidden : list[str]
         Field names to exclude from ``to_attributes()`` when auto-serializing
         via ``model.serialize()``.
-    attributes : list[str]
-        Explicit list of attribute names (old style).  When non-empty the
-        default ``to_attributes()`` reads these instance attributes instead of
-        calling ``model.serialize()``.
 
     Class methods
     -------------
@@ -274,7 +245,6 @@ class JsonResource(Generic[T], _FastAPICallable):
 
     type: str = ""
     id: int | str = ""
-    attributes: list[str] = []
     hidden: list[str] = []
     relationships: dict[str, "JsonResource"] = {}
 
@@ -293,7 +263,7 @@ class JsonResource(Generic[T], _FastAPICallable):
                 cls.type = inflection.tableize(name)
 
     # ------------------------------------------------------------------
-    # Constructor (new generic style)
+    # Constructor
     # ------------------------------------------------------------------
 
     def __init__(self, model: T) -> None:
@@ -312,20 +282,10 @@ class JsonResource(Generic[T], _FastAPICallable):
     def to_attributes(self) -> dict | None:
         """Return a ``{name: value}`` dict of resource attributes.
 
-        **Old style** (``attributes`` list is non-empty): reads the named
-        instance attributes directly — identical to the original
-        ``JsonAPIResponse`` behaviour.
-
-        **New style** (``attributes`` list is empty): calls
-        ``self.model.serialize()`` and strips ``"id"`` plus any names in
+        Calls ``self.model.serialize()`` and strips ``"id"`` plus any names in
         ``self.hidden``.  Returns ``None`` when the model has no
         ``serialize()`` method or when the resulting dict is empty.
         """
-        if self.__class__.attributes:
-            # Backward-compatible path: explicit attribute list
-            return {attr: getattr(self, attr, None) for attr in self.__class__.attributes}
-
-        # Auto-serialize path
         model = getattr(self, "model", None)
         if model is not None and hasattr(model, "serialize"):
             data = model.serialize()
@@ -643,14 +603,3 @@ class _ResourceCollection(_FastAPICallable):
             document["meta"] = meta
 
         return document
-
-
-# ---------------------------------------------------------------------------
-# Backward-compatible aliases
-# ---------------------------------------------------------------------------
-
-#: Alias for :class:`JsonResource` — kept for backward compatibility.
-JsonAPIResponse = JsonResource
-
-#: Alias for :class:`_ResourceCollection` — kept for backward compatibility.
-JsonAPIListResponse = _ResourceCollection
