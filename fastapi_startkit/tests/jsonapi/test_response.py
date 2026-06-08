@@ -276,32 +276,8 @@ class TestRelationshipForms:
         assert len(doc["included"]) == 2
         assert all(i["type"] == "comments" for i in doc["included"])
 
-    # ------------------------------------------------------------------
-    # Auto-wrapping: no ResourceCollection() initialisation needed
-    # ------------------------------------------------------------------
-
-    def test_plain_list_auto_wrapped(self):
-        """Returning a plain list auto-wraps it in ResourceCollection."""
-
-        class CommentResource(JsonResource[FakeUser]):
-            type = "comments"
-
-        class ArticleResource(JsonResource[FakePost]):
-            def to_relationships(self):
-                # No ResourceCollection(...) needed
-                return {
-                    "comments": [
-                        CommentResource(FakeUser(1, "c1")),
-                        CommentResource(FakeUser(2, "c2")),
-                    ]
-                }
-
-        post = FakePost(1, "Hi", "There")
-        doc = ArticleResource(post).include("comments").serialize()
-        assert len(doc["included"]) == 2
-
     def test_lambda_using_collection(self):
-        """Lambda calls CommentResource.collection() for custom/filtered data."""
+        """Lambda calls ResourceClass.collection() for has-many relationships."""
 
         class FakePostWithComments:
             def __init__(self, id_, comments):
@@ -322,26 +298,3 @@ class TestRelationshipForms:
         post = FakePostWithComments(1, comments)
         doc = ArticleResource(post).include("comments").serialize()
         assert len(doc["included"]) == 2
-
-    def test_class_reference_with_list_attribute_auto_collects(self):
-        """Class reference on a list attribute calls .collection() automatically."""
-
-        class FakePostWithComments:
-            def __init__(self, id_):
-                self.id = id_
-                self.comments = [FakeUser(1, "c1"), FakeUser(2, "c2")]
-
-            def serialize(self):
-                return {"id": self.id}
-
-        class CommentResource(JsonResource[FakeUser]):
-            type = "comments"
-
-        class ArticleResource(JsonResource[FakePostWithComments]):
-            def to_relationships(self):
-                return {"comments": CommentResource}
-
-        post = FakePostWithComments(1)
-        doc = ArticleResource(post).include("comments").serialize()
-        assert len(doc["included"]) == 2
-        assert all(i["type"] == "comments" for i in doc["included"])
