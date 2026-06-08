@@ -422,6 +422,68 @@ class TestCollectionSimplePaginator:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# 8b. fields() dot-notation
+# ---------------------------------------------------------------------------
+
+
+class TestFieldsDotNotation:
+    def test_plain_field_restricts_primary_type(self):
+        model = FakeModel(1, title="Hi", body="World")
+        doc = PostResource(model).fields("title").serialize()
+        assert doc["data"]["attributes"] == {"title": "Hi"}
+
+    def test_multiple_plain_fields(self):
+        model = FakeModel(1, title="Hi", body="World")
+        doc = PostResource(model).fields("title", "body").serialize()
+        assert set(doc["data"]["attributes"].keys()) == {"title", "body"}
+
+    def test_dotted_field_restricts_related_type(self):
+        class AuthorResource(JsonResource[FakeModel]):
+            type = "users"  # explicit type so "users.name" filter matches
+
+        class BlogPostResource(JsonResource[FakeModel]):
+            def to_relationships(self):
+                return {"author": AuthorResource(FakeModel(5, name="Alice", email="a@b.com"))}
+
+        model = FakeModel(1, title="Hi")
+        doc = BlogPostResource(model).include("author").fields("users.name").serialize()
+        inc = doc["included"][0]
+        assert inc["attributes"] == {"name": "Alice"}
+        assert "email" not in inc["attributes"]
+
+    def test_mixed_plain_and_dotted_in_single_call(self):
+        class AuthorResource(JsonResource[FakeModel]):
+            type = "users"
+
+        class BlogPostResource(JsonResource[FakeModel]):
+            def to_relationships(self):
+                return {"author": AuthorResource(FakeModel(5, name="Alice", email="a@b.com"))}
+
+        model = FakeModel(1, title="Hi", body="World")
+        doc = BlogPostResource(model).include("author").fields("title", "users.name").serialize()
+        assert doc["data"]["attributes"] == {"title": "Hi"}
+        inc = doc["included"][0]
+        assert inc["attributes"] == {"name": "Alice"}
+
+    def test_unrestricted_type_unaffected(self):
+        # Restricting "users" fields should not affect "posts" attributes
+        model = FakeModel(1, title="Hi", body="World")
+        doc = PostResource(model).fields("users.name").serialize()
+        assert {"title", "body"}.issubset(doc["data"]["attributes"].keys())
+
+    def test_collection_plain_field_uses_primary_type(self):
+        models = [FakeModel(1, title="A"), FakeModel(2, title="B")]
+        doc = PostResource.collection(models).fields("title").serialize()
+        for item in doc["data"]:
+            assert list(item["attributes"].keys()) == ["title"]
+
+    def test_fields_accumulates_across_multiple_calls(self):
+        model = FakeModel(1, title="Hi", body="World")
+        doc = PostResource(model).fields("title").fields("body").serialize()
+        assert set(doc["data"]["attributes"].keys()) == {"title", "body"}
+
+
 class TestSerializeDocumentShape:
     def test_data_type_and_id(self):
         model = FakeModel(42, title="Foo")

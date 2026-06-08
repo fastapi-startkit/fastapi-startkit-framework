@@ -27,7 +27,7 @@ Quick-start::
     @app.get("/api/posts/{id}")
     async def get_post(id: int):
         post = await Post.find_or_fail(id)
-        return PostResource(post).include("author").fields("posts", ["title"])
+        return PostResource(post).include("author").fields("title", "users.name")
 
     # Collection (plain list or paginator)
     @app.get("/api/posts")
@@ -42,7 +42,7 @@ Quick-start::
         return PostResource.collection(posts)
 
     # Manual serialization when you need the dict:
-    doc = PostResource(post).include("author").fields("posts", ["title"]).serialize()
+    doc = PostResource(post).include("author").fields("title", "users.name").serialize()
 """
 
 from __future__ import annotations
@@ -178,19 +178,15 @@ class JsonResource(Generic[T], _FastAPICallable):
         # Sideload relationships
         return PostResource(post).include("author", "comments")
 
-        # Restrict attributes (JSON:API sparse fieldsets)
-        return PostResource(post).fields("posts", ["title", "created_at"])
+        # Restrict attributes — plain names apply to this resource's type;
+        # dotted names ("type.field") apply to a related resource's type.
+        return PostResource(post).fields("title", "created_at", "users.name")
 
-        # Chain both
-        return (
-            PostResource(post)
-            .include("author")
-            .fields("posts", ["title", "created_at"])
-            .fields("users", ["name"])
-        )
+        # Chain include + fields
+        return PostResource(post).include("author").fields("title", "users.name")
 
         # Manual serialization
-        doc = PostResource(post).include("author").serialize()
+        doc = PostResource(post).include("author").fields("title", "users.name").serialize()
 
     When returned directly from a FastAPI endpoint with no chain methods called,
     ``?include=`` and ``?fields[*]=`` query params are parsed automatically
@@ -260,20 +256,28 @@ class JsonResource(Generic[T], _FastAPICallable):
         self._chain_state_set = True
         return self
 
-    def fields(self, type_name: str, field_list: list[str]) -> "JsonResource[T]":
-        """Restrict which attributes are returned for *type_name*.
+    def fields(self, *field_specs: str) -> "JsonResource[T]":
+        """Restrict which attributes are returned (JSON:API sparse fieldsets).
 
-        Implements JSON:API sparse fieldsets.  Call once per resource type::
+        Each argument is either a plain field name or a ``"type.field"`` spec:
 
-            PostResource(post)
-            .fields("posts", ["title", "created_at"])
-            .fields("users", ["name"])
+        * Plain name (``"title"``) — restricts this resource's own attributes.
+        * Dotted name (``"users.name"``) — restricts the named related type.
 
-        :param type_name: JSON:API resource type (e.g. ``"posts"``).
-        :param field_list: attribute names to include.
+        Example::
+
+            PostResource(post).fields("title", "created_at", "users.name")
+            # → {"posts": ["title", "created_at"], "users": ["name"]}
+
+        :param field_specs: field names, optionally prefixed with ``type.``.
         :returns: ``self`` for chaining.
         """
-        self._chain_fields[type_name] = list(field_list)
+        for spec in field_specs:
+            if "." in spec:
+                rel_type, _, field = spec.partition(".")
+                self._chain_fields.setdefault(rel_type, []).append(field)
+            else:
+                self._chain_fields.setdefault(self.type, []).append(spec)
         self._chain_state_set = True
         return self
 
@@ -445,11 +449,11 @@ class JsonResource(Generic[T], _FastAPICallable):
 
             if isinstance(items, BasePaginator):
                 resource_items = [cls(model) for model in items]
-                return _ResourceCollection(resource_items, paginator=items)
+                return _ResourceCollection(resource_items, paginator=items, primary_type=cls.type)
         except ImportError:
             pass
 
-        return _ResourceCollection([cls(model) for model in items])
+        return _ResourceCollection([cls(model) for model in items], primary_type=cls.type)
 
 
 # ---------------------------------------------------------------------------
@@ -464,15 +468,21 @@ class _ResourceCollection(_FastAPICallable):
 
         return PostResource.collection(posts)
         return PostResource.collection(posts).include("author")
-        return PostResource.collection(posts).fields("posts", ["title", "created_at"])
+        return PostResource.collection(posts).fields("title", "users.name")
 
     Pagination meta is added automatically when the source is a paginator.
     Override :meth:`to_meta` / :meth:`to_links` to add custom envelope data.
     """
 
-    def __init__(self, items: list[JsonResource], paginator: Any = None) -> None:
+    def __init__(
+        self,
+        items: list[JsonResource],
+        paginator: Any = None,
+        primary_type: str = "",
+    ) -> None:
         self._items = items
         self._paginator = paginator
+        self._primary_type = primary_type
         self._chain_include: list[str] = []
         self._chain_fields: dict[str, list[str]] = {}
         self._chain_state_set: bool = False
@@ -491,14 +501,23 @@ class _ResourceCollection(_FastAPICallable):
         self._chain_state_set = True
         return self
 
-    def fields(self, type_name: str, field_list: list[str]) -> "_ResourceCollection":
-        """Restrict which attributes are returned for *type_name*.
+    def fields(self, *field_specs: str) -> "_ResourceCollection":
+        """Restrict which attributes are returned (JSON:API sparse fieldsets).
 
-        :param type_name: JSON:API resource type (e.g. ``"posts"``).
-        :param field_list: attribute names to include.
+        Same dot-notation as :meth:`JsonResource.fields` — plain names apply
+        to the primary resource type; ``"type.field"`` applies to a related type::
+
+            PostResource.collection(posts).fields("title", "created_at", "users.name")
+
+        :param field_specs: field names, optionally prefixed with ``type.``.
         :returns: ``self`` for chaining.
         """
-        self._chain_fields[type_name] = list(field_list)
+        for spec in field_specs:
+            if "." in spec:
+                rel_type, _, field = spec.partition(".")
+                self._chain_fields.setdefault(rel_type, []).append(field)
+            else:
+                self._chain_fields.setdefault(self._primary_type, []).append(spec)
         self._chain_state_set = True
         return self
 

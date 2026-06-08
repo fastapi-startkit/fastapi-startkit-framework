@@ -8,7 +8,6 @@ Sparse fieldsets and sideloading are applied via the fluent chain API:
 import pytest
 from fastapi_startkit.jsonapi import (
     JsonResource,
-    _ResourceCollection,
     parse_fields,
     parse_include,
 )
@@ -137,42 +136,40 @@ class TestParseFields:
 class TestSparseFieldsets:
     def test_single_resource_fields_filtered(self):
         post = PostResource(FakePost(1, "Hello", "World", "2024-01-01"))
-        doc = post.fields("posts", ["title"]).serialize()
+        doc = post.fields("title").serialize()
         assert doc["data"]["attributes"] == {"title": "Hello"}
 
     def test_multiple_fields_filtered(self):
         post = PostResource(FakePost(1, "Hello", "World", "2024-01-01"))
-        doc = post.fields("posts", ["title", "body"]).serialize()
+        doc = post.fields("title", "body").serialize()
         assert doc["data"]["attributes"] == {"title": "Hello", "body": "World"}
 
     def test_fields_for_other_type_does_not_affect_this_resource(self):
         post = PostResource(FakePost(1, "Hello", "World", "2024-01-01"))
-        doc = post.fields("users", ["name"]).serialize()  # no "posts" key
-        # all attributes should be present (id is included because it comes from serialize())
+        # "users.name" restricts the users type only — posts attributes are unaffected
+        doc = post.fields("users.name").serialize()
         assert {"title", "body", "created_at"}.issubset(doc["data"]["attributes"].keys())
 
     def test_included_resources_also_filtered(self):
         author = FakeUser(5, "Alice", "alice@example.com", "admin")
         post = PostResource(FakePost(1, "Hello", "World", author=author))
-        doc = post.include("author").fields("users", ["name"]).serialize()
+        doc = post.include("author").fields("users.name").serialize()
         inc = next(i for i in doc["included"] if i["type"] == "users")
         assert inc["attributes"] == {"name": "Alice"}
         assert "email" not in inc["attributes"]
 
     def test_list_response_fields_filtered(self):
-        posts = [
-            PostResource(FakePost(1, "A", "aa", "2024-01-01")),
-            PostResource(FakePost(2, "B", "bb", "2024-01-02")),
-        ]
-        doc = _ResourceCollection(posts).fields("posts", ["title"]).serialize()
+        models = [FakePost(1, "A", "aa", "2024-01-01"), FakePost(2, "B", "bb", "2024-01-02")]
+        doc = PostResource.collection(models).fields("title").serialize()
         for item in doc["data"]:
             assert list(item["attributes"].keys()) == ["title"]
 
     def test_combined_include_and_fields(self):
-        """include and fields[*] should work together via chain API."""
+        """include and fields should work together via chain API."""
         author = FakeUser(10, "Bob", "bob@example.com", "editor")
         post = PostResource(FakePost(1, "Post", "Body", author=author))
-        doc = post.include("author").fields("posts", ["title"]).fields("users", ["name", "email"]).serialize()
+        # "title" -> posts type (primary); "users.name" and "users.email" -> users type
+        doc = post.include("author").fields("title", "users.name", "users.email").serialize()
         assert doc["data"]["attributes"] == {"title": "Post"}
         inc = doc["included"][0]
         assert inc["attributes"] == {"name": "Bob", "email": "bob@example.com"}
