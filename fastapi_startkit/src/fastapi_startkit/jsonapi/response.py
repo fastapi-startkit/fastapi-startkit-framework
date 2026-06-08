@@ -2,7 +2,42 @@
 
 https://jsonapi.org
 
-Quick-start::
+Quick-start — new generic style::
+
+    from fastapi_startkit.jsonapi import JsonResource
+
+    # Zero-config: auto-type from class name, auto-attributes from model.serialize()
+    class PostResource(JsonResource["Post"]):
+        pass
+
+    # Override attributes or hide sensitive fields
+    class UserResource(JsonResource["User"]):
+        hidden = ["password", "remember_token"]
+
+    # Add extra top-level envelope keys
+    class ArticleResource(JsonResource["Article"]):
+        def with_(self):
+            return {"meta": {"version": "1.0"}}
+
+    # Single resource
+    @app.get("/api/posts/{id}")
+    async def get_post(id: int):
+        post = await Post.find_or_fail(id)
+        return PostResource(post)
+
+    # Collection (plain list or paginator)
+    @app.get("/api/posts")
+    async def list_posts():
+        posts = await Post.all()
+        return PostResource.collection(posts)
+
+    # Paginated collection
+    @app.get("/api/posts")
+    async def list_posts_paginated(page: int = 1):
+        posts = await Post.paginate(15, page)   # returns LengthAwarePaginator
+        return PostResource.collection(posts)   # meta{total, per_page, ...} added automatically
+
+Backward-compatible aliases are still exported::
 
     from fastapi_startkit.jsonapi import JsonAPIResponse, JsonAPIListResponse
 
@@ -10,24 +45,10 @@ Quick-start::
         type = "users"
         attributes = ["name", "email"]
 
-        def __init__(self, user):
-            self.id = user.id
-            self.name = user.name
-            self.email = user.email
-
-    # ── Single resource endpoint ────────────────────────────────────────
-    @app.get("/api/users/{id}")
-    async def get_user(id: int):
-        user = await User.find_or_fail(id)
-        return UserResource(user)               # ← return directly; FastAPI
-                                                #   parses ?include= and
-                                                #   fields[users]= for you
-
-    # ── Collection endpoint ─────────────────────────────────────────────
-    @app.get("/api/users")
-    async def list_users():
-        users = await User.all()
-        return JsonAPIListResponse([UserResource(u) for u in users])
+        def __init__(self, id_, name, email="user@example.com"):
+            self.id = id_
+            self.name = name
+            self.email = email
 
 Both classes implement the ASGI ``__call__`` protocol, so they can be
 returned from FastAPI endpoints without any extra wiring.  ``?include=`` and
@@ -43,8 +64,12 @@ You can also call ``serialize()`` manually when you need the dict::
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Generic, TypeVar
 from urllib.parse import unquote_plus
+
+import inflection
+
+T = TypeVar("T")
 
 
 # ---------------------------------------------------------------------------
@@ -95,7 +120,7 @@ def parse_fields(raw_query: dict[str, str]) -> dict[str, list[str]]:
         async def get_post(id: int, request: Request):
             fields = parse_fields(dict(request.query_params))
             # GET ?fields[posts]=title,body&fields[users]=name
-            # → {"posts": ["title", "body"], "users": ["name"]}
+            # -> {"posts": ["title", "body"], "users": ["name"]}
             post = await Post.find(id)
             return PostResource(post).serialize(fields=fields)
     """
@@ -126,7 +151,7 @@ try:
     class _FastAPICallable(_StarletteResponse):
         """Starlette Response subclass that lazily serializes on ``__call__``.
 
-        Subclasses (UserResource, PostResource, …) have their own ``__init__``
+        Subclasses (UserResource, PostResource, ...) have their own ``__init__``
         and never call ``super().__init__()``, so we must NOT rely on Starlette's
         ``Response.__init__`` having run.  We set the attributes FastAPI reads
         before calling ``__call__`` as class-level defaults, and we completely
@@ -181,39 +206,104 @@ except ImportError:  # starlette / fastapi not installed
 
 
 # ---------------------------------------------------------------------------
-# Core classes
+# JsonResource — new generic base class
 # ---------------------------------------------------------------------------
 
 
-class JsonAPIResponse(_FastAPICallable):
-    """Base class for a single JSON:API resource.
+class JsonResource(Generic[T], _FastAPICallable):
+    """Generic base class for a single JSON:API resource.
 
-    Subclasses must define:
+    **New style** — pass the model directly::
 
-    * ``type: str``      – resource type (e.g. ``"posts"``)
-    * ``id: int | str``  – resource identifier (set in ``__init__``)
+        class PostResource(JsonResource[Post]):
+            pass  # auto-type="posts", auto-attributes from Post.serialize()
 
-    Optionally declare:
+        class UserResource(JsonResource[User]):
+            hidden = ["password"]  # strip sensitive fields from auto-serialize
 
-    * ``attributes: list[str]``
-        Field names to expose in ``data.attributes``.  The default
-        ``to_attributes()`` reads the matching instance attributes.
+        class ArticleResource(JsonResource[Article]):
+            def with_(self):
+                return {"meta": {"version": "1.0"}}  # extra top-level keys
 
-    * ``relationships: dict[str, JsonAPIResponse]``
-        Related resources (populated in ``to_relationships()``).
+    **Old style** — still supported for backward compatibility::
 
-    All four hooks are overridable: ``to_attributes()``,
-    ``to_relationships()``, ``to_links()``, ``to_meta()``.
+        class UserResource(JsonResource):      # or JsonAPIResponse
+            type = "users"
+            attributes = ["name", "email"]
 
-    Instances can be returned **directly** from FastAPI endpoints — the
-    ASGI ``__call__`` in :class:`_FastAPICallable` handles query-param
-    parsing and serialization automatically.
+            def __init__(self, id_, name, email):
+                self.id = id_
+                self.name = name
+                self.email = email
+
+    Class-level attributes
+    ----------------------
+    type : str
+        Resource type string.  Auto-derived from the class name when not set
+        (``AgentResource`` -> ``"agents"``).
+    id : int | str
+        Resource identifier.  Auto-set from ``model.id`` in ``__init__`` when
+        using the new generic style.
+    hidden : list[str]
+        Field names to exclude from ``to_attributes()`` when auto-serializing
+        via ``model.serialize()``.
+    attributes : list[str]
+        Explicit list of attribute names (old style).  When non-empty the
+        default ``to_attributes()`` reads these instance attributes instead of
+        calling ``model.serialize()``.
+
+    Class methods
+    -------------
+    collection(items)
+        Wrap a plain list **or** a ``LengthAwarePaginator`` / ``SimplePaginator``
+        in a :class:`_ResourceCollection`.  Pagination meta is included
+        automatically.
+
+    Overridable hooks
+    -----------------
+    to_attributes()    -- ``{name: value}`` dict of resource attributes
+    to_relationships() -- ``{name: JsonResource}`` related resources
+    to_links()         -- top-level links dict
+    to_meta()          -- top-level meta dict
+    with_()            -- extra top-level envelope keys merged into the document
     """
+
+    # ------------------------------------------------------------------
+    # Class-level defaults
+    # ------------------------------------------------------------------
 
     type: str = ""
     id: int | str = ""
     attributes: list[str] = []
-    relationships: dict[str, "JsonAPIResponse"] = {}
+    hidden: list[str] = []
+    relationships: dict[str, "JsonResource"] = {}
+
+    # ------------------------------------------------------------------
+    # Auto-type derivation
+    # ------------------------------------------------------------------
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        # Auto-derive the JSON:API resource type from the class name when
+        # the subclass does not define 'type' explicitly.
+        # e.g. AgentResource -> "agents", UserProfileResource -> "user_profiles"
+        if "type" not in cls.__dict__:
+            name = cls.__name__.removesuffix("Resource")
+            if name:
+                cls.type = inflection.tableize(name)
+
+    # ------------------------------------------------------------------
+    # Constructor (new generic style)
+    # ------------------------------------------------------------------
+
+    def __init__(self, model: T) -> None:
+        """Wrap *model* as a JSON:API resource.
+
+        :param model: ORM model (or any object with an ``id`` attribute and
+                      optionally a ``serialize()`` method).
+        """
+        self.model = model
+        self.id = getattr(model, "id", "")
 
     # ------------------------------------------------------------------
     # Overridable hooks
@@ -222,26 +312,41 @@ class JsonAPIResponse(_FastAPICallable):
     def to_attributes(self) -> dict | None:
         """Return a ``{name: value}`` dict of resource attributes.
 
-        The default implementation builds the dict from ``self.attributes``
-        by reading matching instance attributes (``None`` when absent).
-        Returns ``None`` when ``self.attributes`` is empty.
-        """
-        if not self.attributes:
-            return None
-        return {attr: getattr(self, attr, None) for attr in self.attributes}
+        **Old style** (``attributes`` list is non-empty): reads the named
+        instance attributes directly — identical to the original
+        ``JsonAPIResponse`` behaviour.
 
-    def to_relationships(self) -> dict[str, "JsonAPIResponse"] | None:
-        """Return a ``{name: JsonAPIResponse}`` dict of related resources.
+        **New style** (``attributes`` list is empty): calls
+        ``self.model.serialize()`` and strips ``"id"`` plus any names in
+        ``self.hidden``.  Returns ``None`` when the model has no
+        ``serialize()`` method or when the resulting dict is empty.
+        """
+        if self.__class__.attributes:
+            # Backward-compatible path: explicit attribute list
+            return {attr: getattr(self, attr, None) for attr in self.__class__.attributes}
+
+        # Auto-serialize path
+        model = getattr(self, "model", None)
+        if model is not None and hasattr(model, "serialize"):
+            data = model.serialize()
+            if isinstance(data, dict):
+                blacklist = {"id"} | set(self.__class__.hidden)
+                filtered = {k: v for k, v in data.items() if k not in blacklist}
+                return filtered or None
+        return None
+
+    def to_relationships(self) -> dict[str, "JsonResource"] | None:
+        """Return a ``{name: JsonResource}`` dict of related resources.
 
         The default implementation returns the class-level
         ``relationships`` dict only when its values are already
-        ``JsonAPIResponse`` instances.  Override this to build the dict
+        ``JsonResource`` instances.  Override this to build the dict
         dynamically from an ORM object.
         """
         rels = self.__class__.relationships
         if not rels:
             return None
-        return rels if all(isinstance(v, JsonAPIResponse) for v in rels.values()) else None
+        return rels if all(isinstance(v, JsonResource) for v in rels.values()) else None
 
     def to_links(self) -> dict | None:
         """Return a ``{name: url}`` dict of links, or ``None``."""
@@ -250,6 +355,26 @@ class JsonAPIResponse(_FastAPICallable):
     def to_meta(self) -> dict | None:
         """Return a ``{name: value}`` meta dict, or ``None``."""
         return None
+
+    def with_(self) -> dict:
+        """Return extra keys to merge into the top-level JSON:API envelope.
+
+        Use this to inject top-level ``meta``, ``links``, or any custom key
+        alongside ``data``::
+
+            class ArticleResource(JsonResource[Article]):
+                def with_(self):
+                    return {
+                        "meta": {"version": "1.0"},
+                    }
+
+        The returned dict is shallow-merged into the document **after**
+        ``to_links()`` / ``to_meta()`` are applied, so keys from ``with_()``
+        can override them.
+
+        :returns: dict of extra top-level envelope keys (default: ``{}``).
+        """
+        return {}
 
     # ------------------------------------------------------------------
     # Internal serialization helpers
@@ -379,33 +504,109 @@ class JsonAPIResponse(_FastAPICallable):
         if meta is not None:
             document["meta"] = meta
 
+        # Merge any extra top-level keys from with_()
+        extra = self.with_()
+        if extra:
+            document.update(extra)
+
         return document
 
+    # ------------------------------------------------------------------
+    # Collection factory
+    # ------------------------------------------------------------------
 
-class JsonAPIListResponse(_FastAPICallable):
-    """Wraps a list of :class:`JsonAPIResponse` instances.
+    @classmethod
+    def collection(cls, items: Any) -> "_ResourceCollection":
+        """Wrap *items* in a :class:`_ResourceCollection`.
 
-    ``data`` is a JSON array.  Instances can be returned directly from
-    FastAPI endpoints — query params are parsed automatically.
+        *items* may be:
 
-    Usage::
+        * A plain ``list`` or iterable of model instances — each is wrapped
+          with ``cls(model)``.
+        * A ``LengthAwarePaginator`` or ``SimplePaginator`` — items are
+          extracted and pagination meta (``total``, ``per_page``, ...) is
+          included automatically in the response envelope.
 
-        @app.get("/api/posts")
-        async def list_posts():
+        Example::
+
             posts = await Post.all()
-            return JsonAPIListResponse([PostResource(p) for p in posts])
+            return PostResource.collection(posts)
+
+            # Paginated
+            posts = await Post.paginate(15, page)
+            return PostResource.collection(posts)
+        """
+        try:
+            from fastapi_startkit.masoniteorm.pagination.BasePaginator import (
+                BasePaginator,
+            )
+
+            if isinstance(items, BasePaginator):
+                resource_items = [cls(model) for model in items]
+                return _ResourceCollection(resource_items, paginator=items)
+        except ImportError:
+            pass
+
+        return _ResourceCollection([cls(model) for model in items])
+
+
+# ---------------------------------------------------------------------------
+# _ResourceCollection
+# ---------------------------------------------------------------------------
+
+
+class _ResourceCollection(_FastAPICallable):
+    """Wraps a list of :class:`JsonResource` instances as a JSON:API collection.
+
+    Prefer creating instances via :meth:`JsonResource.collection` rather
+    than directly instantiating this class::
+
+        return PostResource.collection(posts)
+
+    Pagination meta is added automatically when the source is a paginator.
+    Override :meth:`to_meta` / :meth:`to_links` to add custom envelope data.
     """
 
-    def __init__(self, items: list[JsonAPIResponse]) -> None:
+    def __init__(self, items: list[JsonResource], paginator: Any = None) -> None:
         self._items = items
+        self._paginator = paginator
+
+    # ------------------------------------------------------------------
+    # Overridable hooks
+    # ------------------------------------------------------------------
 
     def to_links(self) -> dict | None:
         """Return top-level links, or ``None``."""
         return None
 
     def to_meta(self) -> dict | None:
-        """Return top-level meta, or ``None``."""
-        return None
+        """Return top-level meta dict, or ``None``.
+
+        Populated automatically from a paginator when present; override to
+        customise or extend.
+        """
+        if self._paginator is None:
+            return None
+
+        paginator = self._paginator
+        meta: dict[str, Any] = {}
+        for attr in (
+            "total",
+            "count",
+            "per_page",
+            "current_page",
+            "last_page",
+            "next_page",
+            "previous_page",
+        ):
+            if hasattr(paginator, attr):
+                meta[attr] = getattr(paginator, attr)
+
+        return meta if meta else None
+
+    # ------------------------------------------------------------------
+    # Serialization
+    # ------------------------------------------------------------------
 
     def serialize(
         self,
@@ -415,7 +616,7 @@ class JsonAPIListResponse(_FastAPICallable):
         """Serialize the collection into a JSON:API document dict.
 
         :param include: relationship names to sideload (same semantics as
-                        :meth:`JsonAPIResponse.serialize`).
+                        :meth:`JsonResource.serialize`).
         :param fields: sparse-fieldset map from :func:`parse_fields`.
         """
         if include is None:
@@ -442,3 +643,14 @@ class JsonAPIListResponse(_FastAPICallable):
             document["meta"] = meta
 
         return document
+
+
+# ---------------------------------------------------------------------------
+# Backward-compatible aliases
+# ---------------------------------------------------------------------------
+
+#: Alias for :class:`JsonResource` — kept for backward compatibility.
+JsonAPIResponse = JsonResource
+
+#: Alias for :class:`_ResourceCollection` — kept for backward compatibility.
+JsonAPIListResponse = _ResourceCollection
