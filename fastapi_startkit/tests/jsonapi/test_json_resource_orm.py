@@ -30,13 +30,14 @@ class UserResource(JsonResource[User]):
 
 
 class ArticleResource(JsonResource[Articles]):
-    """Exposes Article fields; to_relationships() links back to the author."""
+    """Exposes Article fields; author relationship via class-reference form.
+
+    The key "author" tells the framework to read ``self.model.author``
+    and wrap it automatically with ``UserResource``.
+    """
 
     def to_relationships(self):
-        author = getattr(self.model, "_author", None)
-        if author is None:
-            return None
-        return {"author": UserResource(author)}
+        return {"author": UserResource}
 
 
 # ---------------------------------------------------------------------------
@@ -258,7 +259,7 @@ class TestJsonResourceRelationshipsWithOrm(OrmTestCase):
         author = await User.find(article.user_id)
 
         # Attach author onto model so to_relationships() can access it
-        article._author = author
+        article.author = author
         doc = ArticleResource(article).serialize()
 
         self.assertIn("relationships", doc["data"])
@@ -267,7 +268,7 @@ class TestJsonResourceRelationshipsWithOrm(OrmTestCase):
     async def test_include_author_sideloaded(self):
         article = await Articles.first()
         author = await User.find(article.user_id)
-        article._author = author
+        article.author = author
 
         doc = ArticleResource(article).include("author").serialize()
 
@@ -279,7 +280,7 @@ class TestJsonResourceRelationshipsWithOrm(OrmTestCase):
     async def test_include_author_attributes(self):
         article = await Articles.first()
         author = await User.find(article.user_id)
-        article._author = author
+        article.author = author
 
         doc = ArticleResource(article).include("author").serialize()
 
@@ -290,14 +291,9 @@ class TestJsonResourceRelationshipsWithOrm(OrmTestCase):
     async def test_fields_restrict_included_resource(self):
         article = await Articles.first()
         author = await User.find(article.user_id)
-        article._author = author
+        article.author = author
 
-        doc = (
-            ArticleResource(article)
-            .include("author")
-            .fields("users.name")
-            .serialize()
-        )
+        doc = ArticleResource(article).include("author").fields("users.name").serialize()
 
         inc_attrs = doc["included"][0]["attributes"]
         self.assertIn("name", inc_attrs)

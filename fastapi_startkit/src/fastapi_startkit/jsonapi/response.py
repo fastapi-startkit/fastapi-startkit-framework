@@ -47,6 +47,7 @@ Quick-start::
 
 from __future__ import annotations
 
+import inspect
 from typing import Any, Generic, TypeVar
 from urllib.parse import unquote_plus
 
@@ -222,7 +223,6 @@ class JsonResource(Generic[T], _FastAPICallable):
     type: str = ""
     id: int | str = ""
     hidden: list[str] = []
-    relationships: dict[str, "JsonResource"] = {}
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
@@ -302,12 +302,35 @@ class JsonResource(Generic[T], _FastAPICallable):
                 return filtered or None
         return None
 
-    def to_relationships(self) -> dict[str, "JsonResource"] | None:
-        """Return a ``{name: JsonResource}`` dict of related resources."""
-        rels = self.__class__.relationships
-        if not rels:
-            return None
-        return rels if all(isinstance(v, JsonResource) for v in rels.values()) else None
+    def to_relationships(self) -> dict | None:
+        """Return a relationship mapping, or ``None``.
+
+        Each value can be any of three forms:
+
+        * **Resource class** — the framework reads ``self.model.<key>`` and
+          wraps it automatically::
+
+              def to_relationships(self):
+                  return {"author": UserResource}
+
+        * **Callable / lambda** — called with no arguments; useful when you
+          need custom logic to fetch or filter the related data::
+
+              def to_relationships(self):
+                  return {
+                      "comments": lambda: CommentResource.collection(
+                          self.model.comments.filter(is_public=True)
+                      ),
+                  }
+
+        * **``JsonResource`` instance** — passed through as-is (explicit)::
+
+              def to_relationships(self):
+                  return {"author": UserResource(self.model.author)}
+
+        Returns ``None`` (no relationships) by default.
+        """
+        return None
 
     def to_links(self) -> dict | None:
         """Return a ``{name: url}`` dict of links, or ``None``."""
@@ -335,6 +358,37 @@ class JsonResource(Generic[T], _FastAPICallable):
     # Internal helpers
     # ------------------------------------------------------------------
 
+    def _resolve_rel(self, key: str, value: Any) -> "JsonResource | ResourceCollection | None":
+        """Resolve one relationship value to a concrete resource / collection.
+
+        Handles the three supported forms:
+        - class         → ``value(getattr(self.model, key))``
+        - function/lambda → ``value()``  (detected via inspect.isfunction/ismethod)
+        - instance      → returned as-is
+
+        Note: ``JsonResource`` instances are ASGI-callable (they have ``__call__``),
+        so we use ``inspect.isfunction`` / ``inspect.ismethod`` instead of
+        ``callable()`` to distinguish lambdas from already-resolved instances.
+        """
+        if isinstance(value, type):
+            related = getattr(self.model, key, None) if hasattr(self, "model") else None
+            return value(related) if related is not None else None
+        if inspect.isfunction(value) or inspect.ismethod(value):
+            return value()
+        return value  # already a JsonResource or ResourceCollection instance
+
+    def _resolved_relationships(self) -> "dict[str, JsonResource | ResourceCollection]":
+        """Return ``to_relationships()`` with all values resolved to instances."""
+        raw = self.to_relationships()
+        if not raw:
+            return {}
+        resolved: dict[str, Any] = {}
+        for key, val in raw.items():
+            result = self._resolve_rel(key, val)
+            if result is not None:
+                resolved[key] = result
+        return resolved
+
     def _build_data(self, fields: dict[str, list[str]] | None = None) -> dict:
         data: dict[str, Any] = {
             "type": self.type,
@@ -348,11 +402,15 @@ class JsonResource(Generic[T], _FastAPICallable):
                 attrs = {k: v for k, v in attrs.items() if k in allowed}
             data["attributes"] = attrs
 
-        rel_objs = self.to_relationships()
+        rel_objs = self._resolved_relationships()
         if rel_objs:
-            data["relationships"] = {
-                name: {"data": {"type": resource.type, "id": str(resource.id)}} for name, resource in rel_objs.items()
-            }
+            rels: dict[str, Any] = {}
+            for name, resource in rel_objs.items():
+                if isinstance(resource, ResourceCollection):
+                    rels[name] = {"data": [{"type": item.type, "id": str(item.id)} for item in resource._items]}
+                else:
+                    rels[name] = {"data": {"type": resource.type, "id": str(resource.id)}}
+            data["relationships"] = rels
 
         return data
 
@@ -366,19 +424,22 @@ class JsonResource(Generic[T], _FastAPICallable):
             seen = set()
 
         included: list[dict] = []
-        rel_objs = self.to_relationships() or {}
+        rel_objs = self._resolved_relationships()
 
         for name, resource in rel_objs.items():
             if name not in include:
                 continue
-            key = f"{resource.type}:{resource.id}"
-            if key in seen:
-                continue
-            seen.add(key)
-            included.append(resource._build_data(fields=fields))
+            # Handle collection relationships
+            items = resource._items if isinstance(resource, ResourceCollection) else [resource]
             nested = [part[len(name) + 1 :] for part in include if part.startswith(f"{name}.")]
-            if nested:
-                included.extend(resource._collect_included(nested, seen, fields=fields))
+            for item in items:
+                key = f"{item.type}:{item.id}"
+                if key in seen:
+                    continue
+                seen.add(key)
+                included.append(item._build_data(fields=fields))
+                if nested:
+                    included.extend(item._collect_included(nested, seen, fields=fields))
 
         return included
 
