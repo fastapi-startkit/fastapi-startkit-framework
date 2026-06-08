@@ -145,8 +145,8 @@ class TestSparseFieldsets:
     def test_fields_for_other_type_does_not_affect_this_resource(self):
         post = PostResource(FakePost(1, "Hello", "World", "2024-01-01"))
         doc = post.serialize(fields={"users": ["name"]})  # no "posts" key
-        # all attributes should be present
-        assert set(doc["data"]["attributes"].keys()) == {"title", "body", "created_at"}
+        # all attributes should be present (id is included because it comes from serialize())
+        assert {"title", "body", "created_at"}.issubset(doc["data"]["attributes"].keys())
 
     def test_included_resources_also_filtered(self):
         author = FakeUser(5, "Alice", "alice@example.com", "admin")

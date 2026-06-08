@@ -282,15 +282,16 @@ class JsonResource(Generic[T], _FastAPICallable):
     def to_attributes(self) -> dict | None:
         """Return a ``{name: value}`` dict of resource attributes.
 
-        Calls ``self.model.serialize()`` and strips ``"id"`` plus any names in
-        ``self.hidden``.  Returns ``None`` when the model has no
+        Calls ``self.model.serialize()`` and strips any names listed in
+        ``self.hidden``.  All other fields — including ``"id"`` — are
+        included as-is.  Returns ``None`` when the model has no
         ``serialize()`` method or when the resulting dict is empty.
         """
         model = getattr(self, "model", None)
         if model is not None and hasattr(model, "serialize"):
             data = model.serialize()
             if isinstance(data, dict):
-                blacklist = {"id"} | set(self.__class__.hidden)
+                blacklist = set(self.__class__.hidden)
                 filtered = {k: v for k, v in data.items() if k not in blacklist}
                 return filtered or None
         return None

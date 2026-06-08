@@ -180,13 +180,14 @@ class TestToAttributesAutoSerialize:
         model = FakeModel(1, title="Hello", body="World")
         resource = PostResource(model)
         attrs = resource.to_attributes()
-        assert attrs == {"title": "Hello", "body": "World"}
+        assert attrs == {"id": 1, "title": "Hello", "body": "World"}
 
-    def test_id_excluded_from_attributes(self):
+    def test_id_present_in_attributes(self):
         model = FakeModel(1, title="Hello")
         resource = PostResource(model)
         attrs = resource.to_attributes()
-        assert "id" not in attrs
+        assert "id" in attrs
+        assert attrs["id"] == 1
 
     def test_returns_none_when_model_has_no_serialize(self):
         class BareResource(JsonResource[FakeModelNoSerialize]):
@@ -196,16 +197,23 @@ class TestToAttributesAutoSerialize:
         resource = BareResource(model)
         assert resource.to_attributes() is None
 
-    def test_returns_none_when_serialize_returns_only_id(self):
-        model = FakeModel(1)  # only 'id' field
-        resource = PostResource(model)
-        # After stripping 'id', empty dict -> None
+    def test_returns_none_when_serialize_returns_empty(self):
+        class EmptyModel:
+            id = 1
+
+            def serialize(self):
+                return {}
+
+        class EmptyResource(JsonResource[EmptyModel]):
+            pass
+
+        resource = EmptyResource(EmptyModel())
         assert resource.to_attributes() is None
 
     def test_in_serialized_document(self):
         model = FakeModel(1, title="Hello", body="World")
         doc = PostResource(model).serialize()
-        assert doc["data"]["attributes"] == {"title": "Hello", "body": "World"}
+        assert doc["data"]["attributes"] == {"id": 1, "title": "Hello", "body": "World"}
 
 
 # ---------------------------------------------------------------------------
@@ -235,12 +243,21 @@ class TestHidden:
         model = FakeModel(1, name="Bob", password="s", remember_token="t", api_key="k")
         resource = StrictUser(model)
         attrs = resource.to_attributes()
-        assert attrs == {"name": "Bob"}
+        assert attrs == {"id": 1, "name": "Bob"}
 
-    def test_id_always_hidden_regardless_of_hidden_list(self):
-        # 'id' is excluded by default even when hidden=[]
+    def test_id_present_in_attributes_by_default(self):
+        # 'id' is included in attributes — it is only hidden when explicitly added to hidden=[]
         model = FakeModel(7, title="Hi")
         resource = PostResource(model)
+        attrs = resource.to_attributes()
+        assert "id" in attrs
+
+    def test_id_hidden_when_in_hidden_list(self):
+        class NoIdAttr(JsonResource[FakeModel]):
+            hidden = ["id"]
+
+        model = FakeModel(7, title="Hi")
+        resource = NoIdAttr(model)
         attrs = resource.to_attributes()
         assert "id" not in attrs
 

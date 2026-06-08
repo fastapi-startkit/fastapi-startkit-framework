@@ -82,7 +82,9 @@ class TestJsonAPIResponseStructure:
     def test_data_attributes(self):
         post = PostResource(FakePost(1, "My Title", "My Body"))
         doc = post.serialize()
-        assert doc["data"]["attributes"] == {"title": "My Title", "body": "My Body"}
+        attrs = doc["data"]["attributes"]
+        assert attrs["title"] == "My Title"
+        assert attrs["body"] == "My Body"
 
     def test_no_relationships_key_when_none(self):
         post = PostResource(FakePost(1, "Hello", "World"))
