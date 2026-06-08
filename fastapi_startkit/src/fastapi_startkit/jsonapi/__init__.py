@@ -1,15 +1,15 @@
 """fastapi_startkit.jsonapi — JSON:API specification helpers."""
 
 from .response import (
-    JsonAPIListResponse,
-    JsonAPIResponse,
+    JsonResource,
+    ResourceCollection,
     parse_fields,
     parse_include,
 )
 
 __all__ = [
-    "JsonAPIResponse",
-    "JsonAPIListResponse",
+    "JsonResource",
+    "ResourceCollection",
     "parse_include",
     "parse_fields",
 ]

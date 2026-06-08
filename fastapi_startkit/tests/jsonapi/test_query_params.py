@@ -1,14 +1,49 @@
 """Tests for parse_include(), parse_fields(), sparse fieldsets, and
 the FastAPI ASGI __call__ integration (return resource directly).
+
+Sparse fieldsets and sideloading are applied via the fluent chain API:
+    resource.include("author").fields("posts", ["title"]).serialize()
 """
 
 import pytest
 from fastapi_startkit.jsonapi import (
-    JsonAPIListResponse,
-    JsonAPIResponse,
+    JsonResource,
     parse_fields,
     parse_include,
 )
+
+
+# ---------------------------------------------------------------------------
+# Fake models
+# ---------------------------------------------------------------------------
+
+
+class FakeUser:
+    def __init__(self, id_, name, email="u@example.com", role="member"):
+        self.id = id_
+        self.name = name
+        self.email = email
+        self.role = role
+
+    def serialize(self):
+        return {"id": self.id, "name": self.name, "email": self.email, "role": self.role}
+
+
+class FakePost:
+    def __init__(self, id_, title, body="", created_at="2024-01-01", author=None):
+        self.id = id_
+        self.title = title
+        self.body = body
+        self.created_at = created_at
+        self.author = author
+
+    def serialize(self):
+        return {
+            "id": self.id,
+            "title": self.title,
+            "body": self.body,
+            "created_at": self.created_at,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -16,38 +51,15 @@ from fastapi_startkit.jsonapi import (
 # ---------------------------------------------------------------------------
 
 
-class UserResource(JsonAPIResponse):
-    type = "users"
-    attributes = ["name", "email", "role"]
-
-    def __init__(self, id_, name, email="u@example.com", role="member"):
-        self.id = id_
-        self.name = name
-        self.email = email
-        self.role = role
-
-    def to_attributes(self):
-        return {"name": self.name, "email": self.email, "role": self.role}
+class UserResource(JsonResource[FakeUser]):
+    pass  # type="users", auto-attrs
 
 
-class PostResource(JsonAPIResponse):
-    type = "posts"
-    attributes = ["title", "body", "created_at"]
-
-    def __init__(self, id_, title, body="", created_at="2024-01-01", author=None):
-        self.id = id_
-        self.title = title
-        self.body = body
-        self.created_at = created_at
-        self._author = author
-
-    def to_attributes(self):
-        return {"title": self.title, "body": self.body, "created_at": self.created_at}
-
+class PostResource(JsonResource[FakePost]):
     def to_relationships(self):
-        if self._author is None:
+        if self.model.author is None:
             return None
-        return {"author": self._author}
+        return {"author": UserResource(self.model.author)}
 
 
 # ---------------------------------------------------------------------------
@@ -123,49 +135,41 @@ class TestParseFields:
 
 class TestSparseFieldsets:
     def test_single_resource_fields_filtered(self):
-        post = PostResource(1, "Hello", "World", "2024-01-01")
-        doc = post.serialize(fields={"posts": ["title"]})
+        post = PostResource(FakePost(1, "Hello", "World", "2024-01-01"))
+        doc = post.fields("title").serialize()
         assert doc["data"]["attributes"] == {"title": "Hello"}
 
     def test_multiple_fields_filtered(self):
-        post = PostResource(1, "Hello", "World", "2024-01-01")
-        doc = post.serialize(fields={"posts": ["title", "body"]})
+        post = PostResource(FakePost(1, "Hello", "World", "2024-01-01"))
+        doc = post.fields("title", "body").serialize()
         assert doc["data"]["attributes"] == {"title": "Hello", "body": "World"}
 
     def test_fields_for_other_type_does_not_affect_this_resource(self):
-        post = PostResource(1, "Hello", "World", "2024-01-01")
-        doc = post.serialize(fields={"users": ["name"]})  # no "posts" key
-        # all attributes should be present
-        assert set(doc["data"]["attributes"].keys()) == {"title", "body", "created_at"}
+        post = PostResource(FakePost(1, "Hello", "World", "2024-01-01"))
+        # "users.name" restricts the users type only — posts attributes are unaffected
+        doc = post.fields("users.name").serialize()
+        assert {"title", "body", "created_at"}.issubset(doc["data"]["attributes"].keys())
 
     def test_included_resources_also_filtered(self):
-        author = UserResource(5, "Alice", "alice@example.com", "admin")
-        post = PostResource(1, "Hello", "World", author=author)
-        doc = post.serialize(
-            include=["author"],
-            fields={"users": ["name"]},
-        )
+        author = FakeUser(5, "Alice", "alice@example.com", "admin")
+        post = PostResource(FakePost(1, "Hello", "World", author=author))
+        doc = post.include("author").fields("users.name").serialize()
         inc = next(i for i in doc["included"] if i["type"] == "users")
         assert inc["attributes"] == {"name": "Alice"}
         assert "email" not in inc["attributes"]
 
     def test_list_response_fields_filtered(self):
-        posts = [
-            PostResource(1, "A", "aa", "2024-01-01"),
-            PostResource(2, "B", "bb", "2024-01-02"),
-        ]
-        doc = JsonAPIListResponse(posts).serialize(fields={"posts": ["title"]})
+        models = [FakePost(1, "A", "aa", "2024-01-01"), FakePost(2, "B", "bb", "2024-01-02")]
+        doc = PostResource.collection(models).fields("title").serialize()
         for item in doc["data"]:
             assert list(item["attributes"].keys()) == ["title"]
 
     def test_combined_include_and_fields(self):
-        """include= and fields[*]= should work together."""
-        author = UserResource(10, "Bob", "bob@example.com", "editor")
-        post = PostResource(1, "Post", "Body", author=author)
-        doc = post.serialize(
-            include=["author"],
-            fields={"posts": ["title"], "users": ["name", "email"]},
-        )
+        """include and fields should work together via chain API."""
+        author = FakeUser(10, "Bob", "bob@example.com", "editor")
+        post = PostResource(FakePost(1, "Post", "Body", author=author))
+        # "title" -> posts type (primary); "users.name" and "users.email" -> users type
+        doc = post.include("author").fields("title", "users.name", "users.email").serialize()
         assert doc["data"]["attributes"] == {"title": "Post"}
         inc = doc["included"][0]
         assert inc["attributes"] == {"name": "Bob", "email": "bob@example.com"}
@@ -177,7 +181,7 @@ class TestSparseFieldsets:
 
 
 class TestFastAPIAsgiResponse:
-    """Test that JsonAPIResponse instances can be returned directly from
+    """Test that JsonResource instances can be returned directly from
     FastAPI endpoints (the ASGI __call__ path)."""
 
     @pytest.fixture
@@ -189,23 +193,25 @@ class TestFastAPIAsgiResponse:
 
         @api.get("/api/users/{id}")
         async def get_user(id: int):
-            user = UserResource(id, "Alice", "alice@example.com", "admin")
-            return user  # ← returned directly, no .serialize() call
+            user = UserResource(FakeUser(id, "Alice", "alice@example.com", "admin"))
+            return user  # <- returned directly, no .serialize() call
 
         @api.get("/api/posts/{id}")
         async def get_post(id: int):
-            author = UserResource(1, "Alice")
-            post = PostResource(id, "My Post", "Body text", author=author)
+            author = FakeUser(1, "Alice")
+            post = PostResource(FakePost(id, "My Post", "Body text", author=author))
             return post
 
         @api.get("/api/posts")
         async def list_posts():
-            author = UserResource(1, "Alice")
-            posts = [
-                PostResource(1, "Post One", author=author),
-                PostResource(2, "Post Two"),
-            ]
-            return JsonAPIListResponse(posts)
+            author = FakeUser(1, "Alice")
+            posts = PostResource.collection(
+                [
+                    FakePost(1, "Post One", author=author),
+                    FakePost(2, "Post Two"),
+                ]
+            )
+            return posts
 
         return TestClient(api)
 

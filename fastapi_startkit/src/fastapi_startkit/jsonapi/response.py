@@ -4,47 +4,56 @@ https://jsonapi.org
 
 Quick-start::
 
-    from fastapi_startkit.jsonapi import JsonAPIResponse, JsonAPIListResponse
+    from fastapi_startkit.jsonapi import JsonResource
 
-    class UserResource(JsonAPIResponse):
-        type = "users"
-        attributes = ["name", "email"]
+    class PostResource(JsonResource["Post"]):
+        pass  # auto-type="posts", auto-attributes from Post.serialize()
 
-        def __init__(self, user):
-            self.id = user.id
-            self.name = user.name
-            self.email = user.email
+    class UserResource(JsonResource["User"]):
+        hidden = ["password", "remember_token"]
 
-    # ── Single resource endpoint ────────────────────────────────────────
-    @app.get("/api/users/{id}")
-    async def get_user(id: int):
-        user = await User.find_or_fail(id)
-        return UserResource(user)               # ← return directly; FastAPI
-                                                #   parses ?include= and
-                                                #   fields[users]= for you
+    class ArticleResource(JsonResource["Article"]):
+        def with_(self):
+            return {"meta": {"version": "1.0"}}
 
-    # ── Collection endpoint ─────────────────────────────────────────────
-    @app.get("/api/users")
-    async def list_users():
-        users = await User.all()
-        return JsonAPIListResponse([UserResource(u) for u in users])
+    # Single resource — returned directly; ?include= and ?fields[*]= are
+    # parsed from the live request automatically.
+    @app.get("/api/posts/{id}")
+    async def get_post(id: int):
+        post = await Post.find_or_fail(id)
+        return PostResource(post)
 
-Both classes implement the ASGI ``__call__`` protocol, so they can be
-returned from FastAPI endpoints without any extra wiring.  ``?include=`` and
-``fields[*]=`` query params are parsed automatically from the live request.
+    # Restrict fields and sideload relationships with the fluent chain API:
+    @app.get("/api/posts/{id}")
+    async def get_post(id: int):
+        post = await Post.find_or_fail(id)
+        return PostResource(post).include("author").fields("title", "users.name")
 
-You can also call ``serialize()`` manually when you need the dict::
+    # Collection (plain list or paginator)
+    @app.get("/api/posts")
+    async def list_posts():
+        posts = await Post.all()
+        return PostResource.collection(posts)
 
-    doc = UserResource(user).serialize(
-        include=["posts"],
-        fields={"users": ["name"], "posts": ["title"]},
-    )
+    # Paginated collection
+    @app.get("/api/posts")
+    async def list_posts_paginated(page: int = 1):
+        posts = await Post.paginate(15, page)
+        return PostResource.collection(posts)
+
+    # Manual serialization when you need the dict:
+    doc = PostResource(post).include("author").fields("title", "users.name").serialize()
 """
 
 from __future__ import annotations
 
-from typing import Any
+import inspect
+from typing import Any, Generic, TypeVar
 from urllib.parse import unquote_plus
+
+import inflection
+
+T = TypeVar("T")
 
 
 # ---------------------------------------------------------------------------
@@ -60,16 +69,6 @@ def parse_include(param: str | None) -> list[str]:
 
     :param param: raw query-string value or ``None``.
     :returns: list of relationship names to sideload.
-
-    Example FastAPI usage::
-
-        from fastapi import Query
-        from fastapi_startkit.jsonapi import parse_include
-
-        @app.get("/api/posts/{id}")
-        async def get_post(id: int, include: str | None = Query(None)):
-            post = await Post.find(id)
-            return PostResource(post).serialize(include=parse_include(include))
     """
     if not param:
         return []
@@ -85,19 +84,6 @@ def parse_fields(raw_query: dict[str, str]) -> dict[str, list[str]]:
     :param raw_query: flat ``{key: value}`` dict of ALL query parameters
                       (e.g. ``dict(request.query_params)`` in FastAPI).
     :returns: ``{resource_type: [field, ...]}`` for every ``fields[*]`` key.
-
-    Example FastAPI usage::
-
-        from fastapi import Request
-        from fastapi_startkit.jsonapi import parse_fields
-
-        @app.get("/api/posts/{id}")
-        async def get_post(id: int, request: Request):
-            fields = parse_fields(dict(request.query_params))
-            # GET ?fields[posts]=title,body&fields[users]=name
-            # → {"posts": ["title", "body"], "users": ["name"]}
-            post = await Post.find(id)
-            return PostResource(post).serialize(fields=fields)
     """
     result: dict[str, list[str]] = {}
     for key, value in raw_query.items():
@@ -112,29 +98,18 @@ def parse_fields(raw_query: dict[str, str]) -> dict[str, list[str]]:
 # ASGI mixin — makes resources directly returnable from FastAPI endpoints
 # ---------------------------------------------------------------------------
 
-# FastAPI checks `isinstance(response, starlette.responses.Response)` on every
-# endpoint return value.  If True, it calls `await response(scope, receive, send)`
-# directly.  If False, it JSON-serialises the raw object __dict__.
-#
-# We therefore make _FastAPICallable a real Response subclass when starlette is
-# available, and fall back to plain `object` otherwise (serialize() still works,
-# the user just can't return the resource directly from FastAPI).
-
 try:
     from starlette.responses import Response as _StarletteResponse
 
     class _FastAPICallable(_StarletteResponse):
         """Starlette Response subclass that lazily serializes on ``__call__``.
 
-        Subclasses (UserResource, PostResource, …) have their own ``__init__``
-        and never call ``super().__init__()``, so we must NOT rely on Starlette's
-        ``Response.__init__`` having run.  We set the attributes FastAPI reads
-        before calling ``__call__`` as class-level defaults, and we completely
-        override ``__call__`` to handle ASGI ourselves.
+        If chain state has been set via ``.include()`` / ``.fields()`` before
+        the resource is returned from an endpoint, that state is used.
+        Otherwise the query string is parsed from the ASGI scope and passed
+        to ``serialize()`` automatically.
         """
 
-        # FastAPI reads `response.background` before calling `__call__`.
-        # Setting it at class level ensures it's always present.
         background = None
         status_code = 200
         media_type = "application/vnd.api+json"
@@ -142,20 +117,23 @@ try:
         async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
             import json as _json
 
-            # Parse query string from the ASGI scope.
-            raw_qs: str = (scope.get("query_string") or b"").decode()
-            qp: dict[str, str] = {}
-            if raw_qs:
-                for pair in raw_qs.split("&"):
-                    if "=" in pair:
-                        k, _, v = pair.partition("=")
-                        qp[unquote_plus(k)] = unquote_plus(v)
-
-            include = parse_include(qp.get("include"))
-            fields = parse_fields(qp)
+            # If chain methods were called before returning this resource,
+            # _chain_state_set is True and we use that state directly.
+            # Otherwise fall back to parsing ?include= and ?fields[*]= from the URL.
+            if not getattr(self, "_chain_state_set", False):
+                raw_qs: str = (scope.get("query_string") or b"").decode()
+                qp: dict[str, str] = {}
+                if raw_qs:
+                    for pair in raw_qs.split("&"):
+                        if "=" in pair:
+                            k, _, v = pair.partition("=")
+                            qp[unquote_plus(k)] = unquote_plus(v)
+                # Temporarily set chain state from query string for this render.
+                self._chain_include = parse_include(qp.get("include"))  # type: ignore[attr-defined]
+                self._chain_fields = parse_fields(qp)  # type: ignore[attr-defined]
 
             body = _json.dumps(
-                self.serialize(include=include, fields=fields)  # type: ignore[attr-defined]
+                self.serialize()  # type: ignore[attr-defined]
             ).encode("utf-8")
 
             await send(
@@ -170,50 +148,138 @@ try:
             )
             await send({"type": "http.response.body", "body": body})
 
-except ImportError:  # starlette / fastapi not installed
+except ImportError:
 
     class _FastAPICallable:  # type: ignore[no-redef]
-        """No-op when starlette is not installed.
-
-        ``serialize()`` still works; returning the resource directly from a
-        FastAPI endpoint will not until ``fastapi-startkit[fastapi]`` is installed.
-        """
+        """No-op when starlette is not installed."""
 
 
 # ---------------------------------------------------------------------------
-# Core classes
+# JsonResource — generic base class
 # ---------------------------------------------------------------------------
 
 
-class JsonAPIResponse(_FastAPICallable):
-    """Base class for a single JSON:API resource.
+class JsonResource(Generic[T], _FastAPICallable):
+    """Generic base class for a single JSON:API resource.
 
-    Subclasses must define:
+    Pass the model directly::
 
-    * ``type: str``      – resource type (e.g. ``"posts"``)
-    * ``id: int | str``  – resource identifier (set in ``__init__``)
+        class PostResource(JsonResource[Post]):
+            pass  # auto-type="posts", auto-attributes from Post.serialize()
 
-    Optionally declare:
+        class UserResource(JsonResource[User]):
+            hidden = ["password"]  # strip sensitive fields
 
-    * ``attributes: list[str]``
-        Field names to expose in ``data.attributes``.  The default
-        ``to_attributes()`` reads the matching instance attributes.
+        class ArticleResource(JsonResource[Article]):
+            def with_(self):
+                return {"meta": {"version": "1.0"}}
 
-    * ``relationships: dict[str, JsonAPIResponse]``
-        Related resources (populated in ``to_relationships()``).
+    Fluent chain API::
 
-    All four hooks are overridable: ``to_attributes()``,
-    ``to_relationships()``, ``to_links()``, ``to_meta()``.
+        # Sideload relationships
+        return PostResource(post).include("author", "comments")
 
-    Instances can be returned **directly** from FastAPI endpoints — the
-    ASGI ``__call__`` in :class:`_FastAPICallable` handles query-param
-    parsing and serialization automatically.
+        # Restrict attributes — plain names apply to this resource's type;
+        # dotted names ("type.field") apply to a related resource's type.
+        return PostResource(post).fields("title", "created_at", "users.name")
+
+        # Chain include + fields
+        return PostResource(post).include("author").fields("title", "users.name")
+
+        # Manual serialization
+        doc = PostResource(post).include("author").fields("title", "users.name").serialize()
+
+    When returned directly from a FastAPI endpoint with no chain methods called,
+    ``?include=`` and ``?fields[*]=`` query params are parsed automatically
+    from the live request.
+
+    Class-level attributes
+    ----------------------
+    type : str
+        Resource type string.  Auto-derived from the class name when not set
+        (``AgentResource`` -> ``"agents"``).
+    id : int | str
+        Resource identifier.  Auto-set from ``model.id`` in ``__init__``.
+    hidden : list[str]
+        Field names to exclude from ``to_attributes()`` when auto-serializing
+        via ``model.serialize()``.
+
+    Class methods
+    -------------
+    collection(items)
+        Wrap a plain list **or** a ``LengthAwarePaginator`` / ``SimplePaginator``
+        in a :class:`ResourceCollection`.  Pagination meta is included
+        automatically.
+
+    Overridable hooks
+    -----------------
+    to_attributes()    -- ``{name: value}`` dict of resource attributes
+    to_relationships() -- ``{name: JsonResource}`` related resources
+    to_links()         -- top-level links dict
+    to_meta()          -- top-level meta dict
+    with_()            -- extra top-level envelope keys merged into the document
     """
 
     type: str = ""
     id: int | str = ""
-    attributes: list[str] = []
-    relationships: dict[str, "JsonAPIResponse"] = {}
+    hidden: list[str] = []
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        if "type" not in cls.__dict__:
+            name = cls.__name__.removesuffix("Resource")
+            if name:
+                cls.type = inflection.tableize(name)
+
+    def __init__(self, model: T) -> None:
+        self.model = model
+        self.id = getattr(model, "id", "")
+        self._chain_include: list[str] = []
+        self._chain_fields: dict[str, list[str]] = {}
+        self._chain_state_set: bool = False
+
+    # ------------------------------------------------------------------
+    # Fluent chain API
+    # ------------------------------------------------------------------
+
+    def include(self, *relationships: str) -> "JsonResource[T]":
+        """Sideload one or more relationships into ``included[]``.
+
+        Dot-notation is supported for nested relationships::
+
+            PostResource(post).include("author", "author.company")
+
+        :param relationships: relationship names to sideload.
+        :returns: ``self`` for chaining.
+        """
+        self._chain_include = list(relationships)
+        self._chain_state_set = True
+        return self
+
+    def fields(self, *field_specs: str) -> "JsonResource[T]":
+        """Restrict which attributes are returned (JSON:API sparse fieldsets).
+
+        Each argument is either a plain field name or a ``"type.field"`` spec:
+
+        * Plain name (``"title"``) — restricts this resource's own attributes.
+        * Dotted name (``"users.name"``) — restricts the named related type.
+
+        Example::
+
+            PostResource(post).fields("title", "created_at", "users.name")
+            # → {"posts": ["title", "created_at"], "users": ["name"]}
+
+        :param field_specs: field names, optionally prefixed with ``type.``.
+        :returns: ``self`` for chaining.
+        """
+        for spec in field_specs:
+            if "." in spec:
+                rel_type, _, field = spec.partition(".")
+                self._chain_fields.setdefault(rel_type, []).append(field)
+            else:
+                self._chain_fields.setdefault(self.type, []).append(spec)
+        self._chain_state_set = True
+        return self
 
     # ------------------------------------------------------------------
     # Overridable hooks
@@ -222,26 +288,53 @@ class JsonAPIResponse(_FastAPICallable):
     def to_attributes(self) -> dict | None:
         """Return a ``{name: value}`` dict of resource attributes.
 
-        The default implementation builds the dict from ``self.attributes``
-        by reading matching instance attributes (``None`` when absent).
-        Returns ``None`` when ``self.attributes`` is empty.
+        Calls ``self.model.serialize()`` and strips any names listed in
+        ``self.hidden``.  All other fields are included as-is.
+        Returns ``None`` when the model has no ``serialize()`` method or
+        when the resulting dict is empty.
         """
-        if not self.attributes:
-            return None
-        return {attr: getattr(self, attr, None) for attr in self.attributes}
+        model = getattr(self, "model", None)
+        if model is not None and hasattr(model, "serialize"):
+            data = model.serialize()
+            if isinstance(data, dict):
+                blacklist = set(self.__class__.hidden)
+                filtered = {k: v for k, v in data.items() if k not in blacklist}
+                return filtered or None
+        return None
 
-    def to_relationships(self) -> dict[str, "JsonAPIResponse"] | None:
-        """Return a ``{name: JsonAPIResponse}`` dict of related resources.
+    def to_relationships(self) -> dict | None:
+        """Return a relationship mapping, or ``None``.
 
-        The default implementation returns the class-level
-        ``relationships`` dict only when its values are already
-        ``JsonAPIResponse`` instances.  Override this to build the dict
-        dynamically from an ORM object.
+        Each value can be any of three forms:
+
+        * **Resource class** → always a **single** resource.
+          The framework reads ``self.model.<key>`` and wraps it::
+
+              def to_relationships(self):
+                  return {"author": UserResource}
+                  # → UserResource(self.model.author)
+
+          If the attribute is ``None`` or absent the relationship is omitted.
+
+        * **Lambda / function** → for **collections** and custom logic.
+          Called with no arguments; use ``ResourceClass.collection()`` inside::
+
+              def to_relationships(self):
+                  return {
+                      "comments": lambda: CommentResource.collection(
+                          self.model.comments
+                      ),
+                  }
+
+        * **``JsonResource`` / ``ResourceCollection`` instance** — used as-is
+          when you need full control::
+
+              def to_relationships(self):
+                  return {"author": UserResource(self.model.author)}
+
+        Returns ``None`` (no relationships) by default.
         """
-        rels = self.__class__.relationships
-        if not rels:
-            return None
-        return rels if all(isinstance(v, JsonAPIResponse) for v in rels.values()) else None
+        return None
 
     def to_links(self) -> dict | None:
         """Return a ``{name: url}`` dict of links, or ``None``."""
@@ -251,17 +344,71 @@ class JsonAPIResponse(_FastAPICallable):
         """Return a ``{name: value}`` meta dict, or ``None``."""
         return None
 
+    def with_(self) -> dict:
+        """Return extra keys to merge into the top-level JSON:API envelope.
+
+        Keys from ``with_()`` are shallow-merged last, so they take
+        precedence over ``to_links()`` / ``to_meta()``::
+
+            class ArticleResource(JsonResource[Article]):
+                def with_(self):
+                    return {"meta": {"version": "1.0"}}
+
+        :returns: dict of extra top-level envelope keys (default: ``{}``).
+        """
+        return {}
+
     # ------------------------------------------------------------------
-    # Internal serialization helpers
+    # Internal helpers
     # ------------------------------------------------------------------
+
+    def _resolve_rel(self, key: str, value: Any) -> "JsonResource | ResourceCollection | None":
+        """Resolve one relationship value to a concrete resource / collection.
+
+        Two intended forms:
+
+        * **Resource class** → always a **single** resource.
+          The framework reads ``self.model.<key>`` and wraps it with the class::
+
+              return {"author": UserResource}
+              # → UserResource(self.model.author)
+
+        * **Lambda / function** → for **collections** and any custom logic.
+          Called with no arguments; use ``ResourceClass.collection()`` inside::
+
+              return {
+                  "comments": lambda: CommentResource.collection(self.model.comments),
+              }
+
+        Also accepted for convenience:
+
+        * **``JsonResource`` / ``ResourceCollection`` instance** — used as-is.
+        """
+        # --- class reference → single resource ---
+        if isinstance(value, type):
+            related = getattr(self.model, key, None) if hasattr(self, "model") else None
+            return value(related) if related is not None else None
+
+        # --- lambda / plain function ---
+        if inspect.isfunction(value) or inspect.ismethod(value):
+            return value()
+
+        # --- already a JsonResource or ResourceCollection instance ---
+        return value
+
+    def _resolved_relationships(self) -> "dict[str, JsonResource | ResourceCollection]":
+        """Return ``to_relationships()`` with all values resolved to instances."""
+        raw = self.to_relationships()
+        if not raw:
+            return {}
+        resolved: dict[str, Any] = {}
+        for key, val in raw.items():
+            result = self._resolve_rel(key, val)
+            if result is not None:
+                resolved[key] = result
+        return resolved
 
     def _build_data(self, fields: dict[str, list[str]] | None = None) -> dict:
-        """Build the ``data`` member of the JSON:API document.
-
-        :param fields: sparse-fieldset map from :func:`parse_fields`.
-                       When present, only the listed fields are included in
-                       ``data.attributes`` for each resource type.
-        """
         data: dict[str, Any] = {
             "type": self.type,
             "id": str(self.id),
@@ -274,11 +421,15 @@ class JsonAPIResponse(_FastAPICallable):
                 attrs = {k: v for k, v in attrs.items() if k in allowed}
             data["attributes"] = attrs
 
-        rel_objs = self.to_relationships()
+        rel_objs = self._resolved_relationships()
         if rel_objs:
-            data["relationships"] = {
-                name: {"data": {"type": resource.type, "id": str(resource.id)}} for name, resource in rel_objs.items()
-            }
+            rels: dict[str, Any] = {}
+            for name, resource in rel_objs.items():
+                if isinstance(resource, ResourceCollection):
+                    rels[name] = {"data": [{"type": item.type, "id": str(item.id)} for item in resource._items]}
+                else:
+                    rels[name] = {"data": {"type": resource.type, "id": str(resource.id)}}
+            data["relationships"] = rels
 
         return data
 
@@ -288,81 +439,49 @@ class JsonAPIResponse(_FastAPICallable):
         seen: set[str] | None = None,
         fields: dict[str, list[str]] | None = None,
     ) -> list[dict]:
-        """Recursively sideload related resources.
-
-        :param include: relationship names to sideload.
-        :param seen: de-duplication set of ``"type:id"`` keys.
-        :param fields: sparse-fieldset filter.
-        """
         if seen is None:
             seen = set()
 
         included: list[dict] = []
-        rel_objs = self.to_relationships() or {}
+        rel_objs = self._resolved_relationships()
 
         for name, resource in rel_objs.items():
             if name not in include:
                 continue
-
-            key = f"{resource.type}:{resource.id}"
-            if key in seen:
-                continue
-            seen.add(key)
-            included.append(resource._build_data(fields=fields))
-
-            # Recurse for nested dot-notation includes (e.g. "author.company").
+            # Handle collection relationships
+            items = resource._items if isinstance(resource, ResourceCollection) else [resource]
             nested = [part[len(name) + 1 :] for part in include if part.startswith(f"{name}.")]
-            if nested:
-                included.extend(resource._collect_included(nested, seen, fields=fields))
+            for item in items:
+                key = f"{item.type}:{item.id}"
+                if key in seen:
+                    continue
+                seen.add(key)
+                included.append(item._build_data(fields=fields))
+                if nested:
+                    included.extend(item._collect_included(nested, seen, fields=fields))
 
         return included
 
     # ------------------------------------------------------------------
-    # Public API
+    # Serialization
     # ------------------------------------------------------------------
 
-    def serialize(
-        self,
-        include: list[str] | None = None,
-        fields: dict[str, list[str]] | None = None,
-    ) -> dict:
+    def serialize(self) -> dict:
         """Serialize this resource into a JSON:API document dict.
 
-        :param include: relationship names to sideload into ``included[]``.
-                        Use comma-separated names via :func:`parse_include`,
-                        or pass a plain list.  Dot notation is supported for
-                        nested relationships (``"author.company"``).
-        :param fields: sparse-fieldset map produced by :func:`parse_fields`.
-                       Only the listed attribute names are included for each
-                       resource type:
-                       ``{"posts": ["title"], "users": ["name"]}``.
+        Uses the include / fields state set via the chain API::
 
-        :returns: A dict safe to return from any FastAPI endpoint or pass
-                  to ``JSONResponse``.
+            doc = PostResource(post).include("author").fields("posts", ["title"]).serialize()
 
-        Typical FastAPI endpoint (manual)::
+        When returned directly from a FastAPI endpoint without calling chain
+        methods, ``?include=`` and ``?fields[*]=`` query params are parsed
+        from the live HTTP request automatically.
 
-            @app.get("/api/posts/{id}")
-            async def get_post(
-                id: int,
-                request: Request,
-                include: str | None = Query(None),
-            ):
-                post = await Post.find(id)
-                return PostResource(post).serialize(
-                    include=parse_include(include),
-                    fields=parse_fields(dict(request.query_params)),
-                )
-
-        Or simply return the resource directly and let FastAPI handle it::
-
-            @app.get("/api/posts/{id}")
-            async def get_post(id: int):
-                post = await Post.find(id)
-                return PostResource(post)
+        :returns: A dict safe to pass to ``JSONResponse`` or return from
+                  any FastAPI endpoint.
         """
-        if include is None:
-            include = []
+        include = self._chain_include
+        fields = self._chain_fields or None
 
         document: dict[str, Any] = {"data": self._build_data(fields=fields)}
 
@@ -379,47 +498,152 @@ class JsonAPIResponse(_FastAPICallable):
         if meta is not None:
             document["meta"] = meta
 
+        extra = self.with_()
+        if extra:
+            document.update(extra)
+
         return document
 
+    # ------------------------------------------------------------------
+    # Collection factory
+    # ------------------------------------------------------------------
 
-class JsonAPIListResponse(_FastAPICallable):
-    """Wraps a list of :class:`JsonAPIResponse` instances.
+    @classmethod
+    def collection(cls, items: Any) -> "ResourceCollection":
+        """Wrap *items* in a :class:`ResourceCollection`.
 
-    ``data`` is a JSON array.  Instances can be returned directly from
-    FastAPI endpoints — query params are parsed automatically.
+        *items* may be:
 
-    Usage::
+        * A plain ``list`` or iterable of model instances.
+        * A ``LengthAwarePaginator`` or ``SimplePaginator`` — pagination
+          meta is included automatically in the response envelope.
 
-        @app.get("/api/posts")
-        async def list_posts():
-            posts = await Post.all()
-            return JsonAPIListResponse([PostResource(p) for p in posts])
+        Example::
+
+            return PostResource.collection(posts)
+            return PostResource.collection(posts).include("author")
+            return PostResource.collection(paginator).fields("posts", ["title"])
+        """
+        try:
+            from fastapi_startkit.masoniteorm.pagination.BasePaginator import BasePaginator
+
+            if isinstance(items, BasePaginator):
+                resource_items = [cls(model) for model in items]
+                return ResourceCollection(resource_items, paginator=items, primary_type=cls.type)
+        except ImportError:
+            pass
+
+        return ResourceCollection([cls(model) for model in items], primary_type=cls.type)
+
+
+# ---------------------------------------------------------------------------
+# ResourceCollection
+# ---------------------------------------------------------------------------
+
+
+class ResourceCollection(_FastAPICallable):
+    """Wraps a list of :class:`JsonResource` instances as a JSON:API collection.
+
+    Prefer creating instances via :meth:`JsonResource.collection`::
+
+        return PostResource.collection(posts)
+        return PostResource.collection(posts).include("author")
+        return PostResource.collection(posts).fields("title", "users.name")
+
+    Pagination meta is added automatically when the source is a paginator.
+    Override :meth:`to_meta` / :meth:`to_links` to add custom envelope data.
     """
 
-    def __init__(self, items: list[JsonAPIResponse]) -> None:
+    def __init__(
+        self,
+        items: list[JsonResource],
+        paginator: Any = None,
+        primary_type: str = "",
+    ) -> None:
         self._items = items
+        self._paginator = paginator
+        self._primary_type = primary_type
+        self._chain_include: list[str] = []
+        self._chain_fields: dict[str, list[str]] = {}
+        self._chain_state_set: bool = False
+
+    # ------------------------------------------------------------------
+    # Fluent chain API
+    # ------------------------------------------------------------------
+
+    def include(self, *relationships: str) -> "ResourceCollection":
+        """Sideload one or more relationships into ``included[]``.
+
+        :param relationships: relationship names to sideload.
+        :returns: ``self`` for chaining.
+        """
+        self._chain_include = list(relationships)
+        self._chain_state_set = True
+        return self
+
+    def fields(self, *field_specs: str) -> "ResourceCollection":
+        """Restrict which attributes are returned (JSON:API sparse fieldsets).
+
+        Same dot-notation as :meth:`JsonResource.fields` — plain names apply
+        to the primary resource type; ``"type.field"`` applies to a related type::
+
+            PostResource.collection(posts).fields("title", "created_at", "users.name")
+
+        :param field_specs: field names, optionally prefixed with ``type.``.
+        :returns: ``self`` for chaining.
+        """
+        for spec in field_specs:
+            if "." in spec:
+                rel_type, _, field = spec.partition(".")
+                self._chain_fields.setdefault(rel_type, []).append(field)
+            else:
+                self._chain_fields.setdefault(self._primary_type, []).append(spec)
+        self._chain_state_set = True
+        return self
+
+    # ------------------------------------------------------------------
+    # Overridable hooks
+    # ------------------------------------------------------------------
 
     def to_links(self) -> dict | None:
         """Return top-level links, or ``None``."""
         return None
 
     def to_meta(self) -> dict | None:
-        """Return top-level meta, or ``None``."""
-        return None
+        """Return top-level meta dict, or ``None``.
 
-    def serialize(
-        self,
-        include: list[str] | None = None,
-        fields: dict[str, list[str]] | None = None,
-    ) -> dict:
+        Auto-populated from a paginator when present.
+        """
+        if self._paginator is None:
+            return None
+
+        paginator = self._paginator
+        meta: dict[str, Any] = {}
+        for attr in (
+            "total",
+            "count",
+            "per_page",
+            "current_page",
+            "last_page",
+            "next_page",
+            "previous_page",
+        ):
+            if hasattr(paginator, attr):
+                meta[attr] = getattr(paginator, attr)
+
+        return meta if meta else None
+
+    # ------------------------------------------------------------------
+    # Serialization
+    # ------------------------------------------------------------------
+
+    def serialize(self) -> dict:
         """Serialize the collection into a JSON:API document dict.
 
-        :param include: relationship names to sideload (same semantics as
-                        :meth:`JsonAPIResponse.serialize`).
-        :param fields: sparse-fieldset map from :func:`parse_fields`.
+        Uses the include / fields state set via the chain API.
         """
-        if include is None:
-            include = []
+        include = self._chain_include
+        fields = self._chain_fields or None
 
         document: dict[str, Any] = {
             "data": [item._build_data(fields=fields) for item in self._items],
