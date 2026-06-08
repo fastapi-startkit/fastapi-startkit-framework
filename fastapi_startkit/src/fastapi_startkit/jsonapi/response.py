@@ -308,22 +308,32 @@ class JsonResource(Generic[T], _FastAPICallable):
         Each value can be any of three forms:
 
         * **Resource class** — the framework reads ``self.model.<key>`` and
-          wraps it automatically::
-
-              def to_relationships(self):
-                  return {"author": UserResource}
-
-        * **Callable / lambda** — called with no arguments; useful when you
-          need custom logic to fetch or filter the related data::
+          wraps it automatically.  If the attribute is a list or ORM
+          Collection, ``.collection()`` is called; otherwise the item is
+          wrapped as a single resource::
 
               def to_relationships(self):
                   return {
-                      "comments": lambda: CommentResource.collection(
-                          self.model.comments.filter(is_public=True)
-                      ),
+                      "author":   UserResource,    # single → UserResource(model.author)
+                      "comments": CommentResource, # list  → CommentResource.collection(model.comments)
                   }
 
-        * **``JsonResource`` instance** — passed through as-is (explicit)::
+        * **Lambda / function** — called with no arguments.  A returned list
+          is automatically wrapped in :class:`ResourceCollection`::
+
+              def to_relationships(self):
+                  return {
+                      "comments": lambda: [CommentResource(c) for c in self.model.comments],
+                  }
+
+        * **Plain list** of ``JsonResource`` instances — auto-wrapped::
+
+              def to_relationships(self):
+                  return {
+                      "comments": [CommentResource(c) for c in self.model.comments],
+                  }
+
+        * **``JsonResource`` / ``ResourceCollection`` instance** — used as-is::
 
               def to_relationships(self):
                   return {"author": UserResource(self.model.author)}
@@ -358,24 +368,72 @@ class JsonResource(Generic[T], _FastAPICallable):
     # Internal helpers
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _is_many(obj: Any) -> bool:
+        """Return True when *obj* represents a collection of models.
+
+        Matches plain lists/tuples, and ORM ``Collection`` objects (which store
+        their items in ``_items``).  Single model instances are not iterable
+        in this sense, so they return False.
+
+        Note: ``hasattr()`` is deliberately avoided here.  ORM models override
+        ``__getattr__`` to return ``None`` for any unknown attribute, which
+        would make ``hasattr(model, "_items")`` incorrectly return ``True``.
+        Checking ``obj.__dict__`` bypasses ``__getattr__`` and only returns
+        True when ``_items`` is actually stored on the instance.
+        """
+        if isinstance(obj, (list, tuple)):
+            return True
+        try:
+            return "_items" in obj.__dict__ and not isinstance(obj, ResourceCollection)
+        except AttributeError:
+            return False
+
     def _resolve_rel(self, key: str, value: Any) -> "JsonResource | ResourceCollection | None":
         """Resolve one relationship value to a concrete resource / collection.
 
-        Handles the three supported forms:
-        - class         → ``value(getattr(self.model, key))``
-        - function/lambda → ``value()``  (detected via inspect.isfunction/ismethod)
-        - instance      → returned as-is
+        Supported forms — the framework picks the right wrapper automatically:
 
-        Note: ``JsonResource`` instances are ASGI-callable (they have ``__call__``),
-        so we use ``inspect.isfunction`` / ``inspect.ismethod`` instead of
-        ``callable()`` to distinguish lambdas from already-resolved instances.
+        * **Resource class** — attribute is a single model → ``Class(model.key)``;
+          attribute is a list / ORM Collection → ``Class.collection(model.key)``::
+
+              return {"author": UserResource, "comments": CommentResource}
+
+        * **Lambda / function** — called with no args; a returned list is
+          auto-wrapped in :class:`ResourceCollection`::
+
+              return {"comments": lambda: [CommentResource(c) for c in self.model.comments]}
+
+        * **Plain list** of ``JsonResource`` instances — auto-wrapped::
+
+              return {"comments": [CommentResource(c) for c in self.model.comments]}
+
+        * **``JsonResource`` / ``ResourceCollection`` instance** — used as-is::
+
+              return {"author": UserResource(self.model.author)}
         """
+        # --- class reference ---
         if isinstance(value, type):
             related = getattr(self.model, key, None) if hasattr(self, "model") else None
-            return value(related) if related is not None else None
+            if related is None:
+                return None
+            if self._is_many(related):
+                return value.collection(related)
+            return value(related)
+
+        # --- lambda / plain function ---
         if inspect.isfunction(value) or inspect.ismethod(value):
-            return value()
-        return value  # already a JsonResource or ResourceCollection instance
+            result = value()
+            if isinstance(result, list):
+                return ResourceCollection(result)
+            return result
+
+        # --- plain list of JsonResource instances ---
+        if isinstance(value, list):
+            return ResourceCollection(value)
+
+        # --- already a JsonResource or ResourceCollection instance ---
+        return value
 
     def _resolved_relationships(self) -> "dict[str, JsonResource | ResourceCollection]":
         """Return ``to_relationships()`` with all values resolved to instances."""
