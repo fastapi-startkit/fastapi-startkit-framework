@@ -1,5 +1,8 @@
 """Tests for parse_include(), parse_fields(), sparse fieldsets, and
 the FastAPI ASGI __call__ integration (return resource directly).
+
+Sparse fieldsets and sideloading are applied via the fluent chain API:
+    resource.include("author").fields("posts", ["title"]).serialize()
 """
 
 import pytest
@@ -134,27 +137,24 @@ class TestParseFields:
 class TestSparseFieldsets:
     def test_single_resource_fields_filtered(self):
         post = PostResource(FakePost(1, "Hello", "World", "2024-01-01"))
-        doc = post.serialize(fields={"posts": ["title"]})
+        doc = post.fields("posts", ["title"]).serialize()
         assert doc["data"]["attributes"] == {"title": "Hello"}
 
     def test_multiple_fields_filtered(self):
         post = PostResource(FakePost(1, "Hello", "World", "2024-01-01"))
-        doc = post.serialize(fields={"posts": ["title", "body"]})
+        doc = post.fields("posts", ["title", "body"]).serialize()
         assert doc["data"]["attributes"] == {"title": "Hello", "body": "World"}
 
     def test_fields_for_other_type_does_not_affect_this_resource(self):
         post = PostResource(FakePost(1, "Hello", "World", "2024-01-01"))
-        doc = post.serialize(fields={"users": ["name"]})  # no "posts" key
+        doc = post.fields("users", ["name"]).serialize()  # no "posts" key
         # all attributes should be present (id is included because it comes from serialize())
         assert {"title", "body", "created_at"}.issubset(doc["data"]["attributes"].keys())
 
     def test_included_resources_also_filtered(self):
         author = FakeUser(5, "Alice", "alice@example.com", "admin")
         post = PostResource(FakePost(1, "Hello", "World", author=author))
-        doc = post.serialize(
-            include=["author"],
-            fields={"users": ["name"]},
-        )
+        doc = post.include("author").fields("users", ["name"]).serialize()
         inc = next(i for i in doc["included"] if i["type"] == "users")
         assert inc["attributes"] == {"name": "Alice"}
         assert "email" not in inc["attributes"]
@@ -164,18 +164,15 @@ class TestSparseFieldsets:
             PostResource(FakePost(1, "A", "aa", "2024-01-01")),
             PostResource(FakePost(2, "B", "bb", "2024-01-02")),
         ]
-        doc = _ResourceCollection(posts).serialize(fields={"posts": ["title"]})
+        doc = _ResourceCollection(posts).fields("posts", ["title"]).serialize()
         for item in doc["data"]:
             assert list(item["attributes"].keys()) == ["title"]
 
     def test_combined_include_and_fields(self):
-        """include= and fields[*]= should work together."""
+        """include and fields[*] should work together via chain API."""
         author = FakeUser(10, "Bob", "bob@example.com", "editor")
         post = PostResource(FakePost(1, "Post", "Body", author=author))
-        doc = post.serialize(
-            include=["author"],
-            fields={"posts": ["title"], "users": ["name", "email"]},
-        )
+        doc = post.include("author").fields("posts", ["title"]).fields("users", ["name", "email"]).serialize()
         assert doc["data"]["attributes"] == {"title": "Post"}
         inc = doc["included"][0]
         assert inc["attributes"] == {"name": "Bob", "email": "bob@example.com"}

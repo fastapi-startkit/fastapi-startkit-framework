@@ -138,13 +138,13 @@ class TestJsonAPIResponseInclude:
     def test_included_when_include_specified(self):
         author = FakeUser(10, "Alice")
         post = PostResource(FakePost(1, "Hello", "World", author=author))
-        doc = post.serialize(include=["author"])
+        doc = post.include("author").serialize()
         assert "included" in doc
 
     def test_included_contains_author(self):
         author = FakeUser(10, "Alice")
         post = PostResource(FakePost(1, "Hello", "World", author=author))
-        doc = post.serialize(include=["author"])
+        doc = post.include("author").serialize()
         included = doc["included"]
         assert len(included) == 1
         assert included[0]["type"] == "users"
@@ -154,13 +154,13 @@ class TestJsonAPIResponseInclude:
     def test_no_included_when_rel_not_in_include(self):
         author = FakeUser(10, "Alice")
         post = PostResource(FakePost(1, "Hello", "World", author=author))
-        doc = post.serialize(include=["comments"])  # 'comments' does not exist
+        doc = post.include("comments").serialize()  # 'comments' does not exist
         assert "included" not in doc
 
     def test_no_included_key_when_include_is_empty_list(self):
         author = FakeUser(10, "Alice")
         post = PostResource(FakePost(1, "Hello", "World", author=author))
-        doc = post.serialize(include=[])
+        doc = post.serialize()
         assert "included" not in doc
 
     def test_no_duplicate_included_across_two_posts_same_author(self):
@@ -168,5 +168,5 @@ class TestJsonAPIResponseInclude:
         author = FakeUser(10, "Alice")
         post1 = PostResource(FakePost(1, "P1", "B1", author=author))
         post2 = PostResource(FakePost(2, "P2", "B2", author=author))
-        doc = _ResourceCollection([post1, post2]).serialize(include=["author"])
+        doc = _ResourceCollection([post1, post2]).include("author").serialize()
         assert len(doc["included"]) == 1

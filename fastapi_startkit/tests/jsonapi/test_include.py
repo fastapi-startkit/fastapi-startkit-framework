@@ -1,4 +1,4 @@
-"""Tests for include= sideloading logic in JsonResource."""
+"""Tests for include sideloading via the .include() chain method."""
 
 from fastapi_startkit.jsonapi import JsonResource, _ResourceCollection
 
@@ -86,29 +86,27 @@ class TestIncludeSingleRelationship:
     def test_include_author_present(self):
         author = FakeAuthor(1, "alice")
         post = PostResource(FakePost(10, "My Post", author=author))
-        doc = post.serialize(include=["author"])
+        doc = post.include("author").serialize()
         assert "included" in doc
         assert any(inc["type"] == "authors" and inc["id"] == "1" for inc in doc["included"])
 
     def test_include_uses_resource_attributes(self):
         author = FakeAuthor(1, "alice")
         post = PostResource(FakePost(10, "My Post", author=author))
-        doc = post.serialize(include=["author"])
+        doc = post.include("author").serialize()
         inc = next(i for i in doc["included"] if i["type"] == "authors")
         assert inc["attributes"]["username"] == "alice"
 
     def test_include_non_existent_relationship_no_included(self):
         post = PostResource(FakePost(10, "My Post"))
-        doc = post.serialize(include=["author"])
+        doc = post.include("author").serialize()
         assert "included" not in doc
 
     def test_include_none_equivalent_to_empty(self):
         author = FakeAuthor(1, "alice")
         post = PostResource(FakePost(10, "My Post", author=author))
-        doc_none = post.serialize(include=None)
-        doc_empty = post.serialize(include=[])
-        assert "included" not in doc_none
-        assert "included" not in doc_empty
+        doc = post.serialize()
+        assert "included" not in doc
 
 
 class TestIncludeMultipleRelationships:
@@ -116,7 +114,7 @@ class TestIncludeMultipleRelationships:
         author = FakeAuthor(1, "alice")
         comment = FakeComment(100, "Great post!")
         post = PostResource(FakePost(10, "My Post", author=author, comments=[comment]))
-        doc = post.serialize(include=["author", "comment_0"])
+        doc = post.include("author", "comment_0").serialize()
         types = {inc["type"] for inc in doc["included"]}
         assert "authors" in types
         assert "comments" in types
@@ -125,7 +123,7 @@ class TestIncludeMultipleRelationships:
         author = FakeAuthor(1, "alice")
         comment = FakeComment(100, "Great post!")
         post = PostResource(FakePost(10, "My Post", author=author, comments=[comment]))
-        doc = post.serialize(include=["author"])
+        doc = post.include("author").serialize()
         types = {inc["type"] for inc in doc["included"]}
         assert "authors" in types
         assert "comments" not in types
@@ -139,7 +137,7 @@ class TestIncludeDeduplication:
             PostResource(FakePost(1, "P1", author=author)),
             PostResource(FakePost(2, "P2", author=author)),
         ]
-        doc = _ResourceCollection(posts).serialize(include=["author"])
+        doc = _ResourceCollection(posts).include("author").serialize()
         author_entries = [i for i in doc["included"] if i["type"] == "authors"]
         assert len(author_entries) == 1
 
@@ -148,14 +146,14 @@ class TestIncludeRelationshipDataInDocument:
     def test_relationships_key_in_data_still_present(self):
         author = FakeAuthor(1, "alice")
         post = PostResource(FakePost(10, "My Post", author=author))
-        doc = post.serialize(include=["author"])
+        doc = post.include("author").serialize()
         assert "relationships" in doc["data"]
         assert "author" in doc["data"]["relationships"]
 
     def test_relationship_linkage_is_correct(self):
         author = FakeAuthor(1, "alice")
         post = PostResource(FakePost(10, "My Post", author=author))
-        doc = post.serialize(include=["author"])
+        doc = post.include("author").serialize()
         linkage = doc["data"]["relationships"]["author"]["data"]
         assert linkage == {"type": "authors", "id": "1"}
 
@@ -164,7 +162,7 @@ class TestIncludeFromQueryParam:
     """Simulate how FastAPI would pass the include= query parameter."""
 
     def test_include_from_comma_split(self):
-        """Demonstrate parsing include= query string and passing to serialize()."""
+        """Demonstrate parsing include= query string and passing to .include()."""
         author = FakeAuthor(1, "alice")
         post = PostResource(FakePost(10, "My Post", author=author))
 
@@ -172,7 +170,7 @@ class TestIncludeFromQueryParam:
         include_param = "author"
         include_list = [x.strip() for x in include_param.split(",")]
 
-        doc = post.serialize(include=include_list)
+        doc = post.include(*include_list).serialize()
         assert "included" in doc
 
     def test_include_multiple_from_comma_split(self):
@@ -183,7 +181,7 @@ class TestIncludeFromQueryParam:
         include_param = "author, comment_0"
         include_list = [x.strip() for x in include_param.split(",")]
 
-        doc = post.serialize(include=include_list)
+        doc = post.include(*include_list).serialize()
         types = {inc["type"] for inc in doc["included"]}
         assert "authors" in types
         assert "comments" in types

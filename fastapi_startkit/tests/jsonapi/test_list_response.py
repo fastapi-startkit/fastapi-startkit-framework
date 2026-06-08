@@ -107,14 +107,14 @@ class TestJsonAPIListResponseInclude:
     def test_included_when_include_specified(self):
         author = FakeAuthor(5, "Bob")
         items = [ArticleResource(FakeArticle(1, "A", author=author))]
-        doc = _ResourceCollection(items).serialize(include=["author"])
+        doc = _ResourceCollection(items).include("author").serialize()
         assert "included" in doc
         assert len(doc["included"]) == 1
 
     def test_included_contains_correct_resource(self):
         author = FakeAuthor(5, "Bob")
         items = [ArticleResource(FakeArticle(1, "A", author=author))]
-        doc = _ResourceCollection(items).serialize(include=["author"])
+        doc = _ResourceCollection(items).include("author").serialize()
         inc = doc["included"][0]
         assert inc["type"] == "authors"
         assert inc["id"] == "5"
@@ -127,7 +127,7 @@ class TestJsonAPIListResponseInclude:
             ArticleResource(FakeArticle(1, "A", author=author)),
             ArticleResource(FakeArticle(2, "B", author=author)),
         ]
-        doc = _ResourceCollection(items).serialize(include=["author"])
+        doc = _ResourceCollection(items).include("author").serialize()
         assert len(doc["included"]) == 1
 
     def test_multiple_distinct_authors_included(self):
@@ -137,7 +137,7 @@ class TestJsonAPIListResponseInclude:
             ArticleResource(FakeArticle(1, "A", author=alice)),
             ArticleResource(FakeArticle(2, "B", author=bob)),
         ]
-        doc = _ResourceCollection(items).serialize(include=["author"])
+        doc = _ResourceCollection(items).include("author").serialize()
         assert len(doc["included"]) == 2
         ids = {inc["id"] for inc in doc["included"]}
         assert ids == {"1", "2"}
@@ -145,11 +145,11 @@ class TestJsonAPIListResponseInclude:
     def test_no_included_when_not_in_include(self):
         author = FakeAuthor(5, "Bob")
         items = [ArticleResource(FakeArticle(1, "A", author=author))]
-        doc = _ResourceCollection(items).serialize(include=["comments"])
+        doc = _ResourceCollection(items).include("comments").serialize()
         assert "included" not in doc
 
     def test_no_included_on_empty_include(self):
         author = FakeAuthor(5, "Bob")
         items = [ArticleResource(FakeArticle(1, "A", author=author))]
-        doc = _ResourceCollection(items).serialize(include=[])
+        doc = _ResourceCollection(items).serialize()
         assert "included" not in doc
