@@ -61,6 +61,7 @@ dev = [
     "aiomysql>=0.2.0",
     "sqlalchemy[asyncio]>=2.0.38",
     "fastapi[standard]>=0.124.4",
+    "faker>=40.13.0",
 ]
 
 
