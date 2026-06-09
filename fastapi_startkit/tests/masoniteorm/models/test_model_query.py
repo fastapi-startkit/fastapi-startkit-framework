@@ -323,3 +323,148 @@ class TestCombinedQueries:
     async def test_or_where_and_limit(self, UserModel, seeded_users):
         results = await UserModel.where("name", "Alice").or_where("name", "Charlie").limit(1).get()
         assert len(results) == 1
+
+
+# ---------------------------------------------------------------------------
+# OR WHERE NULL / OR WHERE NOT NULL
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+async def seeded_users_mixed_null(UserModel, users_table):
+    """
+    Insert three users where Alice has a verified_at timestamp and
+    Bob/Charlie do not, so we can test NULL / NOT NULL branching.
+
+    All dicts must have the same keys for the bulk-insert to work.
+    """
+    await UserModel.query().insert(
+        [
+            {
+                "name": "Alice",
+                "email": "alice@example.com",
+                "is_admin": True,
+                "email_verified_at": "2024-01-01 00:00:00",
+            },
+            {
+                "name": "Bob",
+                "email": "bob@example.com",
+                "is_admin": False,
+                "email_verified_at": None,
+            },
+            {
+                "name": "Charlie",
+                "email": "charlie@example.com",
+                "is_admin": False,
+                "email_verified_at": None,
+            },
+        ]
+    )
+    return await UserModel.query().get()
+
+
+class TestOrWhereNull:
+    async def test_or_where_null_returns_combined_rows(self, UserModel, seeded_users_mixed_null):
+        # Bob and Charlie have NULL email_verified_at.
+        # where(name=Alice) OR email_verified_at IS NULL → all three rows.
+        results = await UserModel.where("name", "Alice").or_where_null("email_verified_at").get()
+        names = {u.name for u in results}
+        assert names == {"Alice", "Bob", "Charlie"}
+
+    async def test_or_where_null_with_no_base_where(self, UserModel, seeded_users_mixed_null):
+        # No leading where — just or_where_null still matches all NULL rows.
+        results = await UserModel.query().or_where_null("email_verified_at").get()
+        names = {u.name for u in results}
+        assert "Bob" in names
+        assert "Charlie" in names
+
+    async def test_or_where_null_does_not_lose_base_match(self, UserModel, seeded_users_mixed_null):
+        # where(name=Alice) alone returns 1; OR NULL adds the two un-verified users.
+        base = await UserModel.where("name", "Alice").get()
+        assert len(base) == 1
+
+        combined = await UserModel.where("name", "Alice").or_where_null("email_verified_at").get()
+        assert len(combined) == 3
+
+
+class TestOrWhereNotNull:
+    async def test_or_where_not_null_returns_combined_rows(self, UserModel, seeded_users_mixed_null):
+        # Only Alice has a non-NULL email_verified_at.
+        # where(name=Bob) OR email_verified_at IS NOT NULL → Alice + Bob
+        results = await UserModel.where("name", "Bob").or_where_not_null("email_verified_at").get()
+        names = {u.name for u in results}
+        assert names == {"Alice", "Bob"}
+
+    async def test_or_where_not_null_with_no_base_where(self, UserModel, seeded_users_mixed_null):
+        # No leading where — only Alice is non-null.
+        results = await UserModel.query().or_where_not_null("email_verified_at").get()
+        names = {u.name for u in results}
+        assert "Alice" in names
+
+    async def test_or_where_not_null_excludes_null_only_rows(self, UserModel, seeded_users_mixed_null):
+        # where(name=Nobody) OR email_verified_at IS NOT NULL → only Alice
+        results = await UserModel.where("name", "Nobody").or_where_not_null("email_verified_at").get()
+        names = {u.name for u in results}
+        assert names == {"Alice"}
+
+
+# ---------------------------------------------------------------------------
+# WHERE RAW
+# ---------------------------------------------------------------------------
+
+
+class TestWhereRaw:
+    async def test_where_raw_with_binding(self, UserModel, seeded_users):
+        results = await UserModel.where_raw("name = ?", bindings=("Alice",)).get()
+        assert len(results) == 1
+        assert results[0].name == "Alice"
+
+    async def test_where_raw_without_bindings(self, UserModel, seeded_users):
+        # SQLite uses standard SQL; filter admins without a binding.
+        results = await UserModel.where_raw("is_admin = 1").get()
+        assert len(results) == 1
+        assert results[0].name == "Alice"
+
+    async def test_where_raw_chained_with_where(self, UserModel, seeded_users):
+        # Normal where then raw — AND logic applies.
+        results = await UserModel.where("is_admin", False).where_raw("name = ?", bindings=("Bob",)).get()
+        assert len(results) == 1
+        assert results[0].name == "Bob"
+
+    async def test_where_raw_no_match_returns_empty(self, UserModel, seeded_users):
+        results = await UserModel.where_raw("name = ?", bindings=("Nobody",)).get()
+        assert len(results) == 0
+
+
+# ---------------------------------------------------------------------------
+# OR WHERE RAW
+# ---------------------------------------------------------------------------
+
+
+class TestOrWhereRaw:
+    async def test_or_where_raw_with_binding(self, UserModel, seeded_users):
+        results = await UserModel.where("name", "Alice").or_where_raw("name = ?", bindings=("Bob",)).get()
+        names = {r.name for r in results}
+        assert names == {"Alice", "Bob"}
+
+    async def test_or_where_raw_no_bindings(self, UserModel, seeded_users):
+        # Reproduces the original production scenario: no bindings arg provided.
+        # Must not raise AttributeError on tuple vs list.
+        results = await UserModel.where("name", "Alice").or_where_raw("name IS NOT NULL").get()
+        assert len(results) > 0
+
+    async def test_or_where_raw_three_way_union(self, UserModel, seeded_users):
+        # where(Alice) OR raw(Bob) OR raw(Charlie) → all three rows
+        results = (
+            await UserModel.where("name", "Alice")
+            .or_where_raw("name = ?", bindings=("Bob",))
+            .or_where_raw("name = ?", bindings=("Charlie",))
+            .get()
+        )
+        names = {r.name for r in results}
+        assert names == {"Alice", "Bob", "Charlie"}
+
+    async def test_or_where_raw_no_match_returns_only_base(self, UserModel, seeded_users):
+        results = await UserModel.where("name", "Alice").or_where_raw("name = ?", bindings=("Nobody",)).get()
+        names = {r.name for r in results}
+        assert names == {"Alice"}

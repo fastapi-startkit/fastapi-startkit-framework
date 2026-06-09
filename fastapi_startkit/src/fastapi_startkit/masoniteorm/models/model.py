@@ -108,6 +108,22 @@ class Model(Attribute, Relationship, ObservesEvents):
         return cls.query().where_not_null(column)
 
     @classmethod
+    def or_where_null(cls, column: str) -> "QueryBuilder":
+        return cls.query().or_where_null(column)
+
+    @classmethod
+    def or_where_not_null(cls, column: str) -> "QueryBuilder":
+        return cls.query().or_where_not_null(column)
+
+    @classmethod
+    def where_raw(cls, expression: str, bindings=()) -> "QueryBuilder":
+        return cls.query().where_raw(expression, bindings)
+
+    @classmethod
+    def or_where_raw(cls, expression: str, bindings=()) -> "QueryBuilder":
+        return cls.query().or_where_raw(expression, bindings)
+
+    @classmethod
     def where_in(cls, column: str, values) -> "QueryBuilder":
         return cls.query().where_in(column, values)
 
