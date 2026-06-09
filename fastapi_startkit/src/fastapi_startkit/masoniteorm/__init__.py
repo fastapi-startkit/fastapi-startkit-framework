@@ -1,6 +1,7 @@
 from .config.config import MySQLConfig, PostgresConfig, SQLiteConfig
 from .exceptions import ModelNotFoundException
 from .facades import DB
+from .factory.factory import Factory
 from .migrations.Migration import Migration
 from .migrations.Migrator import Migrator
 from .models import Model
@@ -16,6 +17,7 @@ __all__ = [
     "Model",
     "ModelNotFoundException",
     "DB",
+    "Factory",
     "Migration",
     "Migrator",
     "ModelField",
