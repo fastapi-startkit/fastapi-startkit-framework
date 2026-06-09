@@ -6,11 +6,9 @@ base class (RefreshDatabase + IsolatedAsyncioTestCase), which migrates and
 wipes the schema around every test.
 """
 
-from unittest.mock import MagicMock
-
 from faker import Faker
 
-from fastapi_startkit.masoniteorm import Factory, Model
+from fastapi_startkit.masoniteorm import Factory
 
 from ..fixtures.model import Articles, Profile, User
 from .test_case import TestCase
