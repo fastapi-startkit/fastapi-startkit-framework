@@ -203,6 +203,14 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
         self._wheres += (QueryExpression(column, "=", None, "NOT NULL"),)
         return self
 
+    def or_where_null(self, column: str) -> "QueryBuilder":
+        self._wheres += (QueryExpression(column, "=", None, "NULL", keyword="or"),)
+        return self
+
+    def or_where_not_null(self, column: str) -> "QueryBuilder":
+        self._wheres += (QueryExpression(column, "=", None, "NOT NULL", keyword="or"),)
+        return self
+
     def where_not_in(self, column: str, values) -> "QueryBuilder":
         values = list(values) if not isinstance(values, list) else values
         self._wheres.append(QueryExpression(column, "NOT IN", values))
@@ -371,6 +379,14 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
     def or_where(self, column, *args) -> "QueryBuilder":
         operator, value = self._extract_operator_value(*args)
         self._wheres += ((QueryExpression(column, operator, value, "value", keyword="or")),)
+        return self
+
+    def where_raw(self, expression: str, bindings=()) -> "QueryBuilder":
+        self._wheres += (QueryExpression(expression, "=", None, raw=True, bindings=bindings),)
+        return self
+
+    def or_where_raw(self, expression: str, bindings=()) -> "QueryBuilder":
+        self._wheres += (QueryExpression(expression, "=", None, raw=True, keyword="or", bindings=bindings),)
         return self
 
     def join(self, table: str, column1: str, equality: str, column2: str, clause: str = "join") -> "QueryBuilder":
