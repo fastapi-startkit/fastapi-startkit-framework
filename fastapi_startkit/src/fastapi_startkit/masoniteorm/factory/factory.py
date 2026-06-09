@@ -45,10 +45,7 @@ class Factory(ABC):
 
     def __init__(self) -> None:
         if Faker is None:  # pragma: no cover
-            raise ImportError(
-                "The 'faker' package is required to use Factory. "
-                "Install it with: pip install faker"
-            )
+            raise ImportError("The 'faker' package is required to use Factory. Install it with: pip install faker")
         self.fake: Faker = Faker()
         self._count: int = 1
         self._state_callbacks: list[Callable] = []
