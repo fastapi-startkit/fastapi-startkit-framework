@@ -443,9 +443,7 @@ class TestWhereRaw:
 
 class TestOrWhereRaw:
     async def test_or_where_raw_with_binding(self, UserModel, seeded_users):
-        results = (
-            await UserModel.where("name", "Alice").or_where_raw("name = ?", bindings=("Bob",)).get()
-        )
+        results = await UserModel.where("name", "Alice").or_where_raw("name = ?", bindings=("Bob",)).get()
         names = {r.name for r in results}
         assert names == {"Alice", "Bob"}
 
@@ -467,8 +465,6 @@ class TestOrWhereRaw:
         assert names == {"Alice", "Bob", "Charlie"}
 
     async def test_or_where_raw_no_match_returns_only_base(self, UserModel, seeded_users):
-        results = (
-            await UserModel.where("name", "Alice").or_where_raw("name = ?", bindings=("Nobody",)).get()
-        )
+        results = await UserModel.where("name", "Alice").or_where_raw("name = ?", bindings=("Nobody",)).get()
         names = {r.name for r in results}
         assert names == {"Alice"}
