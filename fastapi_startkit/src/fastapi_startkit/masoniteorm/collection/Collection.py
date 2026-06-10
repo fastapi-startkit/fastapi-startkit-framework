@@ -6,7 +6,7 @@ class Collection(BaseCollection):
         pass
 
     async def load(self, *relations):
-        """Post-query eager loading — equivalent to Laravel's Collection::load().
+        """Post-query eager loading — equivalent to Collection::load().
 
         After fetching a collection, call this to load relationships in batch
         without N+1 queries:
