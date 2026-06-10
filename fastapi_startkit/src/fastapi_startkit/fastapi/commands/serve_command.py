@@ -1,4 +1,5 @@
 from fastapi_startkit.console.command import Command
+from fastapi_startkit.environment import env as _env
 from cleo.helpers import option
 
 
@@ -51,7 +52,8 @@ class ServeCommand(Command):
 
         host = self.option("host") or cfg_host
         port = int(self.option("port") or cfg_port)
-        reload = cfg_reload if self.option("reload") is None else self.option("reload")
+        cli_reload = self.option("reload")
+        reload = cfg_reload if cli_reload is None else _env(cli_reload, cli_reload)
         app = self.option("app")
 
         exist = self.is_app_exist()
