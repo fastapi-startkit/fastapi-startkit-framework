@@ -13,9 +13,7 @@ class AnthropicConfig:
 
     driver: str = "anthropic"
     key: str = field(default_factory=lambda: env("ANTHROPIC_API_KEY", ""))
-    url: str = field(
-        default_factory=lambda: env("ANTHROPIC_BASE_URL", "https://api.anthropic.com")
-    )
+    url: str = field(default_factory=lambda: env("ANTHROPIC_BASE_URL", "https://api.anthropic.com"))
 
 
 @dataclass
@@ -24,9 +22,7 @@ class OpenAIConfig:
 
     driver: str = "openai"
     key: str = field(default_factory=lambda: env("OPENAI_API_KEY", ""))
-    url: str = field(
-        default_factory=lambda: env("OPENAI_BASE_URL", "https://api.openai.com/v1")
-    )
+    url: str = field(default_factory=lambda: env("OPENAI_BASE_URL", "https://api.openai.com/v1"))
 
 
 @dataclass
@@ -34,9 +30,7 @@ class GoogleConfig:
     """Configuration for the Google / Gemini provider."""
 
     driver: str = "google"
-    key: str = field(
-        default_factory=lambda: env("GEMINI_API_KEY", "") or env("GOOGLE_API_KEY", "")
-    )
+    key: str = field(default_factory=lambda: env("GEMINI_API_KEY", "") or env("GOOGLE_API_KEY", ""))
 
 
 @dataclass

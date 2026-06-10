@@ -122,9 +122,7 @@ class Agent:
         """Stream a response token by token."""
         message = self.before(message)
         self._log_call("stream", message)
-        yield from self._stream(
-            message, system=system, model=model, provider_options=provider_options
-        )
+        yield from self._stream(message, system=system, model=model, provider_options=provider_options)
 
     def fake(self, patterns: dict[str, AgentResponse | AgentSnapshot]) -> "Agent":
         """Register fake responses for testing. Keys are glob patterns."""
@@ -136,13 +134,9 @@ class Agent:
         """Assert that prompt() or stream() was called."""
         calls = [c for c in self._call_log if c["method"] in ("prompt", "stream")]
         if times is not None:
-            assert len(calls) == times, (
-                f"Expected {times} prompt call(s), got {len(calls)}"
-            )
+            assert len(calls) == times, f"Expected {times} prompt call(s), got {len(calls)}"
         else:
-            assert len(calls) > 0, (
-                "Expected at least one prompt() or stream() call, but none were made"
-            )
+            assert len(calls) > 0, "Expected at least one prompt() or stream() call, but none were made"
 
     def assert_not_prompted(self) -> None:
         """Assert that prompt() and stream() were never called."""
@@ -165,9 +159,7 @@ class Agent:
     def _log_call(self, method: str, message: str) -> None:
         self._call_log.append({"method": method, "message": message})
 
-    def _apply_middleware(
-        self, message: str, final: Callable[[str], AgentResponse]
-    ) -> AgentResponse:
+    def _apply_middleware(self, message: str, final: Callable[[str], AgentResponse]) -> AgentResponse:
         """Build a left-to-right middleware chain and invoke it."""
         chain = list(self.middleware())
 
@@ -240,9 +232,7 @@ class Agent:
         attachments: list[Document] | None = None,
         provider_options: dict | None = None,
     ) -> AgentResponse:
-        resolved_system, messages = self._build_messages(
-            message, system, extra_messages, attachments
-        )
+        resolved_system, messages = self._build_messages(message, system, extra_messages, attachments)
         resolved_model = self._resolve_model(model)
         options = self._get_provider_options(provider_options)
 
@@ -250,9 +240,9 @@ class Agent:
             return self._run_anthropic(resolved_system, messages, resolved_model, options)
         if self._provider == "openai":
             return self._run_openai(resolved_system, messages, resolved_model, options)
-        raise ValueError(
-            f"Unsupported provider: {self._provider!r}. Use 'anthropic' or 'openai'."
-        )
+        if self._provider == "google":
+            return self._run_google(resolved_system, messages, resolved_model, options)
+        raise ValueError(f"Unsupported provider: {self._provider!r}. Use 'anthropic', 'openai', or 'google'.")
 
     def _stream(
         self,
@@ -269,10 +259,10 @@ class Agent:
             yield from self._stream_anthropic(resolved_system, messages, resolved_model, options)
         elif self._provider == "openai":
             yield from self._stream_openai(resolved_system, messages, resolved_model, options)
+        elif self._provider == "google":
+            yield from self._stream_google(resolved_system, messages, resolved_model, options)
         else:
-            raise ValueError(
-                f"Unsupported provider: {self._provider!r}. Use 'anthropic' or 'openai'."
-            )
+            raise ValueError(f"Unsupported provider: {self._provider!r}. Use 'anthropic', 'openai', or 'google'.")
 
     # ── Anthropic ──────────────────────────────────────────────────────────
 
@@ -386,3 +376,121 @@ class Agent:
             delta = chunk.choices[0].delta.content
             if delta:
                 yield delta
+
+    # ── Google ─────────────────────────────────────────────────────────────
+
+    def _resolve_google_api_key(self) -> str:
+        """
+        Resolve the Google API key.
+
+        Tries Config.get("ai").providers["google"].key first,
+        then falls back to GEMINI_API_KEY / GOOGLE_API_KEY env vars.
+        """
+        import os  # noqa: PLC0415
+
+        try:
+            from fastapi_startkit.facades.Config import Config  # noqa: PLC0415
+
+            ai_config = Config.get("ai")
+            providers = getattr(ai_config, "providers", {})
+            google_cfg = providers.get("google")
+            if google_cfg is not None:
+                key = getattr(google_cfg, "key", None)
+                if key:
+                    return key
+        except Exception:
+            pass
+        return os.environ.get("GEMINI_API_KEY", "") or os.environ.get("GOOGLE_API_KEY", "")
+
+    def _run_google(
+        self,
+        system: str | None,
+        messages: list[dict],
+        model: str,
+        options: dict,
+    ) -> AgentResponse:
+        import google.generativeai as genai  # noqa: PLC0415
+
+        api_key = self._resolve_google_api_key()
+        if api_key:
+            genai.configure(api_key=api_key)
+
+        generation_config: dict[str, Any] = {}
+        if self._max_tokens:
+            generation_config["max_output_tokens"] = self._max_tokens
+        if self._top_p != 1.0:
+            generation_config["top_p"] = self._top_p
+        generation_config.update(options)
+
+        google_model = genai.GenerativeModel(
+            model_name=model,
+            system_instruction=system,
+            generation_config=generation_config if generation_config else None,
+        )
+
+        google_messages = _to_google_messages(messages)
+        response = google_model.generate_content(google_messages)
+        content = response.text if hasattr(response, "text") else ""
+        usage: dict[str, Any] = {}
+        if hasattr(response, "usage_metadata"):
+            meta = response.usage_metadata
+            usage = {
+                "input": getattr(meta, "prompt_token_count", 0),
+                "output": getattr(meta, "candidates_token_count", 0),
+            }
+        return AgentResponse(content=content, usage=usage, raw=response)
+
+    def _stream_google(
+        self,
+        system: str | None,
+        messages: list[dict],
+        model: str,
+        options: dict,
+    ) -> Iterator[str]:
+        import google.generativeai as genai  # noqa: PLC0415
+
+        api_key = self._resolve_google_api_key()
+        if api_key:
+            genai.configure(api_key=api_key)
+
+        generation_config: dict[str, Any] = {}
+        if self._max_tokens:
+            generation_config["max_output_tokens"] = self._max_tokens
+        if self._top_p != 1.0:
+            generation_config["top_p"] = self._top_p
+        generation_config.update(options)
+
+        google_model = genai.GenerativeModel(
+            model_name=model,
+            system_instruction=system,
+            generation_config=generation_config if generation_config else None,
+        )
+
+        google_messages = _to_google_messages(messages)
+        for chunk in google_model.generate_content(google_messages, stream=True):
+            if chunk.text:
+                yield chunk.text
+
+
+# ─── Utilities ─────────────────────────────────────────────────────────────────
+
+
+def _to_google_messages(messages: list[dict]) -> list[dict]:
+    """
+    Convert OpenAI-style messages to Google GenerativeAI content format.
+    Maps 'assistant' role → 'model'; omits 'system' (handled via system_instruction).
+    """
+    result = []
+    for msg in messages:
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+        if role == "system":
+            continue  # system_instruction is set at model-construction level
+        google_role = "model" if role == "assistant" else "user"
+        if isinstance(content, list):
+            # Multi-part content — extract text parts only
+            text = " ".join(p.get("text", "") for p in content if isinstance(p, dict) and "text" in p)
+            result.append({"role": google_role, "parts": [{"text": text}]})
+        else:
+            result.append({"role": google_role, "parts": [{"text": str(content)}]})
+    return result
