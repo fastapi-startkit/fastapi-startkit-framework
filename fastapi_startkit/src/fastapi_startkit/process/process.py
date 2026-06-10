@@ -356,18 +356,28 @@ class PendingProcess:
             return self._fake._handle(command, self)
 
         if self._tty:
-            # TTY mode: pass through to terminal, no capture
-            result = subprocess.run(
+            # TTY mode: inherit stdin/stdout/stderr from parent process (no capture)
+            proc = await asyncio.create_subprocess_shell(
                 command,
-                shell=True,
+                stdin=None,
+                stdout=None,
+                stderr=None,
                 cwd=self._cwd,
                 env=self._env,
-                timeout=self._timeout,
             )
+            try:
+                if self._timeout is not None:
+                    await asyncio.wait_for(proc.wait(), timeout=self._timeout)
+                else:
+                    await proc.wait()
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.wait()
+                raise ProcessTimedOutException(command)
             return ProcessResult(
                 stdout="",
                 stderr="",
-                returncode=result.returncode,
+                returncode=proc.returncode or 0,
                 args=command,
             )
 
