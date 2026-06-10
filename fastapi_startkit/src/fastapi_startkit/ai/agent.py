@@ -122,6 +122,14 @@ class Agent:
         """Stream a response token by token."""
         message = self.before(message)
         self._log_call("stream", message)
+        fake = self._match_fake(message)
+        if fake is not None:
+            if isinstance(fake, AgentSnapshot):
+                response = fake.resolve(self, message)
+            else:
+                response = fake
+            yield response.content
+            return
         yield from self._stream(message, system=system, model=model, provider_options=provider_options)
 
     def fake(self, patterns: dict[str, AgentResponse | AgentSnapshot]) -> "Agent":
