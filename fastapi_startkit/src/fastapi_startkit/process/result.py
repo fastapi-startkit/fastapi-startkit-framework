@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from .exception import ProcessFailedException
+from .exception import ProcessFailedException, ProcessJsonDecodeError
 
 
 class ProcessResult:
@@ -42,8 +42,14 @@ class ProcessResult:
         return self._returncode
 
     def output_json(self) -> Any:
-        """Parse stdout as JSON."""
-        return json.loads(self._stdout)
+        """Parse stdout as JSON.
+
+        Raises ProcessJsonDecodeError if stdout is not valid JSON.
+        """
+        try:
+            return json.loads(self._stdout)
+        except json.JSONDecodeError as exc:
+            raise ProcessJsonDecodeError(self._stdout, exc) from exc
 
     def throw(self) -> "ProcessResult":
         """Raise ProcessFailedException if the process failed."""

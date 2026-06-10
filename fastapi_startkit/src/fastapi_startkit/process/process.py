@@ -413,83 +413,6 @@ class PendingProcess:
         return await self.run(p.to_command(), output_callback)
 
     # ------------------------------------------------------------------
-    # Sync execution (for scripts / CLI without an event loop)
-    # ------------------------------------------------------------------
-
-    def run_sync(self, command: str, callback: Callable | None = None) -> ProcessResult:
-        """Run a process synchronously and return a ProcessResult."""
-        if self._fake is not None:
-            return self._fake._handle(command, self)
-
-        if self._tty:
-            result = subprocess.run(
-                command,
-                shell=True,
-                cwd=self._cwd,
-                env=self._env,
-                timeout=self._timeout,
-            )
-            return ProcessResult(
-                stdout="",
-                stderr="",
-                returncode=result.returncode,
-                args=command,
-            )
-
-        if self._quiet:
-            result = subprocess.run(
-                command,
-                shell=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                cwd=self._cwd,
-                env=self._env,
-                input=self._input,
-                timeout=self._timeout,
-            )
-            return ProcessResult(
-                stdout="",
-                stderr="",
-                returncode=result.returncode,
-                args=command,
-            )
-
-        if callback is not None:
-            # Stream output through callback then return the final result
-            return self.start(command, callback).wait()
-
-        try:
-            result = subprocess.run(
-                command,
-                shell=True,
-                capture_output=True,
-                text=True,
-                cwd=self._cwd,
-                env=self._env,
-                input=self._input,
-                timeout=self._timeout,
-            )
-        except subprocess.TimeoutExpired:
-            raise ProcessTimedOutException(command)
-
-        return ProcessResult(
-            stdout=result.stdout or "",
-            stderr=result.stderr or "",
-            returncode=result.returncode,
-            args=command,
-        )
-
-    def pipe_sync(
-        self,
-        callback: Callable[["Pipe"], None],
-        output_callback: Callable | None = None,
-    ) -> ProcessResult:
-        """Build a pipeline of commands and run them synchronously."""
-        p = Pipe()
-        callback(p)
-        return self.run_sync(p.to_command(), output_callback)
-
-    # ------------------------------------------------------------------
     # Background execution
     # ------------------------------------------------------------------
 
@@ -535,10 +458,6 @@ class Process:
         result = await Process.run('ls -la')
         result = await Process.timeout(30).run('bash script.sh')
         result = await Process.forever().quietly().run('bash import.sh')
-
-    Sync API — for scripts / CLI without an event loop:
-        result = Process.run_sync('ls -la')
-        result = Process.timeout(30).run_sync('bash script.sh')
 
     Background execution:
         process = Process.start('bash long.sh', callback=print)
@@ -646,24 +565,6 @@ class Process:
     ) -> ProcessResult:
         """Build a pipeline of commands and run them asynchronously."""
         return await cls._pending().pipe(callback, output_callback)
-
-    # ------------------------------------------------------------------
-    # Sync execution shortcuts (for scripts / CLI)
-    # ------------------------------------------------------------------
-
-    @classmethod
-    def run_sync(cls, command: str, callback: Callable | None = None) -> ProcessResult:
-        """Run a command synchronously (for scripts / CLI without an event loop)."""
-        return cls._pending().run_sync(command, callback)
-
-    @classmethod
-    def pipe_sync(
-        cls,
-        callback: Callable[["Pipe"], None],
-        output_callback: Callable | None = None,
-    ) -> ProcessResult:
-        """Build a pipeline of commands and run them synchronously."""
-        return cls._pending().pipe_sync(callback, output_callback)
 
     # ------------------------------------------------------------------
     # Background execution

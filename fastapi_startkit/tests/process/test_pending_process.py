@@ -170,43 +170,6 @@ class TestPendingProcessFake:
 
 
 # ---------------------------------------------------------------------------
-# run_sync() — synchronous execution
-# ---------------------------------------------------------------------------
-
-
-class TestPendingProcessRunSync:
-    def test_run_sync_returns_process_result(self, pending):
-        result = pending.run_sync("echo hi")
-        assert isinstance(result, ProcessResult)
-
-    def test_run_sync_captures_stdout(self, pending):
-        result = pending.run_sync("echo hello world")
-        assert "hello world" in result.output()
-
-    def test_run_sync_uses_fake_when_set(self, fake_pending):
-        p, fake = fake_pending
-        result = p.run_sync("echo hello")
-        assert isinstance(result, ProcessResult)
-        assert result.successful() is True
-
-    def test_run_sync_timeout_raises(self, pending):
-        pending.timeout(0.1)
-        with pytest.raises(ProcessTimedOutException):
-            pending.run_sync("sleep 5")
-
-    def test_run_sync_quietly_discards_output(self, pending):
-        pending.quietly()
-        result = pending.run_sync("echo quiet")
-        assert result.output() == ""
-        assert result.successful() is True
-
-    def test_run_sync_with_input(self, pending):
-        pending.input("hello sync\n")
-        result = pending.run_sync("cat")
-        assert "hello sync" in result.output()
-
-
-# ---------------------------------------------------------------------------
 # start() — background invocation
 # ---------------------------------------------------------------------------
 

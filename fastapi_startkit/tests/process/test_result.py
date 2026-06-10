@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from fastapi_startkit.process.exception import ProcessFailedException
+from fastapi_startkit.process.exception import ProcessFailedException, ProcessJsonDecodeError
 from fastapi_startkit.process.result import ProcessResult
 
 
@@ -136,7 +136,7 @@ class TestOutputJson:
 
     def test_output_json_raises_on_invalid_json(self):
         r = _make_result(stdout="not valid json")
-        with pytest.raises(json.JSONDecodeError):
+        with pytest.raises(ProcessJsonDecodeError):
             r.output_json()
 
 

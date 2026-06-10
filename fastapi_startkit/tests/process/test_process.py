@@ -2,8 +2,9 @@
 
 import pytest
 
-from fastapi_startkit.process.exception import ProcessFailedException, ProcessTimedOutException
+from fastapi_startkit.process.exception import ProcessFailedException, ProcessJsonDecodeError, ProcessTimedOutException
 from fastapi_startkit.process.process import Process, ProcessFake
+from fastapi_startkit.process.result import ProcessResult
 
 
 @pytest.fixture(autouse=True)
@@ -76,6 +77,28 @@ class TestProcessRun:
         assert result.failed() is True
 
 
+class TestProcessResultJson:
+    def test_output_json_returns_dict(self):
+        result = ProcessResult(stdout='{"key": "value"}', returncode=0, args="cmd")
+        assert result.output_json() == {"key": "value"}
+
+    def test_output_json_returns_list(self):
+        result = ProcessResult(stdout='[1, 2, 3]', returncode=0, args="cmd")
+        assert result.output_json() == [1, 2, 3]
+
+    def test_output_json_raises_on_invalid_json(self):
+        result = ProcessResult(stdout="not valid json", returncode=0, args="cmd")
+        with pytest.raises(ProcessJsonDecodeError):
+            result.output_json()
+
+    def test_output_json_error_contains_raw_output(self):
+        raw = "this is not json"
+        result = ProcessResult(stdout=raw, returncode=0, args="cmd")
+        with pytest.raises(ProcessJsonDecodeError) as exc_info:
+            result.output_json()
+        assert raw in str(exc_info.value)
+
+
 class TestProcessTimeout:
     async def test_timeout_raises_on_slow_command(self):
         with pytest.raises(ProcessTimedOutException):
@@ -88,29 +111,6 @@ class TestProcessTimeout:
     async def test_forever_disables_timeout(self):
         result = await Process.forever().run("echo fast")
         assert result.successful() is True
-
-
-# ---------------------------------------------------------------------------
-# Process.run_sync() — sync execution
-# ---------------------------------------------------------------------------
-
-
-class TestProcessRunSync:
-    def test_run_sync_echo_returns_output(self):
-        result = Process.run_sync("echo hello")
-        assert "hello" in result.output()
-
-    def test_run_sync_successful(self):
-        result = Process.run_sync("echo hi")
-        assert result.successful() is True
-
-    def test_run_sync_failed_command(self):
-        result = Process.run_sync("exit 1")
-        assert result.failed() is True
-
-    def test_run_sync_timeout_raises(self):
-        with pytest.raises(ProcessTimedOutException):
-            Process.timeout(0.1).run_sync("sleep 5")
 
 
 # ---------------------------------------------------------------------------
