@@ -224,7 +224,10 @@ class Agent:
         if attachments:
             content: Any = [{"type": "text", "text": message}]
             for doc in attachments:
-                content.append(doc.to_anthropic_block())
+                if self._provider == "anthropic":
+                    content.append(doc.to_anthropic_block())
+                else:
+                    content.append(doc.to_openai_block())
             history.append({"role": "user", "content": content})
         else:
             history.append({"role": "user", "content": message})
@@ -281,9 +284,10 @@ class Agent:
         model: str,
         options: dict,
     ) -> AgentResponse:
-        from anthropic import Anthropic
+        from anthropic import Anthropic  # noqa: PLC0415
 
-        client = Anthropic()
+        api_key = self._resolve_api_key("anthropic")
+        client = Anthropic(api_key=api_key)
         params: dict[str, Any] = {
             "model": model,
             "max_tokens": self._max_tokens,
@@ -308,9 +312,10 @@ class Agent:
         model: str,
         options: dict,
     ) -> Iterator[str]:
-        from anthropic import Anthropic
+        from anthropic import Anthropic  # noqa: PLC0415
 
-        client = Anthropic()
+        api_key = self._resolve_api_key("anthropic")
+        client = Anthropic(api_key=api_key)
         params: dict[str, Any] = {
             "model": model,
             "max_tokens": self._max_tokens,
@@ -333,9 +338,10 @@ class Agent:
         model: str,
         options: dict,
     ) -> AgentResponse:
-        from openai import OpenAI
+        from openai import OpenAI  # noqa: PLC0415
 
-        client = OpenAI()
+        api_key = self._resolve_api_key("openai")
+        client = OpenAI(api_key=api_key)
         all_messages: list[dict] = []
         if system:
             all_messages.append({"role": "system", "content": system})
@@ -365,9 +371,10 @@ class Agent:
         model: str,
         options: dict,
     ) -> Iterator[str]:
-        from openai import OpenAI
+        from openai import OpenAI  # noqa: PLC0415
 
-        client = OpenAI()
+        api_key = self._resolve_api_key("openai")
+        client = OpenAI(api_key=api_key)
         all_messages: list[dict] = []
         if system:
             all_messages.append({"role": "system", "content": system})
@@ -385,30 +392,17 @@ class Agent:
             if delta:
                 yield delta
 
-    # ── Google ─────────────────────────────────────────────────────────────
-
-    def _resolve_google_api_key(self) -> str:
-        """
-        Resolve the Google API key.
-
-        Tries Config.get("ai").providers["google"].key first,
-        then falls back to GEMINI_API_KEY / GOOGLE_API_KEY env vars.
-        """
-        import os  # noqa: PLC0415
-
+    def _resolve_api_key(self, provider_name: str) -> str | None:
+        """Try Config.get("ai") first, fallback to None (SDK reads env var)."""
         try:
             from fastapi_startkit.facades.Config import Config  # noqa: PLC0415
 
             ai_config = Config.get("ai")
-            providers = getattr(ai_config, "providers", {})
-            google_cfg = providers.get("google")
-            if google_cfg is not None:
-                key = getattr(google_cfg, "key", None)
-                if key:
-                    return key
+            return ai_config.providers[provider_name].key or None
         except Exception:
-            pass
-        return os.environ.get("GEMINI_API_KEY", "") or os.environ.get("GOOGLE_API_KEY", "")
+            return None
+
+    # ── Google ─────────────────────────────────────────────────────────────
 
     def _run_google(
         self,
@@ -419,7 +413,7 @@ class Agent:
     ) -> AgentResponse:
         import google.generativeai as genai  # noqa: PLC0415
 
-        api_key = self._resolve_google_api_key()
+        api_key = self._resolve_api_key("google")
         if api_key:
             genai.configure(api_key=api_key)
 
@@ -457,7 +451,7 @@ class Agent:
     ) -> Iterator[str]:
         import google.generativeai as genai  # noqa: PLC0415
 
-        api_key = self._resolve_google_api_key()
+        api_key = self._resolve_api_key("google")
         if api_key:
             genai.configure(api_key=api_key)
 

@@ -51,9 +51,7 @@ def test_boot_sets_ai_in_config_store():
 
     fake_config_store = MagicMock()
     fake_app = MagicMock()
-    fake_app.make.side_effect = lambda key: (
-        ai_config_instance if key == "ai" else fake_config_store
-    )
+    fake_app.make.side_effect = lambda key: ai_config_instance if key == "ai" else fake_config_store
 
     provider = AIProvider(fake_app)
     provider.boot()
@@ -66,9 +64,7 @@ def test_boot_does_not_raise():
     ai_config_instance = AIConfig()
     fake_config_store = MagicMock()
     fake_app = MagicMock()
-    fake_app.make.side_effect = lambda key: (
-        ai_config_instance if key == "ai" else fake_config_store
-    )
+    fake_app.make.side_effect = lambda key: ai_config_instance if key == "ai" else fake_config_store
 
     provider = AIProvider(fake_app)
     provider.boot()  # must not raise
