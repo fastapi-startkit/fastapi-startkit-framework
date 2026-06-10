@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a **monorepo** for the FastAPI Startkit ecosystem — a Laravel/Masonite-inspired framework for building Python applications with FastAPI. It contains four main components:
+This is a **monorepo** for the FastAPI Startkit ecosystem — a modular, provider-driven framework for building Python applications with FastAPI. It contains four main components:
 
 | Directory | Purpose | Published as |
 |---|---|---|
