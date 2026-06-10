@@ -1,6 +1,6 @@
 """FastAPI Startkit AI module.
 
-Provides a Laravel-inspired declarative API for building AI agents backed
+Provides a LangGraph-powered declarative API for building AI agents backed
 by Anthropic, OpenAI, or Google provider SDKs.
 """
 
