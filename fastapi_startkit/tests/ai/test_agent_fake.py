@@ -261,3 +261,16 @@ def test_fake_after_reset_works_normally():
     agent.fake({"*": AgentResponse(content="second fake")})
     result = agent.prompt("call again")
     assert result.content == "second fake"
+
+
+# ─── stream() respects fake() ─────────────────────────────────────────────────
+
+
+def test_stream_returns_fake_response():
+    agent = SimpleAgent()
+    agent.fake({"*hello*": AgentResponse(content="Faked stream!")})
+
+    chunks = list(agent.stream("hello world"))
+
+    assert chunks == ["Faked stream!"]
+    agent.assert_prompted(times=1)

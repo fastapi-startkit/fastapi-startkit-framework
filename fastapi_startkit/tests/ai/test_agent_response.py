@@ -33,7 +33,7 @@ def test_json_parses_content_as_json():
 
 
 def test_json_parses_list_content():
-    response = AgentResponse(content='[1, 2, 3]')
+    response = AgentResponse(content="[1, 2, 3]")
     assert response.json() == [1, 2, 3]
 
 

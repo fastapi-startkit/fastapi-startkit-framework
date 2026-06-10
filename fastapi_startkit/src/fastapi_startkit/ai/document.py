@@ -34,3 +34,10 @@ class Document:
             },
             "title": self.name,
         }
+
+    def to_openai_block(self) -> dict:
+        """Return an OpenAI-compatible content block for this document."""
+        return {
+            "type": "text",
+            "text": f"[Document: {self.name}]\n{self.content}",
+        }
