@@ -41,7 +41,7 @@ class ProcessResult:
     def exit_code(self) -> int:
         return self._returncode
 
-    def output_json(self) -> Any:
+    def json(self) -> Any:
         """Parse stdout as JSON.
 
         Raises ProcessJsonDecodeError if stdout is not valid JSON.

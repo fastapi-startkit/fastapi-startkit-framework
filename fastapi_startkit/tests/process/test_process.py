@@ -78,24 +78,24 @@ class TestProcessRun:
 
 
 class TestProcessResultJson:
-    def test_output_json_returns_dict(self):
+    def test_json_returns_dict(self):
         result = ProcessResult(stdout='{"key": "value"}', returncode=0, args="cmd")
-        assert result.output_json() == {"key": "value"}
+        assert result.json() == {"key": "value"}
 
-    def test_output_json_returns_list(self):
+    def test_json_returns_list(self):
         result = ProcessResult(stdout='[1, 2, 3]', returncode=0, args="cmd")
-        assert result.output_json() == [1, 2, 3]
+        assert result.json() == [1, 2, 3]
 
-    def test_output_json_raises_on_invalid_json(self):
+    def test_json_raises_on_invalid_json(self):
         result = ProcessResult(stdout="not valid json", returncode=0, args="cmd")
         with pytest.raises(ProcessJsonDecodeError):
-            result.output_json()
+            result.json()
 
-    def test_output_json_error_contains_raw_output(self):
+    def test_json_error_contains_raw_output(self):
         raw = "this is not json"
         result = ProcessResult(stdout=raw, returncode=0, args="cmd")
         with pytest.raises(ProcessJsonDecodeError) as exc_info:
-            result.output_json()
+            result.json()
         assert raw in str(exc_info.value)
 
 

@@ -124,20 +124,20 @@ class TestCommand:
         assert r.command() == "ls -la /tmp"
 
 
-class TestOutputJson:
-    def test_output_json_parses_valid_json(self):
+class TestJson:
+    def test_json_parses_valid_json(self):
         r = _make_result(stdout='{"key": "value", "num": 42}')
-        data = r.output_json()
+        data = r.json()
         assert data == {"key": "value", "num": 42}
 
-    def test_output_json_parses_list(self):
+    def test_json_parses_list(self):
         r = _make_result(stdout="[1, 2, 3]")
-        assert r.output_json() == [1, 2, 3]
+        assert r.json() == [1, 2, 3]
 
-    def test_output_json_raises_on_invalid_json(self):
+    def test_json_raises_on_invalid_json(self):
         r = _make_result(stdout="not valid json")
         with pytest.raises(ProcessJsonDecodeError):
-            r.output_json()
+            r.json()
 
 
 class TestRepr:
