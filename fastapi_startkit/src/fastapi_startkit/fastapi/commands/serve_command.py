@@ -1,5 +1,40 @@
-from fastapi_startkit.console.command import Command
+from urllib.parse import urlparse
+
 from cleo.helpers import option
+
+from fastapi_startkit.console.command import Command
+
+
+def _resolve_host_port(
+    cfg_host: str | None,
+    cfg_port: int | None,
+    app_url: str | None,
+) -> tuple[str, int]:
+    """Resolve host and port with priority: APP_HOST/APP_PORT → APP_URL → defaults.
+
+    Args:
+        cfg_host: Value of APP_HOST (may be None).
+        cfg_port: Value of APP_PORT (may be None).
+        app_url:  Value of APP_URL (may be None).
+
+    Returns:
+        A (host, port) tuple always containing concrete values.
+    """
+    host = cfg_host or None
+    port = int(cfg_port) if cfg_port else None
+
+    if app_url and (not host or port is None):
+        raw = app_url
+        parsed = urlparse(raw if "://" in raw else f"http://{raw}")
+        if not host:
+            host = parsed.hostname or None
+        if port is None:
+            port = parsed.port or None
+
+    host = host or "127.0.0.1"
+    port = port if port is not None else 8000
+
+    return host, port
 
 
 class ServeCommand(Command):
@@ -42,15 +77,20 @@ class ServeCommand(Command):
         from fastapi_startkit import Config
         from fastapi_startkit.container import Container
 
-        # Resolve server settings: CLI flag > fastapi config > uvicorn default (None)
-        cfg_host = Config.get("fastapi.host", "127.0.0.1")
-        cfg_port = Config.get("fastapi.port", 8000)
+        # Read raw config values — no defaults here
+        cfg_host = Config.get("fastapi.host")
+        cfg_port = Config.get("fastapi.port")
+        cfg_app_url = Config.get("fastapi.app_url")
         cfg_reload = Config.get("fastapi.reload", True)
         cfg_reload_dirs = Config.get("fastapi.reload_dirs") or None
         cfg_reload_excludes = Config.get("fastapi.reload_excludes") or None
 
-        host = self.option("host") or cfg_host
-        port = int(self.option("port") or cfg_port)
+        # Full resolution: APP_HOST/APP_PORT → APP_URL → 127.0.0.1/8000
+        resolved_host, resolved_port = _resolve_host_port(cfg_host, cfg_port, cfg_app_url)
+
+        # CLI flags override resolved config
+        host = self.option("host") or resolved_host
+        port = int(self.option("port") or resolved_port)
         reload = cfg_reload if self.option("reload") is None else self.option("reload")
         app = self.option("app")
 
