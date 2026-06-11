@@ -46,3 +46,7 @@ class AIConfig:
             "google": GoogleConfig(),
         }
     )
+
+    # Media-generation provider selection
+    image_provider: str = field(default_factory=lambda: env("AI_IMAGE_PROVIDER", "openai"))
+    audio_provider: str = field(default_factory=lambda: env("AI_AUDIO_PROVIDER", "openai"))

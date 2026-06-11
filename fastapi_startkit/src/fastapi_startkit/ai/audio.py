@@ -1,16 +1,13 @@
-"""Audio generation API — text-to-speech via OpenAI TTS."""
+"""Audio generation API — text-to-speech via a pluggable provider."""
 
 from __future__ import annotations
 
 import asyncio
 import uuid
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
-# Optional runtime dependencies — imported at module level so tests can patch them.
-try:
-    from openai import OpenAI
-except ImportError:  # pragma: no cover
-    OpenAI = None  # type: ignore[assignment,misc]
+if TYPE_CHECKING:
+    from .audio_providers import AudioSynthesisProvider
 
 try:
     from fastapi_startkit.storage.storage import Storage
@@ -87,6 +84,9 @@ class AudioResponse:
 class Audio:
     """Fluent builder for text-to-speech generation.
 
+    The active backend is selected from :attr:`~fastapi_startkit.ai.AIConfig.audio_provider`
+    (env: ``AI_AUDIO_PROVIDER``). Defaults to OpenAI TTS.
+
     Usage::
 
         audio = await Audio.of("Hello world").generate()
@@ -127,9 +127,9 @@ class Audio:
         return self
 
     def voice(self, name: str) -> "Audio":
-        """Set an explicit OpenAI TTS voice name.
+        """Set an explicit TTS voice name.
 
-        Available voices: ``alloy``, ``echo``, ``fable``, ``onyx``, ``nova``,
+        OpenAI voices: ``alloy``, ``echo``, ``fable``, ``onyx``, ``nova``,
         ``shimmer``.
         """
         self._voice = name
@@ -156,28 +156,40 @@ class Audio:
     # ── Generation ─────────────────────────────────────────────────────────────
 
     async def generate(self) -> AudioResponse:
-        """Call the TTS API and return an :class:`AudioResponse`."""
-        return await asyncio.to_thread(self._generate_sync)
+        """Call the configured TTS provider and return an :class:`AudioResponse`."""
+        provider = self._resolve_provider()
+        data = await provider.synthesize(
+            text=self._text,
+            voice=self._voice,
+            model=self._model,
+            speed=self._speed,
+            fmt=self._response_format,
+        )
+        return AudioResponse(data=data, fmt=self._response_format)
 
     # ── Internal ───────────────────────────────────────────────────────────────
 
-    def _generate_sync(self) -> AudioResponse:
-        client = OpenAI(api_key=self._resolve_api_key())
-        response = client.audio.speech.create(
-            model=self._model,
-            voice=self._voice,
-            input=self._text,
-            speed=self._speed,
-            response_format=self._response_format,
-        )
-        data = response.read()
-        return AudioResponse(data=data, fmt=self._response_format)
+    def _resolve_provider(self) -> "AudioSynthesisProvider":
+        from .audio_providers import ElevenLabsAudioProvider, OpenAIAudioProvider  # noqa: PLC0415
 
-    def _resolve_api_key(self) -> Optional[str]:
+        provider_name = "openai"
+        api_key: Optional[str] = None
+        base_url: Optional[str] = None
+
         try:
             from fastapi_startkit.facades.Config import Config  # noqa: PLC0415
 
             ai_config = Config.get("ai")
-            return ai_config.providers["openai"].key or None
+            provider_name = ai_config.audio_provider
+            openai_cfg = ai_config.providers.get("openai")
+            if openai_cfg:
+                api_key = openai_cfg.key or None
+                base_url = openai_cfg.url or None
         except Exception:
-            return None
+            pass
+
+        if provider_name == "openai":
+            return OpenAIAudioProvider(api_key=api_key, base_url=base_url)
+        if provider_name == "elevenlabs":
+            return ElevenLabsAudioProvider()
+        raise ValueError(f"Unknown audio provider: {provider_name!r}. Use 'openai' or 'elevenlabs'.")

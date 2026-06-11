@@ -1,20 +1,14 @@
-"""Image generation API — text-to-image and image editing via OpenAI DALL-E."""
+"""Image generation API — text-to-image and image editing via a pluggable provider."""
 
 from __future__ import annotations
 
 import asyncio
-import base64
 import uuid
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from .files import ImageAttachment
-
-# Optional runtime dependencies — imported at module level so tests can patch them.
-try:
-    from openai import OpenAI
-except ImportError:  # pragma: no cover
-    OpenAI = None  # type: ignore[assignment,misc]
+    from .document import Document
+    from .image_providers import ImageGenerationProvider
 
 try:
     from fastapi_startkit.storage.storage import Storage
@@ -51,11 +45,7 @@ class ImageResponse:
     # ── Storage helpers ────────────────────────────────────────────────────────
 
     async def store(self) -> str:
-        """Save to the default private disk with an auto-generated filename.
-
-        Returns the filename (or full path when the Storage facade is not
-        configured).
-        """
+        """Save to the default private disk with an auto-generated filename."""
         return await self._save(self._auto_filename(), disk="local")
 
     async def storeAs(self, name: str) -> str:
@@ -95,21 +85,20 @@ class ImageResponse:
 class Image:
     """Fluent builder for image generation and editing.
 
+    The active backend is selected from :attr:`~fastapi_startkit.ai.AIConfig.image_provider`
+    (env: ``AI_IMAGE_PROVIDER``). Defaults to OpenAI DALL-E.
+
     Usage — text to image::
 
         image = await Image.of("A donut on a counter").generate()
 
-    Usage — edit with attachments::
+    Usage — edit with :class:`~fastapi_startkit.ai.Document` attachments::
 
-        from fastapi_startkit.ai import Files
+        from fastapi_startkit.ai import Document
 
         image = await (
             Image.of("Make this impressionist")
-            .attachments([
-                Files.Image.fromStorage("photo.jpg"),
-                Files.Image.fromPath("/tmp/photo.jpg"),
-                Files.Image.fromUrl("https://example.com/photo.jpg"),
-            ])
+            .attachments([await Document.from_url("https://example.com/photo.jpg")])
             .landscape()
             .generate()
         )
@@ -122,11 +111,10 @@ class Image:
 
     def __init__(self, prompt: str):
         self._prompt = prompt
-        self._attachments: list[ImageAttachment] = []
+        self._attachments: list[Document] = []
         self._size: str = self._SQUARE_SIZE
         self._model: str = "dall-e-3"
         self._quality: str = "standard"
-        self._n: int = 1
 
     @classmethod
     def of(cls, prompt: str) -> "Image":
@@ -135,9 +123,9 @@ class Image:
 
     # ── Modifier methods (chainable) ───────────────────────────────────────────
 
-    def attachments(self, files: list) -> "Image":
-        """Attach images for an editing request (switches to ``images.edit``)."""
-        self._attachments = list(files)
+    def attachments(self, docs: list) -> "Image":
+        """Attach :class:`~fastapi_startkit.ai.Document` objects for an editing request."""
+        self._attachments = list(docs)
         return self
 
     def landscape(self) -> "Image":
@@ -168,73 +156,48 @@ class Image:
     # ── Generation ─────────────────────────────────────────────────────────────
 
     async def generate(self) -> ImageResponse:
-        """Call the API and return an :class:`ImageResponse`."""
-        return await asyncio.to_thread(self._generate_sync)
+        """Call the configured image provider and return an :class:`ImageResponse`."""
+        provider = self._resolve_provider()
+
+        if self._attachments:
+            image_bytes = await provider.edit(
+                prompt=self._prompt,
+                image_bytes=self._attachments[0].to_bytes(),
+                size=self._size,
+            )
+        else:
+            image_bytes = await provider.generate(
+                prompt=self._prompt,
+                size=self._size,
+                model=self._model,
+                quality=self._quality,
+            )
+
+        return ImageResponse(data=image_bytes, fmt="png")
 
     # ── Internal ───────────────────────────────────────────────────────────────
 
-    def _generate_sync(self) -> ImageResponse:
-        if self._attachments:
-            return self._edit()
-        return self._create()
+    def _resolve_provider(self) -> "ImageGenerationProvider":
+        from .image_providers import OpenAIImageProvider, StabilityImageProvider  # noqa: PLC0415
 
-    def _resolve_api_key(self) -> Optional[str]:
+        provider_name = "openai"
+        api_key: Optional[str] = None
+        base_url: Optional[str] = None
+
         try:
             from fastapi_startkit.facades.Config import Config  # noqa: PLC0415
 
             ai_config = Config.get("ai")
-            return ai_config.providers["openai"].key or None
+            provider_name = ai_config.image_provider
+            openai_cfg = ai_config.providers.get("openai")
+            if openai_cfg:
+                api_key = openai_cfg.key or None
+                base_url = openai_cfg.url or None
         except Exception:
-            return None
+            pass
 
-    def _create(self) -> ImageResponse:
-        """Generate a new image from a text prompt."""
-        client = OpenAI(api_key=self._resolve_api_key())
-        params: dict = {
-            "model": self._model,
-            "prompt": self._prompt,
-            "size": self._size,
-            "n": self._n,
-            "response_format": "b64_json",
-        }
-        if self._model == "dall-e-3":
-            params["quality"] = self._quality
-
-        response = client.images.generate(**params)
-        b64 = response.data[0].b64_json
-        data = base64.b64decode(b64)
-        return ImageResponse(data=data, fmt="png")
-
-    def _edit(self) -> ImageResponse:
-        """Edit an existing image using the provided attachments.
-
-        Only ``dall-e-2`` supports image editing; size is clamped to
-        ``1024×1024`` since that is the only edit-supported size.
-        """
-        import io  # noqa: PLC0415
-
-        client = OpenAI(api_key=self._resolve_api_key())
-
-        main = self._attachments[0]
-        image_file = io.BytesIO(main.data)
-        image_file.name = main.name or "image.png"
-
-        params: dict = {
-            "model": "dall-e-2",
-            "image": image_file,
-            "prompt": self._prompt,
-            "size": "1024x1024",
-            "n": self._n,
-            "response_format": "b64_json",
-        }
-
-        if len(self._attachments) > 1:
-            mask = self._attachments[1]
-            mask_file = io.BytesIO(mask.data)
-            mask_file.name = mask.name or "mask.png"
-            params["mask"] = mask_file
-
-        response = client.images.edit(**params)
-        b64 = response.data[0].b64_json
-        data = base64.b64decode(b64)
-        return ImageResponse(data=data, fmt="png")
+        if provider_name == "openai":
+            return OpenAIImageProvider(api_key=api_key, base_url=base_url)
+        if provider_name == "stability":
+            return StabilityImageProvider()
+        raise ValueError(f"Unknown image provider: {provider_name!r}. Use 'openai' or 'stability'.")
