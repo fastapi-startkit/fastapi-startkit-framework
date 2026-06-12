@@ -53,6 +53,18 @@ ai = [
     "google-generativeai>=0.8.0",
 ]
 
+# Skills extra — no additional pip dependencies required.
+# All functionality (SkillRegistry, ClaudeAdapter, GeminiAdapter) uses only
+# Python stdlib (pathlib, inspect, dataclasses).  PyYAML is detected at
+# runtime and used when present, but falls back to a built-in parser.
+# Install this extra to make SkillsServiceProvider and its artisan commands
+# (skills:sync, skills:list) available.  Register SkillsServiceProvider in
+# your application's providers list to activate command discovery:
+#
+#   from fastapi_startkit.skills.provider import SkillsServiceProvider
+#   app = Application(providers=[..., SkillsServiceProvider])
+skills = []
+
 [dependency-groups]
 dev = [
     "dumpdie>=1.5.0",
