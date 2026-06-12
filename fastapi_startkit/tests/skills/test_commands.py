@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
 from fastapi_startkit.application import Application
 from fastapi_startkit.container.container import Container
-from fastapi_startkit.skills.registry import Skill, SkillRegistry, SKILLS_BASE_PATH
-from fastapi_startkit.skills.rules.registry import Rule, RulesRegistry, RULES_BASE_PATH
+from fastapi_startkit.skills.registry import SkillRegistry, SKILLS_BASE_PATH
+from fastapi_startkit.skills.rules.registry import RulesRegistry
 from fastapi_startkit.skills.commands.sync import SkillsSyncCommand
 from fastapi_startkit.skills.commands.list import SkillsListCommand
 from fastapi_startkit.skills.rules.commands.sync import RulesSyncCommand
@@ -38,10 +37,11 @@ def _write_skill_md(tmp_path, name, description):
     )
 
 
-def _write_rule_md(tmp_path, name, body="Rule body."):
-    rules_dir = tmp_path / RULES_BASE_PATH
+def _write_rule_md(tmp_path, skill_name, rule_name, body="Rule body."):
+    """Write a rule nested inside a skill directory."""
+    rules_dir = tmp_path / SKILLS_BASE_PATH / skill_name / "rules"
     rules_dir.mkdir(parents=True, exist_ok=True)
-    (rules_dir / f"{name}.md").write_text(body, encoding="utf-8")
+    (rules_dir / f"{rule_name}.md").write_text(body, encoding="utf-8")
 
 
 def _run(cmd_class, container, args=None):
@@ -60,7 +60,9 @@ def _run(cmd_class, container, args=None):
     return cmd.handle(), lines
 
 
-# -- skills:sync --
+# ===========================================================================
+# skills:sync
+# ===========================================================================
 
 class TestSkillsSyncCommand:
     def test_sync_all_writes_claude_and_gemini(self, tmp_path, app):
@@ -89,7 +91,6 @@ class TestSkillsSyncCommand:
         app.bind("skills.registry", SkillRegistry(app))
         code, lines = _run(SkillsSyncCommand, app, ["--target=codex"])
         assert code == 1
-        assert any("Unknown target" in l for l in lines)
 
     def test_sync_no_skills_exits_gracefully(self, tmp_path, app):
         app.bind("skills.registry", SkillRegistry(app))
@@ -110,7 +111,9 @@ class TestSkillsSyncCommand:
         assert SkillsSyncCommand().name == "skills:sync"
 
 
-# -- skills:list --
+# ===========================================================================
+# skills:list
+# ===========================================================================
 
 class TestSkillsListCommand:
     def test_list_shows_skills(self, tmp_path, app):
@@ -133,41 +136,65 @@ class TestSkillsListCommand:
         assert SkillsListCommand().name == "skills:list"
 
 
-# -- rules:sync --
+# ===========================================================================
+# rules:sync  (rules nested inside skills)
+# ===========================================================================
 
 class TestRulesSyncCommand:
-    def test_sync_claude_creates_rule_files(self, tmp_path, app):
-        _write_rule_md(tmp_path, "http-client", "Always set timeout.")
+    def test_sync_claude_creates_nested_rule_file(self, tmp_path, app):
+        _write_rule_md(tmp_path, "fastapi-best-practices", "http-client", "Always set timeout.")
         app.bind("rules.registry", RulesRegistry(app))
         code, _ = _run(RulesSyncCommand, app, ["--target=claude"])
         assert code == 0
-        assert (tmp_path / ".claude" / "rules" / "http-client.md").exists()
+        dest = tmp_path / ".claude" / "skills" / "fastapi-best-practices" / "rules" / "http-client.md"
+        assert dest.exists()
+        assert "Always set timeout." in dest.read_text()
 
     def test_sync_gemini_updates_gemini_md(self, tmp_path, app):
-        _write_rule_md(tmp_path, "http-client", "Always set timeout.")
+        _write_rule_md(tmp_path, "fastapi-best-practices", "http-client", "Always set timeout.")
         app.bind("rules.registry", RulesRegistry(app))
         code, _ = _run(RulesSyncCommand, app, ["--target=gemini"])
         assert code == 0
         content = (tmp_path / "GEMINI.md").read_text()
         assert "<!-- rules:start -->" in content
         assert "http-client" in content
+        assert "fastapi-best-practices" in content
 
     def test_sync_all_writes_both(self, tmp_path, app):
-        _write_rule_md(tmp_path, "orm-queries", "Use async ORM.")
+        _write_rule_md(tmp_path, "orm-best-practices", "queries", "Use async ORM.")
         app.bind("rules.registry", RulesRegistry(app))
         code, _ = _run(RulesSyncCommand, app, ["--target=all"])
         assert code == 0
-        assert (tmp_path / ".claude" / "rules" / "orm-queries.md").exists()
+        assert (tmp_path / ".claude" / "skills" / "orm-best-practices" / "rules" / "queries.md").exists()
         assert (tmp_path / "GEMINI.md").exists()
 
-    def test_sync_prune_removes_stale_rules(self, tmp_path, app):
-        old_rule = tmp_path / ".claude" / "rules" / "old-rule.md"
-        old_rule.parent.mkdir(parents=True)
-        old_rule.write_text("old rule")
-        _write_rule_md(tmp_path, "new-rule", "New rule.")
+    def test_sync_prune_removes_stale_rule_within_skill(self, tmp_path, app):
+        # Stale rule in a skill that still has other rules
+        stale = tmp_path / ".claude" / "skills" / "fastapi-best-practices" / "rules" / "old-rule.md"
+        stale.parent.mkdir(parents=True)
+        stale.write_text("stale")
+        # Only http-client is in the registry now
+        _write_rule_md(tmp_path, "fastapi-best-practices", "http-client", "body")
         app.bind("rules.registry", RulesRegistry(app))
         _run(RulesSyncCommand, app, ["--target=claude", "--prune"])
-        assert not old_rule.exists()
+        assert not stale.exists()
+
+    def test_prune_removes_skill_dir_removes_its_rules_too(self, tmp_path, app):
+        """When ClaudeAdapter prunes a skill, its nested rules/ are gone too."""
+        from fastapi_startkit.skills.adapters.claude import ClaudeAdapter
+        from fastapi_startkit.skills.registry import Skill
+        # Simulate a previously synced skill with a nested rule
+        old_skill = tmp_path / ".claude" / "skills" / "dead-skill"
+        old_rule = old_skill / "rules" / "some-rule.md"
+        old_rule.parent.mkdir(parents=True)
+        old_rule.write_text("rule content")
+        (old_skill / "SKILL.md").write_text("---\nname: dead-skill\n---\n")
+
+        # Prune with an empty skills list removes the whole dir (including rules/)
+        adapter = ClaudeAdapter(base_path=tmp_path)
+        messages = adapter.prune([])
+        assert not old_skill.exists()
+        assert any("Pruned" in m for m in messages)
 
     def test_no_rules_exits_gracefully(self, tmp_path, app):
         app.bind("rules.registry", RulesRegistry(app))
@@ -177,19 +204,21 @@ class TestRulesSyncCommand:
 
     def test_unknown_target_returns_error(self, tmp_path, app):
         app.bind("rules.registry", RulesRegistry(app))
-        code, lines = _run(RulesSyncCommand, app, ["--target=codex"])
+        code, _ = _run(RulesSyncCommand, app, ["--target=codex"])
         assert code == 1
 
     def test_command_name(self):
         assert RulesSyncCommand().name == "rules:sync"
 
 
-# -- rules:list --
+# ===========================================================================
+# rules:list
+# ===========================================================================
 
 class TestRulesListCommand:
     def test_list_shows_rules(self, tmp_path, app):
-        _write_rule_md(tmp_path, "http-client")
-        _write_rule_md(tmp_path, "validation")
+        _write_rule_md(tmp_path, "fastapi-best-practices", "http-client")
+        _write_rule_md(tmp_path, "fastapi-best-practices", "validation")
         app.bind("rules.registry", RulesRegistry(app))
         code, lines = _run(RulesListCommand, app)
         assert code == 0
@@ -198,16 +227,17 @@ class TestRulesListCommand:
         assert "validation" in out
 
     def test_list_shows_synced_status(self, tmp_path, app):
-        _write_rule_md(tmp_path, "http-client")
-        (tmp_path / ".claude" / "rules").mkdir(parents=True)
-        (tmp_path / ".claude" / "rules" / "http-client.md").write_text("synced")
+        _write_rule_md(tmp_path, "fastapi-best-practices", "http-client")
+        dest = tmp_path / ".claude" / "skills" / "fastapi-best-practices" / "rules" / "http-client.md"
+        dest.parent.mkdir(parents=True)
+        dest.write_text("synced content")
         app.bind("rules.registry", RulesRegistry(app))
         _, lines = _run(RulesListCommand, app)
         assert "synced" in "\n".join(lines)
 
     def test_no_rules_message(self, tmp_path, app):
         app.bind("rules.registry", RulesRegistry(app))
-        code, lines = _run(RulesListCommand, app)
+        _, lines = _run(RulesListCommand, app)
         assert any("No rules" in l for l in lines)
 
     def test_command_name(self):

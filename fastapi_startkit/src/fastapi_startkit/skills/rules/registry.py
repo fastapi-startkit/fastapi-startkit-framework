@@ -1,20 +1,23 @@
-"""RulesRegistry — discovers per-topic rule files from ``rules/``.
+"""RulesRegistry — discovers per-skill rule files nested inside each skill directory.
 
-Rules are individual Markdown files that contain detailed coding guidelines::
+Rules live **inside** their parent skill, mirroring the Laravel Boost convention::
 
-    rules/
-        http-client.md          ← HTTP client best practices
-        orm-queries.md          ← ORM / database query rules
-        validation.md           ← Request validation rules
-        error-handling.md       ← Error handling patterns
+    .ai/fastapi-startkit/skill/
+        fastapi-best-practices/
+            SKILL.md
+            rules/
+                http-client.md
+                validation.md
+        orm-best-practices/
+            SKILL.md
+            rules/
+                queries.md
 
-Each file is plain Markdown.  The rule **name** is derived from the file stem
-(``http-client.md`` → ``http-client``).  An optional YAML front-matter block
-may supply an explicit name or description, but it is not required.
+Each rule is a plain Markdown file.  The rule **name** is the file stem
+(``http-client.md`` → ``"http-client"``).  The owning skill is determined
+from the parent directory name two levels up (``fastapi-best-practices``).
 
-Rules are referenced from skill files (e.g. the Quick Reference section of
-``.ai/fastapi-startkit/skill/fastapi-best-practices/SKILL.md``) and are also
-deployed individually to every configured AI agent target.
+Optional YAML front-matter may supply an explicit ``name`` or ``description``.
 """
 
 from __future__ import annotations
@@ -26,22 +29,23 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from fastapi_startkit.application import Application
 
-#: Location of rule files relative to the project root.
-RULES_BASE_PATH = Path("rules")
+#: Root under which all skill (and nested rule) directories live.
+SKILLS_BASE_PATH = Path(".ai") / "fastapi-startkit" / "skill"
 
 
 @dataclass
 class Rule:
-    """A single per-topic coding rule loaded from ``rules/<name>.md``."""
+    """A per-topic coding rule nested inside a skill directory."""
 
-    name: str           # derived from file stem, e.g. "http-client"
+    name: str           # file stem, e.g. "http-client"
+    skill_name: str     # owning skill directory name, e.g. "fastapi-best-practices"
     path: Path          # absolute path to the .md source file
-    body: str = field(default="", repr=False)   # full markdown content
-    description: str = ""                        # from frontmatter if present
+    body: str = field(default="", repr=False)
+    description: str = ""
 
 
 def _parse_frontmatter(text: str) -> tuple[dict, str]:
-    """Parse optional YAML front-matter and return ``(meta, body)``."""
+    """Parse optional YAML front-matter; return ``(meta, body)``."""
     lines = text.splitlines(keepends=True)
     if not lines or lines[0].strip() != "---":
         return {}, text
@@ -72,13 +76,16 @@ def _parse_frontmatter(text: str) -> tuple[dict, str]:
 
 
 class RulesRegistry:
-    """Loads :class:`Rule` objects from ``{base_path}/rules/*.md``.
+    """Loads :class:`Rule` objects from nested ``rules/`` dirs inside each skill.
+
+    Scan path: ``{base_path}/.ai/fastapi-startkit/skill/*/rules/*.md``
 
     Usage::
 
         from fastapi_startkit.application import app
         registry = app().make("rules.registry")
         rules = registry.discover()
+        rules_for_skill = registry.for_skill("fastapi-best-practices")
     """
 
     def __init__(self, app: "Application") -> None:
@@ -90,31 +97,42 @@ class RulesRegistry:
     # ------------------------------------------------------------------
 
     @property
-    def rules_base_path(self) -> Path:
-        """Absolute path to the ``rules/`` directory."""
-        return Path(self._app.base_path) / RULES_BASE_PATH
+    def skills_base_path(self) -> Path:
+        """Absolute path to the skill root (parent of all skill dirs)."""
+        return Path(self._app.base_path) / SKILLS_BASE_PATH
 
     def discover(self) -> list[Rule]:
-        """Return (and cache) all rules found in ``rules/``."""
+        """Return (and cache) all rules found across all skill directories."""
         if self._rules is not None:
             return self._rules
 
-        base = self.rules_base_path
+        base = self.skills_base_path
         if not base.is_dir():
             self._rules = []
             return self._rules
 
         self._rules = []
-        for md_file in sorted(base.glob("*.md")):
-            rule = self._load(md_file)
-            if rule is not None:
-                self._rules.append(rule)
+        for skill_dir in sorted(base.iterdir()):
+            if not skill_dir.is_dir():
+                continue
+            rules_dir = skill_dir / "rules"
+            if not rules_dir.is_dir():
+                continue
+            for md_file in sorted(rules_dir.glob("*.md")):
+                rule = self._load(md_file, skill_name=skill_dir.name)
+                if rule is not None:
+                    self._rules.append(rule)
 
         return self._rules
 
-    def get(self, name: str) -> Rule | None:
-        """Return the :class:`Rule` with *name* (file stem), or *None*."""
-        return next((r for r in self.discover() if r.name == name), None)
+    def for_skill(self, skill_name: str) -> list[Rule]:
+        """Return all rules belonging to *skill_name*."""
+        return [r for r in self.discover() if r.skill_name == skill_name]
+
+    def get(self, name: str, skill_name: str | None = None) -> Rule | None:
+        """Return the first :class:`Rule` matching *name*, optionally scoped to *skill_name*."""
+        candidates = self.for_skill(skill_name) if skill_name else self.discover()
+        return next((r for r in candidates if r.name == name), None)
 
     def reset(self) -> None:
         """Invalidate the discovery cache."""
@@ -125,20 +143,20 @@ class RulesRegistry:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _load(md_file: Path) -> Rule | None:
+    def _load(md_file: Path, skill_name: str) -> Rule | None:
         try:
             text = md_file.read_text(encoding="utf-8")
         except OSError:
             return None
 
         meta, body = _parse_frontmatter(text)
-
         name = (meta.get("name") or md_file.stem or "").strip()
         if not name:
             return None
 
         return Rule(
             name=name,
+            skill_name=skill_name,
             path=md_file,
             body=body.strip() if body.strip() else text.strip(),
             description=(meta.get("description") or "").strip(),

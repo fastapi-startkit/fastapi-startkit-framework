@@ -1,4 +1,4 @@
-"""GeminiRulesAdapter — splices rules into ``GEMINI.md`` via marker block."""
+"""GeminiRulesAdapter — splices rules into ``GEMINI.md``, grouped by skill."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ _MARKER_END = "<!-- rules:end -->"
 class GeminiRulesAdapter(BaseAdapter):
     """Writes rules into the ``<!-- rules:start/end -->`` block of ``GEMINI.md``.
 
+    Rules are grouped under their parent skill as a second-level heading.
     Content outside the markers is never modified.
     """
 
@@ -28,7 +29,7 @@ class GeminiRulesAdapter(BaseAdapter):
         return [f"[gemini] {verb} GEMINI.md rules section ({len(rules)} rule(s))"]
 
     def prune(self, rules: Sequence[Rule]) -> list[str]:  # type: ignore[override]
-        """Re-render with the current (shorter) rule list."""
+        """Re-render with the current (shorter) rule list — equivalent to pruning."""
         return self.render(rules)
 
     # ------------------------------------------------------------------
@@ -37,13 +38,20 @@ class GeminiRulesAdapter(BaseAdapter):
 
     @staticmethod
     def _build_section(rules: Sequence[Rule]) -> str:
-        parts = [_MARKER_START]
+        # Group rules by skill_name preserving order
+        by_skill: dict[str, list[Rule]] = {}
         for rule in rules:
-            parts.append(f"\n## {rule.name}\n")
-            if rule.description:
-                parts.append(f"{rule.description}\n")
-            if rule.body:
-                parts.append(f"\n{rule.body}\n")
+            by_skill.setdefault(rule.skill_name, []).append(rule)
+
+        parts = [_MARKER_START]
+        for skill_name, skill_rules in by_skill.items():
+            parts.append(f"\n### {skill_name}\n")
+            for rule in skill_rules:
+                parts.append(f"\n#### {rule.name}\n")
+                if rule.description:
+                    parts.append(f"{rule.description}\n")
+                if rule.body:
+                    parts.append(f"\n{rule.body}\n")
         parts.append(_MARKER_END)
         return "\n".join(parts)
 

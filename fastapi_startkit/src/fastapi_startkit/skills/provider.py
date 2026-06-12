@@ -18,7 +18,7 @@ class SkillsServiceProvider(Provider):
 
     This copies:
     - .ai/fastapi-startkit/skill/fastapi-best-practices/SKILL.md
-    - rules/http-client.md
+    - .ai/fastapi-startkit/skill/fastapi-best-practices/rules/http-client.md
     """
 
     provider_key = "skills"
@@ -41,12 +41,13 @@ class SkillsServiceProvider(Provider):
             RulesListCommand,
         ])
 
+        _skill_stub = _STUBS_DIR / ".ai" / "fastapi-startkit" / "skill" / "fastapi-best-practices"
         self.publishes(
             {
-                str(_STUBS_DIR / ".ai" / "fastapi-startkit" / "skill" / "fastapi-best-practices" / "SKILL.md"):
+                str(_skill_stub / "SKILL.md"):
                     ".ai/fastapi-startkit/skill/fastapi-best-practices/SKILL.md",
-                str(_STUBS_DIR / "rules" / "http-client.md"):
-                    "rules/http-client.md",
+                str(_skill_stub / "rules" / "http-client.md"):
+                    ".ai/fastapi-startkit/skill/fastapi-best-practices/rules/http-client.md",
             },
             tag="skills",
         )

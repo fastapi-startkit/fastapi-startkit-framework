@@ -1,5 +1,8 @@
-"""Rules sub-system — per-topic coding rule files at ``rules/*.md``."""
+"""Rules sub-system — per-topic rule files nested inside each skill directory.
 
-from .registry import Rule, RulesRegistry, RULES_BASE_PATH
+Layout: .ai/fastapi-startkit/skill/<skill-name>/rules/<rule-name>.md
+"""
 
-__all__ = ["Rule", "RulesRegistry", "RULES_BASE_PATH"]
+from .registry import Rule, RulesRegistry, SKILLS_BASE_PATH
+
+__all__ = ["Rule", "RulesRegistry", "SKILLS_BASE_PATH"]
