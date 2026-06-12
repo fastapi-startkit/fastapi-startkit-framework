@@ -60,9 +60,10 @@ class ReverbProvider(Provider):
     def _load_channels_file(self) -> None:
         """Auto-load ``routes/channels.py`` from the application base path.
 
-        This is the file developers fill in with ``@Broadcast.channel()``
-        decorators.  Importing it registers the callbacks with the
-        ``ChannelAuthRegistry`` on the ``BroadcastManager``.
+        This is the file developers fill in with ``@channel()`` decorators
+        (imported from ``fastapi_startkit.broadcasting``).  Importing it
+        registers the callbacks with the ``ChannelAuthRegistry`` on the
+        ``BroadcastManager``.
 
         The file is optional — its absence is silently ignored.
         """
@@ -142,12 +143,18 @@ class ReverbProvider(Provider):
                 form = await request.form()
                 channel_name = form.get("channel_name", "")
 
-            # Resolve authenticated user
+            # Resolve authenticated user.
+            # Prefer request.state.user (set by auth middleware), then fall
+            # back to the container's "auth" service.
             user = getattr(request.state, "user", None)
             if user is None:
                 try:
                     auth_service = application.make("auth")
-                    user = getattr(auth_service, "user", lambda: None)()
+                    user_attr = getattr(auth_service, "user", None)
+                    if callable(user_attr):
+                        user = user_attr()
+                    else:
+                        user = user_attr
                 except Exception:
                     user = None
 

@@ -1,4 +1,5 @@
 """Tests for the ChannelAuthRegistry and @Broadcast.channel() decorator (Task #148)."""
+
 import pytest
 
 from fastapi_startkit.broadcasting.auth import ChannelAuthRegistry
@@ -7,6 +8,7 @@ from fastapi_startkit.broadcasting.auth import ChannelAuthRegistry
 # ---------------------------------------------------------------------------
 # Pattern-matching helpers (smoke tests)
 # ---------------------------------------------------------------------------
+
 
 def test_exact_channel_match():
     registry = ChannelAuthRegistry()
@@ -42,6 +44,7 @@ def test_no_match_returns_none():
 # Authorization — public channels
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_public_channel_no_rule_allowed():
     registry = ChannelAuthRegistry()
@@ -63,6 +66,7 @@ async def test_public_channel_with_allowing_rule():
 # ---------------------------------------------------------------------------
 # Authorization — private channels
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_private_channel_no_rule_denied():
@@ -99,6 +103,7 @@ async def test_private_channel_with_denying_callback():
 # Authorization — presence channels
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_presence_channel_no_rule_denied():
     registry = ChannelAuthRegistry()
@@ -120,6 +125,7 @@ async def test_presence_channel_with_allowing_callback():
 # Wildcard type casting
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_wildcard_cast_to_int():
     registry = ChannelAuthRegistry()
@@ -139,6 +145,7 @@ async def test_wildcard_cast_to_int():
 # Sync callbacks
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_sync_callback_supported():
     registry = ChannelAuthRegistry()
@@ -153,6 +160,7 @@ async def test_sync_callback_supported():
 # ---------------------------------------------------------------------------
 # BroadcastManager.channel() proxies to registry
 # ---------------------------------------------------------------------------
+
 
 def test_manager_channel_decorator_registers_callback():
     from fastapi_startkit.broadcasting.manager import BroadcastManager

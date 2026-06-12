@@ -2,9 +2,9 @@
 
 Usage::
 
-    from fastapi_startkit.facades.Broadcast import Broadcast
+    from fastapi_startkit.broadcasting import channel
 
-    @Broadcast.channel("orders.{order_id}")
+    @channel("orders.{order_id}")
     async def authorize_orders_channel(user, order_id: int):
         return user.id == order_id  # True = authorized, False = denied
 
@@ -98,7 +98,6 @@ class ChannelAuthRegistry:
         Wildcard values extracted from the pattern are cast to the type hints
         of the matching parameters before the callback is called.
         """
-        from .channels import Channel, PresenceChannel, PrivateChannel  # noqa: PLC0415
 
         is_private = channel_name.startswith("private-") or channel_name.startswith("presence-")
 

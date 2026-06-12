@@ -3,8 +3,10 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
+from fastapi_startkit.application import app
+
 if TYPE_CHECKING:
-    from .channels import Channel, PrivateChannel, PresenceChannel
+    pass
 
 
 class ShouldBroadcast(ABC):
@@ -55,11 +57,16 @@ class BroadcastEvent(ShouldBroadcast):
     # Public API
     # ------------------------------------------------------------------
 
-    def emit(self) -> None:
-        """Dispatch this event via the Broadcast facade.
+    async def emit(self) -> None:
+        """Dispatch this event via the BroadcastManager.
 
-        Equivalent to calling ``Broadcast.dispatch(self)``.
+        Resolves the ``"broadcasting"`` service directly from the Application
+        container — no facade in the call chain.
+
+        Equivalent to::
+
+            from fastapi_startkit.application import app
+            await app().make("broadcasting").dispatch(self)
         """
-        from fastapi_startkit.facades.Broadcast import Broadcast  # noqa: PLC0415
-
-        Broadcast.dispatch(self)
+        manager = app().make("broadcasting")
+        await manager.dispatch(self)

@@ -1,6 +1,7 @@
 """Tests for the new BroadcastEvent.payload / .name / .emit() API (Task #147)."""
+
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi_startkit.broadcasting.channels import Channel
 from fastapi_startkit.broadcasting.event import BroadcastEvent
@@ -9,6 +10,7 @@ from fastapi_startkit.broadcasting.event import BroadcastEvent
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 class SimpleEvent(BroadcastEvent):
     def broadcast_on(self):
@@ -32,6 +34,7 @@ class EventWithName(BroadcastEvent):
 # ---------------------------------------------------------------------------
 # payload attribute
 # ---------------------------------------------------------------------------
+
 
 def test_broadcast_event_default_payload_is_empty_dict():
     event = SimpleEvent()
@@ -60,6 +63,7 @@ def test_broadcast_event_broadcast_with_falls_back_to_instance_attrs_when_payloa
 # name attribute
 # ---------------------------------------------------------------------------
 
+
 def test_broadcast_event_default_name_is_none():
     event = SimpleEvent()
     assert event.name is None
@@ -79,15 +83,21 @@ def test_broadcast_as_falls_back_to_class_name_when_name_is_none():
 # emit()
 # ---------------------------------------------------------------------------
 
-def test_emit_calls_broadcast_dispatch():
-    """emit() should delegate to Broadcast.dispatch(self)."""
+
+@pytest.mark.asyncio
+async def test_emit_calls_broadcast_dispatch():
+    """emit() must be async and delegate to manager.dispatch(self) directly."""
     event = SimpleEvent()
 
-    mock_broadcast = MagicMock()
-    mock_broadcast.dispatch = MagicMock()
+    mock_manager = MagicMock()
+    mock_manager.dispatch = AsyncMock()
 
-    # The import is lazy (inside the method), so patch at the facades module level
-    with patch("fastapi_startkit.facades.Broadcast.Broadcast", mock_broadcast):
-        event.emit()
+    mock_app = MagicMock()
+    mock_app.return_value.make.return_value = mock_manager
 
-    mock_broadcast.dispatch.assert_called_once_with(event)
+    # Patch the app() factory used inside emit()
+    with patch("fastapi_startkit.broadcasting.event.app", mock_app):
+        await event.emit()
+
+    mock_app.return_value.make.assert_called_once_with("broadcasting")
+    mock_manager.dispatch.assert_called_once_with(event)
