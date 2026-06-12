@@ -38,7 +38,6 @@ class RulesSyncCommand(Command):
 
     def handle(self) -> int:
         from fastapi_startkit.skills.rules.registry import RulesRegistry
-        from fastapi_startkit.skills.rules.adapters import ClaudeRulesAdapter, GeminiRulesAdapter
 
         registry: RulesRegistry = self.container.make("rules.registry")
         rules = registry.discover()

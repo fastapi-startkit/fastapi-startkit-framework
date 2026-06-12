@@ -38,7 +38,6 @@ class SkillsSyncCommand(Command):
 
     def handle(self) -> int:
         from fastapi_startkit.skills.registry import SkillRegistry
-        from fastapi_startkit.skills.adapters import ClaudeAdapter, GeminiAdapter
 
         registry: SkillRegistry = self.container.make("skills.registry")
         skills = registry.discover()
@@ -54,7 +53,10 @@ class SkillsSyncCommand(Command):
             return 1
 
         if not skills:
-            self.line("<comment>No skills found in any registered provider.</comment>")
+            self.line(
+                "<comment>No skills found. Publish stubs first: "
+                "artisan provider:publish --provider=skills</comment>"
+            )
             return 0
 
         self.line(f"<info>Found {len(skills)} skill(s). Syncing to: {target}…</info>")
