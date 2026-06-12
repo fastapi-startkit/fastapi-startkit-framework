@@ -1,4 +1,4 @@
-"""SkillsServiceProvider — registers the skills module into the application."""
+"""SkillsServiceProvider — registers skills and rules into the application."""
 
 from __future__ import annotations
 
@@ -10,46 +10,43 @@ _STUBS_DIR = Path(__file__).parent / "stubs"
 
 
 class SkillsServiceProvider(Provider):
-    """Service provider that bootstraps the skills module.
+    """Service provider that bootstraps the skills and rules modules.
 
-    Register it in your application::
-
-        app = Application(
-            providers=[
-                ...,
-                SkillsServiceProvider,
-            ]
-        )
-
-    After booting, resolve the registry from the container::
-
-        from fastapi_startkit.application import app
-        registry = app().make("skills.registry")
-        skills = registry.discover()
-
-    Publish the starter ``core.html`` to your project with::
+    Publish starter files with::
 
         artisan provider:publish --provider=skills
+
+    This copies:
+    - .ai/fastapi-startkit/skill/fastapi-best-practices/SKILL.md
+    - rules/http-client.md
     """
 
     provider_key = "skills"
 
     def register(self) -> None:
-        """Bind :class:`~fastapi_startkit.skills.SkillRegistry` into the container."""
         from fastapi_startkit.skills.registry import SkillRegistry
+        from fastapi_startkit.skills.rules.registry import RulesRegistry
 
         self.app.bind("skills.registry", SkillRegistry(self.app))
+        self.app.bind("rules.registry", RulesRegistry(self.app))
 
     def boot(self) -> None:
-        """Register commands and publishable resources."""
         from fastapi_startkit.skills.commands import SkillsSyncCommand, SkillsListCommand
+        from fastapi_startkit.skills.rules.commands import RulesSyncCommand, RulesListCommand
 
-        self.commands([SkillsSyncCommand, SkillsListCommand])
+        self.commands([
+            SkillsSyncCommand,
+            SkillsListCommand,
+            RulesSyncCommand,
+            RulesListCommand,
+        ])
 
-        # Publish the starter core.html → project/.ai/deployments/core.html
         self.publishes(
             {
-                str(_STUBS_DIR / "core.html"): ".ai/deployments/core.html",
+                str(_STUBS_DIR / ".ai" / "fastapi-startkit" / "skill" / "fastapi-best-practices" / "SKILL.md"):
+                    ".ai/fastapi-startkit/skill/fastapi-best-practices/SKILL.md",
+                str(_STUBS_DIR / "rules" / "http-client.md"):
+                    "rules/http-client.md",
             },
             tag="skills",
         )

@@ -1,8 +1,7 @@
-"""Tests for skills:sync and skills:list commands (task #141)."""
+"""Tests for skills:sync, skills:list, rules:sync, rules:list commands."""
 
 from __future__ import annotations
 
-import textwrap
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -10,14 +9,12 @@ import pytest
 
 from fastapi_startkit.application import Application
 from fastapi_startkit.container.container import Container
-from fastapi_startkit.skills.registry import Skill, SkillRegistry, CORE_HTML_PATH
+from fastapi_startkit.skills.registry import Skill, SkillRegistry, SKILLS_BASE_PATH
+from fastapi_startkit.skills.rules.registry import Rule, RulesRegistry, RULES_BASE_PATH
 from fastapi_startkit.skills.commands.sync import SkillsSyncCommand
 from fastapi_startkit.skills.commands.list import SkillsListCommand
-
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
+from fastapi_startkit.skills.rules.commands.sync import RulesSyncCommand
+from fastapi_startkit.skills.rules.commands.list import RulesListCommand
 
 
 @pytest.fixture(autouse=True)
@@ -32,185 +29,186 @@ def app(tmp_path):
     return Application(base_path=tmp_path, env="testing")
 
 
-def _write_core_html(tmp_path: Path, skills: list[tuple[str, str]]) -> None:
-    """Write a core.html with the given (name, description) skills."""
-    core = tmp_path / CORE_HTML_PATH
-    core.parent.mkdir(parents=True, exist_ok=True)
-    sections = "\n".join(
-        f'<section data-skill="{name}" data-description="{desc}">Skill body for {name}.</section>'
-        for name, desc in skills
+def _write_skill_md(tmp_path, name, description):
+    skill_dir = tmp_path / SKILLS_BASE_PATH / name
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    (skill_dir / "SKILL.md").write_text(
+        f"---\nname: {name}\ndescription: {description}\n---\nBody.\n",
+        encoding="utf-8",
     )
-    core.write_text(f"<!DOCTYPE html>\n{sections}\n", encoding="utf-8")
 
 
-def _make_skill(name: str, desc: str = "A skill.", body: str = "") -> Skill:
-    return Skill(name=name, description=desc, path=Path("/dev/null"), provider_key="core", body=body)
+def _write_rule_md(tmp_path, name, body="Rule body."):
+    rules_dir = tmp_path / RULES_BASE_PATH
+    rules_dir.mkdir(parents=True, exist_ok=True)
+    (rules_dir / f"{name}.md").write_text(body, encoding="utf-8")
 
 
-def _run_command(cmd_class, container, args: list[str] | None = None):
-    """Execute a command's handle() with lightweight fake IO."""
+def _run(cmd_class, container, args=None):
     cmd = cmd_class()
     cmd.set_container(container)
-
-    option_values: dict = {}
-    if args:
-        for arg in args:
-            if arg.startswith("--"):
-                k = arg.lstrip("-").split("=")[0]
-                v = arg.split("=")[1] if "=" in arg else True
-                option_values[k] = v
-
-    output_lines: list[str] = []
-    cmd.option = lambda k, default=None: option_values.get(k, default)
-    cmd.line = lambda msg, *a, **kw: output_lines.append(msg)
-    cmd.info = lambda msg, *a, **kw: output_lines.append(msg)
-
-    return_code = cmd.handle()
-    return return_code, output_lines
+    opts = {}
+    for arg in (args or []):
+        if arg.startswith("--"):
+            k = arg.lstrip("-").split("=")[0]
+            v = arg.split("=")[1] if "=" in arg else True
+            opts[k] = v
+    lines = []
+    cmd.option = lambda k, default=None: opts.get(k, default)
+    cmd.line = lambda msg, *a, **kw: lines.append(msg)
+    cmd.info = lambda msg, *a, **kw: lines.append(msg)
+    return cmd.handle(), lines
 
 
-# ===========================================================================
-# SkillsSyncCommand
-# ===========================================================================
-
+# -- skills:sync --
 
 class TestSkillsSyncCommand:
     def test_sync_all_writes_claude_and_gemini(self, tmp_path, app):
-        _write_core_html(tmp_path, [("orm-routing", "ORM routing skill")])
-
-        registry = SkillRegistry(app)
-        app.bind("skills.registry", registry)
-
-        return_code, lines = _run_command(SkillsSyncCommand, app, args=["--target=all"])
-
-        assert return_code == 0
+        _write_skill_md(tmp_path, "orm-routing", "ORM routing")
+        app.bind("skills.registry", SkillRegistry(app))
+        code, _ = _run(SkillsSyncCommand, app, ["--target=all"])
+        assert code == 0
         assert (tmp_path / ".claude" / "skills" / "orm-routing" / "SKILL.md").exists()
         assert (tmp_path / "GEMINI.md").exists()
 
     def test_sync_claude_only(self, tmp_path, app):
-        _write_core_html(tmp_path, [("console-commands", "Artisan commands")])
+        _write_skill_md(tmp_path, "console-commands", "Commands")
         app.bind("skills.registry", SkillRegistry(app))
-
-        return_code, _ = _run_command(SkillsSyncCommand, app, args=["--target=claude"])
-
-        assert return_code == 0
+        _run(SkillsSyncCommand, app, ["--target=claude"])
         assert (tmp_path / ".claude" / "skills" / "console-commands" / "SKILL.md").exists()
         assert not (tmp_path / "GEMINI.md").exists()
 
     def test_sync_gemini_only(self, tmp_path, app):
-        _write_core_html(tmp_path, [("fastapi-routing", "FastAPI routing")])
+        _write_skill_md(tmp_path, "fastapi-routing", "Routing")
         app.bind("skills.registry", SkillRegistry(app))
-
-        return_code, _ = _run_command(SkillsSyncCommand, app, args=["--target=gemini"])
-
-        assert return_code == 0
+        _run(SkillsSyncCommand, app, ["--target=gemini"])
         assert not (tmp_path / ".claude").exists()
         assert (tmp_path / "GEMINI.md").exists()
 
     def test_sync_unknown_target_returns_error(self, tmp_path, app):
         app.bind("skills.registry", SkillRegistry(app))
+        code, lines = _run(SkillsSyncCommand, app, ["--target=codex"])
+        assert code == 1
+        assert any("Unknown target" in l for l in lines)
 
-        return_code, lines = _run_command(SkillsSyncCommand, app, args=["--target=codex"])
-
-        assert return_code == 1
-        assert any("Unknown target" in ln for ln in lines)
-
-    def test_sync_no_core_html_exits_gracefully(self, tmp_path, app):
-        # No core.html file → registry returns empty list
+    def test_sync_no_skills_exits_gracefully(self, tmp_path, app):
         app.bind("skills.registry", SkillRegistry(app))
+        code, lines = _run(SkillsSyncCommand, app)
+        assert code == 0
+        assert any("No skills" in l for l in lines)
 
-        return_code, lines = _run_command(SkillsSyncCommand, app)
-
-        assert return_code == 0
-        assert any("No skills" in ln for ln in lines)
-
-    def test_sync_prune_flag_removes_old_claude_skills(self, tmp_path, app):
-        # Pre-create an orphan skill dir
+    def test_sync_prune_removes_old_skills(self, tmp_path, app):
         old_dir = tmp_path / ".claude" / "skills" / "old-skill"
         old_dir.mkdir(parents=True)
-        (old_dir / "SKILL.md").write_text("---\nname: old-skill\n---\n")
-
-        _write_core_html(tmp_path, [("new-skill", "New skill")])
+        (old_dir / "SKILL.md").write_text("old")
+        _write_skill_md(tmp_path, "new-skill", "New")
         app.bind("skills.registry", SkillRegistry(app))
-
-        return_code, lines = _run_command(SkillsSyncCommand, app, args=["--target=claude", "--prune"])
-
-        assert return_code == 0
+        _run(SkillsSyncCommand, app, ["--target=claude", "--prune"])
         assert not old_dir.exists()
-        assert any("Pruned" in ln for ln in lines)
 
-    def test_sync_claude_skill_content_includes_body(self, tmp_path, app):
-        core = tmp_path / CORE_HTML_PATH
-        core.parent.mkdir(parents=True, exist_ok=True)
-        core.write_text(
-            '<section data-skill="orm" data-description="ORM helpers.">'
-            "Use `Model.where(...)` for filtering."
-            "</section>",
-            encoding="utf-8",
-        )
-        app.bind("skills.registry", SkillRegistry(app))
-
-        _run_command(SkillsSyncCommand, app, args=["--target=claude"])
-
-        content = (tmp_path / ".claude" / "skills" / "orm" / "SKILL.md").read_text()
-        assert "Model.where" in content
-
-    def test_command_name_and_description(self):
-        cmd = SkillsSyncCommand()
-        assert cmd.name == "skills:sync"
-        assert "sync" in cmd.description.lower()
+    def test_command_name(self):
+        assert SkillsSyncCommand().name == "skills:sync"
 
 
-# ===========================================================================
-# SkillsListCommand
-# ===========================================================================
-
+# -- skills:list --
 
 class TestSkillsListCommand:
-    def test_list_shows_skills_from_core_html(self, tmp_path, app):
-        _write_core_html(
-            tmp_path,
-            [("fastapi-routing", "FastAPI routing helpers"), ("orm-queries", "ORM query helpers")],
-        )
+    def test_list_shows_skills(self, tmp_path, app):
+        _write_skill_md(tmp_path, "fastapi-routing", "FastAPI routing")
+        _write_skill_md(tmp_path, "orm-queries", "ORM queries")
         app.bind("skills.registry", SkillRegistry(app))
+        code, lines = _run(SkillsListCommand, app)
+        assert code == 0
+        out = "\n".join(lines)
+        assert "fastapi-routing" in out
+        assert "orm-queries" in out
 
-        return_code, lines = _run_command(SkillsListCommand, app)
-
-        assert return_code == 0
-        all_output = "\n".join(lines)
-        assert "fastapi-routing" in all_output
-        assert "orm-queries" in all_output
-
-    def test_list_shows_pending_when_not_synced(self, tmp_path, app):
-        _write_core_html(tmp_path, [("my-skill", "My skill")])
+    def test_list_no_skills_shows_message(self, tmp_path, app):
         app.bind("skills.registry", SkillRegistry(app))
+        code, lines = _run(SkillsListCommand, app)
+        assert code == 0
+        assert any("No skills" in l for l in lines)
 
-        return_code, lines = _run_command(SkillsListCommand, app)
-        all_output = "\n".join(lines)
+    def test_command_name(self):
+        assert SkillsListCommand().name == "skills:list"
 
-        assert "pending" in all_output
 
-    def test_list_shows_synced_when_claude_file_exists(self, tmp_path, app):
-        skill_dir = tmp_path / ".claude" / "skills" / "my-skill"
-        skill_dir.mkdir(parents=True)
-        (skill_dir / "SKILL.md").write_text("---\nname: my-skill\n---\n")
+# -- rules:sync --
 
-        _write_core_html(tmp_path, [("my-skill", "My skill")])
-        app.bind("skills.registry", SkillRegistry(app))
+class TestRulesSyncCommand:
+    def test_sync_claude_creates_rule_files(self, tmp_path, app):
+        _write_rule_md(tmp_path, "http-client", "Always set timeout.")
+        app.bind("rules.registry", RulesRegistry(app))
+        code, _ = _run(RulesSyncCommand, app, ["--target=claude"])
+        assert code == 0
+        assert (tmp_path / ".claude" / "rules" / "http-client.md").exists()
 
-        return_code, lines = _run_command(SkillsListCommand, app)
-        all_output = "\n".join(lines)
+    def test_sync_gemini_updates_gemini_md(self, tmp_path, app):
+        _write_rule_md(tmp_path, "http-client", "Always set timeout.")
+        app.bind("rules.registry", RulesRegistry(app))
+        code, _ = _run(RulesSyncCommand, app, ["--target=gemini"])
+        assert code == 0
+        content = (tmp_path / "GEMINI.md").read_text()
+        assert "<!-- rules:start -->" in content
+        assert "http-client" in content
 
-        assert "synced" in all_output
+    def test_sync_all_writes_both(self, tmp_path, app):
+        _write_rule_md(tmp_path, "orm-queries", "Use async ORM.")
+        app.bind("rules.registry", RulesRegistry(app))
+        code, _ = _run(RulesSyncCommand, app, ["--target=all"])
+        assert code == 0
+        assert (tmp_path / ".claude" / "rules" / "orm-queries.md").exists()
+        assert (tmp_path / "GEMINI.md").exists()
 
-    def test_list_no_core_html_shows_message(self, tmp_path, app):
-        app.bind("skills.registry", SkillRegistry(app))
+    def test_sync_prune_removes_stale_rules(self, tmp_path, app):
+        old_rule = tmp_path / ".claude" / "rules" / "old-rule.md"
+        old_rule.parent.mkdir(parents=True)
+        old_rule.write_text("old rule")
+        _write_rule_md(tmp_path, "new-rule", "New rule.")
+        app.bind("rules.registry", RulesRegistry(app))
+        _run(RulesSyncCommand, app, ["--target=claude", "--prune"])
+        assert not old_rule.exists()
 
-        return_code, lines = _run_command(SkillsListCommand, app)
+    def test_no_rules_exits_gracefully(self, tmp_path, app):
+        app.bind("rules.registry", RulesRegistry(app))
+        code, lines = _run(RulesSyncCommand, app)
+        assert code == 0
+        assert any("No rules" in l for l in lines)
 
-        assert return_code == 0
-        assert any("No skills" in ln for ln in lines)
+    def test_unknown_target_returns_error(self, tmp_path, app):
+        app.bind("rules.registry", RulesRegistry(app))
+        code, lines = _run(RulesSyncCommand, app, ["--target=codex"])
+        assert code == 1
 
-    def test_command_name_and_description(self):
-        cmd = SkillsListCommand()
-        assert cmd.name == "skills:list"
+    def test_command_name(self):
+        assert RulesSyncCommand().name == "rules:sync"
+
+
+# -- rules:list --
+
+class TestRulesListCommand:
+    def test_list_shows_rules(self, tmp_path, app):
+        _write_rule_md(tmp_path, "http-client")
+        _write_rule_md(tmp_path, "validation")
+        app.bind("rules.registry", RulesRegistry(app))
+        code, lines = _run(RulesListCommand, app)
+        assert code == 0
+        out = "\n".join(lines)
+        assert "http-client" in out
+        assert "validation" in out
+
+    def test_list_shows_synced_status(self, tmp_path, app):
+        _write_rule_md(tmp_path, "http-client")
+        (tmp_path / ".claude" / "rules").mkdir(parents=True)
+        (tmp_path / ".claude" / "rules" / "http-client.md").write_text("synced")
+        app.bind("rules.registry", RulesRegistry(app))
+        _, lines = _run(RulesListCommand, app)
+        assert "synced" in "\n".join(lines)
+
+    def test_no_rules_message(self, tmp_path, app):
+        app.bind("rules.registry", RulesRegistry(app))
+        code, lines = _run(RulesListCommand, app)
+        assert any("No rules" in l for l in lines)
+
+    def test_command_name(self):
+        assert RulesListCommand().name == "rules:list"

@@ -1,16 +1,22 @@
-"""fastapi_startkit.skills — central AI skill registry & adapters.
+"""fastapi_startkit.skills — AI skill & rules registry and adapters.
 
-Skills are defined in ``.ai/deployments/core.html`` and deployed to each
-configured AI agent target via ``artisan skills:sync``.
+Skills -> .ai/fastapi-startkit/skill/{name}/SKILL.md
+Rules  -> rules/{name}.md
+
+Run ``artisan skills:sync`` to deploy skills, ``artisan rules:sync`` for rules.
 """
 
-from .registry import Skill, SkillRegistry, parse_core_html, CORE_HTML_PATH
+from .registry import Skill, SkillRegistry, SKILLS_BASE_PATH, _parse_frontmatter
 from .provider import SkillsServiceProvider
+from .rules import Rule, RulesRegistry, RULES_BASE_PATH
 
 __all__ = [
     "Skill",
     "SkillRegistry",
     "SkillsServiceProvider",
-    "parse_core_html",
-    "CORE_HTML_PATH",
+    "SKILLS_BASE_PATH",
+    "Rule",
+    "RulesRegistry",
+    "RULES_BASE_PATH",
+    "_parse_frontmatter",
 ]
