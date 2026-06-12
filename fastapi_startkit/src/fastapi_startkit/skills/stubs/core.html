@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<!--
+  .ai/deployments/core.html
+  ─────────────────────────
+  Central AI skill definitions for this project.
+  Each <section> block defines one skill that gets deployed to every
+  registered AI agent target (Claude Code, Gemini CLI, …) when you run:
+
+      artisan skills:sync
+
+  Jinja2 templating is supported — add {% block %} / {{ var }} expressions
+  as needed for future dynamic rendering.
+
+  <section> attributes:
+    data-skill        (required) — unique slug, used as the skill name
+    data-description  (required) — one-line description shown in skills:list
+-->
+
+<section data-skill="fastapi-routing" data-description="Define and group FastAPI routes with the Router helper.">
+Use `Router` from `fastapi_startkit.fastapi` to register routes:
+
+```python
+from fastapi_startkit.fastapi import Router
+
+router = Router()
+router.get("/items", list_items)
+router.post("/items", create_item)
+router.resource("users", UsersController)
+```
+
+Group routes by access level using separate `Router` instances and
+pass them to `app.fastapi` via your RouteServiceProvider.
+</section>
+
+<section data-skill="orm-queries" data-description="Query the database using the async ORM QueryBuilder.">
+All ORM operations are async. Basic patterns:
+
+```python
+# Fetch all
+users = await User.all()
+
+# Filter
+active = await User.where("active", True).get()
+
+# First or fail
+user = await User.find_or_fail(user_id)
+
+# Create
+user = await User.create(name="Alice", email="alice@example.com")
+
+# Relationships
+posts = await user.posts().get()
+```
+
+Use `exists()` to check without fetching rows:
+```python
+if await User.where("email", email).exists():
+    raise ValidationError("Email taken")
+```
+</section>
+
+<section data-skill="console-commands" data-description="Create and register artisan CLI commands using Cleo.">
+Extend `Command` from `fastapi_startkit.console`:
+
+```python
+from fastapi_startkit.console import Command
+from cleo.helpers import option, argument
+
+class GreetCommand(Command):
+    name = "greet"
+    description = "Greet a user by name."
+    arguments = [argument("name", description="Name to greet")]
+
+    def handle(self):
+        self.line(f"Hello, <info>{self.argument('name')}</info>!")
+```
+
+Register in a provider:
+```python
+def boot(self):
+    self.commands([GreetCommand])
+```
+
+Run with: `artisan greet Alice`
+</section>

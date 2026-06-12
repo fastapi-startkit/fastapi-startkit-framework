@@ -1,85 +1,131 @@
-"""SkillRegistry — discovers canonical skills from registered providers.
+"""SkillRegistry — reads canonical skills from ``.ai/deployments/core.html``.
 
-Each provider can expose skills by placing a ``skills/`` directory next to its
-``provider.py`` file.  Every ``SKILL.md`` inside that directory is read for
-YAML front-matter that must declare at minimum ``name`` and ``description``.
+All skills are defined in a single central HTML file at::
 
-Example layout::
+    <project-root>/.ai/deployments/core.html
 
-    my_package/
-        provider.py
-        skills/
-            my-skill/
-                SKILL.md   ← name: my-skill / description: …
+Each skill is a ``<section>`` element with two required attributes:
 
+.. code-block:: html
+
+    <section data-skill="my-skill" data-description="One-line description.">
+    Markdown body content goes here.
+    </section>
+
+The file is Jinja2-compatible — add ``{% %}`` / ``{{ }}`` expressions freely;
+they are passed through as-is until a future Jinja2 render step is wired up.
+
+Running ``artisan skills:sync`` deploys the skills in this file to every
+configured AI agent target (Claude Code, Gemini CLI, …).
 """
 
 from __future__ import annotations
 
-import inspect
 from dataclasses import dataclass, field
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from fastapi_startkit.application import Application
 
+#: Relative path of the central skill definition file inside the project root.
+CORE_HTML_PATH = Path(".ai") / "deployments" / "core.html"
+
 
 @dataclass
 class Skill:
-    """Canonical skill metadata collected from a provider's skills/ directory."""
+    """Canonical skill metadata parsed from ``.ai/deployments/core.html``."""
 
     name: str
     description: str
-    path: Path
+    path: Path          # always points to the core.html source file
     provider_key: str = ""
 
-    # Raw markdown body (everything after the YAML front-matter block)
+    # Markdown body — the text content of the <section> element
     body: str = field(default="", repr=False)
 
 
-def _parse_frontmatter(text: str) -> tuple[dict, str]:
-    """Parse YAML front-matter from *text*.
+# ---------------------------------------------------------------------------
+# HTML parser
+# ---------------------------------------------------------------------------
 
-    Returns ``(meta_dict, body_str)`` where *meta_dict* holds the YAML keys and
-    *body_str* is the remainder of the file after the closing ``---`` fence.
-    Returns ``({}, text)`` if no front-matter block is found.
-    """
-    lines = text.splitlines(keepends=True)
-    if not lines or lines[0].strip() != "---":
-        return {}, text
 
-    end_idx = None
-    for i, line in enumerate(lines[1:], start=1):
-        if line.strip() == "---":
-            end_idx = i
-            break
+class _CoreHtmlParser(HTMLParser):
+    """Minimal SAX-style parser that extracts ``<section data-skill=…>`` blocks."""
 
-    if end_idx is None:
-        return {}, text
+    def __init__(self) -> None:
+        super().__init__()
+        self._in_section: bool = False
+        self._current_name: str = ""
+        self._current_desc: str = ""
+        self._buf: list[str] = []
+        self.skills: list[dict] = []
 
-    try:
-        import yaml  # type: ignore[import]
-    except ModuleNotFoundError:
-        # Minimal fallback: parse simple "key: value" pairs
-        meta: dict = {}
-        for line in lines[1:end_idx]:
-            if ":" in line:
-                k, _, v = line.partition(":")
-                meta[k.strip()] = v.strip()
-        body = "".join(lines[end_idx + 1 :])
-        return meta, body
+    def handle_starttag(self, tag: str, attrs: list) -> None:
+        if tag != "section":
+            return
+        attrs_dict = dict(attrs)
+        name = (attrs_dict.get("data-skill") or "").strip()
+        if not name:
+            return
+        self._in_section = True
+        self._current_name = name
+        self._current_desc = (attrs_dict.get("data-description") or "").strip()
+        self._buf = []
 
-    meta = yaml.safe_load("".join(lines[1:end_idx])) or {}
-    body = "".join(lines[end_idx + 1 :])
-    return meta, body
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "section" and self._in_section:
+            self.skills.append(
+                {
+                    "name": self._current_name,
+                    "description": self._current_desc,
+                    "body": "".join(self._buf).strip(),
+                }
+            )
+            self._in_section = False
+            self._current_name = ""
+            self._current_desc = ""
+            self._buf = []
+
+    def handle_data(self, data: str) -> None:
+        if self._in_section:
+            self._buf.append(data)
+
+    # Comments and other nodes inside a section are collected verbatim
+    def handle_comment(self, data: str) -> None:
+        if self._in_section:
+            self._buf.append(f"<!--{data}-->")
+
+
+def parse_core_html(path: Path) -> list[dict]:
+    """Parse *path* and return a list of raw skill dicts (name, description, body)."""
+    text = path.read_text(encoding="utf-8")
+    parser = _CoreHtmlParser()
+    parser.feed(text)
+    return parser.skills
+
+
+# ---------------------------------------------------------------------------
+# Registry
+# ---------------------------------------------------------------------------
 
 
 class SkillRegistry:
-    """Collects :class:`Skill` objects from the providers registered in *app*.
+    """Loads :class:`Skill` objects from ``.ai/deployments/core.html``.
 
-    Only providers that are *already registered* in the Application container
-    are scanned — skills from un-registered providers are invisible.
+    The registry reads the central HTML skill file located at::
+
+        {base_path}/.ai/deployments/core.html
+
+    If the file does not exist, :meth:`discover` returns an empty list and
+    prints a helpful hint.
+
+    Usage::
+
+        from fastapi_startkit.application import app
+        registry = app().make("skills.registry")
+        skills = registry.discover()
     """
 
     def __init__(self, app: "Application") -> None:
@@ -90,20 +136,34 @@ class SkillRegistry:
     # Public API
     # ------------------------------------------------------------------
 
+    @property
+    def core_html_path(self) -> Path:
+        """Absolute path to the central skill definition file."""
+        return Path(self._app.base_path) / CORE_HTML_PATH
+
     def discover(self) -> list[Skill]:
-        """Return (and cache) the list of skills found across all providers."""
+        """Return (and cache) the list of skills parsed from ``core.html``."""
         if self._skills is not None:
             return self._skills
 
-        self._skills = []
-        for provider in self._app.providers:
-            skills_dir = self._skills_dir_for(provider)
-            if skills_dir is None or not skills_dir.is_dir():
-                continue
-            for skill_md in sorted(skills_dir.rglob("SKILL.md")):
-                skill = self._load_skill(skill_md, provider.provider_key)
-                if skill is not None:
-                    self._skills.append(skill)
+        source = self.core_html_path
+
+        if not source.exists():
+            self._skills = []
+            return self._skills
+
+        raw_skills = parse_core_html(source)
+        self._skills = [
+            Skill(
+                name=raw["name"],
+                description=raw["description"],
+                path=source,
+                provider_key="core",
+                body=raw["body"],
+            )
+            for raw in raw_skills
+            if raw.get("name")
+        ]
 
         return self._skills
 
@@ -114,51 +174,3 @@ class SkillRegistry:
     def reset(self) -> None:
         """Invalidate the discovery cache (useful in tests)."""
         self._skills = None
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _skills_dir_for(provider) -> Path | None:
-        """Return the ``skills/`` directory that sits next to *provider*'s module.
-
-        Returns *None* when the provider is defined in a non-file module (e.g.
-        dynamically constructed in tests).
-        """
-        try:
-            module = inspect.getmodule(provider)
-            if module is None or not getattr(module, "__file__", None):
-                return None
-            provider_file = Path(module.__file__)
-            return provider_file.parent / "skills"
-        except (TypeError, OSError):
-            return None
-
-    @staticmethod
-    def _load_skill(skill_md: Path, provider_key: str) -> Skill | None:
-        """Parse *skill_md* and return a :class:`Skill`, or *None* on error."""
-        try:
-            text = skill_md.read_text(encoding="utf-8")
-        except OSError:
-            return None
-
-        meta, body = _parse_frontmatter(text)
-
-        name = meta.get("name", "").strip()
-        description = meta.get("description", "").strip()
-
-        if not name:
-            # Use the parent directory name as a fallback
-            name = skill_md.parent.name
-
-        if not name:
-            return None
-
-        return Skill(
-            name=name,
-            description=description,
-            path=skill_md,
-            provider_key=provider_key,
-            body=body.strip(),
-        )

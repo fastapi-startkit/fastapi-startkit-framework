@@ -1,4 +1,4 @@
-"""Tests for SkillRegistry (task #139)."""
+"""Tests for SkillRegistry reading from .ai/deployments/core.html (task #139)."""
 
 from __future__ import annotations
 
@@ -9,8 +9,13 @@ import pytest
 
 from fastapi_startkit.application import Application
 from fastapi_startkit.container.container import Container
-from fastapi_startkit.providers import Provider
-from fastapi_startkit.skills.registry import Skill, SkillRegistry, _parse_frontmatter
+from fastapi_startkit.skills.registry import (
+    Skill,
+    SkillRegistry,
+    _CoreHtmlParser,
+    parse_core_html,
+    CORE_HTML_PATH,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -30,127 +35,160 @@ def app(tmp_path):
     return Application(base_path=tmp_path, env="testing")
 
 
+def _write_core_html(tmp_path: Path, content: str) -> Path:
+    """Write *content* to the canonical core.html location under *tmp_path*."""
+    core = tmp_path / CORE_HTML_PATH
+    core.parent.mkdir(parents=True, exist_ok=True)
+    core.write_text(content, encoding="utf-8")
+    return core
+
+
 # ---------------------------------------------------------------------------
-# _parse_frontmatter unit tests
+# _CoreHtmlParser unit tests
 # ---------------------------------------------------------------------------
 
 
-def test_parse_frontmatter_basic():
-    text = textwrap.dedent("""\
-        ---
-        name: my-skill
-        description: Does something useful
-        ---
-        Body content here.
+def test_parser_extracts_single_section():
+    html = textwrap.dedent("""\
+        <section data-skill="fastapi-routing" data-description="FastAPI routing helpers.">
+        Use router.get() to register routes.
+        </section>
     """)
-    meta, body = _parse_frontmatter(text)
-    assert meta["name"] == "my-skill"
-    assert meta["description"] == "Does something useful"
-    assert "Body content here." in body
+    parser = _CoreHtmlParser()
+    parser.feed(html)
+    assert len(parser.skills) == 1
+    s = parser.skills[0]
+    assert s["name"] == "fastapi-routing"
+    assert s["description"] == "FastAPI routing helpers."
+    assert "router.get()" in s["body"]
 
 
-def test_parse_frontmatter_missing_fence():
-    text = "No YAML front-matter here."
-    meta, body = _parse_frontmatter(text)
-    assert meta == {}
-    assert body == text
+def test_parser_extracts_multiple_sections():
+    html = textwrap.dedent("""\
+        <section data-skill="skill-a" data-description="Skill A.">Body A.</section>
+        <section data-skill="skill-b" data-description="Skill B.">Body B.</section>
+    """)
+    parser = _CoreHtmlParser()
+    parser.feed(html)
+    assert len(parser.skills) == 2
+    assert parser.skills[0]["name"] == "skill-a"
+    assert parser.skills[1]["name"] == "skill-b"
 
 
-def test_parse_frontmatter_unclosed_fence():
-    text = "---\nname: oops\n"
-    meta, body = _parse_frontmatter(text)
-    assert meta == {}
+def test_parser_skips_sections_without_data_skill():
+    html = '<section data-description="No name here.">body</section>'
+    parser = _CoreHtmlParser()
+    parser.feed(html)
+    assert parser.skills == []
+
+
+def test_parser_ignores_non_section_tags():
+    html = textwrap.dedent("""\
+        <div>some wrapper</div>
+        <section data-skill="valid" data-description="desc.">content</section>
+        <p>irrelevant</p>
+    """)
+    parser = _CoreHtmlParser()
+    parser.feed(html)
+    assert len(parser.skills) == 1
+    assert parser.skills[0]["name"] == "valid"
+
+
+def test_parser_handles_html_comments_inside_section():
+    html = textwrap.dedent("""\
+        <section data-skill="annotated" data-description="With comments.">
+        <!-- Jinja2: {{ var }} -->
+        Some body text.
+        </section>
+    """)
+    parser = _CoreHtmlParser()
+    parser.feed(html)
+    assert len(parser.skills) == 1
+    body = parser.skills[0]["body"]
+    assert "Some body text." in body
+
+
+def test_parser_trims_body_whitespace():
+    html = '<section data-skill="s" data-description="d.">\n\n  trimmed  \n\n</section>'
+    parser = _CoreHtmlParser()
+    parser.feed(html)
+    assert parser.skills[0]["body"] == "trimmed"
 
 
 # ---------------------------------------------------------------------------
-# SkillRegistry — discovery tests
+# parse_core_html
 # ---------------------------------------------------------------------------
 
 
-def _make_skill_md(directory: Path, name: str, description: str, body: str = "") -> Path:
-    """Helper: write a SKILL.md into *directory/name/SKILL.md*."""
-    skill_dir = directory / name
-    skill_dir.mkdir(parents=True, exist_ok=True)
-    skill_file = skill_dir / "SKILL.md"
-    lines = ["---", f"name: {name}", f"description: {description}", "---"]
-    if body:
-        lines += ["", body]
-    skill_file.write_text("\n".join(lines))
-    return skill_file
+def test_parse_core_html_returns_skill_dicts(tmp_path):
+    core = _write_core_html(tmp_path, textwrap.dedent("""\
+        <section data-skill="orm-queries" data-description="ORM query helpers.">
+        Use Model.where().get() for filtering.
+        </section>
+    """))
+    skills = parse_core_html(core)
+    assert len(skills) == 1
+    assert skills[0]["name"] == "orm-queries"
 
 
-class _DynamicProvider(Provider):
-    """Provider whose skills/ directory is injected at runtime (for testing)."""
-
-    _skills_path: Path | None = None
-    provider_key = "dynamic"
-
-    def register(self):
-        pass
-
-    def boot(self):
-        pass
+# ---------------------------------------------------------------------------
+# SkillRegistry
+# ---------------------------------------------------------------------------
 
 
-def test_registry_discovers_skills_from_registered_providers(tmp_path, monkeypatch, app):
-    """SkillRegistry.discover() returns skills from providers with a skills/ dir."""
-    # Create a fake provider module file and skills/ dir
-    provider_dir = tmp_path / "mypkg"
-    provider_dir.mkdir()
-    fake_module_file = provider_dir / "provider.py"
-    fake_module_file.write_text("# fake")
-
-    skills_dir = provider_dir / "skills"
-    _make_skill_md(skills_dir, "fastapi-routing", "Helps with FastAPI routing")
-    _make_skill_md(skills_dir, "orm-queries", "Helps with ORM queries", body="Use `Model.where(...)` for filtering.")
-
-    # Monkeypatch inspect.getmodule to return a fake module for the provider
-    import inspect as _inspect
-    import types
-
-    fake_module = types.ModuleType("mypkg.provider")
-    fake_module.__file__ = str(fake_module_file)
-
-    original_getmodule = _inspect.getmodule
-
-    def patched_getmodule(obj, _filename=None):
-        if isinstance(obj, _DynamicProvider):
-            return fake_module
-        return original_getmodule(obj, _filename)
-
-    monkeypatch.setattr(_inspect, "getmodule", patched_getmodule)
+def test_registry_discovers_skills_from_core_html(tmp_path, app):
+    _write_core_html(tmp_path, textwrap.dedent("""\
+        <section data-skill="fastapi-routing" data-description="FastAPI routing.">
+        Router body.
+        </section>
+        <section data-skill="orm-queries" data-description="ORM queries.">
+        ORM body.
+        </section>
+    """))
 
     registry = SkillRegistry(app)
-    # Inject the provider instance directly
-    app.providers.append(_DynamicProvider(app))
-
     skills = registry.discover()
 
     assert len(skills) == 2
     names = {s.name for s in skills}
     assert names == {"fastapi-routing", "orm-queries"}
 
-    orm_skill = next(s for s in skills if s.name == "orm-queries")
-    assert "Model.where" in orm_skill.body
 
-
-def test_registry_ignores_providers_without_skills_dir(tmp_path, app):
-    """SkillRegistry does not crash on providers that have no skills/ dir."""
+def test_registry_returns_empty_list_when_core_html_missing(tmp_path, app):
     registry = SkillRegistry(app)
     skills = registry.discover()
-    # Default providers (ConfigurationProvider, AppProvider) have no skills/
-    assert isinstance(skills, list)
+    assert skills == []
 
 
-def test_registry_caches_results(tmp_path, monkeypatch, app):
-    """Calling discover() twice returns the same list without re-scanning."""
+def test_registry_skill_path_points_to_core_html(tmp_path, app):
+    _write_core_html(tmp_path, '<section data-skill="s" data-description="d.">body</section>')
+    registry = SkillRegistry(app)
+    skills = registry.discover()
+    assert skills[0].path == tmp_path / CORE_HTML_PATH
+
+
+def test_registry_skill_body_is_captured(tmp_path, app):
+    _write_core_html(tmp_path, textwrap.dedent("""\
+        <section data-skill="orm" data-description="ORM.">
+        Use `Model.where(...)`
+        </section>
+    """))
+    registry = SkillRegistry(app)
+    skill = registry.get("orm")
+    assert skill is not None
+    assert "Model.where" in skill.body
+
+
+def test_registry_caches_results(tmp_path, app):
+    _write_core_html(tmp_path, '<section data-skill="s" data-description="d.">body</section>')
     registry = SkillRegistry(app)
     first = registry.discover()
     second = registry.discover()
-    assert first is second  # same object, not recomputed
+    assert first is second
 
 
 def test_registry_reset_clears_cache(tmp_path, app):
+    _write_core_html(tmp_path, '<section data-skill="s" data-description="d.">body</section>')
     registry = SkillRegistry(app)
     registry.discover()
     assert registry._skills is not None
@@ -158,33 +196,25 @@ def test_registry_reset_clears_cache(tmp_path, app):
     assert registry._skills is None
 
 
-def test_registry_get_by_name(tmp_path, monkeypatch, app):
-    import inspect as _inspect
-    import types
-
-    provider_dir = tmp_path / "pkg"
-    provider_dir.mkdir()
-    fake_module = types.ModuleType("pkg.provider")
-    fake_module.__file__ = str(provider_dir / "provider.py")
-
-    skills_dir = provider_dir / "skills"
-    _make_skill_md(skills_dir, "console-commands", "Artisan console commands")
-
-    original_getmodule = _inspect.getmodule
-
-    def patched(obj, _filename=None):
-        if isinstance(obj, _DynamicProvider):
-            return fake_module
-        return original_getmodule(obj, _filename)
-
-    monkeypatch.setattr(_inspect, "getmodule", patched)
-
+def test_registry_get_returns_none_for_unknown(tmp_path, app):
+    _write_core_html(tmp_path, '<section data-skill="s" data-description="d.">body</section>')
     registry = SkillRegistry(app)
-    app.providers.append(_DynamicProvider(app))
+    assert registry.get("does-not-exist") is None
 
+
+def test_registry_get_returns_skill_by_name(tmp_path, app):
+    _write_core_html(tmp_path, textwrap.dedent("""\
+        <section data-skill="console-commands" data-description="Artisan console.">
+        Extend Command class.
+        </section>
+    """))
+    registry = SkillRegistry(app)
     skill = registry.get("console-commands")
     assert skill is not None
     assert skill.name == "console-commands"
+    assert skill.provider_key == "core"
 
-    missing = registry.get("does-not-exist")
-    assert missing is None
+
+def test_registry_core_html_path_property(tmp_path, app):
+    registry = SkillRegistry(app)
+    assert registry.core_html_path == tmp_path / ".ai" / "deployments" / "core.html"
