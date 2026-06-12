@@ -1,14 +1,16 @@
+from .auth import ChannelAuthRegistry
 from .channels import Channel, PrivateChannel, PresenceChannel
 from .event import BroadcastEvent, ShouldBroadcast
-from .provider import ReverbProvider
 from .helpers import broadcast
+from .provider import ReverbProvider
 
 __all__ = [
     "Channel",
-    "PrivateChannel",
+    "ChannelAuthRegistry",
     "PresenceChannel",
+    "PrivateChannel",
     "BroadcastEvent",
-    "ShouldBroadcast",
     "ReverbProvider",
+    "ShouldBroadcast",
     "broadcast",
 ]
