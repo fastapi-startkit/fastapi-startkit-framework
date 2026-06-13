@@ -35,13 +35,13 @@ class OrderShipped(BroadcastEvent):
 
 ## Emitting an event
 
-Call `.emit()` on an event instance — it dispatches to all channels in `broadcast_on()`:
+Call `await .emit()` on an event instance — it dispatches to all channels in `broadcast_on()`:
 
 ```python
-OrderShipped(order_id=123).emit()
+await OrderShipped(order_id=123).emit()
 ```
 
-For an awaitable dispatch (e.g. inside an async route handler) use the `broadcast` helper directly:
+Alternatively use the `broadcast` helper directly:
 
 ```python
 from fastapi_startkit.broadcasting import broadcast

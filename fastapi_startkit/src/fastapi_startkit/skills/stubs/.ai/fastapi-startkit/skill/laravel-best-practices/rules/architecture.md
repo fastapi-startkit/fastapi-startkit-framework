@@ -228,7 +228,7 @@ class OrdersController:
 
 ## Rule 9 — Broadcasting: `BroadcastEvent` subclasses, auth in `routes/channels.py`, no facades
 
-Define events as `BroadcastEvent` subclasses. Dispatch with `.emit()` or `await broadcast(event)`. Authorize private/presence channels exclusively in `routes/channels.py` using the `@channel` decorator. Do not use the `Broadcast` facade.
+Define events as `BroadcastEvent` subclasses. Dispatch with `await .emit()` or `await broadcast(event)`. Authorize private/presence channels exclusively in `routes/channels.py` using the `@channel` decorator. Do not use the `Broadcast` facade.
 
 ```python
 # ✅ DO
@@ -240,8 +240,8 @@ class OrderShipped(BroadcastEvent):
     def broadcast_on(self) -> list:
         return [PrivateChannel(f"orders.{self.payload['order_id']}")]
 
-# Dispatch (fire-and-forget)
-OrderShipped(order_id=123).emit()
+# Dispatch
+await OrderShipped(order_id=123).emit()
 
 # routes/channels.py — auth callbacks
 @channel("orders.{order_id}")
