@@ -87,3 +87,28 @@ def env(value, default="", cast=True):
         return True
     else:
         return env_var
+
+
+def value(env_var, default=""):
+    """Cast a raw (already-resolved) value to the appropriate Python type.
+
+    Unlike ``env()``, this function does NOT perform an ``os.getenv`` lookup —
+    it expects a concrete value and simply coerces it to ``int``, ``bool``,
+    ``None``, or ``str`` as appropriate.  Use this whenever you already hold
+    the resolved value and only need type casting.
+    """
+    if env_var == "":
+        env_var = default
+
+    if isinstance(env_var, bool):
+        return env_var
+    elif env_var is None:
+        return None
+    elif isinstance(env_var, int) or (isinstance(env_var, str) and env_var.isnumeric()):
+        return int(env_var)
+    elif env_var in ("false", "False"):
+        return False
+    elif env_var in ("true", "True"):
+        return True
+    else:
+        return env_var

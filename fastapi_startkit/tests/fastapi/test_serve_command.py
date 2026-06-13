@@ -48,19 +48,11 @@ def run(
     def _config_get(key, default=None):
         return cfg.get(key, default)
 
-    # env() in serve_command treats the resolved value as an env-var *name*,
-    # so we replace it with an identity function to keep the logic testable.
-    def _env_identity(value, default="", cast=True):
-        if value is None or value == "":
-            return default
-        return value
-
     mock_uvicorn = MagicMock()
     mock_spec = MagicMock() if app_found else None
 
     with (
         patch("fastapi_startkit.fastapi.commands.serve_command.Config.get", side_effect=_config_get),
-        patch("fastapi_startkit.fastapi.commands.serve_command.env", side_effect=_env_identity),
         patch("fastapi_startkit.configuration.config.Config.get", side_effect=_config_get),
         patch("uvicorn.run", mock_uvicorn),
         patch("importlib.util.find_spec", return_value=mock_spec),

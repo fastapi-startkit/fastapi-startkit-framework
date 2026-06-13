@@ -1,7 +1,7 @@
 from cleo.helpers import option
 from fastapi_startkit import Config
 from fastapi_startkit.console.command import Command
-from fastapi_startkit.environment import env
+from fastapi_startkit.environment import value as cast_value
 from fastapi_startkit.support import Uriable, Uri
 
 
@@ -43,7 +43,7 @@ class ServeCommand(Command):
     def resolve_option(self, key: str, default: str | int | None = None):
         value = self.option(key) or Config.get(f"fastapi.{key}", default)
 
-        return env(value)
+        return cast_value(value)
 
     def resolve_url(self) -> Uriable:
         host = self.resolve_option("host", "127.0.0.1")
