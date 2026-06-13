@@ -46,7 +46,6 @@ class TestDocumentImageAttachment:
         doc = Document(content="hello", name="text.txt")
         assert doc.to_bytes() == b"hello"
 
-    @pytest.mark.asyncio
     async def test_document_from_url_downloads_bytes(self):
         fake_data = b"fake-image-bytes"
 
@@ -63,7 +62,6 @@ class TestDocumentImageAttachment:
         assert doc.to_bytes() == fake_data
         assert doc.name == "photo.jpg"
 
-    @pytest.mark.asyncio
     async def test_document_from_storage_reads_bytes(self, tmp_path, monkeypatch):
         storage_dir = tmp_path / "storage"
         storage_dir.mkdir()
@@ -128,7 +126,6 @@ class TestImageBuilder:
 
 
 class TestImageGeneration:
-    @pytest.mark.asyncio
     async def test_generate_calls_provider_and_returns_response(self):
         provider = _mock_provider()
 
@@ -139,7 +136,6 @@ class TestImageGeneration:
         assert result.data == _fake_image_bytes()
         provider.generate.assert_called_once()
 
-    @pytest.mark.asyncio
     async def test_generate_passes_landscape_size_to_provider(self):
         provider = _mock_provider()
 
@@ -149,7 +145,6 @@ class TestImageGeneration:
         call_kwargs = provider.generate.call_args[1]
         assert call_kwargs["size"] == "1792x1024"
 
-    @pytest.mark.asyncio
     async def test_generate_passes_quality_to_provider(self):
         provider = _mock_provider()
 
@@ -159,7 +154,6 @@ class TestImageGeneration:
         call_kwargs = provider.generate.call_args[1]
         assert call_kwargs["quality"] == "hd"
 
-    @pytest.mark.asyncio
     async def test_generate_uses_edit_when_attachments_present(self):
         provider = _mock_provider()
         doc = Document(content=b"img-bytes", name="photo.png")
@@ -171,7 +165,6 @@ class TestImageGeneration:
         provider.edit.assert_called_once()
         provider.generate.assert_not_called()
 
-    @pytest.mark.asyncio
     async def test_generate_passes_attachment_bytes_to_edit(self):
         provider = _mock_provider()
         doc = Document(content=b"raw-image-bytes", name="photo.png")
@@ -187,7 +180,6 @@ class TestImageGeneration:
 
 
 class TestImageResult:
-    @pytest.mark.asyncio
     async def test_store_writes_to_temp_when_no_storage(self):
         """Falls back to tempfile when Storage facade is unavailable."""
         resp = ImageResponse(data=_fake_image_bytes())
@@ -199,7 +191,6 @@ class TestImageResult:
             assert f.read() == _fake_image_bytes()
         os.remove(path)
 
-    @pytest.mark.asyncio
     async def test_store_as_uses_given_name(self, tmp_path):
         resp = ImageResponse(data=_fake_image_bytes())
 
@@ -209,7 +200,6 @@ class TestImageResult:
         mock_save.assert_called_once_with("result.png", "local")
         assert path.endswith("result.png")
 
-    @pytest.mark.asyncio
     async def test_store_publicly_as_uses_public_disk(self, tmp_path):
         resp = ImageResponse(data=_fake_image_bytes())
 
@@ -218,7 +208,6 @@ class TestImageResult:
 
         mock_save.assert_called_once_with("result.png", "public")
 
-    @pytest.mark.asyncio
     async def test_store_publicly_uses_public_disk(self):
         resp = ImageResponse(data=_fake_image_bytes())
 
@@ -229,7 +218,6 @@ class TestImageResult:
         _, disk = mock_save.call_args[0]
         assert disk == "public"
 
-    @pytest.mark.asyncio
     async def test_store_auto_filename_has_png_ext(self):
         resp = ImageResponse(data=_fake_image_bytes(), fmt="png")
 
@@ -240,7 +228,6 @@ class TestImageResult:
         name, _ = mock_save.call_args[0]
         assert name.endswith(".png")
 
-    @pytest.mark.asyncio
     async def test_store_uses_storage_facade_when_available(self):
         resp = ImageResponse(data=_fake_image_bytes())
         mock_disk = MagicMock()
@@ -257,7 +244,6 @@ class TestImageResult:
 
 
 class TestGoogleImageFactory:
-    @pytest.mark.asyncio
     async def test_generate_calls_genai_and_returns_bytes(self):
         from fastapi_startkit.ai.image_factory import GoogleImageFactory
 
@@ -285,7 +271,6 @@ class TestGoogleImageFactory:
 
         assert result == fake_bytes
 
-    @pytest.mark.asyncio
     async def test_aspect_ratio_mapping_square(self):
         from fastapi_startkit.ai.image_factory import GoogleImageFactory
 
@@ -294,7 +279,6 @@ class TestGoogleImageFactory:
         assert provider._ASPECT_MAP["1792x1024"] == "16:9"
         assert provider._ASPECT_MAP["1024x1792"] == "9:16"
 
-    @pytest.mark.asyncio
     async def test_edit_raises_not_implemented(self):
         from fastapi_startkit.ai.image_factory import GoogleImageFactory
 
@@ -302,7 +286,6 @@ class TestGoogleImageFactory:
         with pytest.raises(NotImplementedError, match="does not support image editing"):
             await provider.edit("Make it blue", b"\x89PNG", "1024x1024")
 
-    @pytest.mark.asyncio
     async def test_image_builder_resolves_google_provider(self):
         mock_ai_config = MagicMock()
         mock_ai_config.image_provider = "google"

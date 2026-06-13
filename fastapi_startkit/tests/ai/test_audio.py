@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 
 from fastapi_startkit.ai.audio import Audio, AudioResponse
 
@@ -79,7 +78,6 @@ class TestAudioBuilder:
 
 
 class TestAudioGeneration:
-    @pytest.mark.asyncio
     async def test_generate_calls_provider_and_returns_response(self):
         provider = _mock_provider()
 
@@ -90,7 +88,6 @@ class TestAudioGeneration:
         assert result.data == _fake_audio_bytes()
         provider.synthesize.assert_called_once()
 
-    @pytest.mark.asyncio
     async def test_generate_passes_text_to_provider(self):
         provider = _mock_provider()
 
@@ -100,7 +97,6 @@ class TestAudioGeneration:
         call_kwargs = provider.synthesize.call_args[1]
         assert call_kwargs["text"] == "Hello world"
 
-    @pytest.mark.asyncio
     async def test_generate_female_passes_nova_voice(self):
         provider = _mock_provider()
 
@@ -110,7 +106,6 @@ class TestAudioGeneration:
         call_kwargs = provider.synthesize.call_args[1]
         assert call_kwargs["voice"] == "nova"
 
-    @pytest.mark.asyncio
     async def test_generate_male_passes_onyx_voice(self):
         provider = _mock_provider()
 
@@ -120,7 +115,6 @@ class TestAudioGeneration:
         call_kwargs = provider.synthesize.call_args[1]
         assert call_kwargs["voice"] == "onyx"
 
-    @pytest.mark.asyncio
     async def test_generate_explicit_voice(self):
         provider = _mock_provider()
 
@@ -130,7 +124,6 @@ class TestAudioGeneration:
         call_kwargs = provider.synthesize.call_args[1]
         assert call_kwargs["voice"] == "shimmer"
 
-    @pytest.mark.asyncio
     async def test_generate_passes_speed(self):
         provider = _mock_provider()
 
@@ -140,7 +133,6 @@ class TestAudioGeneration:
         call_kwargs = provider.synthesize.call_args[1]
         assert call_kwargs["speed"] == 1.25
 
-    @pytest.mark.asyncio
     async def test_generate_passes_format(self):
         provider = _mock_provider()
 
@@ -150,7 +142,6 @@ class TestAudioGeneration:
         call_kwargs = provider.synthesize.call_args[1]
         assert call_kwargs["fmt"] == "opus"
 
-    @pytest.mark.asyncio
     async def test_generate_hd_model(self):
         provider = _mock_provider()
 
@@ -165,7 +156,6 @@ class TestAudioGeneration:
 
 
 class TestAudioResult:
-    @pytest.mark.asyncio
     async def test_store_writes_to_temp_when_no_storage(self):
         resp = AudioResponse(data=_fake_audio_bytes())
 
@@ -176,7 +166,6 @@ class TestAudioResult:
             assert f.read() == _fake_audio_bytes()
         os.remove(path)
 
-    @pytest.mark.asyncio
     async def test_store_as_uses_given_name(self):
         resp = AudioResponse(data=_fake_audio_bytes())
 
@@ -186,7 +175,6 @@ class TestAudioResult:
 
         mock_save.assert_called_once_with("greeting.mp3", "local")
 
-    @pytest.mark.asyncio
     async def test_store_publicly_as_uses_public_disk(self):
         resp = AudioResponse(data=_fake_audio_bytes())
 
@@ -196,7 +184,6 @@ class TestAudioResult:
 
         mock_save.assert_called_once_with("greeting.mp3", "public")
 
-    @pytest.mark.asyncio
     async def test_store_publicly_uses_public_disk(self):
         resp = AudioResponse(data=_fake_audio_bytes())
 
@@ -207,7 +194,6 @@ class TestAudioResult:
         _, disk = mock_save.call_args[0]
         assert disk == "public"
 
-    @pytest.mark.asyncio
     async def test_store_auto_filename_has_mp3_ext(self):
         resp = AudioResponse(data=_fake_audio_bytes(), fmt="mp3")
 
@@ -218,7 +204,6 @@ class TestAudioResult:
         name, _ = mock_save.call_args[0]
         assert name.endswith(".mp3")
 
-    @pytest.mark.asyncio
     async def test_store_uses_storage_facade_when_available(self):
         resp = AudioResponse(data=_fake_audio_bytes())
         mock_disk = MagicMock()
@@ -235,7 +220,6 @@ class TestAudioResult:
 
 
 class TestGoogleAudioFactory:
-    @pytest.mark.asyncio
     async def test_synthesize_returns_wav_bytes(self):
         from fastapi_startkit.ai.audio_factory import GoogleAudioFactory
 
@@ -279,7 +263,6 @@ class TestGoogleAudioFactory:
         provider = GoogleAudioFactory()
         assert provider._VOICE_MAP.get("Zephyr", "Zephyr") == "Zephyr"
 
-    @pytest.mark.asyncio
     async def test_audio_builder_resolves_google_provider(self):
         mock_ai_config = MagicMock()
         mock_ai_config.audio_provider = "google"
@@ -326,7 +309,6 @@ class TestPcmToWav:
 
 
 class TestElevenLabsAudioFactory:
-    @pytest.mark.asyncio
     async def test_synthesize_joins_audio_chunks(self):
         from fastapi_startkit.ai.audio_factory import ElevenLabsAudioFactory
 
@@ -364,7 +346,6 @@ class TestElevenLabsAudioFactory:
         resolved = provider._VOICE_MAP.get(direct_id, direct_id)
         assert resolved == direct_id
 
-    @pytest.mark.asyncio
     async def test_audio_builder_resolves_elevenlabs_provider(self):
         mock_ai_config = MagicMock()
         mock_ai_config.audio_provider = "elevenlabs"
