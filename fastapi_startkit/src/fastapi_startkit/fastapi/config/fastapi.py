@@ -9,10 +9,14 @@ class FastAPIConfig:
 
     All fields can be overridden via environment variables or by publishing a
     ``config/fastapi.py`` file in the application root.
+
+    Resolution order for host/port (highest priority wins):
+      CLI --host / --port  >  APP_HOST / APP_PORT  >  APP_URL  >  built-in default
     """
 
-    host: str = dataclasses.field(default_factory=lambda: env("APP_HOST", "127.0.0.1"))
-    port: int = dataclasses.field(default_factory=lambda: env("APP_PORT", 8000))
+    app_url: str = dataclasses.field(default_factory=lambda: env("APP_URL", ""))
+    host: str = dataclasses.field(default_factory=lambda: env("APP_HOST", ""))
+    port: int = dataclasses.field(default_factory=lambda: env("APP_PORT", 0))
     reload: bool = dataclasses.field(default_factory=lambda: env("APP_RELOAD", True))
     reload_dirs: list | None = None
     reload_excludes: list = dataclasses.field(

@@ -1,8 +1,9 @@
 from cleo.helpers import option
-from fastapi_startkit import Config
 from fastapi_startkit.console.command import Command
-from fastapi_startkit.environment import env
-from fastapi_startkit.support import Uriable, Uri
+from fastapi_startkit.support import Uri
+
+_DEFAULT_HOST = "127.0.0.1"
+_DEFAULT_PORT = 8000
 
 
 class ServeCommand(Command):
@@ -40,16 +41,46 @@ class ServeCommand(Command):
         ),
     ]
 
-    def resolve_option(self, key: str, default: str | int | None = None):
-        value = self.option(key) or Config.get(f"fastapi.{key}", default)
+    def resolve_host_port(self) -> tuple[str, int]:
+        """Return (host, port) applying the priority chain:
 
-        return env(value)
+        CLI --host/--port  >  APP_HOST/APP_PORT (fastapi.host/port config)
+        >  APP_URL (fastapi.app_url config)  >  built-in defaults.
+        """
+        from fastapi_startkit import Config
 
-    def resolve_url(self) -> Uriable:
-        host = self.resolve_option("host", "127.0.0.1")
-        port = self.resolve_option("port", 8000)
+        host = _DEFAULT_HOST
+        port = _DEFAULT_PORT
 
-        return Uri.of(Config.get("fastapi.app_url", "http://127.0.0.1:8000")).with_host(host).with_port(port)
+        # Layer 1: APP_URL — parse host and port from the URL when set.
+        app_url = Config.get("fastapi.app_url", "") or ""
+        if app_url:
+            # Bare hosts like "myapp.com:9000" have no scheme; add one so
+            # urlparse can extract hostname and port correctly.
+            normalised = app_url if "://" in app_url else f"http://{app_url}"
+            parsed = Uri.of(normalised)
+            if parsed.host():
+                host = parsed.host()
+            if parsed.port():
+                port = parsed.port()
+
+        # Layer 2: APP_HOST / APP_PORT environment variables (via config fields).
+        cfg_host = Config.get("fastapi.host", "") or ""
+        cfg_port = Config.get("fastapi.port", 0) or 0
+        if cfg_host:
+            host = cfg_host
+        if cfg_port:
+            port = int(cfg_port)
+
+        # Layer 3: CLI flags win over everything.
+        cli_host = self.option("host")
+        cli_port = self.option("port")
+        if cli_host:
+            host = cli_host
+        if cli_port:
+            port = int(cli_port)
+
+        return host, port
 
     def handle(self):
         import uvicorn
@@ -57,16 +88,16 @@ class ServeCommand(Command):
         from fastapi_startkit import Config
         from fastapi_startkit.container import Container
 
-        # Resolve server settings: CLI flag > fastapi config > uvicorn default (None)
+        host, port = self.resolve_host_port()
+
         cfg_reload_dirs = Config.get("fastapi.reload_dirs") or None
         cfg_reload_excludes = Config.get("fastapi.reload_excludes") or None
-
-        url = self.resolve_url()
+        reload = Config.get("fastapi.reload", True) if self.option("reload") is None else self.option("reload")
 
         kwargs = {
-            "host": url.host(),
-            "port": url.port(),
-            "reload": self.resolve_option("reload", True),
+            "host": host,
+            "port": port,
+            "reload": reload,
             "ws": "websockets-sansio",
         }
 
@@ -82,10 +113,10 @@ class ServeCommand(Command):
             if cfg_reload_excludes is not None:
                 kwargs["reload_excludes"] = cfg_reload_excludes
 
-            self.line(f"<info>Starting Uvicorn server on {url.host()}:{url.port()} [{self.option('app')}]...</info>")
+            self.line(f"<info>Starting Uvicorn server on {host}:{port} [{self.option('app')}]...</info>")
 
         else:
-            self.line(f"<info>Starting Uvicorn server on {url.host()}:{url.port()}...</info>")
+            self.line(f"<info>Starting Uvicorn server on {host}:{port}...</info>")
             kwargs.update({"app": Container.instance().fastapi, "reload": False})
 
         try:
