@@ -94,7 +94,7 @@ class GeminiAdapter(BaseAdapter):
 
         if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
             before = original[:start_idx]
-            after = original[end_idx + len(_MARKER_END):]
+            after = original[end_idx + len(_MARKER_END) :]
             return before + section + after
         else:
             # No markers yet — append

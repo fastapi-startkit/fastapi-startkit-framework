@@ -50,9 +50,7 @@ class SkillsListCommand(Command):
             gemini_status = self._gemini_status(base_path)
 
             desc = skill.description[:50] + "…" if len(skill.description) > 50 else skill.description
-            self.line(
-                f"  {skill.provider_key:<20} {skill.name:<25} {claude_status:<10} {gemini_status:<10}  {desc}"
-            )
+            self.line(f"  {skill.provider_key:<20} {skill.name:<25} {claude_status:<10} {gemini_status:<10}  {desc}")
 
         self.line("")
         return 0

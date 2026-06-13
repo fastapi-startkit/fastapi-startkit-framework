@@ -69,6 +69,6 @@ class GeminiRulesAdapter(BaseAdapter):
         start = original.find(_MARKER_START)
         end = original.find(_MARKER_END)
         if start != -1 and end != -1 and end > start:
-            return original[:start] + section + original[end + len(_MARKER_END):]
+            return original[:start] + section + original[end + len(_MARKER_END) :]
         separator = "\n\n" if original and not original.endswith("\n\n") else ""
         return original + separator + section + "\n"

@@ -46,7 +46,7 @@ def _run(cmd_class, container, args=None):
     cmd = cmd_class()
     cmd.set_container(container)
     opts = {}
-    for arg in (args or []):
+    for arg in args or []:
         if arg.startswith("--"):
             k = arg.lstrip("-").split("=")[0]
             v = arg.split("=")[1] if "=" in arg else True
@@ -61,6 +61,7 @@ def _run(cmd_class, container, args=None):
 # ===========================================================================
 # skills:sync
 # ===========================================================================
+
 
 class TestSkillsSyncCommand:
     def test_sync_all_writes_claude_and_gemini(self, tmp_path, app):
@@ -113,6 +114,7 @@ class TestSkillsSyncCommand:
 # skills:list
 # ===========================================================================
 
+
 class TestSkillsListCommand:
     def test_list_shows_skills(self, tmp_path, app):
         _write_skill_md(tmp_path, "fastapi-routing", "FastAPI routing")
@@ -137,6 +139,7 @@ class TestSkillsListCommand:
 # ===========================================================================
 # rules:sync  (rules nested inside skills)
 # ===========================================================================
+
 
 class TestRulesSyncCommand:
     def test_sync_claude_creates_nested_rule_file(self, tmp_path, app):
@@ -180,6 +183,7 @@ class TestRulesSyncCommand:
     def test_prune_removes_stale_rule_skill_subdir(self, tmp_path, app):
         """ClaudeRulesAdapter.prune() scans .claude/rules/, not .claude/skills/."""
         from fastapi_startkit.skills.rules.adapters.claude import ClaudeRulesAdapter
+
         # Pre-populate .claude/rules/ with a stale skill subdir
         stale_dir = tmp_path / ".claude" / "rules" / "dead-skill"
         stale_dir.mkdir(parents=True)
@@ -209,6 +213,7 @@ class TestRulesSyncCommand:
 # ===========================================================================
 # rules:list
 # ===========================================================================
+
 
 class TestRulesListCommand:
     def test_list_shows_rules(self, tmp_path, app):

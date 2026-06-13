@@ -54,8 +54,7 @@ class SkillsSyncCommand(Command):
 
         if not skills:
             self.line(
-                "<comment>No skills found. Publish stubs first: "
-                "artisan provider:publish --provider=skills</comment>"
+                "<comment>No skills found. Publish stubs first: artisan provider:publish --provider=skills</comment>"
             )
             return 0
 

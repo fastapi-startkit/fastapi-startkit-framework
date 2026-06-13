@@ -53,10 +53,11 @@ def _parse_frontmatter(text: str) -> tuple[dict, str]:
         return {}, text
 
     fm_text = "".join(lines[1:end_idx])
-    body = "".join(lines[end_idx + 1:])
+    body = "".join(lines[end_idx + 1 :])
 
     try:
         import yaml
+
         meta = yaml.safe_load(fm_text) or {}
     except ModuleNotFoundError:
         meta = {}

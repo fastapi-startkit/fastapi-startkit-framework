@@ -37,9 +37,9 @@ SKILLS_BASE_PATH = Path(".ai") / "fastapi-startkit"
 class Rule:
     """A per-topic coding rule nested inside a skill directory."""
 
-    name: str           # file stem, e.g. "http-client"
-    skill_name: str     # owning skill directory name, e.g. "fastapi-best-practices"
-    path: Path          # absolute path to the .md source file
+    name: str  # file stem, e.g. "http-client"
+    skill_name: str  # owning skill directory name, e.g. "fastapi-best-practices"
+    path: Path  # absolute path to the .md source file
     body: str = field(default="", repr=False)
     description: str = ""
 
@@ -60,10 +60,11 @@ def _parse_frontmatter(text: str) -> tuple[dict, str]:
         return {}, text
 
     fm_text = "".join(lines[1:end_idx])
-    body = "".join(lines[end_idx + 1:])
+    body = "".join(lines[end_idx + 1 :])
 
     try:
         import yaml  # type: ignore[import]
+
         meta = yaml.safe_load(fm_text) or {}
     except ModuleNotFoundError:
         meta = {}

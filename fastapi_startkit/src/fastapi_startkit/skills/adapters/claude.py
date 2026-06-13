@@ -44,6 +44,7 @@ class ClaudeAdapter(BaseAdapter):
         for child in sorted(skills_root.iterdir()):
             if child.is_dir() and child.name not in known_names:
                 import shutil
+
                 shutil.rmtree(child)
                 messages.append(f"[claude] Pruned .claude/skills/{child.name}/")
         return messages

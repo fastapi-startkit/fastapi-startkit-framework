@@ -40,6 +40,7 @@ def _write_skill(tmp_path: Path, name: str, description: str, body: str = "") ->
 
 # -- _parse_frontmatter --
 
+
 def test_parse_frontmatter_basic():
     text = "---\nname: fastapi-best-practices\ndescription: Apply for FastAPI code.\n---\nBody content here.\n"
     meta, body = _parse_frontmatter(text)
@@ -61,6 +62,7 @@ def test_parse_frontmatter_unclosed_fence():
 
 
 # -- SkillRegistry --
+
 
 def test_registry_discovers_skills_from_skill_dirs(tmp_path, app):
     _write_skill(tmp_path, "fastapi-routing", "FastAPI routing helpers", "Use Router.")

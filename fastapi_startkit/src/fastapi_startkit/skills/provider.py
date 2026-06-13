@@ -33,18 +33,19 @@ class SkillsServiceProvider(Provider):
         from fastapi_startkit.skills.commands import SkillsSyncCommand, SkillsListCommand
         from fastapi_startkit.skills.rules.commands import RulesSyncCommand, RulesListCommand
 
-        self.commands([
-            SkillsSyncCommand,
-            SkillsListCommand,
-            RulesSyncCommand,
-            RulesListCommand,
-        ])
+        self.commands(
+            [
+                SkillsSyncCommand,
+                SkillsListCommand,
+                RulesSyncCommand,
+                RulesListCommand,
+            ]
+        )
 
         _skill_stub = _STUBS_DIR / ".ai" / "fastapi-startkit" / "fastapi-startkit"
         self.publishes(
             {
-                str(_skill_stub / "SKILL.md"):
-                    ".ai/fastapi-startkit/fastapi-startkit/SKILL.md",
+                str(_skill_stub / "SKILL.md"): ".ai/fastapi-startkit/fastapi-startkit/SKILL.md",
             },
             tag="skills",
         )

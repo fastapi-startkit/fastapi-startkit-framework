@@ -123,8 +123,7 @@ class TestGeminiAdapter:
     def test_render_preserves_content_outside_markers(self, tmp_path):
         gemini_md = tmp_path / "GEMINI.md"
         gemini_md.write_text(
-            "# My Project\n\nSome user content.\n\n"
-            + _MARKER_START + "\nold skills\n" + _MARKER_END + "\n\n"
+            "# My Project\n\nSome user content.\n\n" + _MARKER_START + "\nold skills\n" + _MARKER_END + "\n\n"
             "## Extra Section\n\nUser notes.\n"
         )
 

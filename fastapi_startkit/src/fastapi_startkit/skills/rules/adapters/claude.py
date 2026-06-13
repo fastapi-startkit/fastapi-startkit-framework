@@ -43,9 +43,7 @@ class ClaudeRulesAdapter(BaseAdapter):
             dest = self._rule_path(rule.skill_name, rule.name)
             written = self._write_idempotent(dest, rule.body)
             verb = "Synced" if written else "Unchanged"
-            messages.append(
-                f"[claude] {verb} .claude/rules/{rule.skill_name}/{rule.name}.md"
-            )
+            messages.append(f"[claude] {verb} .claude/rules/{rule.skill_name}/{rule.name}.md")
         return messages
 
     def prune(self, rules: Sequence[Rule]) -> list[str]:  # type: ignore[override]
@@ -69,9 +67,7 @@ class ClaudeRulesAdapter(BaseAdapter):
                 key = (skill_dir.name, rule_file.stem)
                 if key not in live:
                     rule_file.unlink()
-                    messages.append(
-                        f"[claude] Pruned .claude/rules/{skill_dir.name}/{rule_file.name}"
-                    )
+                    messages.append(f"[claude] Pruned .claude/rules/{skill_dir.name}/{rule_file.name}")
             # Remove empty skill sub-directory
             if skill_dir.is_dir() and not any(skill_dir.iterdir()):
                 skill_dir.rmdir()
