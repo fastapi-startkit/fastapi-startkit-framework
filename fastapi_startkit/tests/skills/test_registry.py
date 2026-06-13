@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import textwrap
 from pathlib import Path
 
 import pytest
@@ -10,7 +9,6 @@ import pytest
 from fastapi_startkit.application import Application
 from fastapi_startkit.container.container import Container
 from fastapi_startkit.skills.registry import (
-    Skill,
     SkillRegistry,
     SKILLS_BASE_PATH,
     _parse_frontmatter,

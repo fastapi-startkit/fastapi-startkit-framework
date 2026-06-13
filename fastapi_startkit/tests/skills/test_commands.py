@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from fastapi_startkit.application import Application
@@ -182,7 +180,6 @@ class TestRulesSyncCommand:
     def test_prune_removes_skill_dir_removes_its_rules_too(self, tmp_path, app):
         """When ClaudeAdapter prunes a skill, its nested rules/ are gone too."""
         from fastapi_startkit.skills.adapters.claude import ClaudeAdapter
-        from fastapi_startkit.skills.registry import Skill
         # Simulate a previously synced skill with a nested rule
         old_skill = tmp_path / ".claude" / "skills" / "dead-skill"
         old_rule = old_skill / "rules" / "some-rule.md"

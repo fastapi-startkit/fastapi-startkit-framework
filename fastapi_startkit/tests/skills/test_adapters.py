@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from fastapi_startkit.skills.registry import Skill
 from fastapi_startkit.skills.adapters.claude import ClaudeAdapter
 from fastapi_startkit.skills.adapters.gemini import GeminiAdapter, _MARKER_START, _MARKER_END
