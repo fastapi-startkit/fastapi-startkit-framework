@@ -1,7 +1,5 @@
 """Tests for the Uri fluent parser (task #178)."""
 
-import pytest
-
 from fastapi_startkit.support.uri import Uri, Uriable
 
 
@@ -141,11 +139,7 @@ class TestAppendPath:
         assert uri.path() == "/api/users"
 
     def test_chained_appends(self):
-        uri = (
-            Uri.of("https://example.com/api")
-            .append_path("v1")
-            .append_path("users")
-        )
+        uri = Uri.of("https://example.com/api").append_path("v1").append_path("users")
         assert uri.path() == "/api/v1/users"
 
 
