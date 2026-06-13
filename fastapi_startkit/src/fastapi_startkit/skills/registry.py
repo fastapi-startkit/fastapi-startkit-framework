@@ -1,10 +1,13 @@
-"""SkillRegistry — discovers canonical skills from ``.ai/fastapi-startkit/skill/``.
+"""SkillRegistry — discovers canonical skills from ``.ai/fastapi-startkit/``.
 
-Skills follow the same convention as Laravel Boost::
+Each skill lives in a named subdirectory (or a ``SKILL.md`` directly under the
+base) and carries a YAML front-matter block::
 
-    .ai/fastapi-startkit/skill/
-        fastapi-best-practices/
+    .ai/fastapi-startkit/
+        fastapi-startkit/
             SKILL.md        <- YAML frontmatter (name, description) + markdown body
+            rules/
+                http-client.md
 
 Running ``artisan skills:sync`` deploys skills to every configured AI agent target.
 """
@@ -19,7 +22,7 @@ if TYPE_CHECKING:
     from fastapi_startkit.application import Application
 
 #: Base directory for framework skills (relative to project root).
-SKILLS_BASE_PATH = Path(".ai") / "fastapi-startkit" / "skill"
+SKILLS_BASE_PATH = Path(".ai") / "fastapi-startkit"
 
 
 @dataclass
@@ -66,7 +69,7 @@ def _parse_frontmatter(text: str) -> tuple[dict, str]:
 
 
 class SkillRegistry:
-    """Loads Skill objects from .ai/fastapi-startkit/skill/*/SKILL.md."""
+    """Loads Skill objects from .ai/fastapi-startkit/*/SKILL.md."""
 
     def __init__(self, app: "Application") -> None:
         self._app = app

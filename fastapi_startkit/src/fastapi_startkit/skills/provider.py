@@ -17,7 +17,7 @@ class SkillsServiceProvider(Provider):
         artisan provider:publish --provider=skills
 
     This copies:
-    - .ai/fastapi-startkit/skill/fastapi-startkit/SKILL.md
+    - .ai/fastapi-startkit/fastapi-startkit/SKILL.md
     """
 
     provider_key = "skills"
@@ -40,11 +40,11 @@ class SkillsServiceProvider(Provider):
             RulesListCommand,
         ])
 
-        _skill_stub = _STUBS_DIR / ".ai" / "fastapi-startkit" / "skill" / "fastapi-startkit"
+        _skill_stub = _STUBS_DIR / ".ai" / "fastapi-startkit" / "fastapi-startkit"
         self.publishes(
             {
                 str(_skill_stub / "SKILL.md"):
-                    ".ai/fastapi-startkit/skill/fastapi-startkit/SKILL.md",
+                    ".ai/fastapi-startkit/fastapi-startkit/SKILL.md",
             },
             tag="skills",
         )

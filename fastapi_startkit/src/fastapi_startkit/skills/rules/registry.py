@@ -2,8 +2,8 @@
 
 Rules live **inside** their parent skill, mirroring the Laravel Boost convention::
 
-    .ai/fastapi-startkit/skill/
-        fastapi-best-practices/
+    .ai/fastapi-startkit/
+        fastapi-startkit/
             SKILL.md
             rules/
                 http-client.md
@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     from fastapi_startkit.application import Application
 
 #: Root under which all skill (and nested rule) directories live.
-SKILLS_BASE_PATH = Path(".ai") / "fastapi-startkit" / "skill"
+SKILLS_BASE_PATH = Path(".ai") / "fastapi-startkit"
 
 
 @dataclass
@@ -78,7 +78,7 @@ def _parse_frontmatter(text: str) -> tuple[dict, str]:
 class RulesRegistry:
     """Loads :class:`Rule` objects from nested ``rules/`` dirs inside each skill.
 
-    Scan path: ``{base_path}/.ai/fastapi-startkit/skill/*/rules/*.md``
+    Scan path: ``{base_path}/.ai/fastapi-startkit/*/rules/*.md``
 
     Usage::
 

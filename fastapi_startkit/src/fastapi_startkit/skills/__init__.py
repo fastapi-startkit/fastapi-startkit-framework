@@ -1,7 +1,7 @@
 """fastapi_startkit.skills — AI skill & rules registry and adapters.
 
 Skills and their nested rules both live under:
-    .ai/fastapi-startkit/skill/<skill-name>/
+    .ai/fastapi-startkit/<skill-name>/
         SKILL.md
         rules/
             <rule-name>.md

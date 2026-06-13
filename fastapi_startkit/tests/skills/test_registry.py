@@ -1,4 +1,4 @@
-"""Tests for SkillRegistry reading from .ai/fastapi-startkit/skill/*/SKILL.md."""
+"""Tests for SkillRegistry reading from .ai/fastapi-startkit/*/SKILL.md."""
 
 from __future__ import annotations
 
@@ -125,4 +125,4 @@ def test_registry_get_returns_skill_by_name(tmp_path, app):
 
 def test_registry_skills_base_path_property(tmp_path, app):
     r = SkillRegistry(app)
-    assert r.skills_base_path == tmp_path / ".ai" / "fastapi-startkit" / "skill"
+    assert r.skills_base_path == tmp_path / ".ai" / "fastapi-startkit"
