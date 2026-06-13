@@ -1,7 +1,5 @@
 """Tests for ProcessResult."""
 
-import json
-
 import pytest
 
 from fastapi_startkit.process.exception import ProcessFailedException, ProcessJsonDecodeError

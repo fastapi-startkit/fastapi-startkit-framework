@@ -16,6 +16,4 @@ class ProcessJsonDecodeError(ValueError):
     def __init__(self, stdout: str, original: Exception) -> None:
         self.stdout = stdout
         self.original = original
-        super().__init__(
-            f"Failed to parse process output as JSON: {original}\nRaw output: {stdout!r}"
-        )
+        super().__init__(f"Failed to parse process output as JSON: {original}\nRaw output: {stdout!r}")

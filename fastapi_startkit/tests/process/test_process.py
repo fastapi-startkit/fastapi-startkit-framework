@@ -83,7 +83,7 @@ class TestProcessResultJson:
         assert result.json() == {"key": "value"}
 
     def test_json_returns_list(self):
-        result = ProcessResult(stdout='[1, 2, 3]', returncode=0, args="cmd")
+        result = ProcessResult(stdout="[1, 2, 3]", returncode=0, args="cmd")
         assert result.json() == [1, 2, 3]
 
     def test_json_raises_on_invalid_json(self):
