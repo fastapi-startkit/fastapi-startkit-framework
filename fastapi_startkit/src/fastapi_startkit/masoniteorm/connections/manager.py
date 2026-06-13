@@ -41,5 +41,6 @@ class DatabaseManager:
 
     async def clear(self):
         for conn in self.connections.values():
+            await conn.close()
             await conn.engine.dispose()
         self.connections.clear()

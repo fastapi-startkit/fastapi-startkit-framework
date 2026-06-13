@@ -25,8 +25,10 @@ SQLITE_CONFIG = {
 
 
 @pytest.fixture
-def db():
-    return DatabaseManager(ConnectionFactory(), SQLITE_CONFIG)
+async def db():
+    manager = DatabaseManager(ConnectionFactory(), SQLITE_CONFIG)
+    yield manager
+    await manager.clear()
 
 
 @pytest.fixture
