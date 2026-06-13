@@ -40,7 +40,7 @@ class RulesListCommand(Command):
 
         for rule in rules:
             claude_dest = (
-                base_path / ".claude" / "skills" / rule.skill_name / "rules" / f"{rule.name}.md"
+                base_path / ".claude" / "rules" / rule.skill_name / f"{rule.name}.md"
             )
             claude_status = "synced" if claude_dest.exists() else "pending"
             gemini_status = self._gemini_status(base_path)

@@ -144,7 +144,7 @@ class TestRulesSyncCommand:
         app.bind("rules.registry", RulesRegistry(app))
         code, _ = _run(RulesSyncCommand, app, ["--target=claude"])
         assert code == 0
-        dest = tmp_path / ".claude" / "skills" / "fastapi-best-practices" / "rules" / "http-client.md"
+        dest = tmp_path / ".claude" / "rules" / "fastapi-best-practices" / "http-client.md"
         assert dest.exists()
         assert "Always set timeout." in dest.read_text()
 
@@ -163,12 +163,12 @@ class TestRulesSyncCommand:
         app.bind("rules.registry", RulesRegistry(app))
         code, _ = _run(RulesSyncCommand, app, ["--target=all"])
         assert code == 0
-        assert (tmp_path / ".claude" / "skills" / "orm-best-practices" / "rules" / "queries.md").exists()
+        assert (tmp_path / ".claude" / "rules" / "orm-best-practices" / "queries.md").exists()
         assert (tmp_path / "GEMINI.md").exists()
 
     def test_sync_prune_removes_stale_rule_within_skill(self, tmp_path, app):
         # Stale rule in a skill that still has other rules
-        stale = tmp_path / ".claude" / "skills" / "fastapi-best-practices" / "rules" / "old-rule.md"
+        stale = tmp_path / ".claude" / "rules" / "fastapi-best-practices" / "old-rule.md"
         stale.parent.mkdir(parents=True)
         stale.write_text("stale")
         # Only http-client is in the registry now
@@ -177,20 +177,18 @@ class TestRulesSyncCommand:
         _run(RulesSyncCommand, app, ["--target=claude", "--prune"])
         assert not stale.exists()
 
-    def test_prune_removes_skill_dir_removes_its_rules_too(self, tmp_path, app):
-        """When ClaudeAdapter prunes a skill, its nested rules/ are gone too."""
-        from fastapi_startkit.skills.adapters.claude import ClaudeAdapter
-        # Simulate a previously synced skill with a nested rule
-        old_skill = tmp_path / ".claude" / "skills" / "dead-skill"
-        old_rule = old_skill / "rules" / "some-rule.md"
-        old_rule.parent.mkdir(parents=True)
-        old_rule.write_text("rule content")
-        (old_skill / "SKILL.md").write_text("---\nname: dead-skill\n---\n")
+    def test_prune_removes_stale_rule_skill_subdir(self, tmp_path, app):
+        """ClaudeRulesAdapter.prune() scans .claude/rules/, not .claude/skills/."""
+        from fastapi_startkit.skills.rules.adapters.claude import ClaudeRulesAdapter
+        # Pre-populate .claude/rules/ with a stale skill subdir
+        stale_dir = tmp_path / ".claude" / "rules" / "dead-skill"
+        stale_dir.mkdir(parents=True)
+        (stale_dir / "old-rule.md").write_text("stale rule")
 
-        # Prune with an empty skills list removes the whole dir (including rules/)
-        adapter = ClaudeAdapter(base_path=tmp_path)
+        # Prune with an empty rules list — stale dir should be removed
+        adapter = ClaudeRulesAdapter(base_path=tmp_path)
         messages = adapter.prune([])
-        assert not old_skill.exists()
+        assert not stale_dir.exists()
         assert any("Pruned" in m for m in messages)
 
     def test_no_rules_exits_gracefully(self, tmp_path, app):
@@ -225,7 +223,7 @@ class TestRulesListCommand:
 
     def test_list_shows_synced_status(self, tmp_path, app):
         _write_rule_md(tmp_path, "fastapi-best-practices", "http-client")
-        dest = tmp_path / ".claude" / "skills" / "fastapi-best-practices" / "rules" / "http-client.md"
+        dest = tmp_path / ".claude" / "rules" / "fastapi-best-practices" / "http-client.md"
         dest.parent.mkdir(parents=True)
         dest.write_text("synced content")
         app.bind("rules.registry", RulesRegistry(app))
