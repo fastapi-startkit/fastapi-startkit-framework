@@ -1,5 +1,8 @@
-from fastapi_startkit.console.command import Command
 from cleo.helpers import option
+from fastapi_startkit import Config
+from fastapi_startkit.console.command import Command
+from fastapi_startkit.environment import value as cast_value
+from fastapi_startkit.support import Uriable, Uri
 
 
 class ServeCommand(Command):
@@ -37,36 +40,40 @@ class ServeCommand(Command):
         ),
     ]
 
+    def resolve_option(self, key: str, default: str | int | None = None):
+        value = self.option(key) or Config.get(f"fastapi.{key}", default)
+
+        return cast_value(value)
+
+    def resolve_url(self) -> Uriable:
+        host = self.resolve_option("host", "127.0.0.1")
+        port = self.resolve_option("port", 8000)
+
+        return Uri.of(Config.get("fastapi.app_url", "http://127.0.0.1:8000")).with_host(host).with_port(port)
+
     def handle(self):
         import uvicorn
+
         from fastapi_startkit import Config
         from fastapi_startkit.container import Container
 
         # Resolve server settings: CLI flag > fastapi config > uvicorn default (None)
-        cfg_host = Config.get("fastapi.host", "127.0.0.1")
-        cfg_port = Config.get("fastapi.port", 8000)
-        cfg_reload = Config.get("fastapi.reload", True)
         cfg_reload_dirs = Config.get("fastapi.reload_dirs") or None
         cfg_reload_excludes = Config.get("fastapi.reload_excludes") or None
 
-        host = self.option("host") or cfg_host
-        port = int(self.option("port") or cfg_port)
-        reload = cfg_reload if self.option("reload") is None else self.option("reload")
-        app = self.option("app")
-
-        exist = self.is_app_exist()
+        url = self.resolve_url()
 
         kwargs = {
-            "host": host,
-            "port": port,
-            "reload": reload,
+            "host": url.host(),
+            "port": url.port(),
+            "reload": self.resolve_option("reload", True),
             "ws": "websockets-sansio",
         }
 
-        if exist:
+        if self.is_app_exist():
             kwargs.update(
                 {
-                    "app": app,
+                    "app": self.option("app"),
                     "factory": True,
                 }
             )
@@ -75,10 +82,10 @@ class ServeCommand(Command):
             if cfg_reload_excludes is not None:
                 kwargs["reload_excludes"] = cfg_reload_excludes
 
-            self.line(f"<info>Starting Uvicorn server on {host}:{port} [{app}]...</info>")
+            self.line(f"<info>Starting Uvicorn server on {url.host()}:{url.port()} [{self.option('app')}]...</info>")
 
         else:
-            self.line(f"<info>Starting Uvicorn server on {host}:{port}...</info>")
+            self.line(f"<info>Starting Uvicorn server on {url.host()}:{url.port()}...</info>")
             kwargs.update({"app": Container.instance().fastapi, "reload": False})
 
         try:

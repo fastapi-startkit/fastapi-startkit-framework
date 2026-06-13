@@ -87,3 +87,21 @@ def env(value, default="", cast=True):
         return True
     else:
         return env_var
+
+
+def value(env_var, default=""):
+    if env_var == "":
+        env_var = default
+
+    if isinstance(env_var, bool):
+        return env_var
+    elif env_var is None:
+        return None
+    elif isinstance(env_var, int) or (isinstance(env_var, str) and env_var.isnumeric()):
+        return int(env_var)
+    elif env_var in ("false", "False"):
+        return False
+    elif env_var in ("true", "True"):
+        return True
+    else:
+        return env_var
