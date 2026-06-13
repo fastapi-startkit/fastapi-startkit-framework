@@ -78,14 +78,14 @@ class UserStoreRequest(BaseModel):
 
 and use JsonApiResource to return JSON response from the controller:
 ```python
-from fastapi_startkit.resources import JsonApiResource
+from fastapi_startkit.jsonapi import JsonResource
 
 # app/http/controllers/users_controller.py
 from app.models import User
 
 async def store(request: UserStoreRequest):
     user = User.create(request.model_dump())
-    return JsonApiResource(user)
+    return JsonResource(user)
 ```
 
 ## Architecture

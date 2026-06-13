@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Sequence
+from typing import Callable, Sequence
 
 from fastapi_startkit.skills.registry import Skill
 
@@ -34,11 +34,19 @@ class BaseAdapter(ABC):
     # ------------------------------------------------------------------
 
     @abstractmethod
-    def render(self, skills: Sequence[Skill]) -> list[str]:
+    def render(
+        self,
+        skills: Sequence[Skill],
+        force: bool = False,
+        confirm: Callable[..., bool] | None = None,
+    ) -> list[str]:
         """Write *skills* to the target format.
 
+        Existing files are preserved unless *force* is true or *confirm*
+        returns true for the overwrite prompt — mirroring ``provider:publish``.
+
         Returns a list of human-readable lines describing what was written
-        (suitable for printing in the ``skills:sync`` command).
+        (suitable for printing in the ``ai:skills`` command).
         """
 
     @abstractmethod

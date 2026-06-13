@@ -1,21 +1,34 @@
-"""Tests for skills:sync, skills:list, rules:sync, rules:list commands."""
+"""Tests for the ai:skills command (list + sync).
+
+The skills module is provider-driven: a provider declares skills by having a
+``provider_key`` that appears in :attr:`SkillRegistry.skills`. The real
+``FastAPIProvider`` declares the ``fastapi`` skill, so the tests register it
+(rather than a stub provider). ``AISkillProvider`` binds the registry the
+command resolves.
+
+The command is driven through Cleo's :class:`CommandTester`, so option parsing
+and IO go through the real machinery. Tests run non-interactively, so an omitted
+``--target`` resolves to the prompt's default ("all") instead of blocking.
+"""
 
 from __future__ import annotations
 
 import pytest
+from cleo.testers.command_tester import CommandTester
 
 from fastapi_startkit.application import Application
-from fastapi_startkit.container.container import Container
-from fastapi_startkit.skills.registry import SkillRegistry, SKILLS_BASE_PATH
-from fastapi_startkit.skills.rules.registry import RulesRegistry
-from fastapi_startkit.skills.commands.sync import SkillsSyncCommand
-from fastapi_startkit.skills.commands.list import SkillsListCommand
-from fastapi_startkit.skills.rules.commands.sync import RulesSyncCommand
-from fastapi_startkit.skills.rules.commands.list import RulesListCommand
+from fastapi_startkit.fastapi.providers.fastapi_provider import FastAPIProvider
+from fastapi_startkit.skills import AISkillProvider
+from fastapi_startkit.skills.commands import SkillsCommand
+
+#: Claude skill dir for the fastapi skill (from the stub's front-matter name).
+FASTAPI_SKILL = "fastapi-startkit"
 
 
 @pytest.fixture(autouse=True)
 def restore_container():
+    from fastapi_startkit.container.container import Container
+
     original = Container._instance
     yield
     Container._instance = original
@@ -23,222 +36,126 @@ def restore_container():
 
 @pytest.fixture
 def app(tmp_path):
-    return Application(base_path=tmp_path, env="testing")
-
-
-def _write_skill_md(tmp_path, name, description):
-    skill_dir = tmp_path / SKILLS_BASE_PATH / name
-    skill_dir.mkdir(parents=True, exist_ok=True)
-    (skill_dir / "SKILL.md").write_text(
-        f"---\nname: {name}\ndescription: {description}\n---\nBody.\n",
-        encoding="utf-8",
+    """App with the real skill-declaring FastAPIProvider and a bound registry."""
+    return Application(
+        base_path=tmp_path,
+        env="testing",
+        providers=[AISkillProvider, FastAPIProvider],
     )
 
 
-def _write_rule_md(tmp_path, skill_name, rule_name, body="Rule body."):
-    """Write a rule nested inside a skill directory."""
-    rules_dir = tmp_path / SKILLS_BASE_PATH / skill_name / "rules"
-    rules_dir.mkdir(parents=True, exist_ok=True)
-    (rules_dir / f"{rule_name}.md").write_text(body, encoding="utf-8")
+@pytest.fixture
+def empty_app(tmp_path):
+    """App with no skill-declaring providers (registry still bound)."""
+    return Application(base_path=tmp_path, env="testing", providers=[AISkillProvider])
 
 
-def _run(cmd_class, container, args=None):
-    cmd = cmd_class()
-    cmd.set_container(container)
-    opts = {}
-    for arg in args or []:
-        if arg.startswith("--"):
-            k = arg.lstrip("-").split("=")[0]
-            v = arg.split("=")[1] if "=" in arg else True
-            opts[k] = v
-    lines = []
-    cmd.option = lambda k, default=None: opts.get(k, default)
-    cmd.line = lambda msg, *a, **kw: lines.append(msg)
-    cmd.info = lambda msg, *a, **kw: lines.append(msg)
-    return cmd.handle(), lines
+def run(app, argv: str = "") -> CommandTester:
+    """Execute ai:skills with *argv* against *app* and return the tester."""
+    command = SkillsCommand()
+    command.set_container(app)
+    tester = CommandTester(command)
+    tester.execute(argv, interactive=False)
+    return tester
 
 
 # ===========================================================================
-# skills:sync
-# ===========================================================================
-
-
-class TestSkillsSyncCommand:
-    def test_sync_all_writes_claude_and_gemini(self, tmp_path, app):
-        _write_skill_md(tmp_path, "orm-routing", "ORM routing")
-        app.bind("skills.registry", SkillRegistry(app))
-        code, _ = _run(SkillsSyncCommand, app, ["--target=all"])
-        assert code == 0
-        assert (tmp_path / ".claude" / "skills" / "orm-routing" / "SKILL.md").exists()
-        assert (tmp_path / "GEMINI.md").exists()
-
-    def test_sync_claude_only(self, tmp_path, app):
-        _write_skill_md(tmp_path, "console-commands", "Commands")
-        app.bind("skills.registry", SkillRegistry(app))
-        _run(SkillsSyncCommand, app, ["--target=claude"])
-        assert (tmp_path / ".claude" / "skills" / "console-commands" / "SKILL.md").exists()
-        assert not (tmp_path / "GEMINI.md").exists()
-
-    def test_sync_gemini_only(self, tmp_path, app):
-        _write_skill_md(tmp_path, "fastapi-routing", "Routing")
-        app.bind("skills.registry", SkillRegistry(app))
-        _run(SkillsSyncCommand, app, ["--target=gemini"])
-        assert not (tmp_path / ".claude").exists()
-        assert (tmp_path / "GEMINI.md").exists()
-
-    def test_sync_unknown_target_returns_error(self, tmp_path, app):
-        app.bind("skills.registry", SkillRegistry(app))
-        code, lines = _run(SkillsSyncCommand, app, ["--target=codex"])
-        assert code == 1
-
-    def test_sync_no_skills_exits_gracefully(self, tmp_path, app):
-        app.bind("skills.registry", SkillRegistry(app))
-        code, lines = _run(SkillsSyncCommand, app)
-        assert code == 0
-        assert any("No skills" in l for l in lines)
-
-    def test_sync_prune_removes_old_skills(self, tmp_path, app):
-        old_dir = tmp_path / ".claude" / "skills" / "old-skill"
-        old_dir.mkdir(parents=True)
-        (old_dir / "SKILL.md").write_text("old")
-        _write_skill_md(tmp_path, "new-skill", "New")
-        app.bind("skills.registry", SkillRegistry(app))
-        _run(SkillsSyncCommand, app, ["--target=claude", "--prune"])
-        assert not old_dir.exists()
-
-    def test_command_name(self):
-        assert SkillsSyncCommand().name == "skills:sync"
-
-
-# ===========================================================================
-# skills:list
+# ai:skills --list
 # ===========================================================================
 
 
 class TestSkillsListCommand:
-    def test_list_shows_skills(self, tmp_path, app):
-        _write_skill_md(tmp_path, "fastapi-routing", "FastAPI routing")
-        _write_skill_md(tmp_path, "orm-queries", "ORM queries")
-        app.bind("skills.registry", SkillRegistry(app))
-        code, lines = _run(SkillsListCommand, app)
-        assert code == 0
-        out = "\n".join(lines)
-        assert "fastapi-routing" in out
-        assert "orm-queries" in out
+    def test_list_shows_declaring_providers(self, app):
+        tester = run(app, "--list")
+        assert tester.status_code == 0
+        assert "fastapi" in tester.io.fetch_output()
 
-    def test_list_no_skills_shows_message(self, tmp_path, app):
-        app.bind("skills.registry", SkillRegistry(app))
-        code, lines = _run(SkillsListCommand, app)
-        assert code == 0
-        assert any("No skills" in l for l in lines)
+    def test_list_is_default_when_no_flags(self, app):
+        tester = run(app)
+        assert tester.status_code == 0
+        assert "fastapi" in tester.io.fetch_output()
+
+    def test_list_no_skills_shows_message(self, empty_app):
+        tester = run(empty_app, "--list")
+        assert tester.status_code == 0
+        assert "No skills" in tester.io.fetch_output()
 
     def test_command_name(self):
-        assert SkillsListCommand().name == "skills:list"
+        assert SkillsCommand().name == "ai:skills"
 
 
 # ===========================================================================
-# rules:sync  (rules nested inside skills)
+# ai:skills --sync
 # ===========================================================================
 
 
-class TestRulesSyncCommand:
-    def test_sync_claude_creates_nested_rule_file(self, tmp_path, app):
-        _write_rule_md(tmp_path, "fastapi-best-practices", "http-client", "Always set timeout.")
-        app.bind("rules.registry", RulesRegistry(app))
-        code, _ = _run(RulesSyncCommand, app, ["--target=claude"])
-        assert code == 0
-        dest = tmp_path / ".claude" / "rules" / "fastapi-best-practices" / "http-client.md"
-        assert dest.exists()
-        assert "Always set timeout." in dest.read_text()
+class TestSkillsSyncCommand:
+    def test_sync_claude_publishes_stub_and_skill_file(self, app, tmp_path):
+        tester = run(app, "--sync --target=claude")
+        assert tester.status_code == 0
+        # Stub is copied into the project's .ai/ tree.
+        assert (tmp_path / ".ai" / "fastapi-startkit" / "fastapi" / "SKILL.md").exists()
+        # ClaudeAdapter writes one dir per skill name (from stub front-matter).
+        assert (tmp_path / ".claude" / "skills" / FASTAPI_SKILL / "SKILL.md").exists()
+        assert not (tmp_path / "GEMINI.md").exists()
 
-    def test_sync_gemini_updates_gemini_md(self, tmp_path, app):
-        _write_rule_md(tmp_path, "fastapi-best-practices", "http-client", "Always set timeout.")
-        app.bind("rules.registry", RulesRegistry(app))
-        code, _ = _run(RulesSyncCommand, app, ["--target=gemini"])
-        assert code == 0
-        content = (tmp_path / "GEMINI.md").read_text()
-        assert "<!-- rules:start -->" in content
-        assert "http-client" in content
-        assert "fastapi-best-practices" in content
+    def test_sync_gemini_only(self, app, tmp_path):
+        tester = run(app, "--sync --target=gemini")
+        assert tester.status_code == 0
+        assert (tmp_path / "GEMINI.md").exists()
+        assert not (tmp_path / ".claude").exists()
 
-    def test_sync_all_writes_both(self, tmp_path, app):
-        _write_rule_md(tmp_path, "orm-best-practices", "queries", "Use async ORM.")
-        app.bind("rules.registry", RulesRegistry(app))
-        code, _ = _run(RulesSyncCommand, app, ["--target=all"])
-        assert code == 0
-        assert (tmp_path / ".claude" / "rules" / "orm-best-practices" / "queries.md").exists()
+    def test_sync_all_writes_both(self, app, tmp_path):
+        tester = run(app, "--sync --target=all")
+        assert tester.status_code == 0
+        assert (tmp_path / ".claude" / "skills" / FASTAPI_SKILL / "SKILL.md").exists()
         assert (tmp_path / "GEMINI.md").exists()
 
-    def test_sync_prune_removes_stale_rule_within_skill(self, tmp_path, app):
-        # Stale rule in a skill that still has other rules
-        stale = tmp_path / ".claude" / "rules" / "fastapi-best-practices" / "old-rule.md"
-        stale.parent.mkdir(parents=True)
-        stale.write_text("stale")
-        # Only http-client is in the registry now
-        _write_rule_md(tmp_path, "fastapi-best-practices", "http-client", "body")
-        app.bind("rules.registry", RulesRegistry(app))
-        _run(RulesSyncCommand, app, ["--target=claude", "--prune"])
+    def test_omitted_target_defaults_to_all(self, app, tmp_path):
+        # Non-interactive, so the target prompt resolves to its default ("all").
+        tester = run(app, "--sync")
+        assert tester.status_code == 0
+        assert (tmp_path / ".claude" / "skills" / FASTAPI_SKILL / "SKILL.md").exists()
+        assert (tmp_path / "GEMINI.md").exists()
+
+    def test_prune_implies_sync(self, app, tmp_path):
+        # --prune alone (no --sync) still triggers a sync.
+        tester = run(app, "--prune")
+        assert tester.status_code == 0
+        assert (tmp_path / ".claude" / "skills" / FASTAPI_SKILL / "SKILL.md").exists()
+
+    def test_target_flag_implies_sync(self, app, tmp_path):
+        tester = run(app, "--target=claude")
+        assert tester.status_code == 0
+        assert (tmp_path / ".claude" / "skills" / FASTAPI_SKILL / "SKILL.md").exists()
+
+    def test_sync_unknown_target_reports_error(self, app):
+        tester = run(app, "--sync --target=codex")
+        # Unknown target is reported as a message, not a non-zero exit.
+        assert tester.status_code == 0
+        assert "Unknown target" in tester.io.fetch_output()
+
+    def test_sync_no_skills_exits_gracefully(self, empty_app):
+        tester = run(empty_app, "--sync --target=claude")
+        assert tester.status_code == 0
+        assert "No skills" in tester.io.fetch_output()
+
+    def test_sync_prune_removes_stale_skill(self, app, tmp_path):
+        # Pre-create a synced skill that no provider declares anymore.
+        stale = tmp_path / ".claude" / "skills" / "old-skill"
+        stale.mkdir(parents=True)
+        (stale / "SKILL.md").write_text("stale")
+
+        run(app, "--sync --target=claude --prune")
+
         assert not stale.exists()
+        assert (tmp_path / ".claude" / "skills" / FASTAPI_SKILL / "SKILL.md").exists()
 
-    def test_prune_removes_stale_rule_skill_subdir(self, tmp_path, app):
-        """ClaudeRulesAdapter.prune() scans .claude/rules/, not .claude/skills/."""
-        from fastapi_startkit.skills.rules.adapters.claude import ClaudeRulesAdapter
-
-        # Pre-populate .claude/rules/ with a stale skill subdir
-        stale_dir = tmp_path / ".claude" / "rules" / "dead-skill"
-        stale_dir.mkdir(parents=True)
-        (stale_dir / "old-rule.md").write_text("stale rule")
-
-        # Prune with an empty rules list — stale dir should be removed
-        adapter = ClaudeRulesAdapter(base_path=tmp_path)
-        messages = adapter.prune([])
-        assert not stale_dir.exists()
-        assert any("Pruned" in m for m in messages)
-
-    def test_no_rules_exits_gracefully(self, tmp_path, app):
-        app.bind("rules.registry", RulesRegistry(app))
-        code, lines = _run(RulesSyncCommand, app)
-        assert code == 0
-        assert any("No rules" in l for l in lines)
-
-    def test_unknown_target_returns_error(self, tmp_path, app):
-        app.bind("rules.registry", RulesRegistry(app))
-        code, _ = _run(RulesSyncCommand, app, ["--target=codex"])
-        assert code == 1
-
-    def test_command_name(self):
-        assert RulesSyncCommand().name == "rules:sync"
-
-
-# ===========================================================================
-# rules:list
-# ===========================================================================
-
-
-class TestRulesListCommand:
-    def test_list_shows_rules(self, tmp_path, app):
-        _write_rule_md(tmp_path, "fastapi-best-practices", "http-client")
-        _write_rule_md(tmp_path, "fastapi-best-practices", "validation")
-        app.bind("rules.registry", RulesRegistry(app))
-        code, lines = _run(RulesListCommand, app)
-        assert code == 0
-        out = "\n".join(lines)
-        assert "http-client" in out
-        assert "validation" in out
-
-    def test_list_shows_synced_status(self, tmp_path, app):
-        _write_rule_md(tmp_path, "fastapi-best-practices", "http-client")
-        dest = tmp_path / ".claude" / "rules" / "fastapi-best-practices" / "http-client.md"
+    def test_sync_force_overwrites_existing_stub(self, app, tmp_path):
+        dest = tmp_path / ".ai" / "fastapi-startkit" / "fastapi" / "SKILL.md"
         dest.parent.mkdir(parents=True)
-        dest.write_text("synced content")
-        app.bind("rules.registry", RulesRegistry(app))
-        _, lines = _run(RulesListCommand, app)
-        assert "synced" in "\n".join(lines)
+        dest.write_text("user edited stub")
 
-    def test_no_rules_message(self, tmp_path, app):
-        app.bind("rules.registry", RulesRegistry(app))
-        _, lines = _run(RulesListCommand, app)
-        assert any("No rules" in l for l in lines)
+        run(app, "--sync --target=claude --force")
 
-    def test_command_name(self):
-        assert RulesListCommand().name == "rules:list"
+        assert "user edited stub" not in dest.read_text()

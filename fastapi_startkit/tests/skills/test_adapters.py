@@ -35,25 +35,52 @@ class TestClaudeAdapter:
         content = skill_file.read_text()
         assert "name: my-skill" in content
         assert "description: Does stuff" in content
-        assert any("Synced" in m for m in messages)
+        assert any("Published" in m for m in messages)
 
-    def test_render_idempotent(self, tmp_path):
+    def test_render_skips_existing_without_force_or_confirm(self, tmp_path):
         adapter = ClaudeAdapter(base_path=tmp_path)
-        skills = [make_skill("my-skill")]
+        skills = [make_skill("my-skill", "Old description")]
 
         adapter.render(skills)
-        messages = adapter.render(skills)
-
-        assert any("Unchanged" in m for m in messages)
-
-    def test_render_updates_changed_content(self, tmp_path):
-        adapter = ClaudeAdapter(base_path=tmp_path)
-        adapter.render([make_skill("my-skill", "Old description")])
+        # Second render: file exists, no force and no confirm callback → skip.
         messages = adapter.render([make_skill("my-skill", "New description")])
 
         skill_file = tmp_path / ".claude" / "skills" / "my-skill" / "SKILL.md"
+        assert "Old description" in skill_file.read_text()
+        assert any("Skipped" in m for m in messages)
+
+    def test_render_force_overwrites_existing(self, tmp_path):
+        adapter = ClaudeAdapter(base_path=tmp_path)
+        adapter.render([make_skill("my-skill", "Old description")])
+        messages = adapter.render([make_skill("my-skill", "New description")], force=True)
+
+        skill_file = tmp_path / ".claude" / "skills" / "my-skill" / "SKILL.md"
         assert "New description" in skill_file.read_text()
-        assert any("Synced" in m for m in messages)
+        assert any("Overwrote" in m for m in messages)
+
+    def test_render_confirm_yes_overwrites_existing(self, tmp_path):
+        adapter = ClaudeAdapter(base_path=tmp_path)
+        adapter.render([make_skill("my-skill", "Old description")])
+        messages = adapter.render(
+            [make_skill("my-skill", "New description")],
+            confirm=lambda *a, **kw: True,
+        )
+
+        skill_file = tmp_path / ".claude" / "skills" / "my-skill" / "SKILL.md"
+        assert "New description" in skill_file.read_text()
+        assert any("Overwrote" in m for m in messages)
+
+    def test_render_confirm_no_skips_existing(self, tmp_path):
+        adapter = ClaudeAdapter(base_path=tmp_path)
+        adapter.render([make_skill("my-skill", "Old description")])
+        messages = adapter.render(
+            [make_skill("my-skill", "New description")],
+            confirm=lambda *a, **kw: False,
+        )
+
+        skill_file = tmp_path / ".claude" / "skills" / "my-skill" / "SKILL.md"
+        assert "Old description" in skill_file.read_text()
+        assert any("Skipped" in m for m in messages)
 
     def test_render_includes_body(self, tmp_path):
         adapter = ClaudeAdapter(base_path=tmp_path)
@@ -110,7 +137,7 @@ class TestGeminiAdapter:
         assert _MARKER_END in content
         assert "my-skill" in content
         assert "Does stuff" in content
-        assert any("Synced" in m for m in messages)
+        assert any("Updated" in m for m in messages)
 
     def test_render_idempotent(self, tmp_path):
         adapter = GeminiAdapter(base_path=tmp_path)

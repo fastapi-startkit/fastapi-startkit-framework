@@ -9,7 +9,7 @@ even when the user has hand-edited the rest of the file.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Sequence
+from typing import Callable, Sequence
 
 from fastapi_startkit.skills.registry import Skill
 from .base import BaseAdapter
@@ -32,12 +32,20 @@ class GeminiAdapter(BaseAdapter):
     # Public API
     # ------------------------------------------------------------------
 
-    def render(self, skills: Sequence[Skill]) -> list[str]:
+    def render(
+        self,
+        skills: Sequence[Skill],
+        force: bool = False,
+        confirm: Callable[..., bool] | None = None,
+    ) -> list[str]:
+        # GEMINI.md edits are confined to the skills marker block, so user
+        # content is never clobbered — force/confirm are accepted for a uniform
+        # adapter interface but the block is always kept in sync.
         gemini_md = self.base_path / "GEMINI.md"
         new_section = self._build_section(skills)
         changed = self._update_file(gemini_md, new_section)
-        verb = "Synced" if changed else "Unchanged"
-        return [f"[gemini] {verb} GEMINI.md ({len(skills)} skill(s))"]
+        verb = "Updated" if changed else "Unchanged"
+        return [f"[gemini] {verb} <info>GEMINI.md</info> ({len(skills)} skill(s))"]
 
     def prune(self, skills: Sequence[Skill]) -> list[str]:
         """For Gemini, pruning just re-renders with the current skill list.
