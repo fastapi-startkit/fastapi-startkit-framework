@@ -58,7 +58,6 @@ class SyncUsersCommand(Command):
         from app.models import User
         users = await User.where("synced", False).get()
         self.line(f"Syncing {len(users)} users…")
-        # ... do work
 ```
 
 ## Accessing the container

@@ -5,15 +5,6 @@ description: WebSocket event broadcasting via Reverb — define events, emit to 
 
 # Broadcasting
 
-The broadcasting module lets you push real-time events from the server to connected WebSocket clients using the Reverb driver (Pusher protocol). Use it whenever you need live updates — order status, notifications, presence indicators, chat messages — without polling.
-
-## When to use
-
-- Notify a user that their background job completed
-- Push live order-status updates to a dashboard
-- Show who else is viewing a page (presence channels)
-- Fan-out notifications to a group of authenticated users
-
 ## Defining an event
 
 Subclass `BroadcastEvent`, implement `broadcast_on()` to declare target channels, and set `payload` with the data to send:
@@ -69,7 +60,6 @@ from fastapi_startkit.broadcasting import channel
 
 @channel("orders.{order_id}")
 async def authorize_orders(user, order_id: int) -> bool:
-    """Grant access only to the user who owns the order."""
     return user is not None and user.id == order_id
 
 @channel("private-notifications")
