@@ -7,7 +7,7 @@ import uuid
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from .audio_providers import AudioFactory
+    from .audio_factory import AudioFactory
 
 try:
     from fastapi_startkit.storage.storage import Storage
@@ -175,7 +175,7 @@ class Audio:
     # ── Internal ───────────────────────────────────────────────────────────────
 
     def _resolve_provider(self) -> "AudioFactory":
-        from .audio_providers import (  # noqa: PLC0415
+        from .audio_factory import (  # noqa: PLC0415
             ElevenLabsAudioFactory,
             GoogleAudioFactory,
             OpenAIAudioFactory,

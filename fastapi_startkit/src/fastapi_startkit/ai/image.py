@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from .document import Document
-    from .image_providers import ImageFactory
+    from .image_factory import ImageFactory
 
 try:
     from fastapi_startkit.storage.storage import Storage
@@ -183,7 +183,7 @@ class Image:
     # ── Internal ───────────────────────────────────────────────────────────────
 
     def _resolve_provider(self) -> "ImageFactory":
-        from .image_providers import (  # noqa: PLC0415
+        from .image_factory import (  # noqa: PLC0415
             GoogleImageFactory,
             OpenAIImageFactory,
             StabilityImageFactory,

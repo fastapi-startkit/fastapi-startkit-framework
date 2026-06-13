@@ -259,7 +259,7 @@ class TestImageResult:
 class TestGoogleImageFactory:
     @pytest.mark.asyncio
     async def test_generate_calls_genai_and_returns_bytes(self):
-        from fastapi_startkit.ai.image_providers import GoogleImageFactory
+        from fastapi_startkit.ai.image_factory import GoogleImageFactory
 
         fake_bytes = b"\x89PNG\r\n"
         mock_image = MagicMock()
@@ -278,7 +278,7 @@ class TestGoogleImageFactory:
             {"google": MagicMock(genai=mock_genai), "google.genai": mock_genai, "google.genai.types": MagicMock()},
         ):
             with patch(
-                "fastapi_startkit.ai.image_providers.asyncio.to_thread", new=AsyncMock(return_value=mock_response)
+                "fastapi_startkit.ai.image_factory.asyncio.to_thread", new=AsyncMock(return_value=mock_response)
             ):
                 provider = GoogleImageFactory(api_key="test-key")
                 result = await provider.generate("A sunset", "1024x1024", "imagen-3.0-generate-002", "standard")
@@ -287,7 +287,7 @@ class TestGoogleImageFactory:
 
     @pytest.mark.asyncio
     async def test_aspect_ratio_mapping_square(self):
-        from fastapi_startkit.ai.image_providers import GoogleImageFactory
+        from fastapi_startkit.ai.image_factory import GoogleImageFactory
 
         provider = GoogleImageFactory()
         assert provider._ASPECT_MAP["1024x1024"] == "1:1"
@@ -296,7 +296,7 @@ class TestGoogleImageFactory:
 
     @pytest.mark.asyncio
     async def test_edit_raises_not_implemented(self):
-        from fastapi_startkit.ai.image_providers import GoogleImageFactory
+        from fastapi_startkit.ai.image_factory import GoogleImageFactory
 
         provider = GoogleImageFactory(api_key="test-key")
         with pytest.raises(NotImplementedError, match="does not support image editing"):
@@ -311,7 +311,7 @@ class TestGoogleImageFactory:
         with patch("fastapi_startkit.ai.image.Config") as mock_config:
             mock_config.get.return_value = mock_ai_config
             from fastapi_startkit.ai.image import Image
-            from fastapi_startkit.ai.image_providers import GoogleImageFactory
+            from fastapi_startkit.ai.image_factory import GoogleImageFactory
 
             provider = Image.of("test")._resolve_provider()
 
