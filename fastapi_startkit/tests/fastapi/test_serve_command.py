@@ -136,17 +136,17 @@ class TestConfigOptions:
         tester, _ = run(config={"fastapi.port": 7777, "fastapi.app_url": "http://127.0.0.1:7777"})
         assert "7777" in tester.io.fetch_output()
 
-    def test_app_url_host_overridden_by_config_default(self):
-        """resolve_url() merges APP_URL with fastapi.host/port.
+    def test_app_url_is_single_source_of_truth(self):
+        """resolve_url() uses fastapi.app_url as the single source of truth.
 
-        APP_URL sets the base, but fastapi.host and fastapi.port (which default
-        to 127.0.0.1 / 8000) take priority in the current implementation.
-        When no explicit host/port is in config, defaults win over APP_URL.
+        When fastapi.app_url is set in config and no CLI --host/--port flags are
+        provided, the host and port are derived directly from the configured URL.
         """
         tester, _ = run(config={"fastapi.app_url": "http://staging.example.com:5000"})
         output = tester.io.fetch_output()
-        # Default host wins because resolve_option("host", "127.0.0.1") takes over.
-        assert _DEFAULT_HOST in output
+        # app_url is the source of truth — staging.example.com:5000 is used directly.
+        assert "staging.example.com" in output
+        assert "5000" in output
 
 
 # ---------------------------------------------------------------------------
