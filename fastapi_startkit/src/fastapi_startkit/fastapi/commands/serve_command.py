@@ -1,8 +1,9 @@
 from cleo.helpers import option
+
 from fastapi_startkit import Config
 from fastapi_startkit.console.command import Command
 from fastapi_startkit.environment import value as cast_value
-from fastapi_startkit.support import Uriable, Uri
+from fastapi_startkit.support import Uri, Uriable
 
 
 class ServeCommand(Command):
@@ -46,10 +47,15 @@ class ServeCommand(Command):
         return cast_value(value)
 
     def resolve_url(self) -> Uriable:
-        host = self.resolve_option("host", "127.0.0.1")
-        port = self.resolve_option("port", 8000)
+        host = self.option("host") or Config.get("fastapi.app_url", "http://127.0.0.1:8000")
+        port = self.option("port")
 
-        return Uri.of(Config.get("fastapi.app_url", "http://127.0.0.1:8000")).with_host(host).with_port(port)
+        if host and not host.startswith("http"):
+            host = f"http://{host}"
+
+        uri = Uri.of(host)
+
+        return uri.with_port(port) if port else uri
 
     def handle(self):
         import uvicorn
@@ -62,11 +68,12 @@ class ServeCommand(Command):
         cfg_reload_excludes = Config.get("fastapi.reload_excludes") or None
 
         url = self.resolve_url()
+        reload = self.resolve_option("reload", True)
 
         kwargs = {
             "host": url.host(),
             "port": url.port(),
-            "reload": self.resolve_option("reload", True),
+            "reload": reload,
             "ws": "websockets-sansio",
         }
 
@@ -77,9 +84,9 @@ class ServeCommand(Command):
                     "factory": True,
                 }
             )
-            if cfg_reload_dirs is not None:
+            if cfg_reload_dirs is not None and reload:
                 kwargs["reload_dirs"] = cfg_reload_dirs
-            if cfg_reload_excludes is not None:
+            if cfg_reload_excludes is not None and reload:
                 kwargs["reload_excludes"] = cfg_reload_excludes
 
             self.line(f"<info>Starting Uvicorn server on {url.host()}:{url.port()} [{self.option('app')}]...</info>")
