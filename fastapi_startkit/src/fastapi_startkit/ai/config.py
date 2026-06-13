@@ -34,6 +34,14 @@ class GoogleConfig:
 
 
 @dataclass
+class ElevenLabsConfig:
+    """Configuration for the ElevenLabs provider."""
+
+    driver: str = "elevenlabs"
+    key: str = field(default_factory=lambda: env("ELEVENLABS_API_KEY", ""))
+
+
+@dataclass
 class AIConfig:
     """Top-level AI configuration — selects the default provider and holds per-provider configs."""
 
@@ -44,6 +52,7 @@ class AIConfig:
             "openai": OpenAIConfig(),
             "anthropic": AnthropicConfig(),
             "google": GoogleConfig(),
+            "elevenlabs": ElevenLabsConfig(),
         }
     )
 

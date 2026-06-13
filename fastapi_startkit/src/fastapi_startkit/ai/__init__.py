@@ -18,12 +18,12 @@ Also exposes a Laravel-style fluent API for image generation and text-to-speech:
 
 from .agent import Agent
 from .audio import Audio, AudioResponse
-from .audio_providers import AudioSynthesisProvider, ElevenLabsAudioProvider, OpenAIAudioProvider
+from .audio_providers import AudioFactory
 from .config import AIConfig, AnthropicConfig, GoogleConfig, OpenAIConfig
 from .decorators import max_steps, max_tokens, memory, model, provider, timeout, top_p
 from .document import Document
 from .image import Image, ImageResponse
-from .image_providers import ImageGenerationProvider, OpenAIImageProvider, StabilityImageProvider
+from .image_providers import ImageFactory
 from .providers.ai_provider import AIProvider
 from .response import AgentResponse, AgentSnapshot
 
@@ -36,17 +36,13 @@ __all__ = [
     "AnthropicConfig",
     "Audio",
     "AudioResponse",
-    "AudioSynthesisProvider",
+    "AudioFactory",
     "Document",
-    "ElevenLabsAudioProvider",
     "GoogleConfig",
     "Image",
-    "ImageGenerationProvider",
+    "ImageFactory",
     "ImageResponse",
-    "OpenAIAudioProvider",
     "OpenAIConfig",
-    "OpenAIImageProvider",
-    "StabilityImageProvider",
     "max_steps",
     "max_tokens",
     "memory",

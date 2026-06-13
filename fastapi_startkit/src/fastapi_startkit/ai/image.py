@@ -8,12 +8,17 @@ from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from .document import Document
-    from .image_providers import ImageGenerationProvider
+    from .image_providers import ImageFactory
 
 try:
     from fastapi_startkit.storage.storage import Storage
 except Exception:  # pragma: no cover
     Storage = None  # type: ignore[assignment,misc]
+
+try:
+    from fastapi_startkit import Config
+except Exception:  # pragma: no cover
+    Config = None  # type: ignore[assignment,misc]
 
 
 class ImageResponse:
@@ -177,27 +182,37 @@ class Image:
 
     # ── Internal ───────────────────────────────────────────────────────────────
 
-    def _resolve_provider(self) -> "ImageGenerationProvider":
-        from .image_providers import OpenAIImageProvider, StabilityImageProvider  # noqa: PLC0415
+    def _resolve_provider(self) -> "ImageFactory":
+        from .image_providers import (  # noqa: PLC0415
+            GoogleImageProvider,
+            OpenAIImageProvider,
+            StabilityImageProvider,
+        )
 
         provider_name = "openai"
         api_key: Optional[str] = None
         base_url: Optional[str] = None
+        google_key: Optional[str] = None
 
         try:
-            from fastapi_startkit.facades.Config import Config  # noqa: PLC0415
-
-            ai_config = Config.get("ai")
+            ai_config = Config.get("ai") if Config is not None else None  # type: ignore[union-attr]
+            if ai_config is None:
+                raise RuntimeError("Config not available")
             provider_name = ai_config.image_provider
             openai_cfg = ai_config.providers.get("openai")
             if openai_cfg:
                 api_key = openai_cfg.key or None
                 base_url = openai_cfg.url or None
+            google_cfg = ai_config.providers.get("google")
+            if google_cfg:
+                google_key = google_cfg.key or None
         except Exception:
             pass
 
         if provider_name == "openai":
             return OpenAIImageProvider(api_key=api_key, base_url=base_url)
+        if provider_name == "google":
+            return GoogleImageProvider(api_key=google_key)
         if provider_name == "stability":
             return StabilityImageProvider()
-        raise ValueError(f"Unknown image provider: {provider_name!r}. Use 'openai' or 'stability'.")
+        raise ValueError(f"Unknown image provider: {provider_name!r}. Use 'openai', 'google', or 'stability'.")

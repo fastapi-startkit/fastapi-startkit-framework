@@ -12,18 +12,20 @@ from fastapi_startkit.ai.audio import Audio, AudioResponse
 
 # ─── Shared fixtures ──────────────────────────────────────────────────────────
 
+
 def _fake_audio_bytes() -> bytes:
     return b"ID3\x03\x00"  # minimal MP3 magic
 
 
 def _mock_provider(result: bytes | None = None) -> MagicMock:
-    """Return a mock AudioSynthesisProvider."""
+    """Return a mock AudioFactory."""
     p = MagicMock()
     p.synthesize = AsyncMock(return_value=result if result is not None else _fake_audio_bytes())
     return p
 
 
 # ─── Audio builder — chainable API ────────────────────────────────────────────
+
 
 class TestAudioBuilder:
     def test_of_returns_audio_instance(self):
@@ -74,6 +76,7 @@ class TestAudioBuilder:
 
 
 # ─── Audio.generate() ─────────────────────────────────────────────────────────
+
 
 class TestAudioGeneration:
     @pytest.mark.asyncio
@@ -160,6 +163,7 @@ class TestAudioGeneration:
 
 # ─── AudioResponse storage methods ────────────────────────────────────────────
 
+
 class TestAudioResult:
     @pytest.mark.asyncio
     async def test_store_writes_to_temp_when_no_storage(self):
@@ -225,3 +229,157 @@ class TestAudioResult:
 
         mock_storage_cls.disk.assert_called_once_with("local")
         mock_disk.put.assert_called_once_with("hello.mp3", _fake_audio_bytes())
+
+
+# ─── GoogleAudioProvider ──────────────────────────────────────────────────────
+
+
+class TestGoogleAudioProvider:
+    @pytest.mark.asyncio
+    async def test_synthesize_returns_wav_bytes(self):
+        from fastapi_startkit.ai.audio_providers import GoogleAudioProvider
+
+        fake_pcm = b"\x00\x01" * 100  # 200 bytes of fake PCM16
+
+        mock_part = MagicMock()
+        mock_part.inline_data.data = fake_pcm
+        mock_candidate = MagicMock()
+        mock_candidate.content.parts = [mock_part]
+        mock_response = MagicMock()
+        mock_response.candidates = [mock_candidate]
+
+        mock_google = MagicMock()
+        mock_google_types = MagicMock()
+
+        provider = GoogleAudioProvider(api_key="test-key")
+
+        with patch.dict(
+            "sys.modules", {"google": mock_google, "google.genai": mock_google, "google.genai.types": mock_google_types}
+        ):
+            with patch(
+                "fastapi_startkit.ai.audio_providers.asyncio.to_thread", new=AsyncMock(return_value=mock_response)
+            ):
+                result = await provider.synthesize("Hello world", "nova", "gemini-2.5-flash-preview-tts", 1.0, "mp3")
+
+        # Result must be a valid WAV: starts with RIFF header
+        assert result[:4] == b"RIFF"
+        assert result[8:12] == b"WAVE"
+
+    def test_voice_map_covers_openai_aliases(self):
+        from fastapi_startkit.ai.audio_providers import GoogleAudioProvider
+
+        provider = GoogleAudioProvider()
+        assert provider._VOICE_MAP["nova"] == "Aoede"
+        assert provider._VOICE_MAP["onyx"] == "Fenrir"
+        assert provider._VOICE_MAP["alloy"] == "Kore"
+
+    def test_unknown_voice_passed_through(self):
+        from fastapi_startkit.ai.audio_providers import GoogleAudioProvider
+
+        provider = GoogleAudioProvider()
+        assert provider._VOICE_MAP.get("Zephyr", "Zephyr") == "Zephyr"
+
+    @pytest.mark.asyncio
+    async def test_audio_builder_resolves_google_provider(self):
+        mock_ai_config = MagicMock()
+        mock_ai_config.audio_provider = "google"
+        mock_ai_config.providers = {
+            "google": MagicMock(key="gkey"),
+            "openai": MagicMock(key=""),
+            "elevenlabs": MagicMock(key=""),
+        }
+
+        with patch("fastapi_startkit.ai.audio.Config") as mock_config:
+            mock_config.get.return_value = mock_ai_config
+            from fastapi_startkit.ai.audio import Audio
+            from fastapi_startkit.ai.audio_providers import GoogleAudioProvider
+
+            provider = Audio.of("test")._resolve_provider()
+
+        assert isinstance(provider, GoogleAudioProvider)
+
+
+# ─── _pcm_to_wav helper ───────────────────────────────────────────────────────
+
+
+class TestPcmToWav:
+    def test_wav_header_structure(self):
+        from fastapi_startkit.ai.audio_providers import _pcm_to_wav
+
+        pcm = b"\x00\x00" * 24000  # 1 second of silence at 24kHz mono 16-bit
+        wav = _pcm_to_wav(pcm)
+
+        assert wav[:4] == b"RIFF"
+        assert wav[8:12] == b"WAVE"
+        assert wav[12:16] == b"fmt "
+        assert wav[36:40] == b"data"
+
+    def test_wav_size_matches_pcm(self):
+        from fastapi_startkit.ai.audio_providers import _pcm_to_wav
+
+        pcm = b"\x01\x02" * 100
+        wav = _pcm_to_wav(pcm)
+        assert len(wav) == 44 + len(pcm)
+
+
+# ─── ElevenLabsAudioProvider ──────────────────────────────────────────────────
+
+
+class TestElevenLabsAudioProvider:
+    @pytest.mark.asyncio
+    async def test_synthesize_joins_audio_chunks(self):
+        from fastapi_startkit.ai.audio_providers import ElevenLabsAudioProvider
+
+        fake_chunks = [b"chunk1", b"chunk2", b"chunk3"]
+        mock_client = MagicMock()
+        mock_client.text_to_speech.convert.return_value = iter(fake_chunks)
+
+        mock_elevenlabs_module = MagicMock()
+        provider = ElevenLabsAudioProvider(api_key="test-key")
+
+        with patch.dict(
+            "sys.modules", {"elevenlabs": mock_elevenlabs_module, "elevenlabs.client": mock_elevenlabs_module}
+        ):
+            with patch(
+                "fastapi_startkit.ai.audio_providers.asyncio.to_thread", new=AsyncMock(return_value=iter(fake_chunks))
+            ):
+                result = await provider.synthesize("Hello", "nova", "eleven_multilingual_v2", 1.0, "mp3")
+
+        assert result == b"chunk1chunk2chunk3"
+
+    def test_voice_map_covers_openai_aliases(self):
+        from fastapi_startkit.ai.audio_providers import ElevenLabsAudioProvider
+
+        provider = ElevenLabsAudioProvider()
+        assert "nova" in provider._VOICE_MAP
+        assert "onyx" in provider._VOICE_MAP
+        assert "echo" in provider._VOICE_MAP
+
+    def test_direct_voice_id_passed_through(self):
+        from fastapi_startkit.ai.audio_providers import ElevenLabsAudioProvider
+
+        provider = ElevenLabsAudioProvider()
+        # Unknown voice name → passed as-is (user's own voice ID)
+        direct_id = "some-custom-voice-id"
+        resolved = provider._VOICE_MAP.get(direct_id, direct_id)
+        assert resolved == direct_id
+
+    @pytest.mark.asyncio
+    async def test_audio_builder_resolves_elevenlabs_provider(self):
+        mock_ai_config = MagicMock()
+        mock_ai_config.audio_provider = "elevenlabs"
+        mock_ai_config.providers = {
+            "google": MagicMock(key=""),
+            "openai": MagicMock(key=""),
+            "elevenlabs": MagicMock(key="elkey"),
+        }
+
+        with patch("fastapi_startkit.ai.audio.Config") as mock_config:
+            mock_config.get.return_value = mock_ai_config
+            from fastapi_startkit.ai.audio import Audio
+            from fastapi_startkit.ai.audio_providers import ElevenLabsAudioProvider
+
+            provider = Audio.of("test")._resolve_provider()
+
+        assert isinstance(provider, ElevenLabsAudioProvider)
+        assert provider._api_key == "elkey"

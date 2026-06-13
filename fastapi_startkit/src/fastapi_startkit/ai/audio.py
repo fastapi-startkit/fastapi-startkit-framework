@@ -7,12 +7,17 @@ import uuid
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from .audio_providers import AudioSynthesisProvider
+    from .audio_providers import AudioFactory
 
 try:
     from fastapi_startkit.storage.storage import Storage
 except Exception:  # pragma: no cover
     Storage = None  # type: ignore[assignment,misc]
+
+try:
+    from fastapi_startkit import Config
+except Exception:  # pragma: no cover
+    Config = None  # type: ignore[assignment,misc]
 
 
 class AudioResponse:
@@ -169,27 +174,41 @@ class Audio:
 
     # ── Internal ───────────────────────────────────────────────────────────────
 
-    def _resolve_provider(self) -> "AudioSynthesisProvider":
-        from .audio_providers import ElevenLabsAudioProvider, OpenAIAudioProvider  # noqa: PLC0415
+    def _resolve_provider(self) -> "AudioFactory":
+        from .audio_providers import (  # noqa: PLC0415
+            ElevenLabsAudioProvider,
+            GoogleAudioProvider,
+            OpenAIAudioProvider,
+        )
 
         provider_name = "openai"
         api_key: Optional[str] = None
         base_url: Optional[str] = None
+        google_key: Optional[str] = None
+        elevenlabs_key: Optional[str] = None
 
         try:
-            from fastapi_startkit.facades.Config import Config  # noqa: PLC0415
-
-            ai_config = Config.get("ai")
+            ai_config = Config.get("ai") if Config is not None else None  # type: ignore[union-attr]
+            if ai_config is None:
+                raise RuntimeError("Config not available")
             provider_name = ai_config.audio_provider
             openai_cfg = ai_config.providers.get("openai")
             if openai_cfg:
                 api_key = openai_cfg.key or None
                 base_url = openai_cfg.url or None
+            google_cfg = ai_config.providers.get("google")
+            if google_cfg:
+                google_key = google_cfg.key or None
+            el_cfg = ai_config.providers.get("elevenlabs")
+            if el_cfg:
+                elevenlabs_key = el_cfg.key or None
         except Exception:
             pass
 
         if provider_name == "openai":
             return OpenAIAudioProvider(api_key=api_key, base_url=base_url)
+        if provider_name == "google":
+            return GoogleAudioProvider(api_key=google_key)
         if provider_name == "elevenlabs":
-            return ElevenLabsAudioProvider()
-        raise ValueError(f"Unknown audio provider: {provider_name!r}. Use 'openai' or 'elevenlabs'.")
+            return ElevenLabsAudioProvider(api_key=elevenlabs_key)
+        raise ValueError(f"Unknown audio provider: {provider_name!r}. Use 'openai', 'google', or 'elevenlabs'.")
