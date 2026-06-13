@@ -22,6 +22,7 @@ if [ -d "$PACKAGE_DIR" ]; then
 
     # Build
     echo "   Building..."
+    rm -rf dist/
     uv build
 
     # Publish via twine
