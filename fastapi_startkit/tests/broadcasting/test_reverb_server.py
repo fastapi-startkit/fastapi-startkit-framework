@@ -55,9 +55,7 @@ def test_broadcast_delivers_to_subscriber(server):
         # Broadcast from server side
         import asyncio
 
-        asyncio.get_event_loop().run_until_complete(
-            server.broadcast_to_channel("orders.1", "OrderShipped", {"order_id": 1})
-        )
+        asyncio.run(server.broadcast_to_channel("orders.1", "OrderShipped", {"order_id": 1}))
 
         msg = json.loads(ws.receive_text())
         assert msg["event"] == "OrderShipped"
