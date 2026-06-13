@@ -4,58 +4,6 @@ from fastapi_startkit.console.command import Command
 from fastapi_startkit.support import Uri
 
 
-def _resolve_host_port(
-    cfg_host: str | None,
-    cfg_port: int | None,
-    app_url: str | None,
-    cli_host: str | None = None,
-    cli_port: int | None = None,
-) -> tuple[str, int]:
-    """Resolve host and port with strict priority order.
-
-    Priority (highest to lowest):
-      1. CLI flags (``--host`` / ``--port``)
-      2. Env vars APP_HOST / APP_PORT  (``cfg_host`` / ``cfg_port``)
-      3. Parsed from APP_URL           (``app_url``)
-      4. Hardcoded defaults            (``127.0.0.1`` / ``8000``)
-
-    Args:
-        cfg_host:  Value of APP_HOST env var (may be None).
-        cfg_port:  Value of APP_PORT env var (may be None).
-        app_url:   Value of APP_URL env var (may be None).
-        cli_host:  Value passed via ``--host`` CLI flag (may be None).
-        cli_port:  Value passed via ``--port`` CLI flag (may be None).
-
-    Returns:
-        A ``(host, port)`` tuple always containing concrete values.
-    """
-    # Start with env-level values
-    host: str | None = cfg_host or None
-    port: int | None = int(cfg_port) if cfg_port else None
-
-    # Fall back to APP_URL only for fields not already set by env vars
-    if app_url and (not host or port is None):
-        # Normalize bare hosts like "myapp.com:9000" — Uri needs a scheme
-        normalized = app_url if "://" in app_url else f"http://{app_url}"
-        uri = Uri.of(normalized)
-        if not host:
-            host = uri.host() or None
-        if port is None:
-            port = uri.port()
-
-    # Apply hardcoded defaults last
-    host = host or "127.0.0.1"
-    port = port if port is not None else 8000
-
-    # CLI flags override everything
-    if cli_host:
-        host = cli_host
-    if cli_port is not None:
-        port = cli_port
-
-    return host, port
-
-
 class ServeCommand(Command):
     name = "serve"
     description = "Start the FastAPI server."
@@ -96,20 +44,40 @@ class ServeCommand(Command):
         from fastapi_startkit import Config
         from fastapi_startkit.container import Container
 
-        # Read raw config values — no defaults here
-        cfg_host = Config.get("fastapi.host")
-        cfg_port = Config.get("fastapi.port")
-        cfg_app_url = Config.get("fastapi.app_url")
         cfg_reload = Config.get("fastapi.reload", True)
         cfg_reload_dirs = Config.get("fastapi.reload_dirs") or None
         cfg_reload_excludes = Config.get("fastapi.reload_excludes") or None
 
-        # Parse CLI flags — convert port to int if provided
-        cli_host: str | None = self.option("host") or None
-        cli_port: int | None = int(self.option("port")) if self.option("port") else None
+        # 1. Start from hardcoded defaults
+        host: str = "127.0.0.1"
+        port: int = 8000
 
-        # Full priority chain: CLI arg → env var → APP_URL → hardcoded default
-        host, port = _resolve_host_port(cfg_host, cfg_port, cfg_app_url, cli_host, cli_port)
+        # 2. Override with APP_URL (lowest env-level source)
+        app_url: str | None = Config.get("fastapi.app_url")
+        if app_url:
+            normalized = app_url if "://" in app_url else f"http://{app_url}"
+            uri = Uri.of(normalized)
+            if uri.host():
+                host = uri.host()
+            if uri.port() is not None:
+                port = uri.port()
+
+        # 3. Override with APP_HOST / APP_PORT (higher than APP_URL)
+        cfg_host: str | None = Config.get("fastapi.host")
+        cfg_port: int | None = Config.get("fastapi.port")
+        if cfg_host:
+            host = cfg_host
+        if cfg_port is not None:
+            port = int(cfg_port)
+
+        # 4. Override with CLI flags (highest priority)
+        cli_host: str | None = self.option("host")
+        cli_port: str | None = self.option("port")
+        if cli_host:
+            host = cli_host
+        if cli_port:
+            port = int(cli_port)
+
         reload = cfg_reload if self.option("reload") is None else self.option("reload")
         app = self.option("app")
 
