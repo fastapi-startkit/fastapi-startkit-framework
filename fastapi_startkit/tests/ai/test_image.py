@@ -3,15 +3,14 @@
 from __future__ import annotations
 
 import os
+import tempfile
+from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
-from fastapi_startkit.ai.document import Document
-from fastapi_startkit.ai.image import Image, ImageResponse
+from fastapi_startkit.ai import Document, Image, ImageResponse
 
 
-# ─── Shared fixtures ──────────────────────────────────────────────────────────
+# ─── Shared helpers ───────────────────────────────────────────────────────────
 
 
 def _fake_image_bytes() -> bytes:
@@ -29,14 +28,17 @@ def _mock_provider(generate_result: bytes | None = None, edit_result: bytes | No
 # ─── Document used as image attachment ────────────────────────────────────────
 
 
-class TestDocumentImageAttachment:
-    def test_document_from_path_reads_binary_via_to_bytes(self, tmp_path):
+class TestDocumentImageAttachment(IsolatedAsyncioTestCase):
+    def test_document_from_path_reads_binary_via_to_bytes(self):
         """from_path auto-detects binary files and stores bytes content."""
-        img = tmp_path / "photo.jpg"
-        img.write_bytes(b"\xff\xd8\xff")
-        doc = Document.from_path(str(img))
-        # Binary files: content is bytes, to_bytes() returns them directly
-        assert doc.to_bytes() == b"\xff\xd8\xff"
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
+            f.write(b"\xff\xd8\xff")
+            tmp_file = f.name
+        try:
+            doc = Document.from_path(tmp_file)
+            assert doc.to_bytes() == b"\xff\xd8\xff"
+        finally:
+            os.remove(tmp_file)
 
     def test_document_content_bytes_stored_directly(self):
         doc = Document(content=b"\x89PNG", name="photo.png")
@@ -62,70 +64,69 @@ class TestDocumentImageAttachment:
         assert doc.to_bytes() == fake_data
         assert doc.name == "photo.jpg"
 
-    async def test_document_from_storage_reads_bytes(self, tmp_path, monkeypatch):
-        storage_dir = tmp_path / "storage"
-        storage_dir.mkdir()
-        (storage_dir / "photo.jpg").write_bytes(b"\x89PNG")
-        monkeypatch.chdir(tmp_path)
+    async def test_document_from_storage_reads_bytes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            storage_dir = os.path.join(tmp, "storage")
+            os.makedirs(storage_dir)
+            with open(os.path.join(storage_dir, "photo.jpg"), "wb") as f:
+                f.write(b"\x89PNG")
 
-        # Patch Storage so it falls back to the direct path read
-        with patch("fastapi_startkit.ai.document.Storage", None):
-            doc = await Document.from_storage("photo.jpg")
+            orig_dir = os.getcwd()
+            os.chdir(tmp)
+            try:
+                with patch("fastapi_startkit.ai.document.Storage", None):
+                    doc = await Document.from_storage("photo.jpg")
+            finally:
+                os.chdir(orig_dir)
 
         assert doc.to_bytes() == b"\x89PNG"
 
     def test_document_to_base64_encodes_bytes(self):
-        doc = Document(content=b"\x89PNG", name="photo.png")
         import base64
 
+        doc = Document(content=b"\x89PNG", name="photo.png")
         assert doc.to_base64() == base64.b64encode(b"\x89PNG").decode("utf-8")
 
     def test_document_to_base64_encodes_text(self):
-        doc = Document(content="hello", name="text.txt")
         import base64
 
+        doc = Document(content="hello", name="text.txt")
         assert doc.to_base64() == base64.b64encode(b"hello").decode("utf-8")
 
 
 # ─── Image builder — chainable API ────────────────────────────────────────────
 
 
-class TestImageBuilder:
+class TestImageBuilder(IsolatedAsyncioTestCase):
     def test_of_returns_image_instance(self):
         img = Image.of("A donut on a counter")
         assert isinstance(img, Image)
         assert img._prompt == "A donut on a counter"
 
     def test_landscape_sets_size(self):
-        img = Image.of("test").landscape()
-        assert img._size == "1792x1024"
+        assert Image.of("test").landscape()._size == "1792x1024"
 
     def test_portrait_sets_size(self):
-        img = Image.of("test").portrait()
-        assert img._size == "1024x1792"
+        assert Image.of("test").portrait()._size == "1024x1792"
 
     def test_square_sets_size(self):
-        img = Image.of("test").landscape().square()
-        assert img._size == "1024x1024"
+        assert Image.of("test").landscape().square()._size == "1024x1024"
 
     def test_model_override(self):
-        img = Image.of("test").model("dall-e-2")
-        assert img._model == "dall-e-2"
+        assert Image.of("test").model("dall-e-2")._model == "dall-e-2"
 
     def test_quality_override(self):
-        img = Image.of("test").quality("hd")
-        assert img._quality == "hd"
+        assert Image.of("test").quality("hd")._quality == "hd"
 
     def test_attachments_sets_list(self):
         doc = Document(content=b"img", name="x.png")
-        img = Image.of("test").attachments([doc])
-        assert img._attachments == [doc]
+        assert Image.of("test").attachments([doc])._attachments == [doc]
 
 
 # ─── Image.generate() ─────────────────────────────────────────────────────────
 
 
-class TestImageGeneration:
+class TestImageGeneration(IsolatedAsyncioTestCase):
     async def test_generate_calls_provider_and_returns_response(self):
         provider = _mock_provider()
 
@@ -142,8 +143,7 @@ class TestImageGeneration:
         with patch.object(Image, "_resolve_provider", return_value=provider):
             await Image.of("test").landscape().generate()
 
-        call_kwargs = provider.generate.call_args[1]
-        assert call_kwargs["size"] == "1792x1024"
+        assert provider.generate.call_args[1]["size"] == "1792x1024"
 
     async def test_generate_passes_quality_to_provider(self):
         provider = _mock_provider()
@@ -151,8 +151,7 @@ class TestImageGeneration:
         with patch.object(Image, "_resolve_provider", return_value=provider):
             await Image.of("test").quality("hd").generate()
 
-        call_kwargs = provider.generate.call_args[1]
-        assert call_kwargs["quality"] == "hd"
+        assert provider.generate.call_args[1]["quality"] == "hd"
 
     async def test_generate_uses_edit_when_attachments_present(self):
         provider = _mock_provider()
@@ -172,14 +171,13 @@ class TestImageGeneration:
         with patch.object(Image, "_resolve_provider", return_value=provider):
             await Image.of("Make impressionist").attachments([doc]).generate()
 
-        call_kwargs = provider.edit.call_args[1]
-        assert call_kwargs["image_bytes"] == b"raw-image-bytes"
+        assert provider.edit.call_args[1]["image_bytes"] == b"raw-image-bytes"
 
 
 # ─── ImageResponse storage methods ────────────────────────────────────────────
 
 
-class TestImageResult:
+class TestImageResult(IsolatedAsyncioTestCase):
     async def test_store_writes_to_temp_when_no_storage(self):
         """Falls back to tempfile when Storage facade is unavailable."""
         resp = ImageResponse(data=_fake_image_bytes())
@@ -191,19 +189,21 @@ class TestImageResult:
             assert f.read() == _fake_image_bytes()
         os.remove(path)
 
-    async def test_store_as_uses_given_name(self, tmp_path):
+    async def test_store_as_uses_given_name(self):
         resp = ImageResponse(data=_fake_image_bytes())
 
-        with patch.object(resp, "_save_sync", wraps=lambda name, disk: str(tmp_path / name)) as mock_save:
+        with patch.object(resp, "_save_sync") as mock_save:
+            mock_save.return_value = "/tmp/result.png"
             path = await resp.storeAs("result.png")
 
         mock_save.assert_called_once_with("result.png", "local")
         assert path.endswith("result.png")
 
-    async def test_store_publicly_as_uses_public_disk(self, tmp_path):
+    async def test_store_publicly_as_uses_public_disk(self):
         resp = ImageResponse(data=_fake_image_bytes())
 
-        with patch.object(resp, "_save_sync", wraps=lambda name, disk: str(tmp_path / name)) as mock_save:
+        with patch.object(resp, "_save_sync") as mock_save:
+            mock_save.return_value = "/tmp/result.png"
             await resp.storePubliclyAs("result.png")
 
         mock_save.assert_called_once_with("result.png", "public")
@@ -240,10 +240,10 @@ class TestImageResult:
         mock_disk.put.assert_called_once_with("photo.png", _fake_image_bytes())
 
 
-# ─── GoogleImageFactory ──────────────────────────────────────────────────────
+# ─── GoogleImageFactory ───────────────────────────────────────────────────────
 
 
-class TestGoogleImageFactory:
+class TestGoogleImageFactory(IsolatedAsyncioTestCase):
     async def test_generate_calls_genai_and_returns_bytes(self):
         from fastapi_startkit.ai.image_factory import GoogleImageFactory
 
@@ -253,25 +253,20 @@ class TestGoogleImageFactory:
         mock_response = MagicMock()
         mock_response.generated_images = [mock_image]
 
-        mock_client = MagicMock()
-        mock_client.models.generate_images.return_value = mock_response
-
-        mock_genai = MagicMock()
-        mock_genai.Client.return_value = mock_client
-
         with patch.dict(
             "sys.modules",
-            {"google": MagicMock(genai=mock_genai), "google.genai": mock_genai, "google.genai.types": MagicMock()},
+            {"google": MagicMock(), "google.genai": MagicMock(), "google.genai.types": MagicMock()},
         ):
             with patch(
-                "fastapi_startkit.ai.image_factory.asyncio.to_thread", new=AsyncMock(return_value=mock_response)
+                "fastapi_startkit.ai.image_factory.asyncio.to_thread",
+                new=AsyncMock(return_value=mock_response),
             ):
                 provider = GoogleImageFactory(api_key="test-key")
                 result = await provider.generate("A sunset", "1024x1024", "imagen-3.0-generate-002", "standard")
 
         assert result == fake_bytes
 
-    async def test_aspect_ratio_mapping_square(self):
+    def test_aspect_ratio_mapping(self):
         from fastapi_startkit.ai.image_factory import GoogleImageFactory
 
         provider = GoogleImageFactory()
@@ -283,17 +278,16 @@ class TestGoogleImageFactory:
         from fastapi_startkit.ai.image_factory import GoogleImageFactory
 
         provider = GoogleImageFactory(api_key="test-key")
-        with pytest.raises(NotImplementedError, match="does not support image editing"):
+        with self.assertRaisesRegex(NotImplementedError, "does not support image editing"):
             await provider.edit("Make it blue", b"\x89PNG", "1024x1024")
 
-    async def test_image_builder_resolves_google_provider(self):
+    async def test_image_builder_resolves_google_factory(self):
         mock_ai_config = MagicMock()
         mock_ai_config.image_provider = "google"
         mock_ai_config.providers = {"google": MagicMock(key="gkey"), "openai": MagicMock(key="")}
 
         with patch("fastapi_startkit.ai.image.Config") as mock_config:
             mock_config.get.return_value = mock_ai_config
-            from fastapi_startkit.ai.image import Image
             from fastapi_startkit.ai.image_factory import GoogleImageFactory
 
             provider = Image.of("test")._resolve_provider()

@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import os
+from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from fastapi_startkit.ai import Audio, AudioResponse
 
-from fastapi_startkit.ai.audio import Audio, AudioResponse
 
-
-# ─── Shared fixtures ──────────────────────────────────────────────────────────
+# ─── Shared helpers ───────────────────────────────────────────────────────────
 
 
 def _fake_audio_bytes() -> bytes:
@@ -26,43 +26,35 @@ def _mock_provider(result: bytes | None = None) -> MagicMock:
 # ─── Audio builder — chainable API ────────────────────────────────────────────
 
 
-class TestAudioBuilder:
+class TestAudioBuilder(IsolatedAsyncioTestCase):
     def test_of_returns_audio_instance(self):
         audio = Audio.of("Hello world")
         assert isinstance(audio, Audio)
         assert audio._text == "Hello world"
 
     def test_default_voice_is_alloy(self):
-        audio = Audio.of("Hello")
-        assert audio._voice == "alloy"
+        assert Audio.of("Hello")._voice == "alloy"
 
     def test_female_sets_nova_voice(self):
-        audio = Audio.of("Hello").female()
-        assert audio._voice == "nova"
+        assert Audio.of("Hello").female()._voice == "nova"
 
     def test_male_sets_onyx_voice(self):
-        audio = Audio.of("Hello").male()
-        assert audio._voice == "onyx"
+        assert Audio.of("Hello").male()._voice == "onyx"
 
     def test_voice_sets_explicit_voice(self):
-        audio = Audio.of("Hello").voice("shimmer")
-        assert audio._voice == "shimmer"
+        assert Audio.of("Hello").voice("shimmer")._voice == "shimmer"
 
     def test_voice_overrides_previous_setting(self):
-        audio = Audio.of("Hello").female().voice("echo")
-        assert audio._voice == "echo"
+        assert Audio.of("Hello").female().voice("echo")._voice == "echo"
 
     def test_model_override(self):
-        audio = Audio.of("Hello").model("tts-1-hd")
-        assert audio._model == "tts-1-hd"
+        assert Audio.of("Hello").model("tts-1-hd")._model == "tts-1-hd"
 
     def test_speed_override(self):
-        audio = Audio.of("Hello").speed(1.5)
-        assert audio._speed == 1.5
+        assert Audio.of("Hello").speed(1.5)._speed == 1.5
 
     def test_format_override(self):
-        audio = Audio.of("Hello").format("opus")
-        assert audio._response_format == "opus"
+        assert Audio.of("Hello").format("opus")._response_format == "opus"
 
     def test_chainable_methods_return_self(self):
         audio = Audio.of("Hello")
@@ -77,7 +69,7 @@ class TestAudioBuilder:
 # ─── Audio.generate() ─────────────────────────────────────────────────────────
 
 
-class TestAudioGeneration:
+class TestAudioGeneration(IsolatedAsyncioTestCase):
     async def test_generate_calls_provider_and_returns_response(self):
         provider = _mock_provider()
 
@@ -94,8 +86,7 @@ class TestAudioGeneration:
         with patch.object(Audio, "_resolve_provider", return_value=provider):
             await Audio.of("Hello world").generate()
 
-        call_kwargs = provider.synthesize.call_args[1]
-        assert call_kwargs["text"] == "Hello world"
+        assert provider.synthesize.call_args[1]["text"] == "Hello world"
 
     async def test_generate_female_passes_nova_voice(self):
         provider = _mock_provider()
@@ -103,8 +94,7 @@ class TestAudioGeneration:
         with patch.object(Audio, "_resolve_provider", return_value=provider):
             await Audio.of("Hi").female().generate()
 
-        call_kwargs = provider.synthesize.call_args[1]
-        assert call_kwargs["voice"] == "nova"
+        assert provider.synthesize.call_args[1]["voice"] == "nova"
 
     async def test_generate_male_passes_onyx_voice(self):
         provider = _mock_provider()
@@ -112,8 +102,7 @@ class TestAudioGeneration:
         with patch.object(Audio, "_resolve_provider", return_value=provider):
             await Audio.of("Hi").male().generate()
 
-        call_kwargs = provider.synthesize.call_args[1]
-        assert call_kwargs["voice"] == "onyx"
+        assert provider.synthesize.call_args[1]["voice"] == "onyx"
 
     async def test_generate_explicit_voice(self):
         provider = _mock_provider()
@@ -121,8 +110,7 @@ class TestAudioGeneration:
         with patch.object(Audio, "_resolve_provider", return_value=provider):
             await Audio.of("Hi").voice("shimmer").generate()
 
-        call_kwargs = provider.synthesize.call_args[1]
-        assert call_kwargs["voice"] == "shimmer"
+        assert provider.synthesize.call_args[1]["voice"] == "shimmer"
 
     async def test_generate_passes_speed(self):
         provider = _mock_provider()
@@ -130,8 +118,7 @@ class TestAudioGeneration:
         with patch.object(Audio, "_resolve_provider", return_value=provider):
             await Audio.of("Hi").speed(1.25).generate()
 
-        call_kwargs = provider.synthesize.call_args[1]
-        assert call_kwargs["speed"] == 1.25
+        assert provider.synthesize.call_args[1]["speed"] == 1.25
 
     async def test_generate_passes_format(self):
         provider = _mock_provider()
@@ -139,8 +126,7 @@ class TestAudioGeneration:
         with patch.object(Audio, "_resolve_provider", return_value=provider):
             await Audio.of("Hi").format("opus").generate()
 
-        call_kwargs = provider.synthesize.call_args[1]
-        assert call_kwargs["fmt"] == "opus"
+        assert provider.synthesize.call_args[1]["fmt"] == "opus"
 
     async def test_generate_hd_model(self):
         provider = _mock_provider()
@@ -148,14 +134,13 @@ class TestAudioGeneration:
         with patch.object(Audio, "_resolve_provider", return_value=provider):
             await Audio.of("Hi").model("tts-1-hd").generate()
 
-        call_kwargs = provider.synthesize.call_args[1]
-        assert call_kwargs["model"] == "tts-1-hd"
+        assert provider.synthesize.call_args[1]["model"] == "tts-1-hd"
 
 
 # ─── AudioResponse storage methods ────────────────────────────────────────────
 
 
-class TestAudioResult:
+class TestAudioResult(IsolatedAsyncioTestCase):
     async def test_store_writes_to_temp_when_no_storage(self):
         resp = AudioResponse(data=_fake_audio_bytes())
 
@@ -216,10 +201,10 @@ class TestAudioResult:
         mock_disk.put.assert_called_once_with("hello.mp3", _fake_audio_bytes())
 
 
-# ─── GoogleAudioFactory ──────────────────────────────────────────────────────
+# ─── GoogleAudioFactory ───────────────────────────────────────────────────────
 
 
-class TestGoogleAudioFactory:
+class TestGoogleAudioFactory(IsolatedAsyncioTestCase):
     async def test_synthesize_returns_wav_bytes(self):
         from fastapi_startkit.ai.audio_factory import GoogleAudioFactory
 
@@ -232,20 +217,18 @@ class TestGoogleAudioFactory:
         mock_response = MagicMock()
         mock_response.candidates = [mock_candidate]
 
-        mock_google = MagicMock()
-        mock_google_types = MagicMock()
-
         provider = GoogleAudioFactory(api_key="test-key")
 
         with patch.dict(
-            "sys.modules", {"google": mock_google, "google.genai": mock_google, "google.genai.types": mock_google_types}
+            "sys.modules",
+            {"google": MagicMock(), "google.genai": MagicMock(), "google.genai.types": MagicMock()},
         ):
             with patch(
-                "fastapi_startkit.ai.audio_factory.asyncio.to_thread", new=AsyncMock(return_value=mock_response)
+                "fastapi_startkit.ai.audio_factory.asyncio.to_thread",
+                new=AsyncMock(return_value=mock_response),
             ):
                 result = await provider.synthesize("Hello world", "nova", "gemini-2.5-flash-preview-tts", 1.0, "mp3")
 
-        # Result must be a valid WAV: starts with RIFF header
         assert result[:4] == b"RIFF"
         assert result[8:12] == b"WAVE"
 
@@ -263,7 +246,7 @@ class TestGoogleAudioFactory:
         provider = GoogleAudioFactory()
         assert provider._VOICE_MAP.get("Zephyr", "Zephyr") == "Zephyr"
 
-    async def test_audio_builder_resolves_google_provider(self):
+    async def test_audio_builder_resolves_google_factory(self):
         mock_ai_config = MagicMock()
         mock_ai_config.audio_provider = "google"
         mock_ai_config.providers = {
@@ -274,7 +257,6 @@ class TestGoogleAudioFactory:
 
         with patch("fastapi_startkit.ai.audio.Config") as mock_config:
             mock_config.get.return_value = mock_ai_config
-            from fastapi_startkit.ai.audio import Audio
             from fastapi_startkit.ai.audio_factory import GoogleAudioFactory
 
             provider = Audio.of("test")._resolve_provider()
@@ -285,11 +267,11 @@ class TestGoogleAudioFactory:
 # ─── _pcm_to_wav helper ───────────────────────────────────────────────────────
 
 
-class TestPcmToWav:
+class TestPcmToWav(IsolatedAsyncioTestCase):
     def test_wav_header_structure(self):
         from fastapi_startkit.ai.audio_factory import _pcm_to_wav
 
-        pcm = b"\x00\x00" * 24000  # 1 second of silence at 24kHz mono 16-bit
+        pcm = b"\x00\x00" * 24000  # 1 second of silence at 24 kHz mono 16-bit
         wav = _pcm_to_wav(pcm)
 
         assert wav[:4] == b"RIFF"
@@ -305,25 +287,24 @@ class TestPcmToWav:
         assert len(wav) == 44 + len(pcm)
 
 
-# ─── ElevenLabsAudioFactory ──────────────────────────────────────────────────
+# ─── ElevenLabsAudioFactory ───────────────────────────────────────────────────
 
 
-class TestElevenLabsAudioFactory:
+class TestElevenLabsAudioFactory(IsolatedAsyncioTestCase):
     async def test_synthesize_joins_audio_chunks(self):
         from fastapi_startkit.ai.audio_factory import ElevenLabsAudioFactory
 
         fake_chunks = [b"chunk1", b"chunk2", b"chunk3"]
-        mock_client = MagicMock()
-        mock_client.text_to_speech.convert.return_value = iter(fake_chunks)
-
         mock_elevenlabs_module = MagicMock()
         provider = ElevenLabsAudioFactory(api_key="test-key")
 
         with patch.dict(
-            "sys.modules", {"elevenlabs": mock_elevenlabs_module, "elevenlabs.client": mock_elevenlabs_module}
+            "sys.modules",
+            {"elevenlabs": mock_elevenlabs_module, "elevenlabs.client": mock_elevenlabs_module},
         ):
             with patch(
-                "fastapi_startkit.ai.audio_factory.asyncio.to_thread", new=AsyncMock(return_value=iter(fake_chunks))
+                "fastapi_startkit.ai.audio_factory.asyncio.to_thread",
+                new=AsyncMock(return_value=iter(fake_chunks)),
             ):
                 result = await provider.synthesize("Hello", "nova", "eleven_multilingual_v2", 1.0, "mp3")
 
@@ -341,12 +322,10 @@ class TestElevenLabsAudioFactory:
         from fastapi_startkit.ai.audio_factory import ElevenLabsAudioFactory
 
         provider = ElevenLabsAudioFactory()
-        # Unknown voice name → passed as-is (user's own voice ID)
         direct_id = "some-custom-voice-id"
-        resolved = provider._VOICE_MAP.get(direct_id, direct_id)
-        assert resolved == direct_id
+        assert provider._VOICE_MAP.get(direct_id, direct_id) == direct_id
 
-    async def test_audio_builder_resolves_elevenlabs_provider(self):
+    async def test_audio_builder_resolves_elevenlabs_factory(self):
         mock_ai_config = MagicMock()
         mock_ai_config.audio_provider = "elevenlabs"
         mock_ai_config.providers = {
@@ -357,7 +336,6 @@ class TestElevenLabsAudioFactory:
 
         with patch("fastapi_startkit.ai.audio.Config") as mock_config:
             mock_config.get.return_value = mock_ai_config
-            from fastapi_startkit.ai.audio import Audio
             from fastapi_startkit.ai.audio_factory import ElevenLabsAudioFactory
 
             provider = Audio.of("test")._resolve_provider()
