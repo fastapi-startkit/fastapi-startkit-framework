@@ -74,6 +74,16 @@ class TestDocumentImageAttachment:
 
         assert doc.to_bytes() == b"\x89PNG"
 
+    def test_document_to_base64_encodes_bytes(self):
+        doc = Document(content=b"\x89PNG", name="photo.png")
+        import base64
+        assert doc.to_base64() == base64.b64encode(b"\x89PNG").decode("utf-8")
+
+    def test_document_to_base64_encodes_text(self):
+        doc = Document(content="hello", name="text.txt")
+        import base64
+        assert doc.to_base64() == base64.b64encode(b"hello").decode("utf-8")
+
 
 # ─── Image builder — chainable API ────────────────────────────────────────────
 

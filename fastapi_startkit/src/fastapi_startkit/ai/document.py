@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 
 # Optional runtime dependency — imported at module level so tests can patch it.
 try:
@@ -105,6 +106,16 @@ class Document:
         if isinstance(self.content, bytes):
             return self.content
         return self.content.encode("utf-8")
+
+    def to_base64(self) -> str:
+        """Return the document content base64-encoded as a plain string.
+
+        Useful when an API expects a base64-encoded image or audio payload::
+
+            doc = Document.from_path("/tmp/photo.jpg")
+            encoded = doc.to_base64()
+        """
+        return base64.b64encode(self.to_bytes()).decode("utf-8")
 
     # ── LLM content blocks ─────────────────────────────────────────────────────
 
