@@ -1,6 +1,5 @@
 """Cleo commands for the skills module."""
 
-from .sync import SkillsSyncCommand
-from .list import SkillsListCommand
+from .skills import SkillsCommand
 
-__all__ = ["SkillsSyncCommand", "SkillsListCommand"]
+__all__ = ["SkillsCommand"]

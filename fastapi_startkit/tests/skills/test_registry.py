@@ -1,18 +1,20 @@
-"""Tests for SkillRegistry reading from .ai/fastapi-startkit/*/SKILL.md."""
+"""Tests for the provider-driven SkillRegistry.
+
+A provider "declares" skills when its ``provider_key`` is a key in
+:attr:`SkillRegistry.skills`. The framework ships a matching ``SKILL.md`` stub
+for each declared destination; :meth:`SkillRegistry.discover` prefers a project
+copy under ``.ai/`` and falls back to the bundled stub.
+"""
 
 from __future__ import annotations
-
-from pathlib import Path
 
 import pytest
 
 from fastapi_startkit.application import Application
 from fastapi_startkit.container.container import Container
-from fastapi_startkit.skills.registry import (
-    SkillRegistry,
-    SKILLS_BASE_PATH,
-    _parse_frontmatter,
-)
+from fastapi_startkit.masoniteorm import DatabaseProvider, Migrator, Model
+from fastapi_startkit.fastapi.providers.fastapi_provider import FastAPIProvider
+from fastapi_startkit.skills.registry import SkillRegistry, STUBS_BASE_PATH
 
 
 @pytest.fixture(autouse=True)
@@ -22,109 +24,120 @@ def restore_container():
     Container._instance = original
 
 
+@pytest.fixture(autouse=True)
+def restore_db_manager():
+    """DatabaseProvider.register() sets these class globals (absent by default).
+    Snapshot and restore so registering it here can't leak into other tests."""
+    _MISSING = object()
+    saved = {cls: getattr(cls, "db_manager", _MISSING) for cls in (Model, Migrator)}
+    yield
+    for cls, value in saved.items():
+        if value is _MISSING:
+            if hasattr(cls, "db_manager"):
+                delattr(cls, "db_manager")
+        else:
+            cls.db_manager = value
+
+
 @pytest.fixture
 def app(tmp_path):
+    """App with the real fastapi + database skill-declaring providers."""
+    return Application(
+        base_path=tmp_path,
+        env="testing",
+        providers=[FastAPIProvider, DatabaseProvider],
+    )
+
+
+@pytest.fixture
+def empty_app(tmp_path):
     return Application(base_path=tmp_path, env="testing")
 
 
-def _write_skill(tmp_path: Path, name: str, description: str, body: str = "") -> Path:
-    skill_dir = tmp_path / SKILLS_BASE_PATH / name
-    skill_dir.mkdir(parents=True, exist_ok=True)
-    skill_md = skill_dir / "SKILL.md"
-    lines = ["---", f"name: {name}", f"description: {description}", "---"]
-    if body:
-        lines += ["", body]
-    skill_md.write_text("\n".join(lines), encoding="utf-8")
-    return skill_md
+# ---------------------------------------------------------------------------
+# get_providers
+# ---------------------------------------------------------------------------
 
 
-# -- _parse_frontmatter --
+def test_get_providers_returns_declaring_keys(app):
+    keys = set(SkillRegistry(app).get_providers())
+    assert keys == {"fastapi", "database"}
 
 
-def test_parse_frontmatter_basic():
-    text = "---\nname: fastapi-best-practices\ndescription: Apply for FastAPI code.\n---\nBody content here.\n"
-    meta, body = _parse_frontmatter(text)
-    assert meta["name"] == "fastapi-best-practices"
-    assert meta["description"] == "Apply for FastAPI code."
-    assert "Body content here." in body
+def test_get_providers_empty_when_none_declare(empty_app):
+    assert list(SkillRegistry(empty_app).get_providers()) == []
 
 
-def test_parse_frontmatter_missing_fence():
-    text = "No front-matter here."
-    meta, body = _parse_frontmatter(text)
-    assert meta == {}
-    assert body == text
+# ---------------------------------------------------------------------------
+# discover
+# ---------------------------------------------------------------------------
 
 
-def test_parse_frontmatter_unclosed_fence():
-    meta, body = _parse_frontmatter("---\nname: oops\n")
-    assert meta == {}
+def test_discover_loads_skills_from_bundled_stubs(app):
+    skills = SkillRegistry(app).discover()
+    # Names come from each stub's front-matter.
+    assert {s.name for s in skills} == {"fastapi-startkit", "database"}
+    assert {s.provider_key for s in skills} == {"fastapi", "database"}
 
 
-# -- SkillRegistry --
+def test_discover_empty_when_no_declaring_providers(empty_app):
+    assert SkillRegistry(empty_app).discover() == []
 
 
-def test_registry_discovers_skills_from_skill_dirs(tmp_path, app):
-    _write_skill(tmp_path, "fastapi-routing", "FastAPI routing helpers", "Use Router.")
-    _write_skill(tmp_path, "orm-queries", "ORM query helpers", "Use Model.where().")
+def test_discover_prefers_project_copy_over_stub(app, tmp_path):
+    # A user-edited project copy shadows the bundled stub.
+    dest = tmp_path / ".ai" / "fastapi-startkit" / "fastapi" / "SKILL.md"
+    dest.parent.mkdir(parents=True)
+    dest.write_text("---\nname: my-fastapi\ndescription: edited\n---\nbody\n")
 
     skills = SkillRegistry(app).discover()
-    assert len(skills) == 2
-    assert {s.name for s in skills} == {"fastapi-routing", "orm-queries"}
+    names = {s.name for s in skills}
+    assert "my-fastapi" in names
+    assert "fastapi-startkit" not in names
+
+    edited = next(s for s in skills if s.name == "my-fastapi")
+    assert edited.path == dest
 
 
-def test_registry_returns_empty_when_skills_dir_missing(tmp_path, app):
-    assert SkillRegistry(app).discover() == []
+# ---------------------------------------------------------------------------
+# publish
+# ---------------------------------------------------------------------------
 
 
-def test_registry_skill_path_points_to_skill_md(tmp_path, app):
-    path = _write_skill(tmp_path, "my-skill", "desc")
-    skills = SkillRegistry(app).discover()
-    assert skills[0].path == path
+def test_publish_writes_stubs_and_renders_claude(app, tmp_path):
+    messages = SkillRegistry(app).publish(target="claude")
+    assert (tmp_path / ".ai" / "fastapi-startkit" / "fastapi" / "SKILL.md").exists()
+    assert (tmp_path / ".claude" / "skills" / "fastapi-startkit" / "SKILL.md").exists()
+    assert (tmp_path / ".claude" / "skills" / "database" / "SKILL.md").exists()
+    assert any("Syncing" in m for m in messages)
 
 
-def test_registry_skill_body_captured(tmp_path, app):
-    _write_skill(tmp_path, "orm", "ORM.", body="Use `Model.where(...)`")
-    skill = SkillRegistry(app).get("orm")
-    assert skill is not None
-    assert "Model.where" in skill.body
+def test_publish_no_skills_returns_message(empty_app):
+    messages = SkillRegistry(empty_app).publish(target="claude")
+    assert any("No skills found" in m for m in messages)
 
 
-def test_registry_uses_dir_name_fallback(tmp_path, app):
-    skill_dir = tmp_path / SKILLS_BASE_PATH / "fallback-skill"
-    skill_dir.mkdir(parents=True, exist_ok=True)
-    (skill_dir / "SKILL.md").write_text("No front-matter.", encoding="utf-8")
-    skills = SkillRegistry(app).discover()
-    assert skills[0].name == "fallback-skill"
+def test_publish_unknown_target_returns_message(app):
+    messages = SkillRegistry(app).publish(target="codex")
+    assert any("Unknown target" in m for m in messages)
 
 
-def test_registry_caches_results(tmp_path, app):
-    _write_skill(tmp_path, "s", "d")
-    r = SkillRegistry(app)
-    assert r.discover() is r.discover()
+def test_publish_all_writes_both(app, tmp_path):
+    SkillRegistry(app).publish(target="all")
+    assert (tmp_path / ".claude" / "skills" / "database" / "SKILL.md").exists()
+    assert (tmp_path / "GEMINI.md").exists()
 
 
-def test_registry_reset_clears_cache(tmp_path, app):
-    _write_skill(tmp_path, "s", "d")
-    r = SkillRegistry(app)
-    r.discover()
-    r.reset()
-    assert r._skills is None
+# ---------------------------------------------------------------------------
+# paths
+# ---------------------------------------------------------------------------
 
 
-def test_registry_get_returns_none_for_unknown(tmp_path, app):
-    _write_skill(tmp_path, "s", "d")
-    assert SkillRegistry(app).get("does-not-exist") is None
+def test_base_path_property(app, tmp_path):
+    assert SkillRegistry(app).base_path == tmp_path
 
 
-def test_registry_get_returns_skill_by_name(tmp_path, app):
-    _write_skill(tmp_path, "console-commands", "Artisan console.")
-    skill = SkillRegistry(app).get("console-commands")
-    assert skill is not None
-    assert skill.name == "console-commands"
-    assert skill.provider_key == "fastapi-startkit"
-
-
-def test_registry_skills_base_path_property(tmp_path, app):
-    r = SkillRegistry(app)
-    assert r.skills_base_path == tmp_path / ".ai" / "fastapi-startkit"
+def test_stubs_root_contains_bundled_stubs(app):
+    root = SkillRegistry(app).stubs_root
+    assert (root / ".ai" / "fastapi-startkit" / "fastapi" / "SKILL.md").exists()
+    assert STUBS_BASE_PATH.is_dir()

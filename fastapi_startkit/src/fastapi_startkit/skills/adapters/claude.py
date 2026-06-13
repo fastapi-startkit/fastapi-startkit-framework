@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Sequence
+from typing import Callable, Sequence
 
 from fastapi_startkit.skills.registry import Skill
 from .base import BaseAdapter
@@ -13,8 +13,10 @@ class ClaudeAdapter(BaseAdapter):
     """Writes canonical skills into Claude Code's skill directory.
 
     Each skill is rendered as ``.claude/skills/<skill-name>/SKILL.md`` with a
-    YAML front-matter block followed by the original body.  Writes are
-    idempotent — the file is only (over)written when its content would change.
+    YAML front-matter block followed by the original body.  Publishing follows
+    the same rules as ``provider:publish``: a missing file is written, an
+    existing file is left untouched unless ``force`` is set or the caller
+    confirms the overwrite.
     """
 
     name = "claude"
@@ -23,15 +25,37 @@ class ClaudeAdapter(BaseAdapter):
     # Public API
     # ------------------------------------------------------------------
 
-    def render(self, skills: Sequence[Skill]) -> list[str]:
+    def render(
+        self,
+        skills: Sequence[Skill],
+        force: bool = False,
+        confirm: Callable[..., bool] | None = None,
+    ) -> list[str]:
         messages: list[str] = []
         for skill in skills:
             dest = self._skill_path(skill.name)
+            rel = f".claude/skills/{skill.name}/SKILL.md"
             content = self._build_content(skill)
-            written = self._write_idempotent(dest, content)
-            verb = "Synced" if written else "Unchanged"
-            messages.append(f"[claude] {verb} .claude/skills/{skill.name}/SKILL.md")
+
+            if dest.exists() and not force:
+                if not self._confirm_overwrite(confirm, rel):
+                    messages.append(f"[claude] Skipped <comment>{rel}</comment> (already exists)")
+                    continue
+                verb = "Overwrote"
+            else:
+                verb = "Overwrote" if dest.exists() else "Published"
+
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(content, encoding="utf-8")
+            messages.append(f"[claude] {verb} <info>{rel}</info>")
         return messages
+
+    @staticmethod
+    def _confirm_overwrite(confirm: Callable[..., bool] | None, rel: str) -> bool:
+        """Ask the caller whether to overwrite *rel*; default to no."""
+        if confirm is None:
+            return False
+        return bool(confirm(f"  <comment>{rel}</comment> already exists. Overwrite?", default=False))
 
     def prune(self, skills: Sequence[Skill]) -> list[str]:
         """Remove ``.claude/skills/<name>/`` dirs not represented in *skills*."""
@@ -65,18 +89,3 @@ class ClaudeAdapter(BaseAdapter):
             lines.append(skill.body)
         lines.append("")
         return "\n".join(lines)
-
-    @staticmethod
-    def _write_idempotent(path: Path, content: str) -> bool:
-        """Write *content* to *path* only if it differs.
-
-        Returns *True* when the file was (re)written, *False* when unchanged.
-        """
-        if path.exists():
-            existing = path.read_text(encoding="utf-8")
-            if existing == content:
-                return False
-
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8")
-        return True

@@ -1,126 +1,158 @@
-"""SkillRegistry — discovers canonical skills from ``.ai/fastapi-startkit/``.
+"""SkillRegistry — maps providers to their skill files and publishes them.
 
-Each skill lives in a named subdirectory (or a ``SKILL.md`` directly under the
-base) and carries a YAML front-matter block::
+Each provider key in :attr:`SkillRegistry.skills` points at one or more
+``SKILL.md`` destinations under ``.ai/fastapi-startkit/``. The framework ships a
+matching stub for each at ``skills/stubs/<dest>``.
 
-    .ai/fastapi-startkit/
-        fastapi-startkit/
-            SKILL.md        <- YAML frontmatter (name, description) + markdown body
-            rules/
-                http-client.md
-
-Running ``artisan skills:sync`` deploys skills to every configured AI agent target.
+* ``get_providers()`` — registered providers that declare skills (used by list).
+* ``publish()``        — copy stubs into the project then render to AI agents.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Callable, TYPE_CHECKING
+
+from fastapi_startkit.skills.parser import Skill, SkillParser
+from fastapi_startkit.support.collection import collect
 
 if TYPE_CHECKING:
     from fastapi_startkit.application import Application
+    from fastapi_startkit.support.collection import Collection
 
-#: Base directory for framework skills (relative to project root).
-SKILLS_BASE_PATH = Path(".ai") / "fastapi-startkit"
+__all__ = ["Skill", "SkillRegistry", "STUBS_BASE_PATH"]
 
-
-@dataclass
-class Skill:
-    """Canonical skill metadata parsed from a SKILL.md file."""
-
-    name: str
-    description: str
-    path: Path
-    provider_key: str = "fastapi-startkit"
-    body: str = field(default="", repr=False)
-    metadata: dict = field(default_factory=dict, repr=False)
-
-
-def _parse_frontmatter(text: str) -> tuple[dict, str]:
-    """Parse YAML front-matter. Returns (meta_dict, body_str)."""
-    lines = text.splitlines(keepends=True)
-    if not lines or lines[0].strip() != "---":
-        return {}, text
-
-    end_idx = None
-    for i, line in enumerate(lines[1:], start=1):
-        if line.strip() == "---":
-            end_idx = i
-            break
-
-    if end_idx is None:
-        return {}, text
-
-    fm_text = "".join(lines[1:end_idx])
-    body = "".join(lines[end_idx + 1 :])
-
-    try:
-        import yaml
-
-        meta = yaml.safe_load(fm_text) or {}
-    except ModuleNotFoundError:
-        meta = {}
-        for line in lines[1:end_idx]:
-            if ":" in line:
-                k, _, v = line.partition(":")
-                meta[k.strip()] = v.strip()
-
-    return meta, body
+#: Source location of framework-shipped skill stubs, organised by provider key:
+#:     stubs/.ai/fastapi-startkit/<provider_key>/SKILL.md
+STUBS_BASE_PATH = Path(__file__).resolve().parent / "stubs" / ".ai" / "fastapi-startkit"
 
 
 class SkillRegistry:
-    """Loads Skill objects from .ai/fastapi-startkit/*/SKILL.md."""
+    skills = {
+        "fastapi": [
+            ".ai/fastapi-startkit/fastapi/SKILL.md",
+        ],
+        "database": [
+            ".ai/fastapi-startkit/database/SKILL.md",
+        ],
+    }
 
     def __init__(self, app: "Application") -> None:
-        self._app = app
-        self._skills: list[Skill] | None = None
+        self.application = app
+        self.parser = SkillParser()
 
     @property
-    def skills_base_path(self) -> Path:
-        return Path(self._app.base_path) / SKILLS_BASE_PATH
+    def base_path(self) -> Path:
+        return Path(self.application.base_path)
+
+    @property
+    def stubs_root(self) -> Path:
+        return STUBS_BASE_PATH.parent.parent  # .../skills/stubs
+
+    def get_providers(self) -> "Collection":
+        """Registered providers that declare skills (keyed by provider key)."""
+        return (
+            collect(self.application.providers)
+            .map(lambda provider: provider.provider_key)
+            .filter(lambda key: key in self.skills)
+        )
 
     def discover(self) -> list[Skill]:
-        if self._skills is not None:
-            return self._skills
+        """Load a Skill for every declared file of every registered provider.
 
-        base = self.skills_base_path
-        if not base.is_dir():
-            self._skills = []
-            return self._skills
+        Prefers the project copy under ``.ai/`` (so user edits flow through) and
+        falls back to the bundled stub when the project hasn't published it yet.
+        """
+        skills: list[Skill] = []
+        for provider_key in self.get_providers():
+            for dest in self.skills.get(provider_key, []):
+                source = self.base_path / dest
+                if not source.is_file():
+                    source = self.stubs_root / dest
+                skill = self.parser.parse(source, provider_key)
+                if skill is not None:
+                    skills.append(skill)
 
-        self._skills = []
-        for skill_md in sorted(base.rglob("SKILL.md")):
-            skill = self._load(skill_md)
-            if skill is not None:
-                self._skills.append(skill)
+        return skills
 
-        return self._skills
+    def publish(
+        self,
+        target: str = "all",
+        prune: bool = False,
+        force: bool = False,
+        confirm: Callable[..., bool] | None = None,
+    ) -> list[str]:
+        """Copy stubs into the project, then render skills to the AI agent(s).
 
-    def get(self, name: str) -> "Skill | None":
-        return next((s for s in self.discover() if s.name == name), None)
+        Existing destination files are preserved unless *force* is set or
+        *confirm* approves the overwrite — matching ``provider:publish``.
 
-    def reset(self) -> None:
-        self._skills = None
+        Returns human-readable log lines for the calling command to print.
+        """
+        messages = self._publish_stubs(force=force, confirm=confirm)
 
-    @staticmethod
-    def _load(skill_md: Path) -> "Skill | None":
-        try:
-            text = skill_md.read_text(encoding="utf-8")
-        except OSError:
-            return None
+        skills = self.discover()
+        if not skills:
+            messages.append("<comment>No skills found in any registered provider.</comment>")
+            return messages
 
-        meta, body = _parse_frontmatter(text)
-        name = (meta.get("name") or skill_md.parent.name or "").strip()
-        if not name:
-            return None
+        adapters = self._resolve_adapters(target)
+        if not adapters:
+            messages.append(f"<error>Unknown target '{target}'. Use: claude, gemini, all.</error>")
+            return messages
 
-        description = (meta.get("description") or "").strip()
-        extra = {k: v for k, v in meta.items() if k not in ("name", "description")}
-        return Skill(
-            name=name,
-            description=description,
-            path=skill_md,
-            body=body.strip(),
-            metadata=extra,
-        )
+        messages.append(f"<info>Syncing {len(skills)} skill(s) to: {target}…</info>")
+        for adapter in adapters:
+            messages.extend(adapter.render(skills, force=force, confirm=confirm))
+            if prune:
+                messages.extend(adapter.prune(skills))
+        return messages
+
+    def _publish_stubs(
+        self,
+        force: bool = False,
+        confirm: Callable[..., bool] | None = None,
+    ) -> list[str]:
+        """Copy bundled stubs into the project's ``.ai/``.
+
+        A missing file is always written. An existing file is left untouched
+        (preserving user edits) unless *force* is set or *confirm* approves the
+        overwrite — so framework stub updates can be pulled in deliberately.
+        """
+        import shutil
+
+        messages: list[str] = []
+        for provider_key in self.get_providers():
+            for dest in self.skills.get(provider_key, []):
+                source = self.stubs_root / dest
+                if not source.is_file():
+                    continue
+
+                dest_path = self.base_path / dest
+                existed = dest_path.exists()
+                if existed and not force:
+                    if confirm is None or not confirm(
+                        f"  <comment>{dest}</comment> already exists. Overwrite?", default=False
+                    ):
+                        messages.append(f"Skipped <comment>{dest}</comment> (already exists)")
+                        continue
+
+                dest_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, dest_path)
+                verb = "Overwrote" if existed else "Published"
+                messages.append(f"{verb} <info>{dest}</info>")
+        return messages
+
+    def _resolve_adapters(self, target: str) -> list:
+        from fastapi_startkit.skills.adapters import ClaudeAdapter, GeminiAdapter
+
+        all_adapters = {
+            "claude": ClaudeAdapter,
+            "gemini": GeminiAdapter,
+        }
+
+        if target == "all":
+            return [cls(self.base_path) for cls in all_adapters.values()]
+
+        cls = all_adapters.get(target)
+        return [cls(self.base_path)] if cls else []
