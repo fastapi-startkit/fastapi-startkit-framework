@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
 from cleo.testers.command_tester import CommandTester
 
 from fastapi_startkit.fastapi.commands.serve_command import ServeCommand
