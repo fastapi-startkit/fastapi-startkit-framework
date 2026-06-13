@@ -176,9 +176,9 @@ class Audio:
 
     def _resolve_provider(self) -> "AudioFactory":
         from .audio_providers import (  # noqa: PLC0415
-            ElevenLabsAudioProvider,
-            GoogleAudioProvider,
-            OpenAIAudioProvider,
+            ElevenLabsAudioFactory,
+            GoogleAudioFactory,
+            OpenAIAudioFactory,
         )
 
         provider_name = "openai"
@@ -206,9 +206,9 @@ class Audio:
             pass
 
         if provider_name == "openai":
-            return OpenAIAudioProvider(api_key=api_key, base_url=base_url)
+            return OpenAIAudioFactory(api_key=api_key, base_url=base_url)
         if provider_name == "google":
-            return GoogleAudioProvider(api_key=google_key)
+            return GoogleAudioFactory(api_key=google_key)
         if provider_name == "elevenlabs":
-            return ElevenLabsAudioProvider(api_key=elevenlabs_key)
+            return ElevenLabsAudioFactory(api_key=elevenlabs_key)
         raise ValueError(f"Unknown audio provider: {provider_name!r}. Use 'openai', 'google', or 'elevenlabs'.")

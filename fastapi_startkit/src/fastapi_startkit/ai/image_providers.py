@@ -31,7 +31,7 @@ class ImageFactory(ABC):
         """Edit an existing image (described by *image_bytes*) and return raw PNG bytes."""
 
 
-class OpenAIImageProvider(ImageFactory):
+class OpenAIImageFactory(ImageFactory):
     """OpenAI DALL-E provider using :class:`openai.AsyncOpenAI`.
 
     Uses DALL-E 3 for generation and DALL-E 2 for editing (the only model
@@ -79,7 +79,7 @@ class OpenAIImageProvider(ImageFactory):
         return base64.b64decode(response.data[0].b64_json)
 
 
-class GoogleImageProvider(ImageFactory):
+class GoogleImageFactory(ImageFactory):
     """Google Imagen 3 provider via the ``google-genai`` SDK.
 
     Requires: ``pip install google-genai``
@@ -137,21 +137,21 @@ class GoogleImageProvider(ImageFactory):
         return response.generated_images[0].image.image_bytes
 
     async def edit(self, prompt: str, image_bytes: bytes, size: str) -> bytes:
-        """Image editing is not yet supported by :class:`GoogleImageProvider`.
+        """Image editing is not yet supported by :class:`GoogleImageFactory`.
 
-        Use :class:`OpenAIImageProvider` for editing workflows.
+        Use :class:`OpenAIImageFactory` for editing workflows.
         """
         raise NotImplementedError(
-            "GoogleImageProvider does not support image editing yet. "
-            "Use OpenAIImageProvider (AI_IMAGE_PROVIDER=openai) for editing."
+            "GoogleImageFactory does not support image editing yet. "
+            "Use OpenAIImageFactory (AI_IMAGE_PROVIDER=openai) for editing."
         )
 
 
-class StabilityImageProvider(ImageFactory):
+class StabilityImageFactory(ImageFactory):
     """Stability AI provider stub — raises :exc:`NotImplementedError` until implemented."""
 
     async def generate(self, prompt: str, size: str, model: str, quality: str) -> bytes:
-        raise NotImplementedError("StabilityImageProvider is not yet implemented")
+        raise NotImplementedError("StabilityImageFactory is not yet implemented")
 
     async def edit(self, prompt: str, image_bytes: bytes, size: str) -> bytes:
-        raise NotImplementedError("StabilityImageProvider is not yet implemented")
+        raise NotImplementedError("StabilityImageFactory is not yet implemented")

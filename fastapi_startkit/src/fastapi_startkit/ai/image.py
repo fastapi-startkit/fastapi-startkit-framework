@@ -184,9 +184,9 @@ class Image:
 
     def _resolve_provider(self) -> "ImageFactory":
         from .image_providers import (  # noqa: PLC0415
-            GoogleImageProvider,
-            OpenAIImageProvider,
-            StabilityImageProvider,
+            GoogleImageFactory,
+            OpenAIImageFactory,
+            StabilityImageFactory,
         )
 
         provider_name = "openai"
@@ -210,9 +210,9 @@ class Image:
             pass
 
         if provider_name == "openai":
-            return OpenAIImageProvider(api_key=api_key, base_url=base_url)
+            return OpenAIImageFactory(api_key=api_key, base_url=base_url)
         if provider_name == "google":
-            return GoogleImageProvider(api_key=google_key)
+            return GoogleImageFactory(api_key=google_key)
         if provider_name == "stability":
-            return StabilityImageProvider()
+            return StabilityImageFactory()
         raise ValueError(f"Unknown image provider: {provider_name!r}. Use 'openai', 'google', or 'stability'.")

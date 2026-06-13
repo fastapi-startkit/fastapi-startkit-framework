@@ -34,7 +34,7 @@ class AudioFactory(ABC):
         """Convert *text* to speech and return raw audio bytes."""
 
 
-class OpenAIAudioProvider(AudioFactory):
+class OpenAIAudioFactory(AudioFactory):
     """OpenAI TTS provider using :class:`openai.AsyncOpenAI`.
 
     Supported voices: ``alloy``, ``echo``, ``fable``, ``onyx``, ``nova``,
@@ -66,7 +66,7 @@ class OpenAIAudioProvider(AudioFactory):
         return response.read()
 
 
-class GoogleAudioProvider(AudioFactory):
+class GoogleAudioFactory(AudioFactory):
     """Google Gemini TTS provider via the ``google-genai`` SDK.
 
     Requires: ``pip install google-genai``
@@ -154,7 +154,7 @@ class GoogleAudioProvider(AudioFactory):
         return _pcm_to_wav(pcm_data)
 
 
-class ElevenLabsAudioProvider(AudioFactory):
+class ElevenLabsAudioFactory(AudioFactory):
     """ElevenLabs TTS provider via the ``elevenlabs`` SDK.
 
     Requires: ``pip install elevenlabs``

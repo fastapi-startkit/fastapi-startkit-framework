@@ -253,13 +253,13 @@ class TestImageResult:
         mock_disk.put.assert_called_once_with("photo.png", _fake_image_bytes())
 
 
-# ─── GoogleImageProvider ──────────────────────────────────────────────────────
+# ─── GoogleImageFactory ──────────────────────────────────────────────────────
 
 
-class TestGoogleImageProvider:
+class TestGoogleImageFactory:
     @pytest.mark.asyncio
     async def test_generate_calls_genai_and_returns_bytes(self):
-        from fastapi_startkit.ai.image_providers import GoogleImageProvider
+        from fastapi_startkit.ai.image_providers import GoogleImageFactory
 
         fake_bytes = b"\x89PNG\r\n"
         mock_image = MagicMock()
@@ -280,25 +280,25 @@ class TestGoogleImageProvider:
             with patch(
                 "fastapi_startkit.ai.image_providers.asyncio.to_thread", new=AsyncMock(return_value=mock_response)
             ):
-                provider = GoogleImageProvider(api_key="test-key")
+                provider = GoogleImageFactory(api_key="test-key")
                 result = await provider.generate("A sunset", "1024x1024", "imagen-3.0-generate-002", "standard")
 
         assert result == fake_bytes
 
     @pytest.mark.asyncio
     async def test_aspect_ratio_mapping_square(self):
-        from fastapi_startkit.ai.image_providers import GoogleImageProvider
+        from fastapi_startkit.ai.image_providers import GoogleImageFactory
 
-        provider = GoogleImageProvider()
+        provider = GoogleImageFactory()
         assert provider._ASPECT_MAP["1024x1024"] == "1:1"
         assert provider._ASPECT_MAP["1792x1024"] == "16:9"
         assert provider._ASPECT_MAP["1024x1792"] == "9:16"
 
     @pytest.mark.asyncio
     async def test_edit_raises_not_implemented(self):
-        from fastapi_startkit.ai.image_providers import GoogleImageProvider
+        from fastapi_startkit.ai.image_providers import GoogleImageFactory
 
-        provider = GoogleImageProvider(api_key="test-key")
+        provider = GoogleImageFactory(api_key="test-key")
         with pytest.raises(NotImplementedError, match="does not support image editing"):
             await provider.edit("Make it blue", b"\x89PNG", "1024x1024")
 
@@ -311,8 +311,8 @@ class TestGoogleImageProvider:
         with patch("fastapi_startkit.ai.image.Config") as mock_config:
             mock_config.get.return_value = mock_ai_config
             from fastapi_startkit.ai.image import Image
-            from fastapi_startkit.ai.image_providers import GoogleImageProvider
+            from fastapi_startkit.ai.image_providers import GoogleImageFactory
 
             provider = Image.of("test")._resolve_provider()
 
-        assert isinstance(provider, GoogleImageProvider)
+        assert isinstance(provider, GoogleImageFactory)
