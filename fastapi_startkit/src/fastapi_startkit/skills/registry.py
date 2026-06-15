@@ -35,6 +35,9 @@ class SkillRegistry:
         "database": [
             ".ai/fastapi-startkit/database/SKILL.md",
         ],
+        "inertia": [
+            ".ai/fastapi-startkit/inertia/SKILL.md",
+        ],
     }
 
     def __init__(self, app: "Application") -> None:
