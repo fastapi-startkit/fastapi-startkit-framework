@@ -102,13 +102,10 @@ class AssertableJson:
         self._record(key)
         actual = self._get(key)
         if callable(expected):
-            assert expected(actual), (
-                f"Property [{self._full(key)}] was unexpected value [{actual!r}]."
-            )
+            assert expected(actual), f"Property [{self._full(key)}] was unexpected value [{actual!r}]."
         else:
             assert actual == expected, (
-                f"Property [{self._full(key)}] does not match. "
-                f"Expected [{expected!r}], got [{actual!r}]."
+                f"Property [{self._full(key)}] does not match. Expected [{expected!r}], got [{actual!r}]."
             )
         return self
 
@@ -122,10 +119,7 @@ class AssertableJson:
                 f"given predicate but did (value [{actual!r}])."
             )
         else:
-            assert actual != expected, (
-                f"Property [{self._full(key)}] was not expected to equal "
-                f"[{expected!r}] but did."
-            )
+            assert actual != expected, f"Property [{self._full(key)}] was not expected to equal [{expected!r}] but did."
         return self
 
     def where_all(self, bindings: dict) -> "AssertableJson":
@@ -157,8 +151,7 @@ class AssertableJson:
             if name not in _JSON_TYPES:
                 raise ValueError(f"Unknown JSON type [{name}] for [{self._full(key)}].")
         assert any(_JSON_TYPES[name](actual) for name in names), (
-            f"Property [{self._full(key)}] is not of expected type "
-            f"[{'|'.join(names)}]; got value [{actual!r}]."
+            f"Property [{self._full(key)}] is not of expected type [{'|'.join(names)}]; got value [{actual!r}]."
         )
         return self
 
@@ -189,9 +182,7 @@ class AssertableJson:
             length = _MISSING
 
         if length is not _MISSING:
-            assert isinstance(value, (list, dict, str)), (
-                f"Property [{self._full(key)}] is not countable."
-            )
+            assert isinstance(value, (list, dict, str)), f"Property [{self._full(key)}] is not countable."
             assert len(value) == length, (
                 f"Property [{self._full(key)}] does not have the expected size. "
                 f"Expected [{length}], got [{len(value)}]."
@@ -223,9 +214,7 @@ class AssertableJson:
 
     def missing(self, key: str) -> "AssertableJson":
         """Assert that ``key`` is absent from the current scope."""
-        assert not self._exists(key), (
-            f"Property [{self._full(key)}] was expected to be missing but exists."
-        )
+        assert not self._exists(key), f"Property [{self._full(key)}] was expected to be missing but exists."
         return self
 
     def missing_all(self, *keys: str) -> "AssertableJson":
@@ -268,9 +257,7 @@ class AssertableJson:
         elif isinstance(self._data, dict):
             items = list(self._data.items())
         else:
-            raise AssertionError(
-                f"Property [{self._path or 'root'}] is not iterable for each()."
-            )
+            raise AssertionError(f"Property [{self._path or 'root'}] is not iterable for each().")
         for key, value in items:
             child = AssertableJson(value, self._full(key))
             callback(child)
@@ -327,9 +314,7 @@ def assert_json_structure(structure: Any, data: Any, path: str = "root") -> None
             if isinstance(value, (list, dict)):
                 assert_json_structure(value, data, path)
             else:
-                assert isinstance(data, dict) and value in data, (
-                    f"Missing key [{value}] at [{path}]."
-                )
+                assert isinstance(data, dict) and value in data, f"Missing key [{value}] at [{path}]."
         return
 
     if isinstance(structure, dict):
@@ -339,9 +324,7 @@ def assert_json_structure(structure: Any, data: Any, path: str = "root") -> None
                 for index, item in enumerate(data):
                     assert_json_structure(value, item, f"{path}.{index}")
             else:
-                assert isinstance(data, dict) and key in data, (
-                    f"Missing key [{key}] at [{path}]."
-                )
+                assert isinstance(data, dict) and key in data, f"Missing key [{key}] at [{path}]."
                 if value is not None:
                     assert_json_structure(value, data[key], f"{path}.{key}")
         return

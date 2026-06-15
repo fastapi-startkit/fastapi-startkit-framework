@@ -44,9 +44,7 @@ def test_assert_created_and_no_content():
 
 def test_assert_json_fluent_chain():
     resp = make_response(200, {"id": 1, "name": "Bedu"})
-    resp.assert_ok().assert_json(
-        lambda j: j.where("id", 1).where("name", "Bedu").etc()
-    )
+    resp.assert_ok().assert_json(lambda j: j.where("id", 1).where("name", "Bedu").etc())
 
 
 def test_assert_json_strict_failure_on_extra_key():
@@ -78,8 +76,4 @@ def test_assert_json_structure_failure():
 def test_assert_json_dotted_list_index_scope():
     payload = {"teams": [{"name": "Phoenix Suns", "sport": "basketball"}]}
     resp = make_response(200, payload)
-    resp.assert_json(
-        lambda j: j.has("teams", 1).has(
-            "teams.0", lambda team: team.where("name", "Phoenix Suns").etc()
-        )
-    )
+    resp.assert_json(lambda j: j.has("teams", 1).has("teams.0", lambda team: team.where("name", "Phoenix Suns").etc()))

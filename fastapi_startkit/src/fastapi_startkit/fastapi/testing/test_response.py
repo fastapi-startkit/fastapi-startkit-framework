@@ -47,10 +47,7 @@ class TestResponse:
     def assert_status(self, code: int) -> "TestResponse":
         """Assert the response has the given HTTP status code."""
         actual = self._response.status_code
-        assert actual == code, (
-            f"Expected status code [{code}] but received [{actual}]. "
-            f"Body: {self._response.text}"
-        )
+        assert actual == code, f"Expected status code [{code}] but received [{actual}]. Body: {self._response.text}"
         return self
 
     def assert_ok(self) -> "TestResponse":
@@ -88,9 +85,7 @@ class TestResponse:
             callback(fluent)
             fluent._verify()
         if exact is not None:
-            assert body == exact, (
-                f"JSON body does not match exactly.\nExpected: {exact!r}\nActual:   {body!r}"
-            )
+            assert body == exact, f"JSON body does not match exactly.\nExpected: {exact!r}\nActual:   {body!r}"
         return self
 
     def assert_json_structure(self, structure: Any) -> "TestResponse":
