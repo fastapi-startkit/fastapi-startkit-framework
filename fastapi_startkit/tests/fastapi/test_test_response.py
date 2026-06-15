@@ -61,3 +61,25 @@ def test_assert_json_exact():
     resp.assert_json(exact={"id": 1})
     with pytest.raises(AssertionError):
         resp.assert_json(exact={"id": 2})
+
+
+def test_assert_json_structure_wildcard():
+    payload = {"teams": [{"name": "Suns", "sport": "b"}, {"name": "Cardinals", "sport": "f"}]}
+    resp = make_response(200, payload)
+    resp.assert_ok().assert_json_structure({"teams": {"*": ["name", "sport"]}})
+
+
+def test_assert_json_structure_failure():
+    resp = make_response(200, {"teams": [{"name": "Suns"}]})
+    with pytest.raises(AssertionError):
+        resp.assert_json_structure({"teams": {"*": ["name", "sport"]}})
+
+
+def test_assert_json_dotted_list_index_scope():
+    payload = {"teams": [{"name": "Phoenix Suns", "sport": "basketball"}]}
+    resp = make_response(200, payload)
+    resp.assert_json(
+        lambda j: j.has("teams", 1).has(
+            "teams.0", lambda team: team.where("name", "Phoenix Suns").etc()
+        )
+    )

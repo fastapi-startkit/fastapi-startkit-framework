@@ -13,7 +13,10 @@ from typing import Any, Callable, Optional
 
 from httpx import Response
 
-from fastapi_startkit.fastapi.testing.assertable_json import AssertableJson
+from fastapi_startkit.fastapi.testing.assertable_json import (
+    AssertableJson,
+    assert_json_structure,
+)
 
 
 class TestResponse:
@@ -88,4 +91,17 @@ class TestResponse:
             assert body == exact, (
                 f"JSON body does not match exactly.\nExpected: {exact!r}\nActual:   {body!r}"
             )
+        return self
+
+    def assert_json_structure(self, structure: Any) -> "TestResponse":
+        """Assert the JSON body has the given key structure.
+
+        Use a ``"*"`` key to apply a nested structure to every element of a
+        list::
+
+            response.assert_json_structure({
+                "teams": {"*": ["name", "sport"]},
+            })
+        """
+        assert_json_structure(structure, self._response.json())
         return self

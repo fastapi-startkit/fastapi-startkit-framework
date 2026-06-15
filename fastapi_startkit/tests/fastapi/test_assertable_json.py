@@ -2,7 +2,10 @@
 
 import pytest
 
-from fastapi_startkit.fastapi.testing.assertable_json import AssertableJson
+from fastapi_startkit.fastapi.testing.assertable_json import (
+    AssertableJson,
+    assert_json_structure,
+)
 
 
 def aj(data):
@@ -172,13 +175,75 @@ def test_verify_nested_scope_enforced():
 
 
 # --------------------------------------------------------------------------- #
-# Phase-2 stubs
+# where_all_type
+# --------------------------------------------------------------------------- #
+def test_where_all_type():
+    data = {"name": "Phoenix Suns", "sport": "basketball"}
+    aj(data).where_all_type({"name": "string", "sport": "string"}).etc()
+
+
+def test_where_all_type_failure():
+    with pytest.raises(AssertionError):
+        aj({"name": "x", "rank": 1}).where_all_type({"name": "string", "rank": "string"})
+
+
+# --------------------------------------------------------------------------- #
+# Dotted keys that index into lists (e.g. "teams.0")
+# --------------------------------------------------------------------------- #
+def test_has_dotted_list_index_scope():
+    data = {"teams": [{"name": "Phoenix Suns", "sport": "basketball"}]}
+    aj(data).has("teams", 1).has(
+        "teams.0",
+        lambda team: team.where("name", "Phoenix Suns").etc(),
+    ).etc()
+
+
+def test_where_dotted_list_index():
+    data = {"teams": [{"name": "Phoenix Suns"}]}
+    aj(data).where("teams.0.name", "Phoenix Suns").etc()
+
+
+# --------------------------------------------------------------------------- #
+# assert_json_structure
+# --------------------------------------------------------------------------- #
+def test_structure_simple_list():
+    assert_json_structure(["name", "sport"], {"name": "x", "sport": "y"})
+
+
+def test_structure_missing_key_fails():
+    with pytest.raises(AssertionError) as exc:
+        assert_json_structure(["name", "sport"], {"name": "x"})
+    assert "sport" in str(exc.value)
+
+
+def test_structure_wildcard_over_list():
+    data = {"teams": [{"name": "a", "sport": "b"}, {"name": "c", "sport": "d"}]}
+    assert_json_structure({"teams": {"*": ["name", "sport"]}}, data)
+
+
+def test_structure_wildcard_failure():
+    data = {"teams": [{"name": "a", "sport": "b"}, {"name": "c"}]}
+    with pytest.raises(AssertionError) as exc:
+        assert_json_structure({"teams": {"*": ["name", "sport"]}}, data)
+    assert "teams.1" in str(exc.value)
+
+
+def test_structure_nested_dict():
+    data = {"user": {"profile": {"email": "a@b.com"}}}
+    assert_json_structure({"user": {"profile": ["email"]}}, data)
+
+
+def test_structure_leaf_none_presence():
+    assert_json_structure({"meta": None, "data": ["id"]}, {"meta": 1, "data": {"id": 5}})
+
+
+# --------------------------------------------------------------------------- #
+# Remaining phase-2 stubs
 # --------------------------------------------------------------------------- #
 def test_phase2_stubs_raise_not_implemented():
     for call in (
         lambda: aj({"a": [1]}).where_contains("a", 1),
         lambda: aj({"a": [1]}).count_between("a", 1, 2),
-        lambda: aj({"a": 1}).where_all_type({"a": "integer"}),
     ):
         with pytest.raises(NotImplementedError):
             call()

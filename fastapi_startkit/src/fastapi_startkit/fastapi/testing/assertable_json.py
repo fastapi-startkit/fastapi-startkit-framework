@@ -59,22 +59,31 @@ class AssertableJson:
         """Return the absolute dot-path to ``key`` for error messages."""
         return f"{self._path}.{key}" if self._path else str(key)
 
+    @staticmethod
+    def _step(node: Any, seg: str) -> tuple[bool, Any]:
+        """Descend one segment into a dict key or a list index."""
+        if isinstance(node, dict) and seg in node:
+            return True, node[seg]
+        if isinstance(node, list) and seg.lstrip("-").isdigit():
+            index = int(seg)
+            if -len(node) <= index < len(node):
+                return True, node[index]
+        return False, None
+
     def _exists(self, key: Any) -> bool:
         node = self._data
         for seg in str(key).split("."):
-            if not isinstance(node, dict) or seg not in node:
+            found, node = self._step(node, seg)
+            if not found:
                 return False
-            node = node[seg]
         return True
 
     def _get(self, key: Any) -> Any:
         """Resolve a (possibly dotted) ``key`` or raise with the full path."""
         node = self._data
         for seg in str(key).split("."):
-            assert isinstance(node, dict) and seg in node, (
-                f"Property [{self._full(key)}] does not exist."
-            )
-            node = node[seg]
+            found, node = self._step(node, seg)
+            assert found, f"Property [{self._full(key)}] does not exist."
         return node
 
     def _record(self, key: Any) -> None:
@@ -123,6 +132,12 @@ class AssertableJson:
         """Assert each ``{key: expected}`` pair via :meth:`where`."""
         for key, expected in bindings.items():
             self.where(key, expected)
+        return self
+
+    def where_all_type(self, bindings: dict) -> "AssertableJson":
+        """Assert each ``{key: type}`` pair via :meth:`where_type`."""
+        for key, expected in bindings.items():
+            self.where_type(key, expected)
         return self
 
     def where_type(self, key: str, expected: Union[str, list[str]]) -> "AssertableJson":
@@ -292,6 +307,43 @@ class AssertableJson:
         """TODO(phase-2): assert the size of ``key`` is within [min, max]."""
         raise NotImplementedError("count_between is planned for phase 2.")
 
-    def where_all_type(self, bindings: dict) -> "AssertableJson":  # pragma: no cover
-        """TODO(phase-2): assert each ``{key: type}`` pair via :meth:`where_type`."""
-        raise NotImplementedError("where_all_type is planned for phase 2.")
+
+def assert_json_structure(structure: Any, data: Any, path: str = "root") -> None:
+    """Assert that ``data`` contains the keys described by ``structure``.
+
+    ``structure`` may be:
+
+    * a list of leaf key names, e.g. ``["name", "sport"]`` — each must exist
+      on the object ``data``;
+    * a dict mapping a key to a nested structure, e.g.
+      ``{"teams": ["name", "sport"]}``;
+    * a ``"*"`` key whose value is applied to every element of a list, e.g.
+      ``{"teams": {"*": ["name", "sport"]}}``.
+
+    A leaf may map to ``None`` in dict form to assert presence only.
+    """
+    if isinstance(structure, list):
+        for value in structure:
+            if isinstance(value, (list, dict)):
+                assert_json_structure(value, data, path)
+            else:
+                assert isinstance(data, dict) and value in data, (
+                    f"Missing key [{value}] at [{path}]."
+                )
+        return
+
+    if isinstance(structure, dict):
+        for key, value in structure.items():
+            if key == "*":
+                assert isinstance(data, list), f"Expected a list at [{path}]."
+                for index, item in enumerate(data):
+                    assert_json_structure(value, item, f"{path}.{index}")
+            else:
+                assert isinstance(data, dict) and key in data, (
+                    f"Missing key [{key}] at [{path}]."
+                )
+                if value is not None:
+                    assert_json_structure(value, data[key], f"{path}.{key}")
+        return
+
+    raise TypeError(f"Invalid structure node at [{path}]: {structure!r}")
