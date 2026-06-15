@@ -1,6 +1,6 @@
 """A thin, chainable wrapper around ``httpx.Response`` for HTTP tests.
 
-:class:`TestResponse` adds Laravel-style assertion helpers
+:class:`TestResponse` adds assertion helpers
 (``assert_status``, ``assert_ok``, ``assert_json``) while transparently
 delegating every other attribute/method to the underlying ``httpx.Response``
 via ``__getattr__``. Existing tests that read ``response.status_code`` or call

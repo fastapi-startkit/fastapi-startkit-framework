@@ -1,8 +1,7 @@
-"""Laravel-style fluent JSON assertions for HTTP tests.
+"""Fluent JSON assertions for HTTP tests.
 
 Provides :class:`AssertableJson`, a chainable wrapper around a decoded JSON
-body (``dict``/``list``) that mirrors Laravel's
-``Illuminate\\Testing\\Fluent\\AssertableJson``.
+body (``dict``/``list``).
 
 Example::
 
@@ -16,11 +15,11 @@ Example::
             .etc()
     ))
 
-Every ``where``/``has`` call records an *interaction* with the touched key.
+Every ``where``/``has`` call records an interaction with the touched key.
 When an assertion scope closes, :meth:`AssertableJson._verify` asserts that
 every property of an object was interacted with — unless :meth:`etc` was
-called to acknowledge the remaining keys. This catches unexpected/extra keys
-in responses, matching Laravel's strict behaviour.
+called to acknowledge the remaining keys. This catches unexpected or extra
+keys in responses.
 """
 
 from __future__ import annotations
@@ -283,7 +282,7 @@ class AssertableJson:
             )
 
     # ------------------------------------------------------------------ #
-    # Phase-2 / TODO — kept as explicit stubs for parity with Laravel.
+    # Phase-2 / TODO — explicit stubs.
     # ------------------------------------------------------------------ #
     def where_contains(self, key: str, expected: Any) -> "AssertableJson":  # pragma: no cover
         """TODO(phase-2): assert the collection at ``key`` contains ``expected``."""
