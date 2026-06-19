@@ -13,36 +13,76 @@ from fastapi_startkit.fastapi import Router
 router = Router()
 ```
 
-and use the crud resources, for example
+and register routes explicitly, for example
 ```python
+router.get("/users", users_controller.index)
 router.post("/users", users_controller.store)
+router.get("/users/{user_id}", users_controller.show)
 router.put("/users/{user_id}", users_controller.update)
-router.patch("/users/{user_id}", users_controller.patch)
-router.delete("/users", users_controller.destroy)
+router.patch("/users/{user_id}", users_controller.update)
+router.delete("/users/{user_id}", users_controller.destroy)
 ```
 
-the controller will look like
+### Resourceful controllers
+
+Prefer `router.resource()` to register the seven standard CRUD routes in one
+call. It maps to a **resourceful controller** with these methods:
+
+| Method    | Verb & URI                  | Purpose                          |
+|-----------|-----------------------------|----------------------------------|
+| `index`   | GET `/users`                | List the collection              |
+| `create`  | GET `/users/create`         | Show the "new" form              |
+| `store`   | POST `/users`               | Persist a new record             |
+| `show`    | GET `/users/{user}`         | Show a single record             |
+| `edit`    | GET `/users/{user}/edit`    | Show the "edit" form             |
+| `update`  | PUT/PATCH `/users/{user}`   | Persist changes to a record      |
+| `destroy` | DELETE `/users/{user}`      | Delete a record                  |
+
+```python
+# routes/web.py
+router.resource("users", users_controller)
+
+# subset / exclusions
+router.resource("users", users_controller, only=['index', 'show'])
+router.resource("users", users_controller, excepts=['create', 'edit'])
+```
+
+A full resourceful controller mirrors those seven methods exactly:
 ```python
 # app/http/controllers/users_controller.py
-async def index(request: Request):
-    pass
+from fastapi_startkit.jsonapi import JsonResource
 
-async def show(user_id: int):
-    pass
+from app.models import User
+from app.http.requests.user_store_request import UserStoreRequest
 
-async def store(data: UserSchema):
-    pass
+async def index():
+    users = await User.all()
+    return JsonResource.collection(users)
 
-async def update(user_id: int, data: UserSchema):
-    pass
+async def create():
+    # render/return the "create" form payload
+    ...
 
-async def destroy(user_id: int):
-    pass
-```
+async def store(request: UserStoreRequest):
+    user = await User.create(request.model_dump())
+    return JsonResource(user)
 
-or use the resource function as:
-```python
-router.resource("users", users_controller, excepts=['create', 'edit'])
+async def show(user: int):
+    return JsonResource(await User.find_or_fail(user))
+
+async def edit(user: int):
+    # render/return the "edit" form payload for the record
+    return JsonResource(await User.find_or_fail(user))
+
+async def update(user: int, request: UserStoreRequest):
+    record = await User.find_or_fail(user)
+    await record.update(request.model_dump())
+    return JsonResource(record)
+
+async def destroy(user: int):
+    record = await User.find_or_fail(user)
+    await record.delete()
+    return JsonResource(record)
 ```
 
 ## ORM
