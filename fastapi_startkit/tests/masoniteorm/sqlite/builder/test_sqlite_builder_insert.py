@@ -51,4 +51,5 @@ class TestQueryBuilderInsert(TestCase):
         await User.insert([{"name": "Alice"}, {"name": "Bob"}])
         mock_insert.assert_called_once()
         sql, bindings = mock_insert.call_args[0]
-        self.assertIn('INSERT INTO', sql)
+        self.assertEqual(sql, 'INSERT INTO "users" ("name") VALUES (?), (?)')
+        self.assertEqual(list(bindings), ["Alice", "Bob"])
