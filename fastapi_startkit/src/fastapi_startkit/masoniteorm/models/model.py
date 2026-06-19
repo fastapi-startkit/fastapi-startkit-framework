@@ -310,6 +310,20 @@ class Model(Attribute, Relationship, ObservesEvents):
         return await cls.query().update_or_create(search, attributes)
 
     @classmethod
+    async def upsert(
+        cls,
+        values: dict | list,
+        unique_by: str | list,
+        update: list | None = None,
+    ) -> int:
+        """Bulk insert ``values``, updating existing rows on a ``unique_by`` conflict.
+
+        Emits a single dialect-correct statement (postgres/sqlite ON CONFLICT,
+        mysql ON DUPLICATE KEY UPDATE). Returns the number of affected rows.
+        """
+        return await cls.query().upsert(values, unique_by, update)
+
+    @classmethod
     async def create(cls, attributes: dict):
         instance = cls().new_model_instance(attributes)
         await instance.save()

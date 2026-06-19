@@ -111,6 +111,21 @@ class Connection:
         result = await self.execute(query, bindings)
         return getattr(result, "lastrowid", None)
 
+    async def upsert(self, statement) -> int:
+        """Execute a prepared SQLAlchemy upsert construct.
+
+        ``statement`` is a fully-bound Core ``Insert`` construct (the dialect
+        specific ON CONFLICT / ON DUPLICATE KEY clause is already attached), so
+        no extra bindings are needed. Returns the number of affected rows.
+        """
+        conn = await self.get_connection()
+        result = await conn.execute(statement)
+
+        if not self.transactions:
+            await conn.commit()
+
+        return result.rowcount
+
     async def update(self, query: str, bindings: list | None = None) -> int:
         result = await self.execute(query, bindings)
 

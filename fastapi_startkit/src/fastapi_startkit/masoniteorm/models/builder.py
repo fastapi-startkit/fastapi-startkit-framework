@@ -1,6 +1,8 @@
 import inspect
 from typing import TYPE_CHECKING, Any
 
+import pendulum
+
 from fastapi_startkit.masoniteorm.expressions.expressions import (
     JoinClause,
     QueryExpression,
@@ -317,6 +319,101 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
         bindings = self.clean_bindings(values)
 
         return await self.connection.insert_get_id(sql, bindings)
+
+    async def upsert(
+        self,
+        values: dict | list,
+        unique_by: str | list,
+        update: list | None = None,
+    ) -> int:
+        """Eloquent-style bulk upsert emitting a single dialect-correct statement.
+
+        - postgres / sqlite: ``INSERT ... ON CONFLICT (unique_by) DO UPDATE SET ...``
+        - mysql:             ``INSERT ... ON DUPLICATE KEY UPDATE ...``
+
+        Arguments:
+            values -- A dict or list of dicts to insert or update.
+            unique_by -- Column name(s) used to detect a conflict.
+            update -- Columns to write on conflict. Defaults to every provided
+                column except the ``unique_by`` keys.
+
+        Returns:
+            The number of rows affected.
+        """
+        self.set_action("bulk_create")
+
+        if not values:
+            return 0
+
+        if isinstance(values, dict):
+            values = [values]
+
+        if isinstance(unique_by, str):
+            unique_by = [unique_by]
+
+        statement = self._build_upsert_statement(values, unique_by, update)
+        return await self.connection.upsert(statement)
+
+    def _build_upsert_statement(self, values: list, unique_by: list, update: list | None):
+        """Build a dialect-specific SQLAlchemy upsert construct for ``values``."""
+        from sqlalchemy import column as sa_column, table as sa_table
+
+        caster = getattr(self._model, "caster", None)
+        casts = getattr(caster, "casts", {}) or {}
+
+        # Apply set-casts the same way the insert path does (get_attributes_for_insert).
+        def cast_row(row: dict) -> dict:
+            return {key: caster.set(key, value) if key in casts else value for key, value in row.items()}
+
+        rows = [cast_row(row) for row in values]
+
+        # SQLAlchemy needs a consistent column set across every row for a single
+        # multi-row VALUES clause; missing keys default to NULL.
+        columns = sorted({key for row in rows for key in row})
+        rows = [{key: row.get(key) for key in columns} for row in rows]
+
+        # Default the update set to everything but the conflict keys.
+        candidate_update = columns if update is None else update
+        update_columns = [col for col in candidate_update if col not in unique_by]
+
+        # Refresh updated_at on the UPDATE branch only — keeps the INSERT branch
+        # consistent with the current insert() path, which never injects timestamps.
+        refresh_updated_at = bool(getattr(self._model, "__timestamps__", False)) and "updated_at" in casts
+
+        # Every column the statement references must exist on the table construct.
+        table_columns = list(dict.fromkeys([*columns, *update_columns]))
+        if refresh_updated_at and "updated_at" not in table_columns:
+            table_columns.append("updated_at")
+
+        target = sa_table(self._table, *[sa_column(name) for name in table_columns])
+        dialect = self.connection.engine.dialect.name
+
+        if dialect == "mysql":
+            from sqlalchemy.dialects.mysql import insert as mysql_insert
+
+            statement = mysql_insert(target).values(rows)
+            set_ = {col: statement.inserted[col] for col in update_columns}
+            if refresh_updated_at:
+                set_["updated_at"] = caster.set("updated_at", pendulum.now("UTC"))
+            if not set_:
+                # Nothing to update — emulate a no-op so the statement stays valid.
+                set_ = {unique_by[0]: statement.inserted[unique_by[0]]}
+            return statement.on_duplicate_key_update(set_)
+
+        if dialect in ("postgresql", "postgres"):
+            from sqlalchemy.dialects.postgresql import insert as conflict_insert
+        elif dialect == "sqlite":
+            from sqlalchemy.dialects.sqlite import insert as conflict_insert
+        else:
+            raise NotImplementedError(f"upsert() is not supported for the '{dialect}' driver.")
+
+        statement = conflict_insert(target).values(rows)
+        set_ = {col: statement.excluded[col] for col in update_columns}
+        if refresh_updated_at:
+            set_["updated_at"] = caster.set("updated_at", pendulum.now("UTC"))
+        if not set_:
+            return statement.on_conflict_do_nothing(index_elements=unique_by)
+        return statement.on_conflict_do_update(index_elements=unique_by, set_=set_)
 
     async def update(self, values: dict) -> int:
         updates = [UpdateQueryExpression(col, val) for col, val in values.items()]
