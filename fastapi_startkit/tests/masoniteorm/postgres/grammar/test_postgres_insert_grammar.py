@@ -27,8 +27,7 @@ class TestPostgresInsertGrammar(unittest.TestCase):
 
         self.assertEqual(
             sql,
-            'INSERT INTO "users" ("name", "email") VALUES '
-            "('Joe', 'joe@example.com'), ('Bob', 'bob@example.com')",
+            "INSERT INTO \"users\" (\"name\", \"email\") VALUES ('Joe', 'joe@example.com'), ('Bob', 'bob@example.com')",
         )
 
 
