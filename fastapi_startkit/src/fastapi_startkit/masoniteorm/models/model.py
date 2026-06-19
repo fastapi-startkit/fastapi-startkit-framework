@@ -316,6 +316,10 @@ class Model(Attribute, Relationship, ObservesEvents):
 
         return instance
 
+    @classmethod
+    async def insert(cls, values: dict | list) -> int | None:
+        return await cls.query().insert(values)
+
     async def update(self, attributes: dict) -> bool:
         if not self._exists:
             return False

@@ -38,3 +38,18 @@ class TestQueryBuilderInsert(TestCase):
         sql, bindings = mock_insert.call_args[0]
         self.assertEqual(sql, 'INSERT INTO "users" ("name") VALUES (?), (?), (?)')
         self.assertEqual(list(bindings), ["Joe", "Bill", "John"])
+
+    async def test_insert_classmethod_single_row(self):
+        await User.insert({"email": "classmethod@test.com", "name": "CM User", "is_admin": False})
+        user = await User.where("email", "classmethod@test.com").first()
+        assert user is not None
+        assert user.name == "CM User"
+
+    async def test_insert_classmethod_bulk_rows(self):
+        mock_insert = AsyncMock(return_value=2)
+        DB.connection("sqlite").insert = mock_insert
+        await User.insert([{"name": "Alice"}, {"name": "Bob"}])
+        mock_insert.assert_called_once()
+        sql, bindings = mock_insert.call_args[0]
+        self.assertEqual(sql, 'INSERT INTO "users" ("name") VALUES (?), (?)')
+        self.assertEqual(list(bindings), ["Alice", "Bob"])
