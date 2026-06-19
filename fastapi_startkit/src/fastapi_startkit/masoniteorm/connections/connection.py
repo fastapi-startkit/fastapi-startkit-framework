@@ -102,6 +102,20 @@ class Connection:
 
         return result
 
+    async def execute_statement(self, statement):
+        """Execute a SQLAlchemy core construct (not a raw SQL string).
+
+        Used for dialect-specific statements such as upserts where the SQL is
+        built with SQLAlchemy's dialect helpers rather than the grammar.
+        """
+        conn = await self.get_connection()
+        result = await conn.execute(statement)
+
+        if not self.transactions:
+            await conn.commit()
+
+        return result
+
     async def insert(self, query: str, bindings: list | None = None) -> int | None:
         result = await self.execute(query, bindings)
 

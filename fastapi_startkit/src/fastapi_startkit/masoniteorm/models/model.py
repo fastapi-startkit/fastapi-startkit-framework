@@ -316,6 +316,15 @@ class Model(Attribute, Relationship, ObservesEvents):
 
         return instance
 
+    @classmethod
+    async def upsert(
+        cls,
+        values: dict | list[dict],
+        unique_by: str | list[str],
+        update: str | list[str] | None = None,
+    ) -> int:
+        return await cls.query().upsert(values, unique_by, update)
+
     async def update(self, attributes: dict) -> bool:
         if not self._exists:
             return False

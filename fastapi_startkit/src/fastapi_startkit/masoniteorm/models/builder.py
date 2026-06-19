@@ -308,6 +308,63 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
         bindings = [val for row in values for val in row.values()]
         return await self.connection.insert(sql, bindings)
 
+    async def upsert(
+        self,
+        values: dict | list[dict],
+        unique_by: str | list[str],
+        update: str | list[str] | None = None,
+    ) -> int:
+        """Insert rows in a single statement, updating on a unique-key collision.
+
+        Mirrors Eloquent's ``upsert``: every row is inserted in one bulk
+        statement; when a row collides on ``unique_by`` the columns in
+        ``update`` are updated instead. When ``update`` is omitted, every
+        non-unique column is updated. The SQL is dialect-specific (Postgres /
+        SQLite ``ON CONFLICT`` and MySQL ``ON DUPLICATE KEY UPDATE``).
+        """
+        from fastapi_startkit.masoniteorm.query.upsert import build_upsert_statement
+
+        if not values:
+            return 0
+
+        if isinstance(values, dict):
+            values = [values]
+        if isinstance(unique_by, str):
+            unique_by = [unique_by]
+        if isinstance(update, str):
+            update = [update]
+
+        rows = [self._cast_upsert_row(row) for row in self._normalize_upsert_rows(values)]
+
+        if update is None:
+            update = [column for column in rows[0] if column not in unique_by]
+
+        statement = build_upsert_statement(
+            self.connection.config["driver"],
+            self.get_table_name(),
+            rows,
+            unique_by,
+            update,
+        )
+        result = await self.connection.execute_statement(statement)
+        return result.rowcount
+
+    def _normalize_upsert_rows(self, values: list[dict]) -> list[dict]:
+        """Give every row an identical, deterministically ordered column set."""
+        columns: list[str] = []
+        for row in values:
+            for key in row:
+                if key not in columns:
+                    columns.append(key)
+        return [{column: row.get(column) for column in columns} for row in values]
+
+    def _cast_upsert_row(self, row: dict) -> dict:
+        model = getattr(self, "_model", None)
+        caster = getattr(model, "caster", None)
+        if caster is None:
+            return dict(row)
+        return {key: caster.set(key, value) for key, value in row.items()}
+
     async def insert_get_id(
         self,
         values: dict[str, Any] | list[dict[str, Any]],
