@@ -317,18 +317,7 @@ class Model(Attribute, Relationship, ObservesEvents):
         return instance
 
     @classmethod
-    async def insert(cls, values):
-        """Bulk-insert one or many rows without instantiating model instances.
-
-        Unlike `create`, this does NOT fire model events, apply timestamps,
-        or return model instances. Use for high-volume seed/batch operations.
-
-        Args:
-            values: A single dict OR a list of dicts, each representing a row.
-
-        Returns:
-            The number of rows inserted (driver-dependent), or None.
-        """
+    async def insert(cls, values: dict | list) -> int | None:
         return await cls.query().insert(values)
 
     async def update(self, attributes: dict) -> bool:
