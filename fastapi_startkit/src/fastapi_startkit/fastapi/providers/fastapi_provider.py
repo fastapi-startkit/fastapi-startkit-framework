@@ -24,8 +24,11 @@ class FastAPIProvider(Provider):
     def boot(self):
         import os
 
+        from fastapi_startkit.fastapi.middleware import RequestContextMiddleware
+
         self.commands([ServeCommand])
         self._register_exception_handlers()
+        self.app.add_middleware(RequestContextMiddleware)
 
         source = os.path.abspath(os.path.join(os.path.dirname(__file__), "../config/fastapi.py"))
         self.publishes({source: "config/fastapi.py"})
