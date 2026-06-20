@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING
 
 from fastapi_startkit.masoniteorm.models import Model
-from fastapi_startkit.masoniteorm.relationships import HasMany, HasManyThrough
+from fastapi_startkit.masoniteorm import HasMany, HasManyThrough
 
 if TYPE_CHECKING:
     from app.models.course import Course
