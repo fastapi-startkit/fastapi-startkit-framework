@@ -28,6 +28,25 @@ class ViteProvider(Provider):
 
         self.app.bind("vite", vite)
 
+        self.register_templates(config)
+
+    def register_templates(self, config: ViteConfig) -> None:
+        # Provide a template engine out of the box so fresh apps can render
+        # views and have the vite() globals injected during boot. An existing
+        # binding always wins, keeping this backward-compatible.
+        if not config.template or self.app.has("templates"):
+            return
+
+        try:
+            from starlette.templating import Jinja2Templates
+        except ImportError as exc:
+            raise ImportError(
+                "Rendering templates requires Jinja2. Install it with: pip install fastapi-startkit[vite]"
+            ) from exc
+
+        templates_dir = self.app.base_path / config.templates_directory
+        self.app.bind("templates", Jinja2Templates(directory=str(templates_dir)))
+
     def boot(self) -> None:
         vite: Vite = self.app.make("vite")
         config = self.app.make("config").get(self.provider_key)
