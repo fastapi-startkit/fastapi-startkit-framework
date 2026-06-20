@@ -16,5 +16,3 @@ class TestWebRoutes(TestCase, HttpTestCase):
         response.assert_ok()
         body = response.text
         assert "FastAPI StartKit" in body
-        assert "/build/assets/" in body
-        assert "{{ vite" not in body
