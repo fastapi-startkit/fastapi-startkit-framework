@@ -28,6 +28,25 @@ class ViteProvider(Provider):
 
         self.app.bind("vite", vite)
 
+        self.register_templates(config)
+
+    def register_templates(self, config: ViteConfig) -> None:
+        # Bind a Jinja2 template engine out of the box so fresh apps can render
+        # views and receive the vite() globals during boot. An existing
+        # "templates" binding always wins, keeping this backward-compatible.
+        if not config.template or self.app.has("templates"):
+            return
+
+        try:
+            from starlette.templating import Jinja2Templates
+        except ImportError as exc:
+            raise ImportError(
+                "Rendering Vite templates requires Jinja2. Install it with: pip install fastapi-startkit[vite]"
+            ) from exc
+
+        templates_dir = self.app.base_path / config.templates_directory
+        self.app.bind("templates", Jinja2Templates(directory=str(templates_dir)))
+
     def boot(self) -> None:
         vite: Vite = self.app.make("vite")
         config = self.app.make("config").get(self.provider_key)
@@ -48,7 +67,7 @@ class ViteProvider(Provider):
                 os.path.join(stubs_path, "tsconfig.json"): "tsconfig.json",
                 os.path.join(stubs_path, "resources/js/app.ts"): "resources/js/app.ts",
                 os.path.join(stubs_path, "resources/css/app.css"): "resources/css/app.css",
-                os.path.join(stubs_path, "templates/index.html"): "templates/index.html",
+                os.path.join(stubs_path, "resources/templates/index.html"): "resources/templates/index.html",
             }
         )
 
