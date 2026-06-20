@@ -298,3 +298,26 @@ class TestFlush:
         vite("resources/js/app.js")
         vite.flush()
         assert vite.preloaded_assets() == {}
+
+
+# ---------------------------------------------------------------------------
+# Package-root re-exports
+# ---------------------------------------------------------------------------
+
+
+class TestViteConfigExport:
+    def test_viteconfig_importable_from_package_root(self):
+        from fastapi_startkit.vite import ViteConfig
+
+        assert ViteConfig is not None
+
+    def test_viteconfig_is_same_class_as_config_module(self):
+        from fastapi_startkit.vite import ViteConfig
+        from fastapi_startkit.vite.config.vite import ViteConfig as ConfigViteConfig
+
+        assert ViteConfig is ConfigViteConfig
+
+    def test_viteconfig_in_package_all(self):
+        import fastapi_startkit.vite as vite_pkg
+
+        assert "ViteConfig" in vite_pkg.__all__
