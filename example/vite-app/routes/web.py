@@ -1,14 +1,15 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
-
-from fastapi_startkit.vite import template
 
 web = APIRouter()
 
 
 @web.get("/", response_class=HTMLResponse)
-async def index():
-    return template("index.html")
+async def index(request: Request):
+    from bootstrap.application import app
+
+    templates = app.make("templates")
+    return templates.TemplateResponse(request, "index.html")
 
 
 @web.get("/api/health")
