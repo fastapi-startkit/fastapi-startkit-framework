@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, time, date
 from fastapi_startkit.carbon.carbon import Carbon
 from tests.masoniteorm.fixtures.casts import Address
 from fastapi_startkit.masoniteorm import ModelField, Field
-from fastapi_startkit.masoniteorm.relationships import (
+from fastapi_startkit.masoniteorm import (
     HasOne,
     BelongsTo,
     HasMany,

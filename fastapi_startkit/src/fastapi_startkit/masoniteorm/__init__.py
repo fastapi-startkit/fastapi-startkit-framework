@@ -7,7 +7,19 @@ from .migrations.Migrator import Migrator
 from .models import Model
 from .models.fields import CreatedAtField, DateTimeField, Field, ModelField, UpdatedAtField
 from .providers import DatabaseProvider
-from .relationships import BelongsTo, BelongsToMany, HasMany, HasManyThrough, HasOne, HasOneThrough, MorphTo
+from .relationships import (
+    BaseRelationship,
+    BelongsTo,
+    BelongsToMany,
+    HasMany,
+    HasManyThrough,
+    HasOne,
+    HasOneThrough,
+    MorphMany,
+    MorphOne,
+    MorphTo,
+    MorphToMany,
+)
 
 __all__ = [
     "DatabaseProvider",
@@ -26,6 +38,7 @@ __all__ = [
     "UpdatedAtField",
     "Field",
     # Relationships
+    "BaseRelationship",
     "HasOne",
     "BelongsTo",
     "HasMany",
@@ -33,4 +46,7 @@ __all__ = [
     "BelongsToMany",
     "HasOneThrough",
     "MorphTo",
+    "MorphMany",
+    "MorphOne",
+    "MorphToMany",
 ]
