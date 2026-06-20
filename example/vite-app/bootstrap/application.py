@@ -12,7 +12,7 @@ app: Application = Application(
         LogProvider,
         FastAPIProvider,
         # ViteProvider auto-binds a Jinja2Templates engine (with the vite()
-        # globals injected) at the configured templates directory.
-        (ViteProvider, {"templates_directory": "templates"}),
+        # globals injected) from resources/templates, its default directory.
+        ViteProvider,
     ],
 )
