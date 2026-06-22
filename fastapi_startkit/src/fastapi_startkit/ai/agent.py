@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import fnmatch
-from typing import Any, Callable, Iterator, Optional, Type
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Optional, Type
 
 from .document import Document
 from .response import AgentResponse, AgentSnapshot
+
+if TYPE_CHECKING:
+    from langchain_core.messages import AIMessage
 
 
 class Agent:
@@ -39,7 +42,7 @@ class Agent:
     }
 
     def __init__(self):
-        self._fakes: dict[str, AgentResponse | AgentSnapshot] = {}
+        self._fakes: dict[str, AgentResponse | AgentSnapshot | "AIMessage"] = {}
         self._call_log: list[dict] = []
 
     # ── Lifecycle — override in subclasses ──────────────────────────────────
@@ -97,10 +100,7 @@ class Agent:
 
         match = self._match_fake(message)
         if match is not None:
-            if isinstance(match, AgentSnapshot):
-                response = match.resolve(self, message, **_run_kwargs)
-            else:
-                response = match
+            response = self._resolve_fake(match, message, _run_kwargs)
             self._log_call("prompt", message)
             return self.after(response)
 
@@ -124,19 +124,44 @@ class Agent:
         self._log_call("stream", message)
         fake = self._match_fake(message)
         if fake is not None:
-            if isinstance(fake, AgentSnapshot):
-                response = fake.resolve(self, message)
-            else:
-                response = fake
+            response = self._resolve_fake(fake, message)
             yield response.content
             return
         yield from self._stream(message, system=system, model=model, provider_options=provider_options)
 
-    def fake(self, patterns: dict[str, AgentResponse | AgentSnapshot]) -> "Agent":
-        """Register fake responses for testing. Keys are glob patterns."""
+    def fake(self, patterns: dict[str, "AgentResponse | AgentSnapshot | AIMessage"]) -> "Agent":
+        """Register fake responses for testing. Keys are glob patterns.
+
+        A value may be an :class:`AgentResponse`, an :class:`AgentSnapshot`
+        (record/replay), or a LangChain ``AIMessage`` (converted on match,
+        preserving ``content`` and ``tool_calls``). When a prompt matches a
+        pattern the agent returns the fake without ever calling the provider.
+        """
         for pattern, value in patterns.items():
             self._fakes[pattern] = value
         return self
+
+    def record(self, path: str, *, pattern: str = "*") -> "Agent":
+        """Record-and-replay (VCR style) for prompts matching ``pattern``.
+
+        On the first run the real provider is called and the response is saved to
+        ``path``; every later run replays that recording without hitting the API.
+        Returns ``self`` for chaining.
+        """
+        self._fakes[pattern] = AgentSnapshot(path=path)
+        return self
+
+    @staticmethod
+    def fake_model(turns: Iterable[Any]):
+        """Return a LangChain fake chat model that replays ``turns`` in order.
+
+        Pass it to ``langchain.agents.create_agent(model=..., tools=[...])`` to run
+        a full agent loop — tool calls included — offline. Requires the
+        ``langchain`` extra. See :func:`fastapi_startkit.ai.fakes.fake_chat_model`.
+        """
+        from .fakes import fake_chat_model
+
+        return fake_chat_model(turns)
 
     def assert_prompted(self, times: int | None = None) -> None:
         """Assert that prompt() or stream() was called."""
@@ -158,11 +183,24 @@ class Agent:
 
     # ── Internal helpers ────────────────────────────────────────────────────
 
-    def _match_fake(self, message: str) -> Optional[AgentResponse | AgentSnapshot]:
+    def _match_fake(self, message: str) -> Optional[Any]:
         for pattern, value in self._fakes.items():
             if fnmatch.fnmatch(message.lower(), pattern.lower()):
                 return value
         return None
+
+    def _resolve_fake(self, match: Any, message: str, run_kwargs: dict | None = None) -> AgentResponse:
+        """Turn a registered fake into an AgentResponse without calling the provider."""
+        if isinstance(match, AgentSnapshot):
+            return match.resolve(self, message, **(run_kwargs or {}))
+        if isinstance(match, AgentResponse):
+            return match
+
+        from .fakes import is_ai_message, to_agent_response
+
+        if is_ai_message(match):
+            return to_agent_response(match)
+        raise TypeError(f"Unsupported fake value: {type(match)!r}")
 
     def _log_call(self, method: str, message: str) -> None:
         self._call_log.append({"method": method, "message": message})
