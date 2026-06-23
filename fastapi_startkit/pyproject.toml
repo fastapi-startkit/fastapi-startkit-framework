@@ -51,9 +51,6 @@ ai = [
     "anthropic>=0.49.0",
     "openai>=1.0.0",
     "google-generativeai>=0.8.0",
-]
-
-langgraph = [
     "langchain>=1.0.0",
     "langchain-core>=1.0.0",
     "langgraph>=1.0.0",

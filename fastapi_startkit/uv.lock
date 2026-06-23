@@ -609,6 +609,9 @@ dependencies = [
 ai = [
     { name = "anthropic" },
     { name = "google-generativeai" },
+    { name = "langchain" },
+    { name = "langchain-core" },
+    { name = "langgraph" },
     { name = "openai" },
 ]
 database = [
@@ -622,11 +625,6 @@ fastapi = [
 inertia = [
     { name = "jinja2" },
     { name = "markupsafe" },
-]
-langgraph = [
-    { name = "langchain" },
-    { name = "langchain-core" },
-    { name = "langgraph" },
 ]
 mysql = [
     { name = "aiomysql" },
@@ -677,9 +675,9 @@ requires-dist = [
     { name = "itsdangerous", marker = "extra == 'fastapi'", specifier = ">=2.2.0" },
     { name = "jinja2", marker = "extra == 'inertia'", specifier = ">=3.1" },
     { name = "jinja2", marker = "extra == 'vite'", specifier = ">=3.1" },
-    { name = "langchain", marker = "extra == 'langgraph'", specifier = ">=1.0.0" },
-    { name = "langchain-core", marker = "extra == 'langgraph'", specifier = ">=1.0.0" },
-    { name = "langgraph", marker = "extra == 'langgraph'", specifier = ">=1.0.0" },
+    { name = "langchain", marker = "extra == 'ai'", specifier = ">=1.0.0" },
+    { name = "langchain-core", marker = "extra == 'ai'", specifier = ">=1.0.0" },
+    { name = "langgraph", marker = "extra == 'ai'", specifier = ">=1.0.0" },
     { name = "markupsafe", marker = "extra == 'inertia'", specifier = ">=2.0" },
     { name = "openai", marker = "extra == 'ai'", specifier = ">=1.0.0" },
     { name = "pendulum", specifier = ">=3.1.0,<4.0.0" },
@@ -687,7 +685,7 @@ requires-dist = [
     { name = "requests", specifier = ">=2.32.5,<3.0.0" },
     { name = "sqlalchemy", extras = ["asyncio"], marker = "extra == 'database'", specifier = ">=2.0.38" },
 ]
-provides-extras = ["fastapi", "database", "sqlite", "postgres", "mysql", "vite", "inertia", "ai", "langgraph"]
+provides-extras = ["fastapi", "database", "sqlite", "postgres", "mysql", "vite", "inertia", "ai"]
 
 [package.metadata.requires-dev]
 dev = [

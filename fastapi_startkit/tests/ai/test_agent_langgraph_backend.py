@@ -45,8 +45,7 @@ def search_jobs(query: str) -> str:
 
 
 class JobAssistant(Agent):
-    def messages(self):
-        return [{"role": "system", "content": "You help users find jobs."}]
+    _instructions = "You help users find jobs."
 
     def tools(self):
         return [search_jobs]
@@ -135,6 +134,32 @@ def test_resolve_model_falls_back_to_lab_default():
 
 def test_resolve_model_prefers_explicit_override():
     assert Agent()._resolve_model("my-model") == "my-model"
+
+
+def test_instructions_come_from_the_attribute_not_messages():
+    agent = JobAssistant()
+
+    resolved_system, history = agent._build_messages("find me a job")
+
+    assert resolved_system == "You help users find jobs."
+    # messages() is conversation-only; no system entry leaks into history.
+    assert all(m.get("role") != "system" for m in history)
+
+
+def test_instructions_can_be_a_method_override():
+    class DynamicAgent(Agent):
+        def instructions(self) -> str:
+            return "Computed identity."
+
+    resolved_system, _history = DynamicAgent()._build_messages("hi")
+
+    assert resolved_system == "Computed identity."
+
+
+def test_no_instructions_resolves_to_none():
+    resolved_system, _history = Agent()._build_messages("hi")
+
+    assert resolved_system is None
 
 
 def test_build_messages_inlines_text_attachment():

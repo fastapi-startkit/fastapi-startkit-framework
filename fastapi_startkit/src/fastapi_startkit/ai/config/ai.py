@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 
 from fastapi_startkit.environment import env
 
-from .config import AnthropicConfig, ElevenLabsConfig, GoogleConfig, OpenAIConfig
+from fastapi_startkit.ai import AnthropicConfig, ElevenLabsConfig, GoogleConfig, OpenAIConfig
 
 
 @dataclass

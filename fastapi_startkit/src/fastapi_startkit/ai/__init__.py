@@ -1,7 +1,8 @@
 from .agent import Agent
 from .audio import Audio, AudioResponse
 from .audio_factory import AudioFactory
-from .config import AIConfig, AnthropicConfig, ElevenLabsConfig, GoogleConfig, OpenAIConfig
+from .config.config import AnthropicConfig, ElevenLabsConfig, GoogleConfig, OpenAIConfig
+from .config.ai import AIConfig
 from .decorators import max_steps, max_tokens, memory, model, provider, timeout, top_p
 from .document import Document
 from .fakes import fake_chat_model

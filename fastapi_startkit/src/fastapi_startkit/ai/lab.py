@@ -1,19 +1,6 @@
-"""Lab — resolve the active provider, model, and LangChain model URL from config.
-
-The ``ai`` config selects a default provider per modality (``ai.default`` for text,
-``ai.default_image`` / ``ai.default_audio`` / ``ai.default_transcribe``) and stores
-each provider's default models under ``ai.providers.<name>.models``. ``Lab`` reads
-those and builds the ``"<provider>:<model>"`` string LangChain's ``init_chat_model``
-and ``create_agent`` understand.
-"""
-
 from enum import StrEnum
 
-
-def _config():
-    from fastapi_startkit import Config  # noqa: PLC0415
-
-    return Config
+from fastapi_startkit import Config
 
 
 class ModelType(StrEnum):
@@ -39,9 +26,12 @@ class Lab(StrEnum):
     ANTHROPIC = "anthropic"
     ELEVENLABS = "elevenlabs"
 
+    def get_api_key(self) -> str:
+        """Return this provider's configured API key."""
+        return Config.get(f"ai.providers.{self.value}.key")
+
     def get_model(self, model: str | None = None, model_type: ModelType = ModelType.TEXT) -> str:
-        """Return ``model`` if given, else this provider's configured default for the modality."""
-        return model or _config().get(f"ai.providers.{self.value}.models.{_model_key(model_type)}")
+        return model or Config.get(f"ai.providers.{self.value}.models.{_model_key(model_type)}")
 
     def get_provider_key(self) -> str:
         """Map this provider to its LangChain ``init_chat_model`` id."""
@@ -55,14 +45,14 @@ class Lab(StrEnum):
     @staticmethod
     def get_provider(provider: str | None = None, model_type: ModelType = ModelType.TEXT) -> "Lab":
         """Resolve a provider name (or the configured default for the modality) to a ``Lab``."""
-        provider = provider or _config().get(f"ai.{_provider_field(model_type)}")
+        provider = provider or Config.get(f"ai.{_provider_field(model_type)}")
         return Lab(provider)
 
     @staticmethod
     def get_model_url(
-        provider: str | None = None,
-        model: str | None = None,
-        model_type: ModelType = ModelType.TEXT,
+            provider: str | None = None,
+            model: str | None = None,
+            model_type: ModelType = ModelType.TEXT,
     ) -> str:
         """Build the ``"<langchain-provider>:<model>"`` string for ``init_chat_model``/``create_agent``."""
         lab = Lab.get_provider(provider, model_type)

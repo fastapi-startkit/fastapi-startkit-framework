@@ -15,13 +15,11 @@ the full agent loop offline.
 from __future__ import annotations
 
 import fnmatch
-from typing import TYPE_CHECKING, Any, Callable, Iterator, Optional, Type
+from typing import Any, Callable, Iterator, Optional, Type
 
 from .document import Document
+from .lab import Lab
 from .response import AgentResponse, AgentSnapshot
-
-if TYPE_CHECKING:
-    from .lab import Lab
 
 
 class Agent:
@@ -30,6 +28,7 @@ class Agent:
 
     Class-level configuration (set via decorators or subclass attributes)::
 
+        _instructions   = ""            # the agent's static system instructions
         _provider       = "anthropic"   # LLM provider
         _model          = ""            # model ID (empty = provider default)
         _max_steps      = 10            # max agentic loop iterations
@@ -39,6 +38,7 @@ class Agent:
         _memory_backend = ""            # memory backend name (reserved)
     """
 
+    _instructions: str = ""
     _provider: str = "anthropic"
     _model: str = ""
     _max_steps: int = 10
@@ -52,8 +52,10 @@ class Agent:
         self._call_log: list[dict] = []
 
     def messages(self) -> list[dict]:
-        """Return initial messages / few-shot examples."""
         return []
+
+    def instructions(self) -> str | None:
+        return None
 
     def schema(self) -> Optional[Type]:
         """Return a Pydantic model class for structured output, or None for plain text."""
@@ -82,22 +84,18 @@ class Agent:
     # ── Public API ──────────────────────────────────────────────────────────
 
     def prompt(
-        self,
-        message: str,
-        *,
-        system: str | None = None,
-        model: str | None = None,
-        messages: list[dict] | None = None,
-        attachments: list[Document] | None = None,
-        provider_options: dict | None = None,
+            self,
+            message: str,
+            *,
+            model: str | None = None,
+            attachments: list[Document] | None = None,
+            provider_options: dict | None = None,
     ) -> AgentResponse:
         """Send a prompt and return an AgentResponse."""
         message = self.before(message)
 
         _run_kwargs = dict(
-            system=system,
             model=model,
-            extra_messages=messages,
             attachments=attachments,
             provider_options=provider_options,
         )
@@ -119,12 +117,11 @@ class Agent:
         return self.after(response)
 
     def stream(
-        self,
-        message: str,
-        *,
-        system: str | None = None,
-        model: str | None = None,
-        provider_options: dict | None = None,
+            self,
+            message: str,
+            *,
+            model: str | None = None,
+            provider_options: dict | None = None,
     ) -> Iterator[str]:
         """Stream a response token by token."""
         message = self.before(message)
@@ -137,7 +134,7 @@ class Agent:
                 response = fake
             yield response.content
             return
-        yield from self._stream(message, system=system, model=model, provider_options=provider_options)
+        yield from self._stream(message, model=model, provider_options=provider_options)
 
     def fake(self, patterns: dict[str, AgentResponse | AgentSnapshot]) -> "Agent":
         """Register fake responses for testing. Keys are glob patterns."""
@@ -187,17 +184,9 @@ class Agent:
 
         return build(chain, final)(message)
 
-    def _lab(self) -> "Lab":
-        from .lab import Lab  # noqa: PLC0415
-
-        return Lab(self._provider)
-
     def _resolve_model(self, override: str | None = None) -> str:
-        if override:
-            return override
-        if self._model:
-            return self._model
-        return self._lab().get_model()
+        # Lab.get_model() returns the given model if truthy, else the config default.
+        return Lab(self._provider).get_model(override or self._model or None)
 
     def _get_provider_options(self, override: dict | None = None) -> dict:
         options = dict(self.provider_options().get(self._provider, {}))
@@ -207,44 +196,32 @@ class Agent:
                 options.update(provider_specific)
         return options
 
-    def _resolve_api_key(self, provider_name: str) -> str | None:
-        """Try Config.get("ai") first, fallback to None (the model reads its env var)."""
-        try:
-            from fastapi_startkit.facades.Config import Config  # noqa: PLC0415
-
-            ai_config = Config.get("ai")
-            return ai_config.providers[provider_name].key or None
-        except Exception:
-            return None
+    def _build_instruction(self) -> str | None:
+        return self._instructions or self.instructions()
 
     def _build_messages(
-        self,
-        message: str,
-        system: str | None = None,
-        extra_messages: list[dict] | None = None,
-        attachments: list[Document] | None = None,
-    ) -> tuple[str | None, list[dict]]:
-        base = self.messages()
+            self,
+            message: str,
+            attachments: list[Document] | None = None,
+    ) -> list[dict]:
+        messages: list[dict] = []
 
-        resolved_system = system
-        if resolved_system is None:
-            sys_entries = [m for m in base if m.get("role") == "system"]
-            if sys_entries:
-                resolved_system = sys_entries[0]["content"]
+        instruction = self._instructions or self.instructions()
+        if instruction:
+            messages.append({"role": "system", "content": instruction})
 
-        history = [m for m in base if m.get("role") != "system"]
-        if extra_messages:
-            history.extend(extra_messages)
+        messages.extend(self.messages() or [])
+
+        if message:
+            messages.append({"role": "user", "content": message})
 
         if attachments:
             content: Any = [{"type": "text", "text": message}]
             for doc in attachments:
                 content.append(doc.to_langchain_block())
-            history.append({"role": "user", "content": content})
-        else:
-            history.append({"role": "user", "content": message})
+            messages.append({"role": "user", "content": content})
 
-        return resolved_system, history
+        return messages
 
     def _build_model(self, model: str | None = None, provider_options: dict | None = None) -> Any:
         """Build a LangChain chat model for this agent.
@@ -254,9 +231,10 @@ class Agent:
         """
         from langchain.chat_models import init_chat_model  # noqa: PLC0415
 
-        kwargs: dict[str, Any] = {"model_provider": self._lab().get_provider_key()}
+        lab = Lab(self._provider)
+        kwargs: dict[str, Any] = {"model_provider": lab.get_provider_key()}
 
-        api_key = self._resolve_api_key(self._provider)
+        api_key = lab.get_api_key()
         if api_key:
             kwargs["api_key"] = api_key
         if self._max_tokens:
@@ -288,47 +266,29 @@ class Agent:
         return AgentResponse(content=content, tool_calls=tool_calls, usage=usage, raw=result)
 
     def _run(
-        self,
-        message: str,
-        system: str | None = None,
-        model: str | None = None,
-        extra_messages: list[dict] | None = None,
-        attachments: list[Document] | None = None,
-        provider_options: dict | None = None,
+            self,
+            message: str,
+            model: str | None = None,
+            attachments: list[Document] | None = None,
+            provider_options: dict | None = None,
     ) -> AgentResponse:
-        from langchain.agents import create_agent  # noqa: PLC0415
+        from .runner import Runner  # noqa: PLC0415
 
-        resolved_system, history = self._build_messages(message, system, extra_messages, attachments)
+        messages = self._build_messages(message, attachments)
         chat_model = self._build_model(model, provider_options)
 
-        agent_kwargs: dict[str, Any] = {"tools": self.tools()}
-        if resolved_system:
-            agent_kwargs["system_prompt"] = resolved_system
-        schema = self.schema()
-        if schema is not None:
-            agent_kwargs["response_format"] = schema
-
-        agent = create_agent(chat_model, **agent_kwargs)
-        result = agent.invoke({"messages": history}, {"recursion_limit": self._max_steps * 2 + 1})
+        result = Runner(chat_model, self.tools(), self._max_steps).run(messages)
         return self._to_agent_response(result)
 
     def _stream(
-        self,
-        message: str,
-        system: str | None = None,
-        model: str | None = None,
-        provider_options: dict | None = None,
+            self,
+            message: str,
+            model: str | None = None,
+            provider_options: dict | None = None,
     ) -> Iterator[str]:
-        resolved_system, history = self._build_messages(message, system)
+        from .runner import StreamRunner  # noqa: PLC0415
+
+        messages = self._build_messages(message)
         chat_model = self._build_model(model, provider_options)
 
-        lc_messages: list[dict] = []
-        if resolved_system:
-            lc_messages.append({"role": "system", "content": resolved_system})
-        lc_messages.extend(history)
-
-        for chunk in chat_model.stream(lc_messages):
-            text = getattr(chunk, "content", "")
-            if not text:
-                continue
-            yield text if isinstance(text, str) else str(text)
+        yield from StreamRunner(chat_model, self.tools(), self._max_steps).run(messages)
