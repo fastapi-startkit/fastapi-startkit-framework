@@ -3,7 +3,7 @@
 Providers implement the :class:`ImageFactory` ABC so that the
 :class:`~fastapi_startkit.ai.Image` builder is not hard-wired to a single
 vendor.  Select the active provider via ``AI_IMAGE_PROVIDER`` in your
-``.env`` (or ``AIConfig.image_provider``).
+``.env`` (or ``AIConfig.default_image``).
 
 Supported providers
 -------------------

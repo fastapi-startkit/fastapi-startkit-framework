@@ -3,7 +3,7 @@
 Providers implement the :class:`AudioFactory` ABC so that the
 :class:`~fastapi_startkit.ai.Audio` builder is not hard-wired to a single
 vendor.  Select the active provider via ``AI_AUDIO_PROVIDER`` in your
-``.env`` (or ``AIConfig.audio_provider``).
+``.env`` (or ``AIConfig.default_audio``).
 
 Supported providers
 -------------------

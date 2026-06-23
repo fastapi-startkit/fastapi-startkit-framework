@@ -15,10 +15,13 @@ the full agent loop offline.
 from __future__ import annotations
 
 import fnmatch
-from typing import Any, Callable, Iterator, Optional, Type
+from typing import TYPE_CHECKING, Any, Callable, Iterator, Optional, Type
 
 from .document import Document
 from .response import AgentResponse, AgentSnapshot
+
+if TYPE_CHECKING:
+    from .lab import Lab
 
 
 class Agent:
@@ -44,24 +47,9 @@ class Agent:
     _top_p: float = 1.0
     _memory_backend: str = ""
 
-    _DEFAULT_MODELS: dict[str, str] = {
-        "anthropic": "claude-sonnet-4-6",
-        "openai": "gpt-4o",
-        "google": "gemini-2.0-flash",
-    }
-
-    # Map the agent's provider name to the LangChain ``init_chat_model`` provider id.
-    _LANGCHAIN_PROVIDERS: dict[str, str] = {
-        "anthropic": "anthropic",
-        "openai": "openai",
-        "google": "google_genai",
-    }
-
     def __init__(self):
         self._fakes: dict[str, AgentResponse | AgentSnapshot] = {}
         self._call_log: list[dict] = []
-
-    # ── Lifecycle — override in subclasses ──────────────────────────────────
 
     def messages(self) -> list[dict]:
         """Return initial messages / few-shot examples."""
@@ -199,19 +187,17 @@ class Agent:
 
         return build(chain, final)(message)
 
-    def _execute_tool(self, name: str, inputs: dict) -> Any:
-        """Find a tool by function name and call it with the given inputs."""
-        for tool in self.tools():
-            if callable(tool) and tool.__name__ == name:
-                return tool(**inputs)
-        raise ValueError(f"Tool {name!r} not found")
+    def _lab(self) -> "Lab":
+        from .lab import Lab  # noqa: PLC0415
+
+        return Lab(self._provider)
 
     def _resolve_model(self, override: str | None = None) -> str:
         if override:
             return override
         if self._model:
             return self._model
-        return self._DEFAULT_MODELS.get(self._provider, "")
+        return self._lab().get_model()
 
     def _get_provider_options(self, override: dict | None = None) -> dict:
         options = dict(self.provider_options().get(self._provider, {}))
@@ -268,8 +254,7 @@ class Agent:
         """
         from langchain.chat_models import init_chat_model  # noqa: PLC0415
 
-        provider = self._LANGCHAIN_PROVIDERS.get(self._provider, self._provider)
-        kwargs: dict[str, Any] = {"model_provider": provider}
+        kwargs: dict[str, Any] = {"model_provider": self._lab().get_provider_key()}
 
         api_key = self._resolve_api_key(self._provider)
         if api_key:

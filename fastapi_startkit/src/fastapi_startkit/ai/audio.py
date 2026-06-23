@@ -89,7 +89,7 @@ class AudioResponse:
 class Audio:
     """Fluent builder for text-to-speech generation.
 
-    The active backend is selected from :attr:`~fastapi_startkit.ai.AIConfig.audio_provider`
+    The active backend is selected from :attr:`~fastapi_startkit.ai.AIConfig.default_audio`
     (env: ``AI_AUDIO_PROVIDER``). Defaults to OpenAI TTS.
 
     Usage::
@@ -191,7 +191,7 @@ class Audio:
             ai_config = Config.get("ai") if Config is not None else None  # type: ignore[union-attr]
             if ai_config is None:
                 raise RuntimeError("Config not available")
-            provider_name = ai_config.audio_provider
+            provider_name = ai_config.default_audio
             openai_cfg = ai_config.providers.get("openai")
             if openai_cfg:
                 api_key = openai_cfg.key or None

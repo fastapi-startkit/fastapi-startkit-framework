@@ -90,7 +90,7 @@ class ImageResponse:
 class Image:
     """Fluent builder for image generation and editing.
 
-    The active backend is selected from :attr:`~fastapi_startkit.ai.AIConfig.image_provider`
+    The active backend is selected from :attr:`~fastapi_startkit.ai.AIConfig.default_image`
     (env: ``AI_IMAGE_PROVIDER``). Defaults to OpenAI DALL-E.
 
     Usage — text to image::
@@ -198,7 +198,7 @@ class Image:
             ai_config = Config.get("ai") if Config is not None else None  # type: ignore[union-attr]
             if ai_config is None:
                 raise RuntimeError("Config not available")
-            provider_name = ai_config.image_provider
+            provider_name = ai_config.default_image
             openai_cfg = ai_config.providers.get("openai")
             if openai_cfg:
                 api_key = openai_cfg.key or None
