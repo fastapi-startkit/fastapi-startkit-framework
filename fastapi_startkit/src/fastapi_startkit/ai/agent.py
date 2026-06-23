@@ -1,17 +1,3 @@
-"""Agent base class — subclass this and apply decorators to build an AI agent.
-
-The agent runs on LangChain/LangGraph: :meth:`Agent.prompt` builds a chat model
-with ``init_chat_model`` and drives a ``create_agent`` loop (tools included),
-while :meth:`Agent.stream` streams tokens straight from the model. The public
-surface — ``prompt``/``stream``/``fake``/``assert_prompted``/``reset`` plus the
-lifecycle hooks and decorators — is provider-agnostic; only the backend changed.
-
-Real calls need the ``langgraph`` extra plus the relevant provider integration
-(e.g. ``langchain-anthropic``). Tests never need them: :meth:`fake` short-circuits
-before the backend, and :func:`fastapi_startkit.ai.fakes.fake_chat_model` drives
-the full agent loop offline.
-"""
-
 from __future__ import annotations
 
 import fnmatch
@@ -20,24 +6,10 @@ from typing import Any, Callable, Iterator, Optional, Type
 from .document import Document
 from .lab import Lab
 from .response import AgentResponse, AgentSnapshot
+from .testing import AgentBinding, _FakeAccessor
 
 
 class Agent:
-    """
-    Base class for all agents. Subclass this and override lifecycle methods.
-
-    Class-level configuration (set via decorators or subclass attributes)::
-
-        _instructions   = ""            # the agent's static system instructions
-        _provider       = "anthropic"   # LLM provider
-        _model          = ""            # model ID (empty = provider default)
-        _max_steps      = 10            # max agentic loop iterations
-        _max_tokens     = 4096          # max output tokens
-        _timeout        = 30.0          # request timeout in seconds
-        _top_p          = 1.0           # top-p nucleus sampling
-        _memory_backend = ""            # memory backend name (reserved)
-    """
-
     _instructions: str = ""
     _provider: str = "anthropic"
     _model: str = ""
@@ -58,30 +30,22 @@ class Agent:
         return None
 
     def schema(self) -> Optional[Type]:
-        """Return a Pydantic model class for structured output, or None for plain text."""
         return None
 
     def tools(self) -> list[Callable]:
-        """Return a list of callable tools the agent may invoke."""
         return []
 
     def middleware(self) -> list[Callable]:
-        """Return middleware callables that wrap each LLM request."""
         return []
 
     def provider_options(self) -> dict:
-        """Return provider-specific options keyed by provider name."""
         return {}
 
     def before(self, message: str) -> str:
-        """Called before the message is sent. Return the (possibly modified) message."""
         return message
 
     def after(self, response: AgentResponse) -> AgentResponse:
-        """Called after the LLM responds. Return the (possibly modified) response."""
         return response
-
-    # ── Public API ──────────────────────────────────────────────────────────
 
     def prompt(
             self,
@@ -91,8 +55,13 @@ class Agent:
             attachments: list[Document] | None = None,
             provider_options: dict | None = None,
     ) -> AgentResponse:
-        """Send a prompt and return an AgentResponse."""
         message = self.before(message)
+
+        stand_in = self._bound_stand_in()
+        if stand_in is not None:
+            response = stand_in.prompt(message, attachments=attachments)
+            self._log_call("prompt", message)
+            return self.after(response)
 
         _run_kwargs = dict(
             model=model,
@@ -123,9 +92,14 @@ class Agent:
             model: str | None = None,
             provider_options: dict | None = None,
     ) -> Iterator[str]:
-        """Stream a response token by token."""
         message = self.before(message)
         self._log_call("stream", message)
+
+        stand_in = self._bound_stand_in()
+        if stand_in is not None:
+            yield stand_in.prompt(message).content
+            return
+
         fake = self._match_fake(message)
         if fake is not None:
             if isinstance(fake, AgentSnapshot):
@@ -136,14 +110,46 @@ class Agent:
             return
         yield from self._stream(message, model=model, provider_options=provider_options)
 
-    def fake(self, patterns: dict[str, AgentResponse | AgentSnapshot]) -> "Agent":
-        """Register fake responses for testing. Keys are glob patterns."""
-        for pattern, value in patterns.items():
-            self._fakes[pattern] = value
-        return self
+    fake = _FakeAccessor()
+
+    @classmethod
+    def record(cls, cassette: str | None = None) -> "AgentBinding":
+        from .testing import AgentBinding, RecordingAgent
+
+        return AgentBinding(cls, RecordingAgent(cls(), cassette))
+
+    @classmethod
+    def make(cls) -> "Agent":
+        from fastapi_startkit.application import app
+
+        container = app()
+        if container.has(cls.__name__):
+            return container.make(cls.__name__)
+        return cls()
+
+    @classmethod
+    def faked(cls) -> Any:
+        from fastapi_startkit.application import app
+
+        container = app()
+        if not container.has(cls.__name__):
+            raise RuntimeError(f"{cls.__name__} has no active fake/record binding")
+        return container.make(cls.__name__)
+
+    bound = faked
+
+    def _bound_stand_in(self) -> Any:
+        from fastapi_startkit.application import app
+
+        container = app()
+        key = type(self).__name__
+        if container.has(key):
+            candidate = container.make(key)
+            if candidate is not self:
+                return candidate
+        return None
 
     def assert_prompted(self, times: int | None = None) -> None:
-        """Assert that prompt() or stream() was called."""
         calls = [c for c in self._call_log if c["method"] in ("prompt", "stream")]
         if times is not None:
             assert len(calls) == times, f"Expected {times} prompt call(s), got {len(calls)}"
@@ -151,16 +157,12 @@ class Agent:
             assert len(calls) > 0, "Expected at least one prompt() or stream() call, but none were made"
 
     def assert_not_prompted(self) -> None:
-        """Assert that prompt() and stream() were never called."""
         self.assert_prompted(times=0)
 
     def reset(self) -> "Agent":
-        """Clear fakes and call log. Useful between test cases."""
         self._fakes.clear()
         self._call_log.clear()
         return self
-
-    # ── Internal helpers ────────────────────────────────────────────────────
 
     def _match_fake(self, message: str) -> Optional[AgentResponse | AgentSnapshot]:
         for pattern, value in self._fakes.items():
@@ -172,7 +174,6 @@ class Agent:
         self._call_log.append({"method": method, "message": message})
 
     def _apply_middleware(self, message: str, final: Callable[[str], AgentResponse]) -> AgentResponse:
-        """Build a left-to-right middleware chain and invoke it."""
         chain = list(self.middleware())
 
         def build(mw_list: list, fn: Callable) -> Callable:
@@ -185,7 +186,6 @@ class Agent:
         return build(chain, final)(message)
 
     def _resolve_model(self, override: str | None = None) -> str:
-        # Lab.get_model() returns the given model if truthy, else the config default.
         return Lab(self._provider).get_model(override or self._model or None)
 
     def _get_provider_options(self, override: dict | None = None) -> dict:
@@ -224,11 +224,6 @@ class Agent:
         return messages
 
     def _build_model(self, model: str | None = None, provider_options: dict | None = None) -> Any:
-        """Build a LangChain chat model for this agent.
-
-        This is the seam tests patch to inject a fake chat model (see
-        :func:`fastapi_startkit.ai.fakes.fake_chat_model`).
-        """
         from langchain.chat_models import init_chat_model  # noqa: PLC0415
 
         lab = Lab(self._provider)
@@ -248,7 +243,6 @@ class Agent:
         return init_chat_model(self._resolve_model(model), **kwargs)
 
     def _to_agent_response(self, result: Any) -> AgentResponse:
-        """Map a ``create_agent`` invoke result to an AgentResponse."""
         messages = result.get("messages", []) if isinstance(result, dict) else []
         final = messages[-1] if messages else result
 

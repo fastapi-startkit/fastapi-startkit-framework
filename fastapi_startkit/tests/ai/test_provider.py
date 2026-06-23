@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock
 
-from fastapi_startkit.ai.config import AIConfig
+from fastapi_startkit.ai import AIConfig
 from fastapi_startkit.ai.providers.ai_provider import AIProvider
 from fastapi_startkit.providers import Provider
 

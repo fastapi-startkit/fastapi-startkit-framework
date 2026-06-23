@@ -1,4 +1,4 @@
-from fastapi_startkit.ai.config import AIConfig
+from fastapi_startkit.ai import AIConfig
 
 class AI:
     """Facade for accessing the AI configuration registered under the 'ai' key."""

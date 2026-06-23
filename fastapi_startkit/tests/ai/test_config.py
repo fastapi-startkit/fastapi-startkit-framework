@@ -1,6 +1,6 @@
 """Tests for AI configuration dataclasses."""
 
-from fastapi_startkit.ai.config import AIConfig, AnthropicConfig, GoogleConfig, OpenAIConfig
+from fastapi_startkit.ai import AIConfig, AnthropicConfig, GoogleConfig, OpenAIConfig
 
 
 # ─── AIConfig defaults ────────────────────────────────────────────────────────

@@ -1,11 +1,3 @@
-"""Per-provider AI configuration dataclasses.
-
-Each provider declares its ``driver``, credentials, and a ``models`` map of the
-default model per modality (``default`` = text, plus ``default_image`` /
-``default_audio`` / ``default_transcribe`` where the provider supports them).
-:class:`~fastapi_startkit.ai.lab.Lab` resolves these via the ``Config`` store.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field

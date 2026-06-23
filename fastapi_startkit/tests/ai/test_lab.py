@@ -2,7 +2,7 @@
 
 import pytest
 
-from fastapi_startkit.ai.config import AIConfig
+from fastapi_startkit.ai import AIConfig
 from fastapi_startkit.ai.lab import Lab, ModelType
 from fastapi_startkit.application import app
 

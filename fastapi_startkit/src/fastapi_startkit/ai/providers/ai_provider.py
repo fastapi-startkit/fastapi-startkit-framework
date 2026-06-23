@@ -20,7 +20,7 @@ class AIProvider(Provider):
 
     def register(self) -> None:
         """Bind AIConfig into the container under the 'ai' key."""
-        from fastapi_startkit.ai.config import AIConfig
+        from fastapi_startkit.ai import AIConfig
 
         self.app.bind("ai", AIConfig())
 

@@ -1,13 +1,3 @@
-"""Runner — drive a chat model through a tool-calling loop, no ``create_agent``.
-
-The :class:`~fastapi_startkit.ai.agent.Agent` builds a chat model (via
-``init_chat_model``) and its tools, then hands them to a Runner. The Runner binds
-the tools, invokes the model, executes any tool calls the model requests, feeds
-the results back, and repeats until the model answers without calling a tool (or
-``max_steps`` is reached). :class:`StreamRunner` does the same while yielding
-content tokens as they arrive.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
@@ -18,13 +8,10 @@ from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage
 from langchain_core.runnables import Runnable
 from langchain_core.tools import BaseTool
 
-# A turn in the running history: a chat message or a plain role/content dict.
 Message = BaseMessage | dict[str, Any]
 
 
 class Runner:
-    """Run a chat model through a tool-calling loop and return the final message."""
-
     def __init__(
         self,
         model: BaseChatModel,
@@ -32,7 +19,6 @@ class Runner:
         max_steps: int = 10,
     ) -> None:
         self._tools: dict[str, BaseTool] = {tool.name: tool for tool in (tools or [])}
-        # Bind the tools so the model can request them; an unbound model otherwise.
         self.model: Runnable[Any, BaseMessage] = (
             model.bind_tools(list(self._tools.values())) if self._tools else model
         )
@@ -62,8 +48,6 @@ class Runner:
 
 
 class StreamRunner(Runner):
-    """Like :class:`Runner`, but yields content tokens as the model streams them."""
-
     def run(self, messages: Sequence[Message]) -> Iterator[str]:  # type: ignore[override]
         history: list[Message] = list(messages)
 

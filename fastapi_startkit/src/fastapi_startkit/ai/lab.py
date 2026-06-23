@@ -9,15 +9,14 @@ class ModelType(StrEnum):
     AUDIO = "audio"
     TRANSCRIBE = "transcribe"
 
-
-def _model_key(model_type: ModelType) -> str:
-    """The key under a provider's ``models`` map for the given modality."""
-    return "default" if model_type == ModelType.TEXT else f"default_{model_type.value}"
-
-
-def _provider_field(model_type: ModelType) -> str:
-    """The ``ai`` config field selecting the default provider for the given modality."""
-    return "default" if model_type == ModelType.TEXT else f"default_{model_type.value}"
+    @property
+    def key(self) -> str:
+        return {
+            ModelType.TEXT: "default",
+            ModelType.IMAGE: "default_image",
+            ModelType.AUDIO: "default_audio",
+            ModelType.TRANSCRIBE: "default_transcribe",
+        }[self]
 
 
 class Lab(StrEnum):
@@ -27,14 +26,12 @@ class Lab(StrEnum):
     ELEVENLABS = "elevenlabs"
 
     def get_api_key(self) -> str:
-        """Return this provider's configured API key."""
         return Config.get(f"ai.providers.{self.value}.key")
 
     def get_model(self, model: str | None = None, model_type: ModelType = ModelType.TEXT) -> str:
-        return model or Config.get(f"ai.providers.{self.value}.models.{_model_key(model_type)}")
+        return model or Config.get(f"ai.providers.{self.value}.models.{model_type.key}")
 
     def get_provider_key(self) -> str:
-        """Map this provider to its LangChain ``init_chat_model`` id."""
         return {
             "anthropic": "anthropic",
             "openai": "openai",
@@ -44,8 +41,7 @@ class Lab(StrEnum):
 
     @staticmethod
     def get_provider(provider: str | None = None, model_type: ModelType = ModelType.TEXT) -> "Lab":
-        """Resolve a provider name (or the configured default for the modality) to a ``Lab``."""
-        provider = provider or Config.get(f"ai.{_provider_field(model_type)}")
+        provider = provider or Config.get(f"ai.{model_type.key}")
         return Lab(provider)
 
     @staticmethod
@@ -54,6 +50,5 @@ class Lab(StrEnum):
             model: str | None = None,
             model_type: ModelType = ModelType.TEXT,
     ) -> str:
-        """Build the ``"<langchain-provider>:<model>"`` string for ``init_chat_model``/``create_agent``."""
         lab = Lab.get_provider(provider, model_type)
         return f"{lab.get_provider_key()}:{lab.get_model(model, model_type)}"
