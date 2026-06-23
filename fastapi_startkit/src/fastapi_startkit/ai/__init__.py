@@ -22,6 +22,7 @@ from .audio_factory import AudioFactory
 from .config import AIConfig, AnthropicConfig, GoogleConfig, OpenAIConfig
 from .decorators import max_steps, max_tokens, memory, model, provider, timeout, top_p
 from .document import Document
+from .fakes import fake_chat_model
 from .image import Image, ImageResponse
 from .image_factory import ImageFactory
 from .providers.ai_provider import AIProvider
@@ -38,6 +39,7 @@ __all__ = [
     "AudioResponse",
     "AudioFactory",
     "Document",
+    "fake_chat_model",
     "GoogleConfig",
     "Image",
     "ImageFactory",

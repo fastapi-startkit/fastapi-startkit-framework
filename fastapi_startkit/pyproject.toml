@@ -53,6 +53,12 @@ ai = [
     "google-generativeai>=0.8.0",
 ]
 
+langgraph = [
+    "langchain>=1.0.0",
+    "langchain-core>=1.0.0",
+    "langgraph>=1.0.0",
+]
+
 [dependency-groups]
 dev = [
     "dumpdie>=1.5.0",
@@ -68,6 +74,9 @@ dev = [
     "sqlalchemy[asyncio]>=2.0.38",
     "fastapi[standard]>=0.124.4",
     "faker>=40.13.0",
+    "langchain>=1.0.0",
+    "langchain-core>=1.0.0",
+    "langgraph>=1.0.0",
 ]
 
 

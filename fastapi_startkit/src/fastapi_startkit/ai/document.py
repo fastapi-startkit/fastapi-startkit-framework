@@ -137,3 +137,16 @@ class Document:
             "type": "text",
             "text": f"[Document: {self.name}]\n{self.content}",
         }
+
+    def to_langchain_block(self) -> dict:
+        """Return a LangChain content block for this document.
+
+        Text (or ``text/*`` media) is inlined as a labelled text part; everything
+        else becomes a base64 ``image``/``file`` block the model reads natively.
+        """
+        is_text = isinstance(self.content, str) or self.media_type.startswith("text/")
+        if is_text:
+            text = self.content if isinstance(self.content, str) else self.content.decode("utf-8", "replace")
+            return {"type": "text", "text": f"[Document: {self.name}]\n{text}"}
+        block_type = "image" if self.media_type.startswith("image/") else "file"
+        return {"type": block_type, "base64": self.to_base64(), "mime_type": self.media_type}

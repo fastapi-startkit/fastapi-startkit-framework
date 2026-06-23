@@ -1,4 +1,16 @@
-"""Agent base class — subclass this and apply decorators to build an AI agent."""
+"""Agent base class — subclass this and apply decorators to build an AI agent.
+
+The agent runs on LangChain/LangGraph: :meth:`Agent.prompt` builds a chat model
+with ``init_chat_model`` and drives a ``create_agent`` loop (tools included),
+while :meth:`Agent.stream` streams tokens straight from the model. The public
+surface — ``prompt``/``stream``/``fake``/``assert_prompted``/``reset`` plus the
+lifecycle hooks and decorators — is provider-agnostic; only the backend changed.
+
+Real calls need the ``langgraph`` extra plus the relevant provider integration
+(e.g. ``langchain-anthropic``). Tests never need them: :meth:`fake` short-circuits
+before the backend, and :func:`fastapi_startkit.ai.fakes.fake_chat_model` drives
+the full agent loop offline.
+"""
 
 from __future__ import annotations
 
@@ -36,6 +48,13 @@ class Agent:
         "anthropic": "claude-sonnet-4-6",
         "openai": "gpt-4o",
         "google": "gemini-2.0-flash",
+    }
+
+    # Map the agent's provider name to the LangChain ``init_chat_model`` provider id.
+    _LANGCHAIN_PROVIDERS: dict[str, str] = {
+        "anthropic": "anthropic",
+        "openai": "openai",
+        "google": "google_genai",
     }
 
     def __init__(self):
@@ -202,6 +221,16 @@ class Agent:
                 options.update(provider_specific)
         return options
 
+    def _resolve_api_key(self, provider_name: str) -> str | None:
+        """Try Config.get("ai") first, fallback to None (the model reads its env var)."""
+        try:
+            from fastapi_startkit.facades.Config import Config  # noqa: PLC0415
+
+            ai_config = Config.get("ai")
+            return ai_config.providers[provider_name].key or None
+        except Exception:
+            return None
+
     def _build_messages(
         self,
         message: str,
@@ -224,15 +253,54 @@ class Agent:
         if attachments:
             content: Any = [{"type": "text", "text": message}]
             for doc in attachments:
-                if self._provider == "anthropic":
-                    content.append(doc.to_anthropic_block())
-                else:
-                    content.append(doc.to_openai_block())
+                content.append(doc.to_langchain_block())
             history.append({"role": "user", "content": content})
         else:
             history.append({"role": "user", "content": message})
 
         return resolved_system, history
+
+    def _build_model(self, model: str | None = None, provider_options: dict | None = None) -> Any:
+        """Build a LangChain chat model for this agent.
+
+        This is the seam tests patch to inject a fake chat model (see
+        :func:`fastapi_startkit.ai.fakes.fake_chat_model`).
+        """
+        from langchain.chat_models import init_chat_model  # noqa: PLC0415
+
+        provider = self._LANGCHAIN_PROVIDERS.get(self._provider, self._provider)
+        kwargs: dict[str, Any] = {"model_provider": provider}
+
+        api_key = self._resolve_api_key(self._provider)
+        if api_key:
+            kwargs["api_key"] = api_key
+        if self._max_tokens:
+            kwargs["max_tokens"] = self._max_tokens
+        if self._top_p != 1.0:
+            kwargs["top_p"] = self._top_p
+        if self._timeout:
+            kwargs["timeout"] = self._timeout
+        kwargs.update(self._get_provider_options(provider_options))
+
+        return init_chat_model(self._resolve_model(model), **kwargs)
+
+    def _to_agent_response(self, result: Any) -> AgentResponse:
+        """Map a ``create_agent`` invoke result to an AgentResponse."""
+        messages = result.get("messages", []) if isinstance(result, dict) else []
+        final = messages[-1] if messages else result
+
+        content = getattr(final, "content", "")
+        if not isinstance(content, str):
+            content = str(content)
+
+        tool_calls = list(getattr(final, "tool_calls", None) or [])
+
+        usage: dict[str, Any] = {}
+        meta = getattr(final, "usage_metadata", None)
+        if meta:
+            usage = {"input": meta.get("input_tokens", 0), "output": meta.get("output_tokens", 0)}
+
+        return AgentResponse(content=content, tool_calls=tool_calls, usage=usage, raw=result)
 
     def _run(
         self,
@@ -243,17 +311,21 @@ class Agent:
         attachments: list[Document] | None = None,
         provider_options: dict | None = None,
     ) -> AgentResponse:
-        resolved_system, messages = self._build_messages(message, system, extra_messages, attachments)
-        resolved_model = self._resolve_model(model)
-        options = self._get_provider_options(provider_options)
+        from langchain.agents import create_agent  # noqa: PLC0415
 
-        if self._provider == "anthropic":
-            return self._run_anthropic(resolved_system, messages, resolved_model, options)
-        if self._provider == "openai":
-            return self._run_openai(resolved_system, messages, resolved_model, options)
-        if self._provider == "google":
-            return self._run_google(resolved_system, messages, resolved_model, options)
-        raise ValueError(f"Unsupported provider: {self._provider!r}. Use 'anthropic', 'openai', or 'google'.")
+        resolved_system, history = self._build_messages(message, system, extra_messages, attachments)
+        chat_model = self._build_model(model, provider_options)
+
+        agent_kwargs: dict[str, Any] = {"tools": self.tools()}
+        if resolved_system:
+            agent_kwargs["system_prompt"] = resolved_system
+        schema = self.schema()
+        if schema is not None:
+            agent_kwargs["response_format"] = schema
+
+        agent = create_agent(chat_model, **agent_kwargs)
+        result = agent.invoke({"messages": history}, {"recursion_limit": self._max_steps * 2 + 1})
+        return self._to_agent_response(result)
 
     def _stream(
         self,
@@ -262,237 +334,16 @@ class Agent:
         model: str | None = None,
         provider_options: dict | None = None,
     ) -> Iterator[str]:
-        resolved_system, messages = self._build_messages(message, system)
-        resolved_model = self._resolve_model(model)
-        options = self._get_provider_options(provider_options)
+        resolved_system, history = self._build_messages(message, system)
+        chat_model = self._build_model(model, provider_options)
 
-        if self._provider == "anthropic":
-            yield from self._stream_anthropic(resolved_system, messages, resolved_model, options)
-        elif self._provider == "openai":
-            yield from self._stream_openai(resolved_system, messages, resolved_model, options)
-        elif self._provider == "google":
-            yield from self._stream_google(resolved_system, messages, resolved_model, options)
-        else:
-            raise ValueError(f"Unsupported provider: {self._provider!r}. Use 'anthropic', 'openai', or 'google'.")
+        lc_messages: list[dict] = []
+        if resolved_system:
+            lc_messages.append({"role": "system", "content": resolved_system})
+        lc_messages.extend(history)
 
-    # ── Anthropic ──────────────────────────────────────────────────────────
-
-    def _run_anthropic(
-        self,
-        system: str | None,
-        messages: list[dict],
-        model: str,
-        options: dict,
-    ) -> AgentResponse:
-        from anthropic import Anthropic  # noqa: PLC0415
-
-        api_key = self._resolve_api_key("anthropic")
-        client = Anthropic(api_key=api_key)
-        params: dict[str, Any] = {
-            "model": model,
-            "max_tokens": self._max_tokens,
-            "messages": messages,
-            **options,
-        }
-        if system:
-            params["system"] = system
-
-        resp = client.messages.create(**params)
-        content = "".join(b.text for b in resp.content if hasattr(b, "text"))
-        return AgentResponse(
-            content=content,
-            usage={"input": resp.usage.input_tokens, "output": resp.usage.output_tokens},
-            raw=resp,
-        )
-
-    def _stream_anthropic(
-        self,
-        system: str | None,
-        messages: list[dict],
-        model: str,
-        options: dict,
-    ) -> Iterator[str]:
-        from anthropic import Anthropic  # noqa: PLC0415
-
-        api_key = self._resolve_api_key("anthropic")
-        client = Anthropic(api_key=api_key)
-        params: dict[str, Any] = {
-            "model": model,
-            "max_tokens": self._max_tokens,
-            "messages": messages,
-            **options,
-        }
-        if system:
-            params["system"] = system
-
-        with client.messages.stream(**params) as stream:
-            for text in stream.text_stream:
-                yield text
-
-    # ── OpenAI ─────────────────────────────────────────────────────────────
-
-    def _run_openai(
-        self,
-        system: str | None,
-        messages: list[dict],
-        model: str,
-        options: dict,
-    ) -> AgentResponse:
-        from openai import OpenAI  # noqa: PLC0415
-
-        api_key = self._resolve_api_key("openai")
-        client = OpenAI(api_key=api_key)
-        all_messages: list[dict] = []
-        if system:
-            all_messages.append({"role": "system", "content": system})
-        all_messages.extend(messages)
-
-        params: dict[str, Any] = {
-            "model": model,
-            "max_tokens": self._max_tokens,
-            "messages": all_messages,
-            **options,
-        }
-        resp = client.chat.completions.create(**params)
-        content = resp.choices[0].message.content or ""
-        return AgentResponse(
-            content=content,
-            usage={
-                "input": resp.usage.prompt_tokens if resp.usage else 0,
-                "output": resp.usage.completion_tokens if resp.usage else 0,
-            },
-            raw=resp,
-        )
-
-    def _stream_openai(
-        self,
-        system: str | None,
-        messages: list[dict],
-        model: str,
-        options: dict,
-    ) -> Iterator[str]:
-        from openai import OpenAI  # noqa: PLC0415
-
-        api_key = self._resolve_api_key("openai")
-        client = OpenAI(api_key=api_key)
-        all_messages: list[dict] = []
-        if system:
-            all_messages.append({"role": "system", "content": system})
-        all_messages.extend(messages)
-
-        params: dict[str, Any] = {
-            "model": model,
-            "max_tokens": self._max_tokens,
-            "messages": all_messages,
-            "stream": True,
-            **options,
-        }
-        for chunk in client.chat.completions.create(**params):
-            delta = chunk.choices[0].delta.content
-            if delta:
-                yield delta
-
-    def _resolve_api_key(self, provider_name: str) -> str | None:
-        """Try Config.get("ai") first, fallback to None (SDK reads env var)."""
-        try:
-            from fastapi_startkit.facades.Config import Config  # noqa: PLC0415
-
-            ai_config = Config.get("ai")
-            return ai_config.providers[provider_name].key or None
-        except Exception:
-            return None
-
-    # ── Google ─────────────────────────────────────────────────────────────
-
-    def _run_google(
-        self,
-        system: str | None,
-        messages: list[dict],
-        model: str,
-        options: dict,
-    ) -> AgentResponse:
-        import google.generativeai as genai  # noqa: PLC0415
-
-        api_key = self._resolve_api_key("google")
-        if api_key:
-            genai.configure(api_key=api_key)
-
-        generation_config: dict[str, Any] = {}
-        if self._max_tokens:
-            generation_config["max_output_tokens"] = self._max_tokens
-        if self._top_p != 1.0:
-            generation_config["top_p"] = self._top_p
-        generation_config.update(options)
-
-        google_model = genai.GenerativeModel(
-            model_name=model,
-            system_instruction=system,
-            generation_config=generation_config if generation_config else None,
-        )
-
-        google_messages = _to_google_messages(messages)
-        response = google_model.generate_content(google_messages)
-        content = response.text if hasattr(response, "text") else ""
-        usage: dict[str, Any] = {}
-        if hasattr(response, "usage_metadata"):
-            meta = response.usage_metadata
-            usage = {
-                "input": getattr(meta, "prompt_token_count", 0),
-                "output": getattr(meta, "candidates_token_count", 0),
-            }
-        return AgentResponse(content=content, usage=usage, raw=response)
-
-    def _stream_google(
-        self,
-        system: str | None,
-        messages: list[dict],
-        model: str,
-        options: dict,
-    ) -> Iterator[str]:
-        import google.generativeai as genai  # noqa: PLC0415
-
-        api_key = self._resolve_api_key("google")
-        if api_key:
-            genai.configure(api_key=api_key)
-
-        generation_config: dict[str, Any] = {}
-        if self._max_tokens:
-            generation_config["max_output_tokens"] = self._max_tokens
-        if self._top_p != 1.0:
-            generation_config["top_p"] = self._top_p
-        generation_config.update(options)
-
-        google_model = genai.GenerativeModel(
-            model_name=model,
-            system_instruction=system,
-            generation_config=generation_config if generation_config else None,
-        )
-
-        google_messages = _to_google_messages(messages)
-        for chunk in google_model.generate_content(google_messages, stream=True):
-            if chunk.text:
-                yield chunk.text
-
-
-# ─── Utilities ─────────────────────────────────────────────────────────────────
-
-
-def _to_google_messages(messages: list[dict]) -> list[dict]:
-    """
-    Convert OpenAI-style messages to Google GenerativeAI content format.
-    Maps 'assistant' role → 'model'; omits 'system' (handled via system_instruction).
-    """
-    result = []
-    for msg in messages:
-        role = msg.get("role", "user")
-        content = msg.get("content", "")
-        if role == "system":
-            continue  # system_instruction is set at model-construction level
-        google_role = "model" if role == "assistant" else "user"
-        if isinstance(content, list):
-            # Multi-part content — extract text parts only
-            text = " ".join(p.get("text", "") for p in content if isinstance(p, dict) and "text" in p)
-            result.append({"role": google_role, "parts": [{"text": text}]})
-        else:
-            result.append({"role": google_role, "parts": [{"text": str(content)}]})
-    return result
+        for chunk in chat_model.stream(lc_messages):
+            text = getattr(chunk, "content", "")
+            if not text:
+                continue
+            yield text if isinstance(text, str) else str(text)
