@@ -24,18 +24,14 @@ class Runner:
         )
         self.max_steps = max_steps
 
-    def run(self, messages: Sequence[Message]) -> AIMessage:
+    def run(self, messages: Sequence[Message]) -> BaseMessage:
         history: list[Message] = list(messages)
         response: AIMessage = self.model.invoke(history)  # type: ignore[assignment]
 
-        for _ in range(self.max_steps):
-            if not response.tool_calls:
-                break
-            history.append(response)
-            history.extend(self._run_tools(response.tool_calls))
-            response = self.model.invoke(history)  # type: ignore[assignment]
+        if not response.tool_calls:
+            return response
 
-        return response
+        return self._run_tools(response.tool_calls)[-1]
 
     def _run_tools(self, tool_calls: list[dict[str, Any]]) -> list[BaseMessage]:
         return [self._resolve_tool(call["name"]).invoke(call) for call in tool_calls]

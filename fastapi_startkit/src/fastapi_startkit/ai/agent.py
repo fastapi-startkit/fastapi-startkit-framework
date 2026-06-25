@@ -6,13 +6,13 @@ from typing import Any, Callable, Iterator, Optional, Type
 from .document import Document
 from .lab import Lab
 from .response import AgentResponse, AgentSnapshot
-from .testing import AgentBinding, _FakeAccessor
+from .testing import AgentBinding
 
 
 class Agent:
-    _instructions: str = ""
-    _provider: str = "anthropic"
-    _model: str = ""
+    _instructions: str | None = None
+    _provider: str | None = None
+    _model: str | None = None
     _max_steps: int = 10
     _max_tokens: int = 4096
     _timeout: float = 30.0
@@ -57,7 +57,7 @@ class Agent:
     ) -> AgentResponse:
         message = self.before(message)
 
-        stand_in = self._bound_stand_in()
+        stand_in = self._faked()
         if stand_in is not None:
             response = stand_in.prompt(message, attachments=attachments)
             self._log_call("prompt", message)
@@ -95,9 +95,9 @@ class Agent:
         message = self.before(message)
         self._log_call("stream", message)
 
-        stand_in = self._bound_stand_in()
-        if stand_in is not None:
-            yield stand_in.prompt(message).content
+        swapped = self._faked()
+        if swapped is not None:
+            yield swapped.prompt(message).content
             return
 
         fake = self._match_fake(message)
@@ -110,7 +110,11 @@ class Agent:
             return
         yield from self._stream(message, model=model, provider_options=provider_options)
 
-    fake = _FakeAccessor()
+    @classmethod
+    def fake(cls, responses: dict | None = None) -> "AgentBinding":
+        from .testing import AgentBinding, FakeAgent
+
+        return AgentBinding(cls, FakeAgent(responses))
 
     @classmethod
     def record(cls, cassette: str | None = None) -> "AgentBinding":
@@ -119,35 +123,20 @@ class Agent:
         return AgentBinding(cls, RecordingAgent(cls(), cassette))
 
     @classmethod
-    def make(cls) -> "Agent":
+    def _binding(cls) -> Any:
         from fastapi_startkit.application import app
 
         container = app()
-        if container.has(cls.__name__):
-            return container.make(cls.__name__)
-        return cls()
+        return container.make(cls.__name__) if container.has(cls.__name__) else None
 
     @classmethod
-    def faked(cls) -> Any:
-        from fastapi_startkit.application import app
+    def make(cls) -> "Agent":
+        binding = cls._binding()
+        return binding if binding is not None else cls()
 
-        container = app()
-        if not container.has(cls.__name__):
-            raise RuntimeError(f"{cls.__name__} has no active fake/record binding")
-        return container.make(cls.__name__)
-
-    bound = faked
-
-    def _bound_stand_in(self) -> Any:
-        from fastapi_startkit.application import app
-
-        container = app()
-        key = type(self).__name__
-        if container.has(key):
-            candidate = container.make(key)
-            if candidate is not self:
-                return candidate
-        return None
+    def _faked(self) -> Any:
+        binding = type(self)._binding()
+        return binding if binding is not self else None
 
     def assert_prompted(self, times: int | None = None) -> None:
         calls = [c for c in self._call_log if c["method"] in ("prompt", "stream")]
@@ -186,7 +175,7 @@ class Agent:
         return build(chain, final)(message)
 
     def _resolve_model(self, override: str | None = None) -> str:
-        return Lab(self._provider).get_model(override or self._model or None)
+        return Lab.get_provider(self._provider).get_model(override or self._model or None)
 
     def _get_provider_options(self, override: dict | None = None) -> dict:
         options = dict(self.provider_options().get(self._provider, {}))
@@ -226,7 +215,7 @@ class Agent:
     def _build_model(self, model: str | None = None, provider_options: dict | None = None) -> Any:
         from langchain.chat_models import init_chat_model  # noqa: PLC0415
 
-        lab = Lab(self._provider)
+        lab = Lab.get_provider(self._provider)
         kwargs: dict[str, Any] = {"model_provider": lab.get_provider_key()}
 
         api_key = lab.get_api_key()

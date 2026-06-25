@@ -147,15 +147,3 @@ class AgentBinding:
                 return func(*args, **kwargs)
 
         return wrapper
-
-
-class _FakeAccessor:
-    def __get__(self, instance: Any, owner: type) -> Callable[..., Any]:
-        if instance is None:
-            return lambda responses=None: AgentBinding(owner, FakeAgent(responses))
-
-        def register(patterns: dict) -> Any:
-            instance._fakes.update(patterns)
-            return instance
-
-        return register
