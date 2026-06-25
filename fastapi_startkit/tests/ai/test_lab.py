@@ -23,7 +23,7 @@ class TestLab(unittest.TestCase):
         self.assertEqual(Lab.GOOGLE.get_model("custom-model"), "custom-model")
 
     def test_get_model_text_default(self):
-        self.assertEqual(Lab.GOOGLE.get_model(), "gemini-2.0-flash")
+        self.assertEqual(Lab.GOOGLE.get_model(), "gemini-2.5-flash-lite")
         self.assertEqual(Lab.ANTHROPIC.get_model(), "claude-sonnet-4-6")
         self.assertEqual(Lab.OPENAI.get_model(), "gpt-4o")
 
@@ -38,5 +38,5 @@ class TestLab(unittest.TestCase):
         self.assertIs(Lab.get_provider("anthropic"), Lab.ANTHROPIC)
 
     def test_get_model_url_text(self):
-        self.assertEqual(Lab.get_model_url(), "google_genai:gemini-2.0-flash")
+        self.assertEqual(Lab.get_model_url(), "google_genai:gemini-2.5-flash-lite")
         self.assertEqual(Lab.get_model_url("anthropic"), "anthropic:claude-sonnet-4-6")

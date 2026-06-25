@@ -45,7 +45,7 @@ class GoogleConfig:
 
     models: dict = field(
         default_factory=lambda: {
-            "default": "gemini-2.0-flash",
+            "default": "gemini-2.5-flash-lite",
             "default_image": "imagen-3.0-generate-002",
         }
     )

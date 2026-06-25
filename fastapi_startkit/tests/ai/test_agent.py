@@ -89,7 +89,7 @@ class TestAgent(unittest.TestCase):
         GoogleAgent().prompt("hi")
 
         self.assertEqual(captured["provider"], "google_genai")
-        self.assertEqual(captured["model"], "gemini-2.0-flash")
+        self.assertEqual(captured["model"], "gemini-2.5-flash-lite")
 
     def test_stream_yields_tokens_from_the_model(self):
         self.setup_agent([AIMessage(content="streamed reply")])
@@ -99,7 +99,7 @@ class TestAgent(unittest.TestCase):
         self.assertEqual("".join(chunks), "streamed reply")
 
     def test_resolve_model_falls_back_to_lab_default(self):
-        self.assertEqual(Agent()._resolve_model(), "gemini-2.0-flash")
+        self.assertEqual(Agent()._resolve_model(), "gemini-2.5-flash-lite")
 
         class AnthropicAgent(Agent):
             _provider = "anthropic"
