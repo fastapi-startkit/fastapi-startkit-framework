@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import base64
 
-# Optional runtime dependency — imported at module level so tests can patch it.
 try:
     from fastapi_startkit.storage.storage import Storage
 except Exception:  # pragma: no cover
@@ -34,8 +33,6 @@ class Document:
         self.name = name
         self.media_type = media_type
 
-    # ── Sync constructors (text) ───────────────────────────────────────────────
-
     @classmethod
     def from_path(cls, path: str) -> "Document":
         """Load a document from a local file path.
@@ -51,8 +48,6 @@ class Document:
                 content = f.read()
         return cls(content=content, name=path)
 
-    # ── Async constructors (binary) ────────────────────────────────────────────
-
     @classmethod
     async def from_storage(cls, key: str) -> "Document":
         """Load a binary file from application storage (``storage/<key>``) asynchronously.
@@ -65,7 +60,6 @@ class Document:
             if Storage is not None:
                 try:
                     disk = Storage.disk("local")
-                    # Resolve the full path and read as binary
                     resolved_path = disk.get_path(key)
                     with open(resolved_path, "rb") as f:
                         return f.read()
@@ -95,8 +89,6 @@ class Document:
         name = url.rstrip("/").split("/")[-1]
         return cls(content=response.content, name=name)
 
-    # ── Binary accessor ────────────────────────────────────────────────────────
-
     def to_bytes(self) -> bytes:
         """Return the document content as raw bytes.
 
@@ -116,8 +108,6 @@ class Document:
             encoded = doc.to_base64()
         """
         return base64.b64encode(self.to_bytes()).decode("utf-8")
-
-    # ── LLM content blocks ─────────────────────────────────────────────────────
 
     def to_anthropic_block(self) -> dict:
         """Return an Anthropic-compatible content block for this document."""

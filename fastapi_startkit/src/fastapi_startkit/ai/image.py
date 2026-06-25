@@ -47,8 +47,6 @@ class ImageResponse:
     def _auto_filename(self) -> str:
         return f"{uuid.uuid4()}.{self._fmt}"
 
-    # ── Storage helpers ────────────────────────────────────────────────────────
-
     async def store(self) -> str:
         """Save to the default private disk with an auto-generated filename."""
         return await self._save(self._auto_filename(), disk="local")
@@ -64,8 +62,6 @@ class ImageResponse:
     async def storePubliclyAs(self, name: str) -> str:
         """Save to the public disk with a custom filename."""
         return await self._save(name, disk="public")
-
-    # ── Internal ───────────────────────────────────────────────────────────────
 
     async def _save(self, name: str, disk: str = "local") -> str:
         return await asyncio.to_thread(self._save_sync, name, disk)
@@ -109,7 +105,6 @@ class Image:
         )
     """
 
-    # DALL-E 3 size presets
     _LANDSCAPE_SIZE = "1792x1024"
     _PORTRAIT_SIZE = "1024x1792"
     _SQUARE_SIZE = "1024x1024"
@@ -125,8 +120,6 @@ class Image:
     def of(cls, prompt: str) -> "Image":
         """Create an :class:`Image` builder with the given prompt."""
         return cls(prompt)
-
-    # ── Modifier methods (chainable) ───────────────────────────────────────────
 
     def attachments(self, docs: list) -> "Image":
         """Attach :class:`~fastapi_startkit.ai.Document` objects for an editing request."""
@@ -158,8 +151,6 @@ class Image:
         self._quality = q
         return self
 
-    # ── Generation ─────────────────────────────────────────────────────────────
-
     async def generate(self) -> ImageResponse:
         """Call the configured image provider and return an :class:`ImageResponse`."""
         provider = self._resolve_provider()
@@ -179,8 +170,6 @@ class Image:
             )
 
         return ImageResponse(data=image_bytes, fmt="png")
-
-    # ── Internal ───────────────────────────────────────────────────────────────
 
     def _resolve_provider(self) -> "ImageFactory":
         from .image_factory import (  # noqa: PLC0415

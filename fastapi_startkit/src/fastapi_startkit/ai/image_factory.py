@@ -105,7 +105,6 @@ class GoogleImageFactory(ImageFactory):
     +--------------+-----------+
     """
 
-    # Map DALL-E-style pixel sizes to Imagen aspect ratios
     _ASPECT_MAP: dict[str, str] = {
         "1024x1024": "1:1",
         "1792x1024": "16:9",

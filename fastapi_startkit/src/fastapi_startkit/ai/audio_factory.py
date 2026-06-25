@@ -100,7 +100,6 @@ class GoogleAudioFactory(AudioFactory):
     because Gemini TTS yields raw PCM16 which is wrapped in a WAV container.
     """
 
-    # Map OpenAI-style voice aliases → Google Gemini voice names
     _VOICE_MAP: dict[str, str] = {
         "nova": "Aoede",
         "alloy": "Kore",
@@ -149,7 +148,6 @@ class GoogleAudioFactory(AudioFactory):
             ),
         )
 
-        # Gemini TTS returns raw PCM16 samples — wrap in WAV container
         pcm_data = response.candidates[0].content.parts[0].inline_data.data
         return _pcm_to_wav(pcm_data)
 
@@ -187,14 +185,13 @@ class ElevenLabsAudioFactory(AudioFactory):
         not currently supported by ElevenLabs.
     """
 
-    # Map OpenAI-style aliases → ElevenLabs voice IDs
     _VOICE_MAP: dict[str, str] = {
-        "nova": "21m00Tcm4TlvDq8ikWAM",  # Rachel — female
-        "alloy": "EXAVITQu4vr4xnSDxMaL",  # Bella  — female
-        "shimmer": "MF3mGyEYCl7XYWbV9V6O",  # Elli   — female
-        "onyx": "pNInz6obpgDQGcFmaJgB",  # Adam   — male
-        "echo": "ErXwobaYiN019PkySvjV",  # Antoni — male
-        "fable": "VR6AewLTigWG4xSOukaG",  # Arnold — male
+        "nova": "21m00Tcm4TlvDq8ikWAM",
+        "alloy": "EXAVITQu4vr4xnSDxMaL",
+        "shimmer": "MF3mGyEYCl7XYWbV9V6O",
+        "onyx": "pNInz6obpgDQGcFmaJgB",
+        "echo": "ErXwobaYiN019PkySvjV",
+        "fable": "VR6AewLTigWG4xSOukaG",
     }
 
     def __init__(self, api_key: str | None = None):
@@ -223,9 +220,6 @@ class ElevenLabsAudioFactory(AudioFactory):
         return b"".join(audio_chunks)
 
 
-# ─── PCM → WAV helper ─────────────────────────────────────────────────────────
-
-
 def _pcm_to_wav(
     pcm_data: bytes,
     sample_rate: int = 24000,
@@ -248,7 +242,7 @@ def _pcm_to_wav(
         b"WAVE",
         b"fmt ",
         16,
-        1,  # PCM
+        1,
         channels,
         sample_rate,
         byte_rate,
