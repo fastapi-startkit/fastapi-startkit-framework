@@ -1,276 +1,237 @@
-"""Tests for Agent.fake(), assert_prompted(), assert_not_prompted(), and reset()."""
+"""Tests for Agent.fake() / Agent.record() and the assert_prompted/reset helpers.
+
+``Agent.fake()`` binds a canned stand-in into the container for the duration of a
+``with`` block. ``Agent.record()`` binds a record-and-replay stand-in: on a cassette
+miss it calls the real agent once and caches the response to disk; on a hit it
+replays from the cassette without calling the agent again.
+"""
 
 import json
 import os
 import tempfile
+import unittest
+from unittest import mock
 
-import pytest
 from fastapi_startkit.ai.agent import Agent
-from fastapi_startkit.ai.response import AgentResponse, AgentSnapshot
-
-
-# ─── Helpers ──────────────────────────────────────────────────────────────────
+from fastapi_startkit.ai.response import AgentResponse
 
 
 class SimpleAgent(Agent):
-    """Bare-minimum agent for testing — never touches a real API."""
-
     pass
 
 
-# ─── fake() with AgentResponse returns it without hitting the API ──────────────
-
-
-def test_fake_with_agent_response_returns_it():
-    agent = SimpleAgent()
-    expected = AgentResponse(content="Hello world!")
-    agent.fake({"*": expected})
-
-    result = agent.prompt("anything")
-
-    assert result.content == "Hello world!"
-
-
-def test_fake_does_not_call_provider_run():
-    """fake() must short-circuit before _run() is ever invoked."""
-    agent = SimpleAgent()
-    agent.fake({"*": AgentResponse(content="faked")})
-
-    called = []
-
-    original_run = agent._run
-
-    def patched_run(*args, **kwargs):
-        called.append(True)
-        return original_run(*args, **kwargs)
-
-    agent._run = patched_run  # type: ignore[method-assign]
-    agent.prompt("hello")
-
-    assert called == [], "_run() must not be called when a fake matches"
-
-
-def test_fake_with_exact_pattern():
-    agent = SimpleAgent()
-    agent.fake({"hello": AgentResponse(content="matched hello")})
-
-    result = agent.prompt("hello")
-    assert result.content == "matched hello"
-
-
-# ─── fake() with glob pattern matching ────────────────────────────────────────
-
-
-def test_fake_glob_hello_wildcard():
-    agent = SimpleAgent()
-    agent.fake({"*hello*": AgentResponse(content="hi there")})
-
-    result = agent.prompt("say hello to me")
-    assert result.content == "hi there"
-
-
-def test_fake_glob_analyze_wildcard():
-    agent = SimpleAgent()
-    agent.fake({"*analyze*": AgentResponse(content="analysis done")})
-
-    result = agent.prompt("please analyze this report")
-    assert result.content == "analysis done"
-
-
-def test_fake_glob_no_match_raises_on_missing_run():
-    """When a pattern does not match and no real provider is configured, _run raises."""
-    agent = SimpleAgent()
-    agent.fake({"*hello*": AgentResponse(content="hi")})
-
-    with pytest.raises(Exception):
-        agent.prompt("goodbye")  # pattern does not match → falls through to _run
-
-
-def test_fake_glob_case_insensitive():
-    agent = SimpleAgent()
-    agent.fake({"*HELLO*": AgentResponse(content="case insensitive")})
-
-    result = agent.prompt("say hello please")
-    assert result.content == "case insensitive"
-
-
-def test_fake_first_matching_pattern_wins():
-    agent = SimpleAgent()
-    agent.fake(
-        {
-            "*hello*": AgentResponse(content="first match"),
-            "*hello world*": AgentResponse(content="second match"),
-        }
-    )
-
-    result = agent.prompt("hello world")
-    assert result.content == "first match"
-
-
-# ─── fake() with AgentSnapshot loads from fixture if file exists ───────────────
-
-
-def test_fake_with_snapshot_loads_from_file_if_exists():
-    fixture_data = {"content": "snapshot reply", "tool_calls": [], "usage": {"input": 5, "output": 10}}
-
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-        json.dump(fixture_data, f)
-        fixture_path = f.name
-
-    try:
+class TestAgentFake(unittest.TestCase):
+    def test_fake_with_agent_response_returns_it(self):
         agent = SimpleAgent()
-        snapshot = AgentSnapshot(path=fixture_path)
-        agent.fake({"*": snapshot})
+        with SimpleAgent.fake({"*": AgentResponse(content="Hello world!")}):
+            result = agent.prompt("anything")
 
-        result = agent.prompt("any prompt")
-        assert result.content == "snapshot reply"
-        assert result.usage == {"input": 5, "output": 10}
-    finally:
-        os.unlink(fixture_path)
+        self.assertEqual(result.content, "Hello world!")
 
-
-def test_fake_with_snapshot_missing_file_calls_run(monkeypatch):
-    """When the snapshot file does not exist, _run() is called and the result is saved."""
-    expected_response = AgentResponse(content="live result")
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        snapshot_path = os.path.join(tmpdir, "snap.json")
-
+    def test_fake_does_not_call_provider_run(self):
         agent = SimpleAgent()
-        snapshot = AgentSnapshot(path=snapshot_path)
-        agent.fake({"*": snapshot})
+        called = []
 
-        # Patch _run to avoid real API call
-        monkeypatch.setattr(agent, "_run", lambda *a, **kw: expected_response)
+        original_run = agent._run
 
-        result = agent.prompt("test message")
-        assert result.content == "live result"
+        def patched_run(*args, **kwargs):
+            called.append(True)
+            return original_run(*args, **kwargs)
 
-        # Snapshot should now be saved to disk
-        assert os.path.exists(snapshot_path)
-        with open(snapshot_path) as f:
-            saved = json.load(f)
-        assert saved["content"] == "live result"
+        agent._run = patched_run
 
+        with SimpleAgent.fake({"*": AgentResponse(content="faked")}):
+            agent.prompt("hello")
 
-# ─── assert_prompted() ────────────────────────────────────────────────────────
+        self.assertEqual(called, [], "_run() must not be called when a fake matches")
 
+    def test_fake_with_exact_pattern(self):
+        agent = SimpleAgent()
+        with SimpleAgent.fake({"hello": AgentResponse(content="matched hello")}):
+            result = agent.prompt("hello")
 
-def test_assert_prompted_passes_after_one_call():
-    agent = SimpleAgent()
-    agent.fake({"*": AgentResponse(content="ok")})
+        self.assertEqual(result.content, "matched hello")
 
-    agent.prompt("first")
-    agent.assert_prompted()  # must not raise
+    def test_fake_glob_hello_wildcard(self):
+        agent = SimpleAgent()
+        with SimpleAgent.fake({"*hello*": AgentResponse(content="hi there")}):
+            result = agent.prompt("say hello to me")
 
+        self.assertEqual(result.content, "hi there")
 
-def test_assert_prompted_times_2_passes_after_exactly_2_calls():
-    agent = SimpleAgent()
-    agent.fake({"*": AgentResponse(content="ok")})
+    def test_fake_glob_analyze_wildcard(self):
+        agent = SimpleAgent()
+        with SimpleAgent.fake({"*analyze*": AgentResponse(content="analysis done")}):
+            result = agent.prompt("please analyze this report")
 
-    agent.prompt("first")
-    agent.prompt("second")
-    agent.assert_prompted(times=2)  # must not raise
+        self.assertEqual(result.content, "analysis done")
 
+    def test_fake_no_match_raises(self):
+        agent = SimpleAgent()
+        with SimpleAgent.fake({"*hello*": AgentResponse(content="hi")}):
+            with self.assertRaises(Exception):
+                agent.prompt("goodbye")
 
-def test_assert_prompted_times_fails_when_count_mismatch():
-    agent = SimpleAgent()
-    agent.fake({"*": AgentResponse(content="ok")})
+    def test_fake_glob_case_insensitive(self):
+        agent = SimpleAgent()
+        with SimpleAgent.fake({"*HELLO*": AgentResponse(content="case insensitive")}):
+            result = agent.prompt("say hello please")
 
-    agent.prompt("only once")
+        self.assertEqual(result.content, "case insensitive")
 
-    with pytest.raises(AssertionError):
-        agent.assert_prompted(times=2)
+    def test_fake_first_matching_pattern_wins(self):
+        agent = SimpleAgent()
+        with SimpleAgent.fake(
+            {
+                "*hello*": AgentResponse(content="first match"),
+                "*hello world*": AgentResponse(content="second match"),
+            }
+        ):
+            result = agent.prompt("hello world")
 
+        self.assertEqual(result.content, "first match")
 
-def test_assert_prompted_fails_when_never_called():
-    agent = SimpleAgent()
+    def test_assert_prompted_passes_after_one_call(self):
+        agent = SimpleAgent()
+        with SimpleAgent.fake({"*": AgentResponse(content="ok")}):
+            agent.prompt("first")
+            agent.assert_prompted()
 
-    with pytest.raises(AssertionError):
-        agent.assert_prompted()
+    def test_assert_prompted_times_2_passes_after_exactly_2_calls(self):
+        agent = SimpleAgent()
+        with SimpleAgent.fake({"*": AgentResponse(content="ok")}):
+            agent.prompt("first")
+            agent.prompt("second")
+            agent.assert_prompted(times=2)
 
+    def test_assert_prompted_times_fails_when_count_mismatch(self):
+        agent = SimpleAgent()
+        with SimpleAgent.fake({"*": AgentResponse(content="ok")}):
+            agent.prompt("only once")
 
-def test_assert_prompted_times_zero_passes_when_never_called():
-    agent = SimpleAgent()
-    agent.assert_prompted(times=0)  # must not raise
+            with self.assertRaises(AssertionError):
+                agent.assert_prompted(times=2)
 
+    def test_assert_prompted_fails_when_never_called(self):
+        agent = SimpleAgent()
 
-# ─── assert_not_prompted() ────────────────────────────────────────────────────
+        with self.assertRaises(AssertionError):
+            agent.assert_prompted()
 
+    def test_assert_prompted_times_zero_passes_when_never_called(self):
+        agent = SimpleAgent()
+        agent.assert_prompted(times=0)
 
-def test_assert_not_prompted_passes_when_no_calls_made():
-    agent = SimpleAgent()
-    agent.assert_not_prompted()  # must not raise
-
-
-def test_assert_not_prompted_fails_after_one_call():
-    agent = SimpleAgent()
-    agent.fake({"*": AgentResponse(content="ok")})
-
-    agent.prompt("a prompt")
-
-    with pytest.raises(AssertionError):
+    def test_assert_not_prompted_passes_when_no_calls_made(self):
+        agent = SimpleAgent()
         agent.assert_not_prompted()
 
+    def test_assert_not_prompted_fails_after_one_call(self):
+        agent = SimpleAgent()
+        with SimpleAgent.fake({"*": AgentResponse(content="ok")}):
+            agent.prompt("a prompt")
 
-# ─── reset() ──────────────────────────────────────────────────────────────────
+            with self.assertRaises(AssertionError):
+                agent.assert_not_prompted()
 
+    def test_reset_clears_call_log(self):
+        agent = SimpleAgent()
+        with SimpleAgent.fake({"*": AgentResponse(content="ok")}):
+            agent.prompt("first")
+            self.assertEqual(len(agent._call_log), 1)
 
-def test_reset_clears_call_log():
-    agent = SimpleAgent()
-    agent.fake({"*": AgentResponse(content="ok")})
+        agent.reset()
+        self.assertEqual(agent._call_log, [])
 
-    agent.prompt("first")
-    assert len(agent._call_log) == 1
+    def test_reset_returns_agent_for_chaining(self):
+        agent = SimpleAgent()
+        result = agent.reset()
+        self.assertIs(result, agent)
 
-    agent.reset()
-    assert agent._call_log == []
+    def test_assert_not_prompted_passes_after_reset(self):
+        agent = SimpleAgent()
+        with SimpleAgent.fake({"*": AgentResponse(content="ok")}):
+            agent.prompt("call before reset")
 
+        agent.reset()
+        agent.assert_not_prompted()
 
-def test_reset_clears_fakes():
-    agent = SimpleAgent()
-    agent.fake({"*": AgentResponse(content="ok")})
-    assert len(agent._fakes) == 1
+    def test_fake_rebinding_overrides_previous(self):
+        agent = SimpleAgent()
 
-    agent.reset()
-    assert agent._fakes == {}
+        with SimpleAgent.fake({"*": AgentResponse(content="first fake")}):
+            self.assertEqual(agent.prompt("call").content, "first fake")
 
+        with SimpleAgent.fake({"*": AgentResponse(content="second fake")}):
+            self.assertEqual(agent.prompt("call again").content, "second fake")
 
-def test_reset_returns_agent_for_chaining():
-    agent = SimpleAgent()
-    result = agent.reset()
-    assert result is agent
+    def test_stream_returns_fake_response(self):
+        agent = SimpleAgent()
+        with SimpleAgent.fake({"*hello*": AgentResponse(content="Faked stream!")}):
+            chunks = list(agent.stream("hello world"))
 
-
-def test_assert_not_prompted_passes_after_reset():
-    agent = SimpleAgent()
-    agent.fake({"*": AgentResponse(content="ok")})
-
-    agent.prompt("call before reset")
-    agent.reset()
-
-    agent.assert_not_prompted()  # call log was cleared
-
-
-def test_fake_after_reset_works_normally():
-    agent = SimpleAgent()
-    agent.fake({"*": AgentResponse(content="first fake")})
-    agent.prompt("call")
-    agent.reset()
-
-    agent.fake({"*": AgentResponse(content="second fake")})
-    result = agent.prompt("call again")
-    assert result.content == "second fake"
+        self.assertEqual(chunks, ["Faked stream!"])
+        agent.assert_prompted(times=1)
 
 
-# ─── stream() respects fake() ─────────────────────────────────────────────────
+class TestAgentRecord(unittest.TestCase):
+    def setup_agent(self, content):
+        calls = []
 
+        def fake_run(agent_self, message, **kwargs):
+            calls.append(message)
+            return AgentResponse(content=content)
 
-def test_stream_returns_fake_response():
-    agent = SimpleAgent()
-    agent.fake({"*hello*": AgentResponse(content="Faked stream!")})
+        patcher = mock.patch.object(SimpleAgent, "_run", fake_run)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return calls
 
-    chunks = list(agent.stream("hello world"))
+    def test_first_run_records_response_to_cassette(self):
+        calls = self.setup_agent("recorded reply")
+        with tempfile.TemporaryDirectory() as tmp:
+            cassette = os.path.join(tmp, "c.json")
+            with SimpleAgent.record(cassette):
+                result = SimpleAgent().prompt("hello")
 
-    assert chunks == ["Faked stream!"]
-    agent.assert_prompted(times=1)
+            self.assertEqual(result.content, "recorded reply")
+            self.assertEqual(calls, ["hello"])
+            self.assertTrue(os.path.exists(cassette))
+            with open(cassette) as f:
+                self.assertIn("recorded reply", json.load(f).values())
+
+    def test_second_run_replays_without_calling_run(self):
+        calls = self.setup_agent("recorded reply")
+        with tempfile.TemporaryDirectory() as tmp:
+            cassette = os.path.join(tmp, "c.json")
+            with SimpleAgent.record(cassette):
+                SimpleAgent().prompt("hello")
+            with SimpleAgent.record(cassette):
+                replayed = SimpleAgent().prompt("hello")
+
+            self.assertEqual(replayed.content, "recorded reply")
+            self.assertEqual(calls, ["hello"])
+
+    def test_replay_prefers_cassette_over_live_response(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cassette = os.path.join(tmp, "c.json")
+            with mock.patch.object(SimpleAgent, "_run", lambda s, m, **k: AgentResponse(content="from first record")):
+                with SimpleAgent.record(cassette):
+                    SimpleAgent().prompt("hello")
+            with mock.patch.object(SimpleAgent, "_run", lambda s, m, **k: AgentResponse(content="changed live value")):
+                with SimpleAgent.record(cassette):
+                    result = SimpleAgent().prompt("hello")
+
+            self.assertEqual(result.content, "from first record")
+
+    def test_distinct_messages_are_recorded_separately(self):
+        calls = self.setup_agent("reply")
+        with tempfile.TemporaryDirectory() as tmp:
+            cassette = os.path.join(tmp, "c.json")
+            with SimpleAgent.record(cassette):
+                SimpleAgent().prompt("hello")
+                SimpleAgent().prompt("goodbye")
+
+            self.assertEqual(calls, ["hello", "goodbye"])
+            with open(cassette) as f:
+                self.assertEqual(len(json.load(f)), 2)

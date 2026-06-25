@@ -1,0 +1,150 @@
+import unittest
+from unittest import mock
+
+import langchain.chat_models as chat_models
+from langchain_core.messages import AIMessage, ToolCall
+from langchain_core.tools import tool
+
+from fastapi_startkit.ai import AIConfig, Document, fake_chat_model
+from fastapi_startkit.ai.agent import Agent
+from fastapi_startkit.ai.response import AgentResponse
+from fastapi_startkit.application import app
+
+
+@tool
+def search_jobs(query: str) -> str:
+    """Search the job board for roles matching the query."""
+    return "Python Developer at Shopify"
+
+
+class JobAssistant(Agent):
+    _instructions = "You help users find jobs."
+
+    def tools(self):
+        return [search_jobs]
+
+
+class TestAgent(unittest.TestCase):
+    def setUp(self):
+        container = app()
+        container.bind("ai", AIConfig())
+        container.make("config").set("ai", AIConfig())
+
+    def setup_agent(self, turns: list[AIMessage]):
+        model = fake_chat_model(turns)
+        patcher = mock.patch.object(chat_models, "init_chat_model", lambda *a, **k: model)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return model
+
+    def test_prompt_returns_agent_response(self):
+        self.setup_agent([AIMessage(content="hello back")])
+
+        agent = Agent()
+        result = agent.prompt("hi there")
+
+        self.assertIsInstance(result, AgentResponse)
+        self.assertEqual(result.content, "hello back")
+        agent.assert_prompted()
+
+    def test_search_jobs_tool_returns_listing(self):
+        self.setup_agent(
+            [
+                AIMessage(
+                    content="",
+                    tool_calls=[ToolCall(name="search_jobs", args={"query": "python"}, id="c1", type="tool_call")],
+                ),
+            ]
+        )
+
+        result = JobAssistant().prompt("find me a python job")
+
+        self.assertEqual(result.content, "Python Developer at Shopify")
+        self.assertEqual(result.tool_calls, [])
+
+    def test_prompt_maps_usage_metadata(self):
+        self.setup_agent(
+            [AIMessage(content="done", usage_metadata={"input_tokens": 11, "output_tokens": 7, "total_tokens": 18})]
+        )
+
+        result = Agent().prompt("anything")
+
+        self.assertEqual(result.usage, {"input": 11, "output": 7})
+
+    def test_build_model_passes_langchain_provider_key(self):
+        captured = {}
+
+        def fake_init(model, **kwargs):
+            captured["model"] = model
+            captured["provider"] = kwargs.get("model_provider")
+            return fake_chat_model([AIMessage(content="ok")])
+
+        patcher = mock.patch.object(chat_models, "init_chat_model", fake_init)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+        class GoogleAgent(Agent):
+            _provider = "google"
+
+        GoogleAgent().prompt("hi")
+
+        self.assertEqual(captured["provider"], "google_genai")
+        self.assertEqual(captured["model"], "gemini-2.0-flash")
+
+    def test_stream_yields_tokens_from_the_model(self):
+        self.setup_agent([AIMessage(content="streamed reply")])
+
+        chunks = list(Agent().stream("hello"))
+
+        self.assertEqual("".join(chunks), "streamed reply")
+
+    def test_resolve_model_falls_back_to_lab_default(self):
+        self.assertEqual(Agent()._resolve_model(), "gemini-2.0-flash")
+
+        class AnthropicAgent(Agent):
+            _provider = "anthropic"
+
+        self.assertEqual(AnthropicAgent()._resolve_model(), "claude-sonnet-4-6")
+
+    def test_resolve_model_prefers_explicit_override(self):
+        self.assertEqual(Agent()._resolve_model("my-model"), "my-model")
+
+    def test_instructions_lead_the_message_list(self):
+        messages = JobAssistant()._build_messages("find me a job")
+
+        self.assertEqual(messages[0], {"role": "system", "content": "You help users find jobs."})
+        self.assertEqual(sum(m.get("role") == "system" for m in messages), 1)
+
+    def test_instructions_can_be_a_method_override(self):
+        class DynamicAgent(Agent):
+            def instructions(self) -> str:
+                return "Computed identity."
+
+        messages = DynamicAgent()._build_messages("hi")
+
+        self.assertEqual(messages[0], {"role": "system", "content": "Computed identity."})
+
+    def test_no_instructions_prepends_no_system_message(self):
+        messages = Agent()._build_messages("hi")
+
+        self.assertTrue(all(m.get("role") != "system" for m in messages))
+
+    def test_build_messages_inlines_text_attachment(self):
+        doc = Document(content="Q3 revenue was $1.2M.", name="q3-report.txt")
+
+        messages = Agent()._build_messages("Summarise this report.", attachments=[doc])
+
+        user_content = messages[-1]["content"]
+        self.assertEqual(user_content[0], {"type": "text", "text": "Summarise this report."})
+        self.assertEqual(user_content[1]["type"], "text")
+        self.assertIn("q3-report.txt", user_content[1]["text"])
+
+    def test_build_messages_encodes_binary_attachment_as_file_block(self):
+        doc = Document(content=b"%PDF-1.7 ...", name="q3.pdf", media_type="application/pdf")
+
+        messages = Agent()._build_messages("Summarise", attachments=[doc])
+
+        block = messages[-1]["content"][1]
+        self.assertEqual(block["type"], "file")
+        self.assertEqual(block["mime_type"], "application/pdf")
+        self.assertEqual(block["base64"], doc.to_base64())

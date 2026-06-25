@@ -1,149 +1,97 @@
 """Tests for AI configuration dataclasses."""
 
+import os
+import unittest
+from unittest import mock
+
 from fastapi_startkit.ai import AIConfig, AnthropicConfig, GoogleConfig, OpenAIConfig
 
 
-# ─── AIConfig defaults ────────────────────────────────────────────────────────
+class TestAIConfiguration(unittest.TestCase):
+    def _patch_env(self, set_=None, unset=()):
+        patcher = mock.patch.dict(os.environ, set_ or {})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        for key in unset:
+            os.environ.pop(key, None)
 
+    def test_aiconfig_default_provider_is_google(self):
+        self._patch_env(unset=["AI_PROVIDER"])
+        self.assertEqual(AIConfig().default, "google")
 
-def test_aiconfig_default_provider_is_google(monkeypatch):
-    """Default provider is 'google' when AI_PROVIDER env var is not set."""
-    monkeypatch.delenv("AI_PROVIDER", raising=False)
-    config = AIConfig()
-    assert config.default == "google"
+    def test_aiconfig_default_reads_ai_provider_env(self):
+        self._patch_env({"AI_PROVIDER": "anthropic"})
+        self.assertEqual(AIConfig().default, "anthropic")
 
+    def test_aiconfig_providers_has_anthropic_key(self):
+        self.assertIn("anthropic", AIConfig().providers)
 
-def test_aiconfig_default_reads_ai_provider_env(monkeypatch):
-    monkeypatch.setenv("AI_PROVIDER", "anthropic")
-    config = AIConfig()
-    assert config.default == "anthropic"
+    def test_aiconfig_providers_has_openai_key(self):
+        self.assertIn("openai", AIConfig().providers)
 
+    def test_aiconfig_providers_has_google_key(self):
+        self.assertIn("google", AIConfig().providers)
 
-def test_aiconfig_providers_has_anthropic_key():
-    config = AIConfig()
-    assert "anthropic" in config.providers
+    def test_aiconfig_providers_anthropic_is_instance(self):
+        self.assertIsInstance(AIConfig().providers["anthropic"], AnthropicConfig)
 
+    def test_aiconfig_providers_openai_is_instance(self):
+        self.assertIsInstance(AIConfig().providers["openai"], OpenAIConfig)
 
-def test_aiconfig_providers_has_openai_key():
-    config = AIConfig()
-    assert "openai" in config.providers
+    def test_aiconfig_providers_google_is_instance(self):
+        self.assertIsInstance(AIConfig().providers["google"], GoogleConfig)
 
+    def test_anthropic_config_driver_is_anthropic(self):
+        self.assertEqual(AnthropicConfig().driver, "anthropic")
 
-def test_aiconfig_providers_has_google_key():
-    config = AIConfig()
-    assert "google" in config.providers
+    def test_anthropic_config_picks_up_api_key_from_env(self):
+        self._patch_env({"ANTHROPIC_API_KEY": "test-anthropic-key-123"})
+        self.assertEqual(AnthropicConfig().key, "test-anthropic-key-123")
 
+    def test_anthropic_config_key_defaults_to_empty_when_env_not_set(self):
+        self._patch_env(unset=["ANTHROPIC_API_KEY"])
+        self.assertEqual(AnthropicConfig().key, "")
 
-def test_aiconfig_providers_anthropic_is_instance():
-    config = AIConfig()
-    assert isinstance(config.providers["anthropic"], AnthropicConfig)
+    def test_anthropic_config_url_default(self):
+        self.assertEqual(AnthropicConfig().url, "https://api.anthropic.com")
 
+    def test_anthropic_config_url_can_be_overridden(self):
+        self._patch_env({"ANTHROPIC_BASE_URL": "https://my-proxy.example.com"})
+        self.assertEqual(AnthropicConfig().url, "https://my-proxy.example.com")
 
-def test_aiconfig_providers_openai_is_instance():
-    config = AIConfig()
-    assert isinstance(config.providers["openai"], OpenAIConfig)
+    def test_openai_config_driver_is_openai(self):
+        self.assertEqual(OpenAIConfig().driver, "openai")
 
+    def test_openai_config_picks_up_api_key_from_env(self):
+        self._patch_env({"OPENAI_API_KEY": "sk-openai-test-key"})
+        self.assertEqual(OpenAIConfig().key, "sk-openai-test-key")
 
-def test_aiconfig_providers_google_is_instance():
-    config = AIConfig()
-    assert isinstance(config.providers["google"], GoogleConfig)
+    def test_openai_config_key_defaults_to_empty_when_env_not_set(self):
+        self._patch_env(unset=["OPENAI_API_KEY"])
+        self.assertEqual(OpenAIConfig().key, "")
 
+    def test_openai_config_url_default(self):
+        self.assertEqual(OpenAIConfig().url, "https://api.openai.com/v1")
 
-# ─── AnthropicConfig ──────────────────────────────────────────────────────────
+    def test_openai_config_url_can_be_overridden(self):
+        self._patch_env({"OPENAI_BASE_URL": "https://openai-proxy.example.com/v1"})
+        self.assertEqual(OpenAIConfig().url, "https://openai-proxy.example.com/v1")
 
+    def test_google_config_driver_is_google(self):
+        self.assertEqual(GoogleConfig().driver, "google")
 
-def test_anthropic_config_driver_is_anthropic():
-    config = AnthropicConfig()
-    assert config.driver == "anthropic"
+    def test_google_config_picks_up_gemini_api_key(self):
+        self._patch_env({"GEMINI_API_KEY": "gemini-key-abc"}, unset=["GOOGLE_API_KEY"])
+        self.assertEqual(GoogleConfig().key, "gemini-key-abc")
 
+    def test_google_config_falls_back_to_google_api_key(self):
+        self._patch_env({"GOOGLE_API_KEY": "google-api-fallback"}, unset=["GEMINI_API_KEY"])
+        self.assertEqual(GoogleConfig().key, "google-api-fallback")
 
-def test_anthropic_config_picks_up_api_key_from_env(monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic-key-123")
-    config = AnthropicConfig()
-    assert config.key == "test-anthropic-key-123"
+    def test_google_config_gemini_key_takes_precedence(self):
+        self._patch_env({"GEMINI_API_KEY": "gemini-wins", "GOOGLE_API_KEY": "google-loses"})
+        self.assertEqual(GoogleConfig().key, "gemini-wins")
 
-
-def test_anthropic_config_key_defaults_to_empty_when_env_not_set(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    config = AnthropicConfig()
-    assert config.key == ""
-
-
-def test_anthropic_config_url_default():
-    config = AnthropicConfig()
-    assert config.url == "https://api.anthropic.com"
-
-
-def test_anthropic_config_url_can_be_overridden(monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://my-proxy.example.com")
-    config = AnthropicConfig()
-    assert config.url == "https://my-proxy.example.com"
-
-
-# ─── OpenAIConfig ─────────────────────────────────────────────────────────────
-
-
-def test_openai_config_driver_is_openai():
-    config = OpenAIConfig()
-    assert config.driver == "openai"
-
-
-def test_openai_config_picks_up_api_key_from_env(monkeypatch):
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-openai-test-key")
-    config = OpenAIConfig()
-    assert config.key == "sk-openai-test-key"
-
-
-def test_openai_config_key_defaults_to_empty_when_env_not_set(monkeypatch):
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    config = OpenAIConfig()
-    assert config.key == ""
-
-
-def test_openai_config_url_default():
-    config = OpenAIConfig()
-    assert config.url == "https://api.openai.com/v1"
-
-
-def test_openai_config_url_can_be_overridden(monkeypatch):
-    monkeypatch.setenv("OPENAI_BASE_URL", "https://openai-proxy.example.com/v1")
-    config = OpenAIConfig()
-    assert config.url == "https://openai-proxy.example.com/v1"
-
-
-# ─── GoogleConfig ─────────────────────────────────────────────────────────────
-
-
-def test_google_config_driver_is_google():
-    config = GoogleConfig()
-    assert config.driver == "google"
-
-
-def test_google_config_picks_up_gemini_api_key(monkeypatch):
-    monkeypatch.setenv("GEMINI_API_KEY", "gemini-key-abc")
-    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
-    config = GoogleConfig()
-    assert config.key == "gemini-key-abc"
-
-
-def test_google_config_falls_back_to_google_api_key(monkeypatch):
-    """When GEMINI_API_KEY is not set, fall back to GOOGLE_API_KEY."""
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-    monkeypatch.setenv("GOOGLE_API_KEY", "google-api-fallback")
-    config = GoogleConfig()
-    assert config.key == "google-api-fallback"
-
-
-def test_google_config_gemini_key_takes_precedence(monkeypatch):
-    """GEMINI_API_KEY wins over GOOGLE_API_KEY when both are set."""
-    monkeypatch.setenv("GEMINI_API_KEY", "gemini-wins")
-    monkeypatch.setenv("GOOGLE_API_KEY", "google-loses")
-    config = GoogleConfig()
-    assert config.key == "gemini-wins"
-
-
-def test_google_config_key_defaults_to_empty_when_neither_set(monkeypatch):
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
-    config = GoogleConfig()
-    assert config.key == ""
+    def test_google_config_key_defaults_to_empty_when_neither_set(self):
+        self._patch_env(unset=["GEMINI_API_KEY", "GOOGLE_API_KEY"])
+        self.assertEqual(GoogleConfig().key, "")
