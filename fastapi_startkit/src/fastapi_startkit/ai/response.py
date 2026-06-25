@@ -80,13 +80,13 @@ class AgentSnapshot:
                 indent=2,
             )
 
-    def resolve(self, agent: "Agent", message: str, **run_kwargs: Any) -> AgentResponse:
+    async def resolve(self, agent: "Agent", message: str, **run_kwargs: Any) -> AgentResponse:
         """
         Return the response — from disk if recorded, or from the real API
         (which is then saved for future runs).
         """
         if self.exists():
             return self.load()
-        response = agent._run(message, **run_kwargs)
+        response = await agent._run(message, **run_kwargs)
         self.save(response)
         return response

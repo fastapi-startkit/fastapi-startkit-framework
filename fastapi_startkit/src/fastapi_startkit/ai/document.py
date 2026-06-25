@@ -20,7 +20,7 @@ class Document:
     Text::
 
         doc = Document.from_path("report.txt")
-        agent.prompt("Summarise this", attachments=[doc])
+        await agent.prompt("Summarise this", attachments=[doc])
 
     Binary image::
 

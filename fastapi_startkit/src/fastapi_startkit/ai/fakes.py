@@ -20,7 +20,7 @@ Example — exercise a tool-calling agent end to end::
     ])
     agent = JobAssistant()
     agent._build_model = lambda *a, **k: model
-    response = agent.prompt("find me a python job")
+    response = await agent.prompt("find me a python job")
     assert response.content == "Here is a Python Developer role at Shopify."
 """
 

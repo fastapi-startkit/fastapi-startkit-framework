@@ -24,7 +24,7 @@ class JobAssistant(Agent):
         return [search_jobs]
 
 
-class TestAgent(unittest.TestCase):
+class TestAgent(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         container = app()
         container.bind("ai", AIConfig())
@@ -37,17 +37,17 @@ class TestAgent(unittest.TestCase):
         self.addCleanup(patcher.stop)
         return model
 
-    def test_prompt_returns_agent_response(self):
+    async def test_prompt_returns_agent_response(self):
         self.setup_agent([AIMessage(content="hello back")])
 
         agent = Agent()
-        result = agent.prompt("hi there")
+        result = await agent.prompt("hi there")
 
         self.assertIsInstance(result, AgentResponse)
         self.assertEqual(result.content, "hello back")
         agent.assert_prompted()
 
-    def test_search_jobs_tool_returns_listing(self):
+    async def test_search_jobs_tool_returns_listing(self):
         self.setup_agent(
             [
                 AIMessage(
@@ -57,21 +57,21 @@ class TestAgent(unittest.TestCase):
             ]
         )
 
-        result = JobAssistant().prompt("find me a python job")
+        result = await JobAssistant().prompt("find me a python job")
 
         self.assertEqual(result.content, "Python Developer at Shopify")
         self.assertEqual(result.tool_calls, [])
 
-    def test_prompt_maps_usage_metadata(self):
+    async def test_prompt_maps_usage_metadata(self):
         self.setup_agent(
             [AIMessage(content="done", usage_metadata={"input_tokens": 11, "output_tokens": 7, "total_tokens": 18})]
         )
 
-        result = Agent().prompt("anything")
+        result = await Agent().prompt("anything")
 
         self.assertEqual(result.usage, {"input": 11, "output": 7})
 
-    def test_build_model_passes_langchain_provider_key(self):
+    async def test_build_model_passes_langchain_provider_key(self):
         captured = {}
 
         def fake_init(model, **kwargs):
@@ -86,15 +86,15 @@ class TestAgent(unittest.TestCase):
         class GoogleAgent(Agent):
             _provider = "google"
 
-        GoogleAgent().prompt("hi")
+        await GoogleAgent().prompt("hi")
 
         self.assertEqual(captured["provider"], "google_genai")
         self.assertEqual(captured["model"], "gemini-2.5-flash-lite")
 
-    def test_stream_yields_tokens_from_the_model(self):
+    async def test_stream_yields_tokens_from_the_model(self):
         self.setup_agent([AIMessage(content="streamed reply")])
 
-        chunks = list(Agent().stream("hello"))
+        chunks = [chunk async for chunk in Agent().stream("hello")]
 
         self.assertEqual("".join(chunks), "streamed reply")
 

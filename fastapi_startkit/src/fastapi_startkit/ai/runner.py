@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import AsyncIterator, Sequence
 from typing import Any
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -24,17 +24,17 @@ class Runner:
         )
         self.max_steps = max_steps
 
-    def run(self, messages: Sequence[Message]) -> BaseMessage:
+    async def run(self, messages: Sequence[Message]) -> BaseMessage:
         history: list[Message] = list(messages)
-        response: AIMessage = self.model.invoke(history)  # type: ignore[assignment]
+        response: AIMessage = await self.model.ainvoke(history)  # type: ignore[assignment]
 
         if not response.tool_calls:
             return response
 
-        return self._run_tools(response.tool_calls)[-1]
+        return (await self._run_tools(response.tool_calls))[-1]
 
-    def _run_tools(self, tool_calls: list[dict[str, Any]]) -> list[BaseMessage]:
-        return [self._resolve_tool(call["name"]).invoke(call) for call in tool_calls]
+    async def _run_tools(self, tool_calls: list[dict[str, Any]]) -> list[BaseMessage]:
+        return [await self._resolve_tool(call["name"]).ainvoke(call) for call in tool_calls]
 
     def _resolve_tool(self, name: str) -> BaseTool:
         try:
@@ -44,12 +44,12 @@ class Runner:
 
 
 class StreamRunner(Runner):
-    def run(self, messages: Sequence[Message]) -> Iterator[str]:  # type: ignore[override]
+    async def run(self, messages: Sequence[Message]) -> AsyncIterator[str]:  # type: ignore[override]
         history: list[Message] = list(messages)
 
         for _ in range(self.max_steps):
             gathered: AIMessageChunk | None = None
-            for chunk in self.model.stream(history):
+            async for chunk in self.model.astream(history):
                 if chunk.content:
                     yield chunk.content if isinstance(chunk.content, str) else str(chunk.content)
                 gathered = chunk if gathered is None else gathered + chunk  # type: ignore[operator]
@@ -57,4 +57,4 @@ class StreamRunner(Runner):
             if gathered is None or not gathered.tool_calls:
                 return
             history.append(gathered)
-            history.extend(self._run_tools(gathered.tool_calls))
+            history.extend(await self._run_tools(gathered.tool_calls))

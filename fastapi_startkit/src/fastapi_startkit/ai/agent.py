@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import fnmatch
-from typing import Any, Callable, Iterator, Optional, Type
+from typing import Any, AsyncIterator, Callable, Optional, Type
 
 from .document import Document
 from .lab import Lab
@@ -46,7 +46,7 @@ class Agent:
     def after(self, response: AgentResponse) -> AgentResponse:
         return response
 
-    def prompt(
+    async def prompt(
             self,
             message: str,
             *,
@@ -58,7 +58,7 @@ class Agent:
 
         stand_in = self._faked()
         if stand_in is not None:
-            response = stand_in.prompt(message, attachments=attachments)
+            response = await stand_in.prompt(message, attachments=attachments)
             self._log_call("prompt", message)
             return self.after(response)
 
@@ -71,43 +71,45 @@ class Agent:
         match = self._match_fake(message)
         if match is not None:
             if isinstance(match, AgentSnapshot):
-                response = match.resolve(self, message, **_run_kwargs)
+                response = await match.resolve(self, message, **_run_kwargs)
             else:
                 response = match
             self._log_call("prompt", message)
             return self.after(response)
 
-        def _call(msg: str) -> AgentResponse:
-            return self._run(msg, **_run_kwargs)
+        async def _call(msg: str) -> AgentResponse:
+            return await self._run(msg, **_run_kwargs)
 
-        response = self._apply_middleware(message, _call)
+        response = await self._apply_middleware(message, _call)
         self._log_call("prompt", message)
         return self.after(response)
 
-    def stream(
+    async def stream(
             self,
             message: str,
             *,
             model: str | None = None,
             provider_options: dict | None = None,
-    ) -> Iterator[str]:
+    ) -> AsyncIterator[str]:
         message = self.before(message)
         self._log_call("stream", message)
 
         swapped = self._faked()
         if swapped is not None:
-            yield swapped.prompt(message).content
+            response = await swapped.prompt(message)
+            yield response.content
             return
 
         fake = self._match_fake(message)
         if fake is not None:
             if isinstance(fake, AgentSnapshot):
-                response = fake.resolve(self, message)
+                response = await fake.resolve(self, message)
             else:
                 response = fake
             yield response.content
             return
-        yield from self._stream(message, model=model, provider_options=provider_options)
+        async for chunk in self._stream(message, model=model, provider_options=provider_options):
+            yield chunk
 
     @classmethod
     def fake(cls, responses: dict | None = None) -> "AgentBinding":
@@ -161,7 +163,7 @@ class Agent:
     def _log_call(self, method: str, message: str) -> None:
         self._call_log.append({"method": method, "message": message})
 
-    def _apply_middleware(self, message: str, final: Callable[[str], AgentResponse]) -> AgentResponse:
+    async def _apply_middleware(self, message: str, final: Callable[[str], Any]) -> AgentResponse:
         chain = list(self.middleware())
 
         def build(mw_list: list, fn: Callable) -> Callable:
@@ -171,7 +173,7 @@ class Agent:
             next_fn = build(tail, fn)
             return lambda msg: head(msg, next_fn)
 
-        return build(chain, final)(message)
+        return await build(chain, final)(message)
 
     def _resolve_model(self, override: str | None = None) -> str:
         return Lab.get_provider(self._provider).get_model(override or self._model or None)
@@ -247,7 +249,7 @@ class Agent:
 
         return AgentResponse(content=content, tool_calls=tool_calls, usage=usage, raw=result)
 
-    def _run(
+    async def _run(
             self,
             message: str,
             model: str | None = None,
@@ -259,18 +261,19 @@ class Agent:
         messages = self._build_messages(message, attachments)
         chat_model = self._build_model(model, provider_options)
 
-        result = Runner(chat_model, self.tools(), self._max_steps).run(messages)
+        result = await Runner(chat_model, self.tools(), self._max_steps).run(messages)
         return self._to_agent_response(result)
 
-    def _stream(
+    async def _stream(
             self,
             message: str,
             model: str | None = None,
             provider_options: dict | None = None,
-    ) -> Iterator[str]:
+    ) -> AsyncIterator[str]:
         from .runner import StreamRunner  # noqa: PLC0415
 
         messages = self._build_messages(message)
         chat_model = self._build_model(model, provider_options)
 
-        yield from StreamRunner(chat_model, self.tools(), self._max_steps).run(messages)
+        async for chunk in StreamRunner(chat_model, self.tools(), self._max_steps).run(messages):
+            yield chunk

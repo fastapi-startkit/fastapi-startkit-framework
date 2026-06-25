@@ -63,7 +63,7 @@ class FakeAgent(_Recorder):
         super().__init__()
         self.responses = responses or {}
 
-    def prompt(self, message: str, attachments: list[Document] | None = None) -> AgentResponse:
+    async def prompt(self, message: str, attachments: list[Document] | None = None) -> AgentResponse:
         self._record_call(message, attachments)
         if not self.responses:
             return AgentResponse(content="")
@@ -85,7 +85,7 @@ class RecordingAgent(_Recorder):
         payload = json.dumps({"message": message, "attachments": names}, sort_keys=True)
         return hashlib.sha256(payload.encode()).hexdigest()
 
-    def prompt(self, message: str, attachments: list[Document] | None = None) -> AgentResponse:
+    async def prompt(self, message: str, attachments: list[Document] | None = None) -> AgentResponse:
         self._record_call(message, attachments)
         cassette = self.cassette
         assert cassette is not None, "RecordingAgent has no cassette resolved"
@@ -93,7 +93,7 @@ class RecordingAgent(_Recorder):
         key = self._key(message, attachments)
         if key in store:
             return AgentResponse(content=store[key])
-        response = self._real._run(message, attachments=attachments)
+        response = await self._real._run(message, attachments=attachments)
         store[key] = response.content
         cassette.parent.mkdir(parents=True, exist_ok=True)
         cassette.write_text(json.dumps(store, indent=2, sort_keys=True))
