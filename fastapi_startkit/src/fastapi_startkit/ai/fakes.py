@@ -2,10 +2,10 @@
 
 :func:`fake_chat_model` returns a chat model that replays a scripted sequence of
 assistant turns. Inject it into an :class:`~fastapi_startkit.ai.Agent` by patching
-``_build_model`` so :meth:`Agent.prompt` runs the genuine ``create_agent`` loop —
-tool calls included — with no network. Requires the ``langgraph`` extra::
+``_build_model`` so :meth:`Agent.prompt` runs the genuine ``Runner`` loop —
+tool calls included — with no network. Requires the ``ai`` extra::
 
-    pip install "fastapi-startkit[langgraph]"
+    pip install "fastapi-startkit[ai]"
 
 Example — exercise a tool-calling agent end to end::
 
@@ -35,8 +35,8 @@ def _require_langchain():
         from langchain_core.messages import AIMessage
     except ImportError as exc:  # pragma: no cover - exercised only without the extra
         raise ImportError(
-            "The agent test harness requires the 'langgraph' extra. "
-            'Install it with: pip install "fastapi-startkit[langgraph]"'
+            "The agent test harness requires the 'ai' extra. "
+            'Install it with: pip install "fastapi-startkit[ai]"'
         ) from exc
     return GenericFakeChatModel, AIMessage
 
