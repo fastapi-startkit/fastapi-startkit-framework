@@ -1,22 +1,23 @@
 from __future__ import annotations
 
 import fnmatch
-from typing import Any, AsyncIterator, Callable, Optional, Type
+from typing import TYPE_CHECKING, Any, AsyncIterator, Callable, Optional, Type
 
 from .document import Document
-from .lab import Lab
 from .response import AgentResponse, AgentSnapshot
 from .testing import AgentBinding
 
+if TYPE_CHECKING:
+    from langchain_core.tools import BaseTool
+
 
 class Agent:
-    _instructions: str | None = None
-    _provider: str | None = None
-    _model: str | None = None
-    _max_steps: int = 10
-    _max_tokens: int = 4096
-    _timeout: float = 30.0
-    _top_p: float = 1.0
+    provider: str | None = None
+    model: str | None = None
+    max_steps: int = 10
+    max_tokens: int = 4096
+    timeout: float = 30.0
+    top_p: float = 1.0
 
     def __init__(self):
         self._fakes: dict[str, AgentResponse | AgentSnapshot] = {}
@@ -31,7 +32,7 @@ class Agent:
     def schema(self) -> Optional[Type]:
         return None
 
-    def tools(self) -> list[Callable]:
+    def tools(self) -> list[BaseTool]:
         return []
 
     def middleware(self) -> list[Callable]:
@@ -39,12 +40,6 @@ class Agent:
 
     def provider_options(self) -> dict:
         return {}
-
-    def before(self, message: str) -> str:
-        return message
-
-    def after(self, response: AgentResponse) -> AgentResponse:
-        return response
 
     async def prompt(
             self,
@@ -54,13 +49,11 @@ class Agent:
             attachments: list[Document] | None = None,
             provider_options: dict | None = None,
     ) -> AgentResponse:
-        message = self.before(message)
-
         stand_in = self._faked()
         if stand_in is not None:
             response = await stand_in.prompt(message, attachments=attachments)
             self._log_call("prompt", message)
-            return self.after(response)
+            return response
 
         _run_kwargs = dict(
             model=model,
@@ -75,14 +68,14 @@ class Agent:
             else:
                 response = match
             self._log_call("prompt", message)
-            return self.after(response)
+            return response
 
-        async def _call(msg: str) -> AgentResponse:
-            return await self._run(msg, **_run_kwargs)
+        messages = self._build_messages(message, attachments)
+        chat_model = self._build_model(model, provider_options)
 
-        response = await self._apply_middleware(message, _call)
+        response = await self._run_pipeline(chat_model, messages)
         self._log_call("prompt", message)
-        return self.after(response)
+        return response
 
     async def stream(
             self,
@@ -91,7 +84,6 @@ class Agent:
             model: str | None = None,
             provider_options: dict | None = None,
     ) -> AsyncIterator[str]:
-        message = self.before(message)
         self._log_call("stream", message)
 
         swapped = self._faked()
@@ -163,7 +155,29 @@ class Agent:
     def _log_call(self, method: str, message: str) -> None:
         self._call_log.append({"method": method, "message": message})
 
-    async def _apply_middleware(self, message: str, final: Callable[[str], Any]) -> AgentResponse:
+    async def _run_pipeline(self, chat_model: Any, messages: list) -> AgentResponse:
+        from .pipeline import Response, build_pipeline  # noqa: PLC0415
+        from .runner import Runner  # noqa: PLC0415
+
+        chain = list(self.middleware())
+        if not chain:
+            return await self._invoke(chat_model, messages)
+
+        def core(model: Any) -> Response:
+            async def _run():
+                result = await Runner(self, model).run(messages)
+                yield result
+            return Response(_run)
+
+        pipeline = build_pipeline(chain, core)
+        raw = await pipeline(chat_model)
+        return self._to_agent_response(raw)
+
+    async def _apply_middleware(
+            self,
+            chat_model: Any,
+            final: Callable[[Any], Any],
+    ) -> AgentResponse:
         chain = list(self.middleware())
 
         def build(mw_list: list, fn: Callable) -> Callable:
@@ -171,23 +185,13 @@ class Agent:
                 return fn
             head, *tail = mw_list
             next_fn = build(tail, fn)
-            return lambda msg: head(msg, next_fn)
+            mw = head() if isinstance(head, type) else head
+            return lambda model: mw(model, next_fn)
 
-        return await build(chain, final)(message)
-
-    def _resolve_model(self, override: str | None = None) -> str:
-        return Lab.get_provider(self._provider).get_model(override or self._model or None)
-
-    def _get_provider_options(self, override: dict | None = None) -> dict:
-        options = dict(self.provider_options().get(self._provider, {}))
-        if override:
-            provider_specific = override.get(self._provider, override)
-            if isinstance(provider_specific, dict):
-                options.update(provider_specific)
-        return options
+        return await build(chain, final)(chat_model)
 
     def _build_instruction(self) -> str | None:
-        return self._instructions or self.instructions()
+        return self.instructions()
 
     def _build_messages(
             self,
@@ -196,7 +200,7 @@ class Agent:
     ) -> list[dict]:
         messages: list[dict] = []
 
-        instruction = self._instructions or self.instructions()
+        instruction = self.instructions()
         if instruction:
             messages.append({"role": "system", "content": instruction})
 
@@ -214,23 +218,9 @@ class Agent:
         return messages
 
     def _build_model(self, model: str | None = None, provider_options: dict | None = None) -> Any:
-        from langchain.chat_models import init_chat_model  # noqa: PLC0415
+        from .model_builder import ModelBuilder  # noqa: PLC0415
 
-        lab = Lab.get_provider(self._provider)
-        kwargs: dict[str, Any] = {"model_provider": lab.get_provider_key()}
-
-        api_key = lab.get_api_key()
-        if api_key:
-            kwargs["api_key"] = api_key
-        if self._max_tokens:
-            kwargs["max_tokens"] = self._max_tokens
-        if self._top_p != 1.0:
-            kwargs["top_p"] = self._top_p
-        if self._timeout:
-            kwargs["timeout"] = self._timeout
-        kwargs.update(self._get_provider_options(provider_options))
-
-        return init_chat_model(self._resolve_model(model), **kwargs)
+        return ModelBuilder(agent=self).build(model, provider_options)
 
     def _to_agent_response(self, result: Any) -> AgentResponse:
         messages = result.get("messages", []) if isinstance(result, dict) else []
@@ -249,6 +239,12 @@ class Agent:
 
         return AgentResponse(content=content, tool_calls=tool_calls, usage=usage, raw=result)
 
+    async def _invoke(self, chat_model: Any, messages: list[dict]) -> AgentResponse:
+        from .runner import Runner  # noqa: PLC0415
+
+        result = await Runner(self, chat_model).run(messages)
+        return self._to_agent_response(result)
+
     async def _run(
             self,
             message: str,
@@ -256,13 +252,9 @@ class Agent:
             attachments: list[Document] | None = None,
             provider_options: dict | None = None,
     ) -> AgentResponse:
-        from .runner import Runner  # noqa: PLC0415
-
         messages = self._build_messages(message, attachments)
         chat_model = self._build_model(model, provider_options)
-
-        result = await Runner(chat_model, self.tools(), self._max_steps).run(messages)
-        return self._to_agent_response(result)
+        return await self._invoke(chat_model, messages)
 
     async def _stream(
             self,
@@ -270,10 +262,17 @@ class Agent:
             model: str | None = None,
             provider_options: dict | None = None,
     ) -> AsyncIterator[str]:
+        from .pipeline import Response, build_pipeline  # noqa: PLC0415
         from .runner import StreamRunner  # noqa: PLC0415
 
         messages = self._build_messages(message)
         chat_model = self._build_model(model, provider_options)
+        chain = list(self.middleware())
 
-        async for chunk in StreamRunner(chat_model, self.tools(), self._max_steps).run(messages):
+        def core(m: Any) -> Response:
+            return Response(lambda: StreamRunner(self, m).run(messages))
+
+        pipeline = build_pipeline(chain, core) if chain else core
+
+        async for chunk in pipeline(chat_model):
             yield chunk

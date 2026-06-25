@@ -7,6 +7,7 @@ from langchain_core.tools import tool
 
 from fastapi_startkit.ai import AIConfig, Document, fake_chat_model
 from fastapi_startkit.ai.agent import Agent
+from fastapi_startkit.ai.model_builder import ModelBuilder
 from fastapi_startkit.ai.response import AgentResponse
 from fastapi_startkit.application import app
 
@@ -18,7 +19,8 @@ def search_jobs(query: str) -> str:
 
 
 class JobAssistant(Agent):
-    _instructions = "You help users find jobs."
+    def instructions(self):
+        return "You help users find jobs."
 
     def tools(self):
         return [search_jobs]
@@ -84,7 +86,7 @@ class TestAgent(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(patcher.stop)
 
         class GoogleAgent(Agent):
-            _provider = "google"
+            provider = "google"
 
         await GoogleAgent().prompt("hi")
 
@@ -98,16 +100,71 @@ class TestAgent(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual("".join(chunks), "streamed reply")
 
+    async def test_middleware_streams_token_by_token_and_runs_after_hook(self):
+        self.setup_agent([AIMessage(content="one two three")])
+
+        events: list = []
+
+        class Logger:
+            def handle(self, model, handler):
+                events.append("before")
+                return handler(model).then(lambda final: events.append("after"))
+
+        class LoggedAgent(Agent):
+            def middleware(self):
+                return [Logger()]
+
+        chunks = [chunk async for chunk in LoggedAgent().stream("hi")]
+
+        # Middleware must not buffer: the model's tokens arrive as separate chunks...
+        self.assertEqual("".join(chunks), "one two three")
+        self.assertGreater(len(chunks), 1)
+        # ...and the after-hook fires exactly once, after the stream is drained.
+        self.assertEqual(events, ["before", "after"])
+
+    async def test_middleware_after_hook_runs_on_prompt(self):
+        self.setup_agent([AIMessage(content="done")])
+
+        events: list = []
+
+        class Logger:
+            async def handle(self, model, handler):
+                events.append("before")
+                return handler(model).then(lambda final: events.append("after"))
+
+        class LoggedAgent(Agent):
+            def middleware(self):
+                return [Logger()]
+
+        result = await LoggedAgent().prompt("hi")
+
+        self.assertEqual(result.content, "done")
+        self.assertEqual(events, ["before", "after"])
+
+    async def test_stream_yields_tool_result_without_calling_model_again(self):
+        self.setup_agent(
+            [
+                AIMessage(
+                    content="",
+                    tool_calls=[ToolCall(name="search_jobs", args={"query": "python"}, id="c1", type="tool_call")],
+                ),
+            ]
+        )
+
+        chunks = [chunk async for chunk in JobAssistant().stream("find me a python job")]
+
+        self.assertEqual(chunks, ["Python Developer at Shopify"])
+
     def test_resolve_model_falls_back_to_lab_default(self):
-        self.assertEqual(Agent()._resolve_model(), "gemini-2.5-flash-lite")
+        self.assertEqual(ModelBuilder(Agent())._resolve_model(), "gemini-2.5-flash-lite")
 
         class AnthropicAgent(Agent):
-            _provider = "anthropic"
+            provider = "anthropic"
 
-        self.assertEqual(AnthropicAgent()._resolve_model(), "claude-sonnet-4-6")
+        self.assertEqual(ModelBuilder(AnthropicAgent())._resolve_model(), "claude-sonnet-4-6")
 
     def test_resolve_model_prefers_explicit_override(self):
-        self.assertEqual(Agent()._resolve_model("my-model"), "my-model")
+        self.assertEqual(ModelBuilder(Agent())._resolve_model("my-model"), "my-model")
 
     def test_instructions_lead_the_message_list(self):
         messages = JobAssistant()._build_messages("find me a job")

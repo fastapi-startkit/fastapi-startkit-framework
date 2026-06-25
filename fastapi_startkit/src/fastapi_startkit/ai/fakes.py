@@ -7,6 +7,9 @@ tool calls included — with no network. Requires the ``ai`` extra::
 
     pip install "fastapi-startkit[ai]"
 
+The runner does not feed tool results back into the model, so a single
+tool-calling turn returns the tool's output directly.
+
 Example — exercise a tool-calling agent end to end::
 
     from langchain_core.messages import AIMessage, ToolCall
@@ -16,16 +19,17 @@ Example — exercise a tool-calling agent end to end::
         AIMessage(content="", tool_calls=[
             ToolCall(name="search_jobs", args={"query": "python"}, id="c1", type="tool_call"),
         ]),
-        AIMessage(content="Here is a Python Developer role at Shopify."),
     ])
     agent = JobAssistant()
     agent._build_model = lambda *a, **k: model
     response = await agent.prompt("find me a python job")
-    assert response.content == "Here is a Python Developer role at Shopify."
+    assert response.content == "Python Developer at Shopify"
 """
 
 from __future__ import annotations
 
+import json
+import re
 from typing import Any, Iterable
 
 
@@ -48,12 +52,45 @@ def fake_chat_model(turns: Iterable[Any]):
     (shorthand for ``AIMessage(content=...)``). The scripted turns already encode
     the model's decisions, so ``bind_tools`` is a no-op — the bound tool schemas
     don't change what the fake says next.
+
+    Unlike the stock ``GenericFakeChatModel``, this fake streams ``tool_calls`` as
+    well as text. A scripted tool-calling turn therefore reaches ``StreamRunner``
+    with its tool calls intact, so the runner executes the tools and streams their
+    output — the same path a real provider takes.
     """
     generic_model, ai_message = _require_langchain()
+
+    from langchain_core.messages import AIMessageChunk
+    from langchain_core.outputs import ChatGenerationChunk
 
     class _FakeChatModel(generic_model):
         def bind_tools(self, tools, **kwargs):
             return self
+
+        def _stream(self, messages, stop=None, run_manager=None, **kwargs):
+            message = next(self.messages)
+            if not isinstance(message, ai_message):
+                message = ai_message(content=str(message))
+
+            content = message.content if isinstance(message.content, str) else str(message.content)
+            for token in re.split(r"(\s)", content):
+                if token:
+                    yield ChatGenerationChunk(message=AIMessageChunk(content=token, id=message.id))
+
+            tool_calls = list(message.tool_calls or [])
+            if tool_calls:
+                chunks = [
+                    {
+                        "name": call["name"],
+                        "args": json.dumps(call.get("args", {})),
+                        "id": call.get("id"),
+                        "index": index,
+                    }
+                    for index, call in enumerate(tool_calls)
+                ]
+                yield ChatGenerationChunk(
+                    message=AIMessageChunk(content="", tool_call_chunks=chunks, id=message.id)
+                )
 
     normalized = [t if isinstance(t, ai_message) else ai_message(content=str(t)) for t in turns]
     return _FakeChatModel(messages=iter(normalized))

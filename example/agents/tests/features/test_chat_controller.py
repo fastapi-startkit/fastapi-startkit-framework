@@ -1,10 +1,10 @@
-from app.agents.chat import ChatAgent
+from app.agents.chat import RouterAgent
 
 from tests.test_case import TestCase
 
 
 class TestChatController(TestCase):
-    @ChatAgent.fake({"*hello*": "Hello there!, Hope you are doing well."})
+    @RouterAgent.fake({"*hello*": "Hello there!, Hope you are doing well."})
     async def test_chat_responds_for_basic_greetings(self):
         response = await self.post("/chat", json={"message": "hello"})
 
@@ -13,7 +13,7 @@ class TestChatController(TestCase):
             response.json(), {"content": "Hello there!, Hope you are doing well."}
         )
 
-    @ChatAgent.record('other_greetings.json')
+    @RouterAgent.record('other_greetings.json')
     async def test_chat_responds_for_other_greetings(self):
         response = await self.post("/chat", json={
             "message": "Hi, I am Bedram, This is unittest, Please respond by calling my name."
