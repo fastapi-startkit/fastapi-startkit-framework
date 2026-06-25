@@ -17,7 +17,6 @@ class Agent:
     _max_tokens: int = 4096
     _timeout: float = 30.0
     _top_p: float = 1.0
-    _memory_backend: str = ""
 
     def __init__(self):
         self._fakes: dict[str, AgentResponse | AgentSnapshot] = {}
