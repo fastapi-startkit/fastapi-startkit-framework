@@ -16,12 +16,14 @@ cp .env.example .env
 ### 2. Install dependencies
 ```shell
 uv sync
+npm install
 ```
 
 ### 3. Run the application
 ```shell
-uv run python artisan serve
+npm run dev
 ```
+This boots the backend (`artisan serve`) and the Vite frontend together.
 
 ## AI Skills
 
