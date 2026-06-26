@@ -26,7 +26,7 @@ export default function Chat() {
         setMessages(prev => [...prev, { role: "assistant", content: "" }])
 
         try {
-            const response = await fetch("/chat", {
+            const response = await fetch("/chat/stream", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ message: userMessage }),
