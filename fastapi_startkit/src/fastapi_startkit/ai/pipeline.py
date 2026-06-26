@@ -43,10 +43,20 @@ class Response:
     def __aiter__(self) -> AsyncIterator:
         async def _it() -> AsyncIterator:
             accumulated = None
-            async for chunk in self._source():
-                accumulated = chunk if accumulated is None else accumulated + chunk
-                yield chunk
-            await self._finish(accumulated)
+            finished = False
+            try:
+                async for chunk in self._source():
+                    accumulated = chunk if accumulated is None else accumulated + chunk
+                    yield chunk
+                finished = True
+                await self._finish(accumulated)
+            finally:
+                # The consumer may close the stream before it is fully drained
+                # (client disconnect, connection reuse, early break). Run the
+                # after-hooks on close too, so they fire exactly once either way.
+                if not finished:
+                    await self._finish(accumulated)
+
         return _it()
 
     def __await__(self):
@@ -55,6 +65,7 @@ class Response:
             async for chunk in self._source():
                 accumulated = chunk if accumulated is None else accumulated + chunk
             return await self._finish(accumulated)
+
         return _run().__await__()
 
 

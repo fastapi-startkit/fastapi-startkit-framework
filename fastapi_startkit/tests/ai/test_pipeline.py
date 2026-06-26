@@ -44,6 +44,24 @@ class TestResponse(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(calls, ["xy"])
 
+    async def test_then_fires_once_on_full_streaming_drain(self):
+        calls = []
+
+        async for _ in Response(_stream("x", "y")).then(lambda final: calls.append(final)):
+            pass
+
+        self.assertEqual(calls, ["xy"])
+
+    async def test_then_fires_on_early_close_not_only_full_drain(self):
+        calls = []
+
+        response = Response(_stream("a", "b", "c")).then(lambda final: calls.append(final))
+        agen = response.__aiter__()
+        self.assertEqual(await agen.__anext__(), "a")
+        await agen.aclose()
+
+        self.assertEqual(calls, ["a"])
+
     async def test_multiple_callbacks_fire_in_registration_order(self):
         order = []
 
