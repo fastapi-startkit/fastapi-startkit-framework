@@ -77,3 +77,52 @@ def test_assert_json_dotted_list_index_scope():
     payload = {"teams": [{"name": "Phoenix Suns", "sport": "basketball"}]}
     resp = make_response(200, payload)
     resp.assert_json(lambda j: j.has("teams", 1).has("teams.0", lambda team: team.where("name", "Phoenix Suns").etc()))
+
+
+def make_sse_response(*chunks, status_code=200):
+    body = "".join(f"data: {chunk}\n\n" for chunk in chunks)
+    raw = httpx.Response(
+        status_code=status_code,
+        content=body.encode(),
+        headers={"content-type": "text/event-stream"},
+    )
+    return TestResponse(raw)
+
+
+def test_stream_chunks_decodes_each_sse_event():
+    resp = make_sse_response("Hello", " there!")
+    assert resp.stream_chunks() == ["Hello", " there!"]
+
+
+def test_stream_content_concatenates_payloads():
+    resp = make_sse_response("Hello", " there!")
+    assert resp.stream_content() == "Hello there!"
+
+
+def test_assert_stream_single_string_matches_joined_content():
+    resp = make_sse_response("Hello", " there!")
+    assert resp.assert_ok().assert_stream("Hello there!") is resp
+
+
+def test_assert_stream_multiple_args_match_exact_chunks():
+    resp = make_sse_response("Hello", " there!")
+    resp.assert_stream("Hello", " there!")
+
+
+def test_assert_stream_joined_mismatch_raises():
+    resp = make_sse_response("Hello")
+    with pytest.raises(AssertionError) as exc:
+        resp.assert_stream("Goodbye")
+    assert "Goodbye" in str(exc.value)
+
+
+def test_assert_stream_chunk_sequence_mismatch_raises():
+    resp = make_sse_response("Hello", " there!")
+    with pytest.raises(AssertionError):
+        resp.assert_stream("Hello", " world!")
+
+
+def test_stream_chunks_ignores_non_data_lines():
+    body = "event: message\ndata: only this\nid: 1\n\n"
+    raw = httpx.Response(200, content=body.encode(), headers={"content-type": "text/event-stream"})
+    assert TestResponse(raw).stream_chunks() == ["only this"]

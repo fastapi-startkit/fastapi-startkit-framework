@@ -100,3 +100,40 @@ class TestResponse:
         """
         assert_json_structure(structure, self._response.json())
         return self
+
+    # ------------------------------------------------------------------ #
+    # Streaming (Server-Sent Events) assertions
+    # ------------------------------------------------------------------ #
+    def stream_chunks(self) -> list[str]:
+        """Return the ``data:`` payloads of a Server-Sent Events body.
+
+        Each ``data:`` line becomes one chunk, with the single optional space
+        after the colon removed per the SSE spec.
+        """
+        chunks: list[str] = []
+        for line in self._response.text.splitlines():
+            if not line.startswith("data:"):
+                continue
+            value = line[len("data:") :]
+            chunks.append(value[1:] if value.startswith(" ") else value)
+        return chunks
+
+    def stream_content(self) -> str:
+        """Concatenate the SSE ``data:`` payloads into the full streamed text."""
+        return "".join(self.stream_chunks())
+
+    def assert_stream(self, *expected: str) -> "TestResponse":
+        """Assert against a streamed (``text/event-stream``) body.
+
+        * ``assert_stream("Hello there!")`` — assert the concatenated stream
+          content equals the single expected string.
+        * ``assert_stream("Hello", " there!")`` — assert the exact sequence of
+          streamed chunks.
+        """
+        chunks = self.stream_chunks()
+        if len(expected) == 1:
+            content = "".join(chunks)
+            assert content == expected[0], f"Expected streamed content [{expected[0]!r}] but received [{content!r}]."
+        else:
+            assert chunks == list(expected), f"Expected streamed chunks {list(expected)!r} but received {chunks!r}."
+        return self

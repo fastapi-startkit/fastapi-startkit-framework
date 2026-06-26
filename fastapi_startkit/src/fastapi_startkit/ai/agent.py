@@ -88,8 +88,12 @@ class Agent:
 
         swapped = self._faked()
         if swapped is not None:
-            response = await swapped.prompt(message)
-            yield response.content
+            if hasattr(swapped, "stream"):
+                async for chunk in swapped.stream(message):
+                    yield chunk
+            else:
+                response = await swapped.prompt(message)
+                yield response.content
             return
 
         fake = self._match_fake(message)

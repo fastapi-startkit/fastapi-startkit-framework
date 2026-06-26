@@ -173,6 +173,14 @@ class TestAgentFake(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(chunks, ["Faked stream!"])
         agent.assert_prompted(times=1)
 
+    async def test_stream_records_one_call_not_two(self):
+        agent = SimpleAgent()
+        with SimpleAgent.fake({"*": AgentResponse(content="x")}):
+            [chunk async for chunk in agent.stream("once")]
+
+        # Streaming must log exactly one prompt — not one for stream + one for prompt.
+        agent.assert_prompted(times=1)
+
 
 class TestAgentRecord(unittest.IsolatedAsyncioTestCase):
     def setup_agent(self, content):
@@ -241,3 +249,51 @@ class TestAgentRecord(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(calls, ["hello", "goodbye"])
             with open(cassette) as f:
                 self.assertEqual(len(json.load(f)), 2)
+
+    def setup_stream(self, chunks):
+        calls = []
+
+        async def fake_stream(agent_self, message, **kwargs):
+            calls.append(message)
+            for chunk in chunks:
+                yield chunk
+
+        patcher = mock.patch.object(SimpleAgent, "_stream", fake_stream)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return calls
+
+    async def test_stream_first_run_records_chunk_list_to_cassette(self):
+        calls = self.setup_stream(["Hel", "lo!"])
+        with tempfile.TemporaryDirectory() as tmp:
+            cassette = os.path.join(tmp, "s.json")
+            with SimpleAgent.record(cassette):
+                chunks = [c async for c in SimpleAgent().stream("hi")]
+
+            self.assertEqual(chunks, ["Hel", "lo!"])
+            self.assertEqual(calls, ["hi"])
+            with open(cassette) as f:
+                self.assertEqual(list(json.load(f).values()), [["Hel", "lo!"]])
+
+    async def test_stream_second_run_replays_chunks_without_calling_stream(self):
+        calls = self.setup_stream(["Hel", "lo!"])
+        with tempfile.TemporaryDirectory() as tmp:
+            cassette = os.path.join(tmp, "s.json")
+            with SimpleAgent.record(cassette):
+                [c async for c in SimpleAgent().stream("hi")]
+            with SimpleAgent.record(cassette):
+                replayed = [c async for c in SimpleAgent().stream("hi")]
+
+            self.assertEqual(replayed, ["Hel", "lo!"])
+            self.assertEqual(calls, ["hi"])  # real stream invoked only on the first run
+
+    async def test_prompt_reads_a_stream_recorded_cassette_as_joined_content(self):
+        self.setup_stream(["Hel", "lo!"])
+        with tempfile.TemporaryDirectory() as tmp:
+            cassette = os.path.join(tmp, "s.json")
+            with SimpleAgent.record(cassette):
+                [c async for c in SimpleAgent().stream("hi")]
+            with SimpleAgent.record(cassette):
+                response = await SimpleAgent().prompt("hi")
+
+            self.assertEqual(response.content, "Hello!")

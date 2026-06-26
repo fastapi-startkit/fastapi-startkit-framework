@@ -6,6 +6,7 @@ import hashlib
 import inspect
 import json
 import sys
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -58,19 +59,31 @@ class _Recorder:
         assert not self.calls, f"Expected no prompts, but got: {self.calls!r}"
 
 
+def _joined(value: Any) -> str:
+    """A cassette value is a buffered string or a list of stream chunks."""
+    return "".join(value) if isinstance(value, list) else value
+
+
 class FakeAgent(_Recorder):
     def __init__(self, responses: dict[str, Any] | None = None) -> None:
         super().__init__()
         self.responses = responses or {}
 
-    async def prompt(self, message: str, attachments: list[Document] | None = None) -> AgentResponse:
-        self._record_call(message, attachments)
+    def _resolve(self, message: str) -> str:
         if not self.responses:
-            return AgentResponse(content="")
+            return ""
         for pattern, reply in self.responses.items():
             if _matches(pattern, message):
-                return AgentResponse(content=_reply_text(reply))
+                return _reply_text(reply)
         raise NoFakeResponse(f"No fake response matched message: {message!r}")
+
+    async def prompt(self, message: str, attachments: list[Document] | None = None) -> AgentResponse:
+        self._record_call(message, attachments)
+        return AgentResponse(content=self._resolve(message))
+
+    async def stream(self, message: str) -> AsyncIterator[str]:
+        self._record_call(message, None)
+        yield self._resolve(message)
 
 
 class RecordingAgent(_Recorder):
@@ -85,19 +98,39 @@ class RecordingAgent(_Recorder):
         payload = json.dumps({"message": message, "attachments": names}, sort_keys=True)
         return hashlib.sha256(payload.encode()).hexdigest()
 
-    async def prompt(self, message: str, attachments: list[Document] | None = None) -> AgentResponse:
-        self._record_call(message, attachments)
+    def _load(self) -> tuple[Path, dict]:
         cassette = self.cassette
         assert cassette is not None, "RecordingAgent has no cassette resolved"
-        store = json.loads(cassette.read_text()) if cassette.exists() else {}
-        key = self._key(message, attachments)
-        if key in store:
-            return AgentResponse(content=store[key])
-        response = await self._real._run(message, attachments=attachments)
-        store[key] = response.content
+        return cassette, (json.loads(cassette.read_text()) if cassette.exists() else {})
+
+    def _save(self, cassette: Path, store: dict, key: str, value: Any) -> None:
+        store[key] = value
         cassette.parent.mkdir(parents=True, exist_ok=True)
         cassette.write_text(json.dumps(store, indent=2, sort_keys=True))
+
+    async def prompt(self, message: str, attachments: list[Document] | None = None) -> AgentResponse:
+        self._record_call(message, attachments)
+        cassette, store = self._load()
+        key = self._key(message, attachments)
+        if key in store:
+            return AgentResponse(content=_joined(store[key]))
+        response = await self._real._run(message, attachments=attachments)
+        self._save(cassette, store, key, response.content)
         return response
+
+    async def stream(self, message: str) -> AsyncIterator[str]:
+        self._record_call(message, None)
+        cassette, store = self._load()
+        key = self._key(message, None)
+        if key in store:
+            value = store[key]
+            for chunk in value if isinstance(value, list) else [value]:
+                yield chunk
+            return
+        chunks = [chunk async for chunk in self._real._stream(message)]
+        self._save(cassette, store, key, chunks)
+        for chunk in chunks:
+            yield chunk
 
 
 class AgentBinding:
