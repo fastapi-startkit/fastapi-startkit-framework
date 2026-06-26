@@ -62,6 +62,19 @@ jobs:
                 working-directory: example/database-app
                 run: uv run pytest tests/ -v
 
+            # ── example/agents ────────────────────────────────────────────────────
+            -   name: Install dependencies (agents)
+                working-directory: example/agents
+                run: uv sync
+
+            -   name: Copy .env.example to .env (agents)
+                working-directory: example/agents
+                run: cp .env.example .env
+
+            -   name: Run tests (agents)
+                working-directory: example/agents
+                run: uv run pytest tests/ -v
+
             -   name: Stop MySQL
                 if: always()
                 run: docker compose -f docker-compose.yml down

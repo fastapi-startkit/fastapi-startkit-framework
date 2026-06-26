@@ -43,3 +43,9 @@ echo "============================================================"
 echo " Running: example/database-app tests"
 echo "============================================================"
 (cd "$ROOT/example/database-app" && uv run pytest)
+
+echo ""
+echo "============================================================"
+echo " Running: example/agents tests"
+echo "============================================================"
+(cd "$ROOT/example/agents" && uv run pytest)

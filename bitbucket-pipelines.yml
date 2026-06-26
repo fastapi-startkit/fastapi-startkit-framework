@@ -1,0 +1,22 @@
+image: python:3.13
+
+definitions:
+  services:
+    docker:
+      memory: 3072
+
+pipelines:
+  default:
+    - step:
+        name: Test
+        services:
+          - docker
+        caches:
+          - pip
+        script:
+          # bin/test.sh runs ruff, the framework suite, and the example apps
+          # (config-app, database-app, agents); it brings MySQL/Postgres up via
+          # docker compose, so the docker service above is required.
+          - curl -LsSf https://astral.sh/uv/install.sh | sh
+          - export PATH="$HOME/.local/bin:$PATH"
+          - bash bin/test.sh
