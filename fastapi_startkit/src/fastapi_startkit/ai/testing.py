@@ -5,6 +5,7 @@ import functools
 import hashlib
 import inspect
 import json
+import re
 import sys
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -64,6 +65,12 @@ def _joined(value: Any) -> str:
     return "".join(value) if isinstance(value, list) else value
 
 
+def _word_chunks(text: str) -> list[str]:
+    """Split text into word chunks (word + trailing whitespace) so a fake can
+    mimic a token stream. Loss-less: ``"".join(_word_chunks(t)) == t``."""
+    return re.findall(r"\S+\s*", text) or [text]
+
+
 class FakeAgent(_Recorder):
     def __init__(self, responses: dict[str, Any] | None = None) -> None:
         super().__init__()
@@ -83,7 +90,8 @@ class FakeAgent(_Recorder):
 
     async def stream(self, message: str) -> AsyncIterator[str]:
         self._record_call(message, None)
-        yield self._resolve(message)
+        for chunk in _word_chunks(self._resolve(message)):
+            yield chunk
 
 
 class RecordingAgent(_Recorder):

@@ -170,8 +170,18 @@ class TestAgentFake(unittest.IsolatedAsyncioTestCase):
         with SimpleAgent.fake({"*hello*": AgentResponse(content="Faked stream!")}):
             chunks = [chunk async for chunk in agent.stream("hello world")]
 
-        self.assertEqual(chunks, ["Faked stream!"])
+        # A faked stream is split into word chunks but rejoins to the value.
+        self.assertEqual("".join(chunks), "Faked stream!")
+        self.assertGreater(len(chunks), 1)
         agent.assert_prompted(times=1)
+
+    async def test_fake_stream_splits_value_into_word_chunks(self):
+        agent = SimpleAgent()
+        with SimpleAgent.fake({"*": "Hello there, friend"}):
+            chunks = [chunk async for chunk in agent.stream("hi")]
+
+        self.assertEqual(chunks, ["Hello ", "there, ", "friend"])
+        self.assertEqual("".join(chunks), "Hello there, friend")
 
     async def test_stream_records_one_call_not_two(self):
         agent = SimpleAgent()

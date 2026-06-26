@@ -126,3 +126,46 @@ def test_stream_chunks_ignores_non_data_lines():
     body = "event: message\ndata: only this\nid: 1\n\n"
     raw = httpx.Response(200, content=body.encode(), headers={"content-type": "text/event-stream"})
     assert TestResponse(raw).stream_chunks() == ["only this"]
+
+
+def test_is_stream_true_for_event_stream_and_false_for_json():
+    assert make_sse_response("x").is_stream() is True
+    assert make_response(200, {"a": 1}).is_stream() is False
+
+
+def test_assert_stream_raises_on_non_stream_response():
+    resp = make_response(200, {"content": "Hello there!"})
+    with pytest.raises(AssertionError) as exc:
+        resp.assert_stream("Hello there!")
+    assert "streaming" in str(exc.value)
+    assert "assert_contents" in str(exc.value)
+
+
+def test_assert_stream_contains_raises_on_non_stream_response():
+    resp = make_response(200, {"content": "Hello there!"})
+    with pytest.raises(AssertionError):
+        resp.assert_stream_contains("Hello")
+
+
+def test_assert_stream_contains_matches_substrings():
+    resp = make_sse_response("Hello ", "Bedram", "!")
+    assert resp.assert_stream_contains("Bedram", "Hello") is resp
+
+
+def test_assert_stream_contains_mismatch_raises():
+    resp = make_sse_response("Hello there!")
+    with pytest.raises(AssertionError) as exc:
+        resp.assert_stream_contains("Goodbye")
+    assert "Goodbye" in str(exc.value)
+
+
+def test_assert_contents_matches_buffered_body():
+    resp = make_response(200, {"content": "Hello Alex, nice to meet you"})
+    assert resp.assert_contents("Alex", "nice to meet") is resp
+
+
+def test_assert_contents_mismatch_raises():
+    resp = make_response(200, {"content": "Hello there"})
+    with pytest.raises(AssertionError) as exc:
+        resp.assert_contents("Goodbye")
+    assert "Goodbye" in str(exc.value)
