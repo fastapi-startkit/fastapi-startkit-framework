@@ -53,7 +53,7 @@ class Agent:
         if stand_in is not None:
             response = await stand_in.prompt(message, attachments=attachments)
             self._log_call("prompt", message)
-            return response
+            return self._apply_schema(response)
 
         _run_kwargs = dict(
             model=model,
@@ -68,14 +68,14 @@ class Agent:
             else:
                 response = match
             self._log_call("prompt", message)
-            return response
+            return self._apply_schema(response)
 
         messages = self._build_messages(message, attachments)
         chat_model = self._build_model(model, provider_options)
 
         response = await self._run_pipeline(chat_model, messages)
         self._log_call("prompt", message)
-        return response
+        return self._apply_schema(response)
 
     async def stream(
             self,
@@ -242,6 +242,22 @@ class Agent:
             usage = {"input": meta.get("input_tokens", 0), "output": meta.get("output_tokens", 0)}
 
         return AgentResponse(content=content, tool_calls=tool_calls, usage=usage, raw=result)
+
+    def _apply_schema(self, response: AgentResponse) -> AgentResponse:
+        schema = self.schema()
+        if schema is not None and response.parsed is None and response.content:
+            response.parsed = self._build_schema(schema, response.content)
+        return response
+
+    @staticmethod
+    def _build_schema(schema: Any, content: str) -> Any:
+        import json  # noqa: PLC0415
+
+        if hasattr(schema, "model_validate_json"):
+            return schema.model_validate_json(content)
+        if hasattr(schema, "model_validate"):
+            return schema.model_validate(json.loads(content))
+        return schema(**json.loads(content))
 
     async def _invoke(self, chat_model: Any, messages: list[dict]) -> AgentResponse:
         from .runner import Runner  # noqa: PLC0415

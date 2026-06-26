@@ -19,6 +19,7 @@ class AgentResponse:
     tool_calls: list[dict] = field(default_factory=list)
     usage: dict = field(default_factory=dict)
     raw: Any = None
+    parsed: Any = None
 
     def text(self) -> str:
         """Return the text content."""
