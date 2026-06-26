@@ -1,27 +1,9 @@
-"""Tests for the AI agent middleware pipeline (``ai/pipeline.py``).
-
-The pipeline is a deferred-response ``onion``: ``build_pipeline`` composes
-middleware layers around a core, and every layer returns a :class:`Response`.
-A middleware stays streaming-safe by returning ``handler(model).then(cb)``
-without awaiting — the ``cb`` after-hook fires once the response is drained.
-
-These callbacks only run inside ``Response._finish()``, which is invoked at the
-end of ``__aiter__`` (streaming) and ``__await__`` (buffered). The reference
-``AgentLogger`` middleware relies on this: it logs a ``request`` line
-synchronously in ``handle()`` and a ``response`` line via ``.then``. The
-after-hook was historically flaky ("sometimes works, sometimes doesn't") because
-it depends on the response being fully drained — these tests lock down that both
-consumption paths drain the response and fire the after-hook exactly once.
-"""
-
 import unittest
 
 from fastapi_startkit.ai.pipeline import Middleware, Response, build_pipeline
 
 
 def _stream(*chunks):
-    """A ``Response`` source that yields the given chunks."""
-
     async def _source():
         for chunk in chunks:
             yield chunk
@@ -99,7 +81,6 @@ class TestBuildPipeline(unittest.IsolatedAsyncioTestCase):
             for token in ("one", " two", " three"):
                 yield token
 
-        # ``model`` is threaded through so middleware can observe it.
         self.core = lambda model: Response(lambda: _core_source(model))
 
     async def test_no_middleware_passes_core_through(self):
@@ -108,7 +89,6 @@ class TestBuildPipeline(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await pipeline("m"), "one two three")
 
     async def test_after_hook_fires_on_buffered_await(self):
-        """The flaky path: ``await pipeline(...)`` must drain and fire ``.then``."""
         events = []
 
         class Logger:
@@ -123,7 +103,6 @@ class TestBuildPipeline(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(events, ["request", ("response", "one two three")])
 
     async def test_after_hook_fires_on_streaming_iteration(self):
-        """The flaky path: ``async for`` must drain and fire ``.then`` exactly once."""
         events = []
 
         class Logger:
@@ -134,7 +113,6 @@ class TestBuildPipeline(unittest.IsolatedAsyncioTestCase):
         pipeline = build_pipeline([Logger()], self.core)
         chunks = [chunk async for chunk in pipeline("m")]
 
-        # Stays streaming-safe: tokens arrive separately, not buffered into one chunk.
         self.assertEqual(chunks, ["one", " two", " three"])
         self.assertEqual(events, ["request", ("response", "one two three")])
 
@@ -159,7 +137,6 @@ class TestBuildPipeline(unittest.IsolatedAsyncioTestCase):
                 events.append("request")
                 return handler(model)
 
-        # Pass the class itself — build_pipeline must instantiate it.
         pipeline = build_pipeline([Logger], self.core)
         await pipeline("m")
 
@@ -176,7 +153,6 @@ class TestBuildPipeline(unittest.IsolatedAsyncioTestCase):
 
             return Layer()
 
-        # First in the list is the outermost layer of the onion.
         pipeline = build_pipeline([layer("outer"), layer("inner")], self.core)
         await pipeline("m")
 
@@ -186,9 +162,6 @@ class TestBuildPipeline(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_middleware_may_short_circuit_with_a_bare_value(self):
-        """A middleware can skip the handler and return a plain value, which the
-        pipeline yields as a single chunk."""
-
         class Canned:
             def handle(self, model, handler):
                 return "canned reply"
@@ -224,8 +197,6 @@ class TestBuildPipeline(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(calls, ["one two three"])
 
     async def test_logger_pattern_request_and_response_lines(self):
-        """End-to-end of the ``AgentLogger`` shape: a sync request line plus a
-        deferred response line, asserted on both the buffered and streaming paths."""
         log = []
 
         class AgentLogger:
