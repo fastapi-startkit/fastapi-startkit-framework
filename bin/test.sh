@@ -48,4 +48,6 @@ echo ""
 echo "============================================================"
 echo " Running: example/agents tests"
 echo "============================================================"
+# Build frontend assets — the index page resolves them via the Vite manifest.
+(cd "$ROOT/example/agents" && npm ci && npm run build)
 (cd "$ROOT/example/agents" && uv run pytest)

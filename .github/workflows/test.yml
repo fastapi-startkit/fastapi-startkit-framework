@@ -28,6 +28,11 @@ jobs:
                 with:
                     python-version: "3.13"
 
+            -   name: Set up Node
+                uses: actions/setup-node@v4
+                with:
+                    node-version: "20"
+
             -   name: Start MySQL
                 run: docker compose -f docker-compose.yml up -d --wait
 
@@ -66,6 +71,12 @@ jobs:
             -   name: Install dependencies (agents)
                 working-directory: example/agents
                 run: uv sync
+
+            -   name: Build frontend assets (agents)
+                working-directory: example/agents
+                run: |
+                    npm ci
+                    npm run build
 
             -   name: Copy .env.example to .env (agents)
                 working-directory: example/agents
