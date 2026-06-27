@@ -61,5 +61,3 @@ def top_p(value: float = 1.0):
         return cls
 
     return decorator
-
-

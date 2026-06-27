@@ -46,9 +46,9 @@ class Lab(StrEnum):
 
     @staticmethod
     def get_model_url(
-            provider: str | None = None,
-            model: str | None = None,
-            model_type: ModelType = ModelType.TEXT,
+        provider: str | None = None,
+        model: str | None = None,
+        model_type: ModelType = ModelType.TEXT,
     ) -> str:
         lab = Lab.get_provider(provider, model_type)
         return f"{lab.get_provider_key()}:{lab.get_model(model, model_type)}"

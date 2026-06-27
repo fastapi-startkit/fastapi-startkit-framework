@@ -42,12 +42,12 @@ class Agent:
         return {}
 
     async def prompt(
-            self,
-            message: str,
-            *,
-            model: str | None = None,
-            attachments: list[Document] | None = None,
-            provider_options: dict | None = None,
+        self,
+        message: str,
+        *,
+        model: str | None = None,
+        attachments: list[Document] | None = None,
+        provider_options: dict | None = None,
     ) -> AgentResponse:
         stand_in = self._faked()
         if stand_in is not None:
@@ -78,11 +78,11 @@ class Agent:
         return self._apply_schema(response)
 
     async def stream(
-            self,
-            message: str,
-            *,
-            model: str | None = None,
-            provider_options: dict | None = None,
+        self,
+        message: str,
+        *,
+        model: str | None = None,
+        provider_options: dict | None = None,
     ) -> AsyncIterator[str]:
         self._log_call("stream", message)
 
@@ -171,6 +171,7 @@ class Agent:
             async def _run():
                 result = await Runner(self, model).run(messages)
                 yield result
+
             return Response(_run)
 
         pipeline = build_pipeline(chain, core)
@@ -178,9 +179,9 @@ class Agent:
         return self._to_agent_response(raw)
 
     async def _apply_middleware(
-            self,
-            chat_model: Any,
-            final: Callable[[Any], Any],
+        self,
+        chat_model: Any,
+        final: Callable[[Any], Any],
     ) -> AgentResponse:
         chain = list(self.middleware())
 
@@ -198,9 +199,9 @@ class Agent:
         return self.instructions()
 
     def _build_messages(
-            self,
-            message: str,
-            attachments: list[Document] | None = None,
+        self,
+        message: str,
+        attachments: list[Document] | None = None,
     ) -> list[dict]:
         messages: list[dict] = []
 
@@ -266,21 +267,21 @@ class Agent:
         return self._to_agent_response(result)
 
     async def _run(
-            self,
-            message: str,
-            model: str | None = None,
-            attachments: list[Document] | None = None,
-            provider_options: dict | None = None,
+        self,
+        message: str,
+        model: str | None = None,
+        attachments: list[Document] | None = None,
+        provider_options: dict | None = None,
     ) -> AgentResponse:
         messages = self._build_messages(message, attachments)
         chat_model = self._build_model(model, provider_options)
         return await self._invoke(chat_model, messages)
 
     async def _stream(
-            self,
-            message: str,
-            model: str | None = None,
-            provider_options: dict | None = None,
+        self,
+        message: str,
+        model: str | None = None,
+        provider_options: dict | None = None,
     ) -> AsyncIterator[str]:
         from .pipeline import Response, build_pipeline  # noqa: PLC0415
         from .runner import StreamRunner  # noqa: PLC0415

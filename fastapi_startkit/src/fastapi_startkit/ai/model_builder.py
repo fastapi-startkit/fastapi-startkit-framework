@@ -36,9 +36,7 @@ class ModelBuilder:
         return chat_model.bind_tools(tools) if tools else chat_model
 
     def _resolve_model(self, override: str | None = None) -> str:
-        return Lab.get_provider(self._agent.provider).get_model(
-            override or self._agent.model or None
-        )
+        return Lab.get_provider(self._agent.provider).get_model(override or self._agent.model or None)
 
     def _resolve_provider_options(self, override: dict | None = None) -> dict:
         options = dict(self._agent.provider_options().get(self._agent.provider, {}))
