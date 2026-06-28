@@ -27,15 +27,15 @@ class Response:
 
     def __init__(self, source: Callable[[], AsyncIterator]) -> None:
         self._source = source
-        self._cbs: list[Callable] = []
+        self._callbacks: list[Callable] = []
 
-    def then(self, cb: Callable[[Any], Any]) -> "Response":
-        self._cbs.append(cb)
+    def then(self, callback: Callable[[Any], Any]) -> "Response":
+        self._callbacks.append(callback)
         return self
 
     async def _finish(self, final: Any) -> Any:
-        for cb in self._cbs:
-            result = cb(final)
+        for callback in self._callbacks:
+            result = callback(final)
             if hasattr(result, "__await__"):
                 await result
         return final
