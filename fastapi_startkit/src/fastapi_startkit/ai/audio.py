@@ -46,8 +46,6 @@ class AudioResponse:
     def _auto_filename(self) -> str:
         return f"{uuid.uuid4()}.{self._fmt}"
 
-    # ── Storage helpers ────────────────────────────────────────────────────────
-
     async def store(self) -> str:
         """Save to the default private disk with an auto-generated filename."""
         return await self._save(self._auto_filename(), disk="local")
@@ -63,8 +61,6 @@ class AudioResponse:
     async def storePubliclyAs(self, name: str) -> str:
         """Save to the public disk with a custom filename."""
         return await self._save(name, disk="public")
-
-    # ── Internal ───────────────────────────────────────────────────────────────
 
     async def _save(self, name: str, disk: str = "local") -> str:
         return await asyncio.to_thread(self._save_sync, name, disk)
@@ -89,7 +85,7 @@ class AudioResponse:
 class Audio:
     """Fluent builder for text-to-speech generation.
 
-    The active backend is selected from :attr:`~fastapi_startkit.ai.AIConfig.audio_provider`
+    The active backend is selected from :attr:`~fastapi_startkit.ai.AIConfig.default_audio`
     (env: ``AI_AUDIO_PROVIDER``). Defaults to OpenAI TTS.
 
     Usage::
@@ -102,7 +98,6 @@ class Audio:
     Available OpenAI TTS voices: alloy, echo, fable, onyx, nova, shimmer.
     """
 
-    # OpenAI TTS voice presets
     _DEFAULT_VOICE = "alloy"
     _DEFAULT_FEMALE_VOICE = "nova"
     _DEFAULT_MALE_VOICE = "onyx"
@@ -118,8 +113,6 @@ class Audio:
     def of(cls, text: str) -> "Audio":
         """Create an :class:`Audio` builder with the given input text."""
         return cls(text)
-
-    # ── Modifier methods (chainable) ───────────────────────────────────────────
 
     def female(self) -> "Audio":
         """Use a female voice (``nova``)."""
@@ -158,8 +151,6 @@ class Audio:
         self._response_format = fmt
         return self
 
-    # ── Generation ─────────────────────────────────────────────────────────────
-
     async def generate(self) -> AudioResponse:
         """Call the configured TTS provider and return an :class:`AudioResponse`."""
         provider = self._resolve_provider()
@@ -171,8 +162,6 @@ class Audio:
             fmt=self._response_format,
         )
         return AudioResponse(data=data, fmt=self._response_format)
-
-    # ── Internal ───────────────────────────────────────────────────────────────
 
     def _resolve_provider(self) -> "AudioFactory":
         from .audio_factory import (  # noqa: PLC0415
@@ -191,7 +180,7 @@ class Audio:
             ai_config = Config.get("ai") if Config is not None else None  # type: ignore[union-attr]
             if ai_config is None:
                 raise RuntimeError("Config not available")
-            provider_name = ai_config.audio_provider
+            provider_name = ai_config.default_audio
             openai_cfg = ai_config.providers.get("openai")
             if openai_cfg:
                 api_key = openai_cfg.key or None

@@ -2,14 +2,16 @@ from .BaseDriver import BaseDriver
 
 
 class HasColoredOutput:
+    # flush=True so terminal logs appear in real time even when stdout is a pipe
+    # (e.g. under `npm run dev`/concurrently), where Python uses block buffering.
     def success(self, message):
-        print("\033[92m {0} \033[0m".format(message))
+        print("\033[92m {0} \033[0m".format(message), flush=True)
 
     def warning(self, message):
-        print("\033[93m {0} \033[0m".format(message))
+        print("\033[93m {0} \033[0m".format(message), flush=True)
 
     def danger(self, message):
-        print("\033[91m {0} \033[0m".format(message))
+        print("\033[91m {0} \033[0m".format(message), flush=True)
 
     def info(self, message):
         return self.success(message)

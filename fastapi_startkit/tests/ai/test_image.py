@@ -283,7 +283,7 @@ class TestGoogleImageFactory(IsolatedAsyncioTestCase):
 
     async def test_image_builder_resolves_google_factory(self):
         mock_ai_config = MagicMock()
-        mock_ai_config.image_provider = "google"
+        mock_ai_config.default_image = "google"
         mock_ai_config.providers = {"google": MagicMock(key="gkey"), "openai": MagicMock(key="")}
 
         with patch("fastapi_startkit.ai.image.Config") as mock_config:

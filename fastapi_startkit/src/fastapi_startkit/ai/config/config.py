@@ -1,5 +1,3 @@
-"""AI configuration dataclasses for the FastAPI Startkit AI module."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -15,6 +13,12 @@ class AnthropicConfig:
     key: str = field(default_factory=lambda: env("ANTHROPIC_API_KEY", ""))
     url: str = field(default_factory=lambda: env("ANTHROPIC_BASE_URL", "https://api.anthropic.com"))
 
+    models: dict = field(
+        default_factory=lambda: {
+            "default": "claude-sonnet-4-6",
+        }
+    )
+
 
 @dataclass
 class OpenAIConfig:
@@ -24,6 +28,13 @@ class OpenAIConfig:
     key: str = field(default_factory=lambda: env("OPENAI_API_KEY", ""))
     url: str = field(default_factory=lambda: env("OPENAI_BASE_URL", "https://api.openai.com/v1"))
 
+    models: dict = field(
+        default_factory=lambda: {
+            "default": "gpt-4o",
+            "default_image": "dall-e-3",
+        }
+    )
+
 
 @dataclass
 class GoogleConfig:
@@ -31,6 +42,13 @@ class GoogleConfig:
 
     driver: str = "google"
     key: str = field(default_factory=lambda: env("GEMINI_API_KEY", "") or env("GOOGLE_API_KEY", ""))
+
+    models: dict = field(
+        default_factory=lambda: {
+            "default": "gemini-2.5-flash-lite",
+            "default_image": "imagen-3.0-generate-002",
+        }
+    )
 
 
 @dataclass
@@ -40,22 +58,9 @@ class ElevenLabsConfig:
     driver: str = "elevenlabs"
     key: str = field(default_factory=lambda: env("ELEVENLABS_API_KEY", ""))
 
-
-@dataclass
-class AIConfig:
-    """Top-level AI configuration — selects the default provider and holds per-provider configs."""
-
-    default: str = field(default_factory=lambda: env("AI_PROVIDER", "google"))
-
-    providers: dict = field(
+    models: dict = field(
         default_factory=lambda: {
-            "openai": OpenAIConfig(),
-            "anthropic": AnthropicConfig(),
-            "google": GoogleConfig(),
-            "elevenlabs": ElevenLabsConfig(),
+            "default_audio": "eleven_multilingual_v2",
+            "default_transcribe": "scribe_v1",
         }
     )
-
-    # Media-generation provider selection
-    image_provider: str = field(default_factory=lambda: env("AI_IMAGE_PROVIDER", "openai"))
-    audio_provider: str = field(default_factory=lambda: env("AI_AUDIO_PROVIDER", "openai"))

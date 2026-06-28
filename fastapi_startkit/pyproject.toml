@@ -48,9 +48,8 @@ inertia = [
 ]
 
 ai = [
-    "anthropic>=0.49.0",
-    "openai>=1.0.0",
-    "google-generativeai>=0.8.0",
+    "langchain>=1.0.0",
+    "langchain-core>=1.0.0",
 ]
 
 [dependency-groups]
@@ -68,6 +67,8 @@ dev = [
     "sqlalchemy[asyncio]>=2.0.38",
     "fastapi[standard]>=0.124.4",
     "faker>=40.13.0",
+    "langchain>=1.0.0",
+    "langchain-core>=1.0.0",
 ]
 
 

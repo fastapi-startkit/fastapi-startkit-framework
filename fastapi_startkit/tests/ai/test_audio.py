@@ -248,7 +248,7 @@ class TestGoogleAudioFactory(IsolatedAsyncioTestCase):
 
     async def test_audio_builder_resolves_google_factory(self):
         mock_ai_config = MagicMock()
-        mock_ai_config.audio_provider = "google"
+        mock_ai_config.default_audio = "google"
         mock_ai_config.providers = {
             "google": MagicMock(key="gkey"),
             "openai": MagicMock(key=""),
@@ -327,7 +327,7 @@ class TestElevenLabsAudioFactory(IsolatedAsyncioTestCase):
 
     async def test_audio_builder_resolves_elevenlabs_factory(self):
         mock_ai_config = MagicMock()
-        mock_ai_config.audio_provider = "elevenlabs"
+        mock_ai_config.default_audio = "elevenlabs"
         mock_ai_config.providers = {
             "google": MagicMock(key=""),
             "openai": MagicMock(key=""),

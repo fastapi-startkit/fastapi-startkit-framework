@@ -100,3 +100,81 @@ class TestResponse:
         """
         assert_json_structure(structure, self._response.json())
         return self
+
+    # ------------------------------------------------------------------ #
+    # Body assertions (buffered)
+    # ------------------------------------------------------------------ #
+    def assert_contents(self, *expected: str) -> "TestResponse":
+        """Assert the response body contains each of the given substrings.
+
+        Works on any (buffered) response by checking the raw text body. For
+        streamed responses, prefer ``assert_stream`` / ``assert_stream_contains``.
+        """
+        text = self._response.text
+        for sub in expected:
+            assert sub in text, f"Expected response body to contain {sub!r}, but it did not. Body: {text!r}"
+        return self
+
+    # ------------------------------------------------------------------ #
+    # Streaming (Server-Sent Events) assertions
+    # ------------------------------------------------------------------ #
+    def is_stream(self) -> bool:
+        """Whether the response is a Server-Sent Events stream."""
+        return "text/event-stream" in self._response.headers.get("content-type", "")
+
+    def _require_stream(self, method: str) -> None:
+        assert self.is_stream(), (
+            f"{method}() can only be used on a streaming (text/event-stream) response, "
+            f"but the content-type was {self._response.headers.get('content-type', '')!r}. "
+            f"Use assert_contents() for a buffered response."
+        )
+
+    def stream_chunks(self) -> list[str]:
+        """Return the ``data:`` payloads of a Server-Sent Events body.
+
+        Each ``data:`` line becomes one chunk, with the single optional space
+        after the colon removed per the SSE spec.
+        """
+        chunks: list[str] = []
+        for line in self._response.text.splitlines():
+            if not line.startswith("data:"):
+                continue
+            value = line[len("data:") :]
+            chunks.append(value[1:] if value.startswith(" ") else value)
+        return chunks
+
+    def stream_content(self) -> str:
+        """Concatenate the SSE ``data:`` payloads into the full streamed text."""
+        return "".join(self.stream_chunks())
+
+    def assert_stream(self, *expected: str) -> "TestResponse":
+        """Assert against a streamed (``text/event-stream``) body.
+
+        Fails if the response is not a stream — use ``assert_contents`` for
+        buffered responses.
+
+        * ``assert_stream("Hello there!")`` — assert the concatenated stream
+          content equals the single expected string.
+        * ``assert_stream("Hello", " there!")`` — assert the exact sequence of
+          streamed chunks.
+        """
+        self._require_stream("assert_stream")
+        chunks = self.stream_chunks()
+        if len(expected) == 1:
+            content = "".join(chunks)
+            assert content == expected[0], f"Expected streamed content [{expected[0]!r}] but received [{content!r}]."
+        else:
+            assert chunks == list(expected), f"Expected streamed chunks {list(expected)!r} but received {chunks!r}."
+        return self
+
+    def assert_stream_contains(self, *expected: str) -> "TestResponse":
+        """Assert the streamed content contains each of the given substrings.
+
+        Fails if the response is not a stream — use ``assert_contents`` for
+        buffered responses.
+        """
+        self._require_stream("assert_stream_contains")
+        content = self.stream_content()
+        for sub in expected:
+            assert sub in content, f"Expected streamed content to contain {sub!r}, but it did not. Content: {content!r}"
+        return self

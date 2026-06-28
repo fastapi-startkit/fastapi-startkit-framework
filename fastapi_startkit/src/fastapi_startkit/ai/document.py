@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import base64
 
-# Optional runtime dependency — imported at module level so tests can patch it.
 try:
     from fastapi_startkit.storage.storage import Storage
 except Exception:  # pragma: no cover
@@ -21,7 +20,7 @@ class Document:
     Text::
 
         doc = Document.from_path("report.txt")
-        agent.prompt("Summarise this", attachments=[doc])
+        await agent.prompt("Summarise this", attachments=[doc])
 
     Binary image::
 
@@ -33,8 +32,6 @@ class Document:
         self.content = content
         self.name = name
         self.media_type = media_type
-
-    # ── Sync constructors (text) ───────────────────────────────────────────────
 
     @classmethod
     def from_path(cls, path: str) -> "Document":
@@ -51,8 +48,6 @@ class Document:
                 content = f.read()
         return cls(content=content, name=path)
 
-    # ── Async constructors (binary) ────────────────────────────────────────────
-
     @classmethod
     async def from_storage(cls, key: str) -> "Document":
         """Load a binary file from application storage (``storage/<key>``) asynchronously.
@@ -65,7 +60,6 @@ class Document:
             if Storage is not None:
                 try:
                     disk = Storage.disk("local")
-                    # Resolve the full path and read as binary
                     resolved_path = disk.get_path(key)
                     with open(resolved_path, "rb") as f:
                         return f.read()
@@ -95,8 +89,6 @@ class Document:
         name = url.rstrip("/").split("/")[-1]
         return cls(content=response.content, name=name)
 
-    # ── Binary accessor ────────────────────────────────────────────────────────
-
     def to_bytes(self) -> bytes:
         """Return the document content as raw bytes.
 
@@ -117,8 +109,6 @@ class Document:
         """
         return base64.b64encode(self.to_bytes()).decode("utf-8")
 
-    # ── LLM content blocks ─────────────────────────────────────────────────────
-
     def to_anthropic_block(self) -> dict:
         """Return an Anthropic-compatible content block for this document."""
         return {
@@ -137,3 +127,16 @@ class Document:
             "type": "text",
             "text": f"[Document: {self.name}]\n{self.content}",
         }
+
+    def to_langchain_block(self) -> dict:
+        """Return a LangChain content block for this document.
+
+        Text (or ``text/*`` media) is inlined as a labelled text part; everything
+        else becomes a base64 ``image``/``file`` block the model reads natively.
+        """
+        is_text = isinstance(self.content, str) or self.media_type.startswith("text/")
+        if is_text:
+            text = self.content if isinstance(self.content, str) else self.content.decode("utf-8", "replace")
+            return {"type": "text", "text": f"[Document: {self.name}]\n{text}"}
+        block_type = "image" if self.media_type.startswith("image/") else "file"
+        return {"type": block_type, "base64": self.to_base64(), "mime_type": self.media_type}
