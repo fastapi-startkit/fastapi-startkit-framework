@@ -1,11 +1,3 @@
-"""Unit tests for ``Application.run()``.
-
-``Application.run()`` invokes an already-registered console command by name from
-Python code — without going through ``sys.argv`` — and returns the command's
-exit code. A dummy command is registered on a fresh ``Application`` so the
-programmatic API has something concrete to resolve and execute.
-"""
-
 from __future__ import annotations
 
 import unittest
@@ -40,16 +32,12 @@ class ApplicationRunTest(unittest.TestCase):
         DummyCommand.exit_code = 0
         DummyCommand.received = {}
 
-        # The container is a process-wide singleton; remember the current one
-        # so it can be restored in tearDown and keep tests isolated.
         self._previous = Container._instance
         self.app = Application(env="testing")
         self.app.add_commands([DummyCommand])
 
     def tearDown(self) -> None:
         Container.set_instance(self._previous)
-
-    # -- exit code ---------------------------------------------------------
 
     def test_returns_zero_exit_code_as_int(self):
         result = self.app.run("dummy:do")
@@ -63,11 +51,7 @@ class ApplicationRunTest(unittest.TestCase):
         self.assertEqual(self.app.run("dummy:do"), 3)
 
     def test_unknown_command_returns_error_code(self):
-        # Cleo reports the error through the application instead of raising; the
-        # call still returns a non-zero exit code rather than terminating the host.
         self.assertEqual(self.app.run("does:not-exist"), 1)
-
-    # -- argument handling -------------------------------------------------
 
     def test_runs_without_args(self):
         self.app.run("dummy:do")
@@ -108,15 +92,9 @@ class ApplicationRunTest(unittest.TestCase):
 
         self.assertEqual(DummyCommand.received["name"], "123")
 
-    # -- re-entrancy -------------------------------------------------------
-
     def test_can_be_invoked_repeatedly(self):
         self.assertEqual(self.app.run("dummy:do", "first"), 0)
         self.assertEqual(DummyCommand.received["name"], "first")
 
         self.assertEqual(self.app.run("dummy:do", "second --force"), 0)
         self.assertEqual(DummyCommand.received, {"name": "second", "force": True})
-
-
-if __name__ == "__main__":
-    unittest.main()
