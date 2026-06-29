@@ -240,4 +240,6 @@ class Application(Container, Generic[TConfig]):
         console = ConsoleApplication(self)
         console.auto_exits(False)
 
+        console.find(command)
+
         return console.run(StringInput(command_line))

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 
+from cleo.exceptions import CleoCommandNotFoundError
 from cleo.helpers import argument, option
 
 from fastapi_startkit.application import Application
@@ -50,8 +51,9 @@ class ApplicationRunTest(unittest.TestCase):
 
         self.assertEqual(self.app.run("dummy:do"), 3)
 
-    def test_unknown_command_returns_error_code(self):
-        self.assertEqual(self.app.run("does:not-exist"), 1)
+    def test_unknown_command_raises(self):
+        with self.assertRaises(CleoCommandNotFoundError):
+            self.app.run("does:not:exist")
 
     def test_runs_without_args(self):
         self.app.run("dummy:do")
