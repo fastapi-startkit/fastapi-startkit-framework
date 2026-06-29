@@ -8,7 +8,8 @@ programmatic API has something concrete to resolve and execute.
 
 from __future__ import annotations
 
-import pytest
+import unittest
+
 from cleo.helpers import argument, option
 
 from fastapi_startkit.application import Application
@@ -34,112 +35,88 @@ class DummyCommand(Command):
         return type(self).exit_code
 
 
-@pytest.fixture
-def app():
-    """A booted Application with DummyCommand registered.
+class ApplicationRunTest(unittest.TestCase):
+    def setUp(self) -> None:
+        DummyCommand.exit_code = 0
+        DummyCommand.received = {}
 
-    The container is a process-wide singleton, so the previous instance is
-    restored on teardown to keep these tests isolated from the rest of the
-    suite.
-    """
-    DummyCommand.exit_code = 0
-    DummyCommand.received = {}
+        # The container is a process-wide singleton; remember the current one
+        # so it can be restored in tearDown and keep tests isolated.
+        self._previous = Container._instance
+        self.app = Application(env="testing")
+        self.app.add_commands([DummyCommand])
 
-    previous = Container._instance
-    application = Application(env="testing")
-    application.add_commands([DummyCommand])
-    yield application
-    Container.set_instance(previous)
+    def tearDown(self) -> None:
+        Container.set_instance(self._previous)
 
+    # -- exit code ---------------------------------------------------------
 
-# ---------------------------------------------------------------------------
-# Exit code
-# ---------------------------------------------------------------------------
+    def test_returns_zero_exit_code_as_int(self):
+        result = self.app.run("dummy:do")
 
+        self.assertEqual(result, 0)
+        self.assertIsInstance(result, int)
 
-def test_returns_zero_exit_code_as_int(app):
-    result = app.run("dummy:do")
+    def test_propagates_non_zero_exit_code(self):
+        DummyCommand.exit_code = 3
 
-    assert result == 0
-    assert isinstance(result, int)
+        self.assertEqual(self.app.run("dummy:do"), 3)
 
+    def test_unknown_command_returns_error_code(self):
+        # Cleo reports the error through the application instead of raising; the
+        # call still returns a non-zero exit code rather than terminating the host.
+        self.assertEqual(self.app.run("does:not-exist"), 1)
 
-def test_propagates_non_zero_exit_code(app):
-    DummyCommand.exit_code = 3
+    # -- argument handling -------------------------------------------------
 
-    assert app.run("dummy:do") == 3
+    def test_runs_without_args(self):
+        self.app.run("dummy:do")
 
+        self.assertEqual(DummyCommand.received, {"name": None, "force": False})
 
-def test_unknown_command_returns_error_code(app):
-    # Cleo reports the error through the application instead of raising; the
-    # call still returns a non-zero exit code rather than terminating the host.
-    assert app.run("does:not-exist") == 1
+    def test_none_args_is_equivalent_to_no_args(self):
+        self.app.run("dummy:do", None)
 
+        self.assertEqual(DummyCommand.received, {"name": None, "force": False})
 
-# ---------------------------------------------------------------------------
-# Argument handling
-# ---------------------------------------------------------------------------
+    def test_empty_string_args_is_equivalent_to_no_args(self):
+        self.app.run("dummy:do", "")
 
+        self.assertEqual(DummyCommand.received, {"name": None, "force": False})
 
-def test_runs_without_args(app):
-    app.run("dummy:do")
+    def test_forwards_string_and_sequence_args(self):
+        for args in ("hello --force", "hello -f", ["hello", "--force"], ("hello", "-f")):
+            with self.subTest(args=args):
+                DummyCommand.received = {}
 
-    assert DummyCommand.received == {"name": None, "force": False}
+                self.app.run("dummy:do", args)
 
+                self.assertEqual(DummyCommand.received, {"name": "hello", "force": True})
 
-def test_none_args_is_equivalent_to_no_args(app):
-    app.run("dummy:do", None)
+    def test_forwards_positional_arg_only(self):
+        self.app.run("dummy:do", "hello")
 
-    assert DummyCommand.received == {"name": None, "force": False}
+        self.assertEqual(DummyCommand.received, {"name": "hello", "force": False})
 
+    def test_list_arg_preserves_value_with_spaces(self):
+        self.app.run("dummy:do", ["hello world"])
 
-def test_empty_string_args_is_equivalent_to_no_args(app):
-    app.run("dummy:do", "")
+        self.assertEqual(DummyCommand.received["name"], "hello world")
 
-    assert DummyCommand.received == {"name": None, "force": False}
+    def test_non_string_list_args_are_stringified(self):
+        self.app.run("dummy:do", [123])
 
+        self.assertEqual(DummyCommand.received["name"], "123")
 
-@pytest.mark.parametrize(
-    "args",
-    [
-        "hello --force",
-        "hello -f",
-        ["hello", "--force"],
-        ("hello", "-f"),
-    ],
-)
-def test_forwards_string_and_sequence_args(app, args):
-    app.run("dummy:do", args)
+    # -- re-entrancy -------------------------------------------------------
 
-    assert DummyCommand.received == {"name": "hello", "force": True}
+    def test_can_be_invoked_repeatedly(self):
+        self.assertEqual(self.app.run("dummy:do", "first"), 0)
+        self.assertEqual(DummyCommand.received["name"], "first")
 
-
-def test_forwards_positional_arg_only(app):
-    app.run("dummy:do", "hello")
-
-    assert DummyCommand.received == {"name": "hello", "force": False}
+        self.assertEqual(self.app.run("dummy:do", "second --force"), 0)
+        self.assertEqual(DummyCommand.received, {"name": "second", "force": True})
 
 
-def test_list_arg_preserves_value_with_spaces(app):
-    app.run("dummy:do", ["hello world"])
-
-    assert DummyCommand.received["name"] == "hello world"
-
-
-def test_non_string_list_args_are_stringified(app):
-    app.run("dummy:do", [123])
-
-    assert DummyCommand.received["name"] == "123"
-
-
-# ---------------------------------------------------------------------------
-# Re-entrancy
-# ---------------------------------------------------------------------------
-
-
-def test_can_be_invoked_repeatedly(app):
-    assert app.run("dummy:do", "first") == 0
-    assert DummyCommand.received["name"] == "first"
-
-    assert app.run("dummy:do", "second --force") == 0
-    assert DummyCommand.received == {"name": "second", "force": True}
+if __name__ == "__main__":
+    unittest.main()
