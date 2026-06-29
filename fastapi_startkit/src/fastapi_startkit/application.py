@@ -228,12 +228,6 @@ class Application(Container, Generic[TConfig]):
         ConsoleApplication(self).handle()
 
     def run(self, command: str, args: "str | list[str] | None" = None) -> int:
-        """Run a registered console command by name from Python and return its exit code.
-
-        Unlike :meth:`handle_command`, this does not read ``sys.argv``: the command and
-        its arguments are passed explicitly, e.g. ``app.run("db:migrate")`` or
-        ``app.run("db:seed", "--force")`` / ``app.run("db:seed", ["--force"])``.
-        """
         from cleo.io.inputs.string_input import StringInput
 
         from fastapi_startkit.console import ConsoleApplication
@@ -244,7 +238,6 @@ class Application(Container, Generic[TConfig]):
         command_line = f"{command} {args}".strip() if args else command
 
         console = ConsoleApplication(self)
-        # Return the exit code instead of terminating the host process.
         console.auto_exits(False)
 
         return console.run(StringInput(command_line))
