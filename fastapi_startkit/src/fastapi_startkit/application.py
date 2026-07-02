@@ -1,4 +1,5 @@
 import os
+import shlex
 from fastapi_startkit.providers.app_provider import AppProvider
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
@@ -225,3 +226,20 @@ class Application(Container, Generic[TConfig]):
         from fastapi_startkit.console import ConsoleApplication
 
         ConsoleApplication(self).handle()
+
+    def run(self, command: str, args: "str | list[str] | None" = None) -> int:
+        from cleo.io.inputs.string_input import StringInput
+
+        from fastapi_startkit.console import ConsoleApplication
+
+        if isinstance(args, (list, tuple)):
+            args = shlex.join(str(arg) for arg in args)
+
+        command_line = f"{command} {args}".strip() if args else command
+
+        console = ConsoleApplication(self)
+        console.auto_exits(False)
+
+        console.find(command)
+
+        return console.run(StringInput(command_line))
