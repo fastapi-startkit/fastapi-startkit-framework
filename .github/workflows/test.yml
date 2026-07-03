@@ -43,7 +43,16 @@ jobs:
 
             -   name: Run tests (fastapi_startkit)
                 working-directory: fastapi_startkit
-                run: uv run pytest tests/ -v
+                run: uv run pytest tests/ -v --cov --cov-report=xml
+
+            -   name: Upload coverage to Codecov
+                uses: codecov/codecov-action@v5
+                with:
+                    token: ${{ secrets.CODECOV_TOKEN }}
+                    slug: fastapi-startkit/fastapi-startkit-modules
+                    files: fastapi_startkit/coverage.xml
+                    flags: fastapi_startkit
+                    fail_ci_if_error: false
 
             # ── example/config-app ────────────────────────────────────────────────
             -   name: Install dependencies (config-app)
