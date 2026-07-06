@@ -24,12 +24,7 @@ Optional extras are installed with pip/uv extras:
 ```
 fastapi-startkit[fastapi]    # FastAPI + Starlette
 fastapi-startkit[database]   # SQLAlchemy async ORM
-fastapi-startkit[postgres]   # asyncpg driver
-fastapi-startkit[sqlite]     # aiosqlite driver
-fastapi-startkit[mysql]      # aiomysql driver
 fastapi-startkit[vite]       # Jinja2 for Vite integration
-fastapi-startkit[inertia]    # Jinja2 + MarkupSafe for Inertia.js
-fastapi-startkit[ai]         # LangChain integration
 ```
 
 ### `fastapi_startkit.github.io.git/` — Documentation
