@@ -6,6 +6,16 @@ authors = [
     {name = "Bedram Tamang", email = "tmgbedu@gmail.com"}
 ]
 requires-python = ">=3.12,<4.0"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
 dependencies = [
     "dotty-dict>=1.3.1",
     "pendulum (>=3.1.0,<4.0.0)",
@@ -18,7 +28,7 @@ dependencies = [
 
 [project.optional-dependencies]
 fastapi = [
-    "fastapi[standard] (>=0.124.4,<0.125.0)",
+    "fastapi[standard]>=0.124.4",
     "itsdangerous>=2.2.0",
 ]
 database = [
