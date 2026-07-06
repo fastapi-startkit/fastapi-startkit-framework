@@ -1,6 +1,6 @@
 [project]
 name = "fastapi-startkit"
-version = "0.46.0"
+version = "0.47.0"
 description = "Fastapi Starter kit components"
 authors = [
     {name = "Bedram Tamang", email = "tmgbedu@gmail.com"}
