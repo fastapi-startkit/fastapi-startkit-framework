@@ -4,7 +4,7 @@ import unittest
 from contextlib import redirect_stdout
 from unittest.mock import MagicMock, patch
 
-from fastapi_startkit.application import app as get_app
+from fastapi_startkit.application import Application, app as get_app
 from fastapi_startkit.logging.ChannelFactory import ChannelFactory
 from fastapi_startkit.logging.channels import (
     DailyChannel,
@@ -30,40 +30,44 @@ from fastapi_startkit.logging.managers import LoggingManager
 from fastapi_startkit.logging.providers.log_provider import LogProvider
 
 
-_root_logger_state = {}
+_saved_state = {}
 
 
 def setUpModule():
-    """Register the logging config against the booted test app so the channels
-    that read `logging.*` config keys can be constructed.
+    """Boot a testing Application with the LogProvider so the logging config,
+    the channel/driver factories, and the `logger` channel are wired up exactly
+    as they are at runtime — the framework does the registration, not the test.
 
-    Registering constructs a LoggingManager, which installs a LoggingHandler on
-    the real root logger. That handler routes every stdlib log record back through
-    the app logger, so it must be torn down or it corrupts every later test module.
+    Booting installs a global LoggingHandler on the real root logger and swaps
+    the global app singleton, so both are captured here and restored in
+    tearDownModule to stop this module's setup from leaking into other tests.
     """
+    from fastapi_startkit.container.container import Container
+
     root = logging.getLogger()
-    _root_logger_state["handlers"] = list(root.handlers)
-    _root_logger_state["level"] = root.level
-
-    app = get_app()
+    _saved_state["handlers"] = list(root.handlers)
+    _saved_state["level"] = root.level
     try:
-        _root_logger_state["logger_binding"] = app.make("logger")
+        _saved_state["app"] = Container.instance()
     except Exception:
-        _root_logger_state["logger_binding"] = None
+        _saved_state["app"] = None
 
-    LogProvider(app).register()
+    Application(env="testing", providers=[LogProvider])
 
 
 def tearDownModule():
-    """Restore the real root logger and app state mutated during this module."""
+    """Restore the real root logger and the global app singleton."""
+    from fastapi_startkit.container.container import Container
+
     root = logging.getLogger()
     for handler in list(root.handlers):
-        if handler not in _root_logger_state.get("handlers", []):
+        if handler not in _saved_state.get("handlers", []):
             root.removeHandler(handler)
-    root.setLevel(_root_logger_state.get("level", logging.WARNING))
+    root.setLevel(_saved_state.get("level", logging.WARNING))
 
     Logger.instance = None
-    get_app().bind("logger", _root_logger_state.get("logger_binding"))
+    if _saved_state.get("app") is not None:
+        Container.set_instance(_saved_state["app"])
 
 
 class RecordingDriver(BaseDriver):
