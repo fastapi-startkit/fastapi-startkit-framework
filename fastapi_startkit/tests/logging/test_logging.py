@@ -296,9 +296,15 @@ class SlackDriverTest(unittest.TestCase):
                 patch.object(driver, "find_channel", return_value="C123"):
             driver.error("boom")
             requests_mock.post.assert_called_once()
-            args, _ = requests_mock.post.call_args
-            self.assertEqual(args[0], driver.slack_url)
-            self.assertIn("boom", args[1]["text"])
+            url, payload = requests_mock.post.call_args.args
+            # Assert the concrete Slack endpoint, not driver.slack_url (that would be
+            # circular — it is the value that produced the call).
+            self.assertEqual(url, "https://slack.com/api/chat.postMessage")
+            self.assertIn("boom", payload["text"])
+            self.assertIn("ERROR", payload["text"])
+            self.assertEqual(payload["token"], "tok")
+            self.assertEqual(payload["channel"], "C123")
+            self.assertEqual(payload["username"], "bot")
 
     def test_find_channel_resolves_channel_id(self):
         driver = self._driver()
