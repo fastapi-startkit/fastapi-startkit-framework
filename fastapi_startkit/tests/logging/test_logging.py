@@ -337,6 +337,66 @@ class SyslogDriverTest(unittest.TestCase):
         driver.log.critical.assert_called_once_with("halt")
 
 
+class TimezoneAwareLogFileTest(unittest.TestCase):
+    """The daily log file name comes from get_time(), which resolves
+    `logging.channels.timezone` — so the file that gets generated on disk must
+    follow the application's configured timezone, not the machine/UTC clock."""
+
+    def setUp(self):
+        self.config = get_app().make("config")
+        self.root_named = logging.getLogger("root")
+        self._propagate = self.root_named.propagate
+        self.root_named.propagate = False
+        self._existing_handlers = list(self.root_named.handlers)
+
+    def tearDown(self):
+        for handler in list(self.root_named.handlers):
+            if handler not in self._existing_handlers:
+                self.root_named.removeHandler(handler)
+                handler.close()
+        self.root_named.propagate = self._propagate
+        # Restore to the code's default so other tests' get_time() keeps working.
+        self.config.set("logging.channels.timezone", "UTC")
+
+    def _daily_path(self, directory, tz, fixed_instant):
+        self.config.set("logging.channels.timezone", tz)
+        with patch("pendulum.now", return_value=fixed_instant):
+            return DailyChannel(driver="daily", path=directory).driver.path
+
+    def test_daily_file_date_follows_configured_timezone(self):
+        import os
+        import tempfile
+
+        import pendulum
+
+        # 23:30 UTC sits on a day boundary: timezones ahead of UTC are already on
+        # the next calendar day, timezones behind are still on the previous one.
+        fixed = pendulum.datetime(2026, 7, 8, 23, 30, 0, tz="UTC")
+        directory = tempfile.mkdtemp()
+
+        ahead = self._daily_path(directory, "Pacific/Kiritimati", fixed)   # UTC+14
+        behind = self._daily_path(directory, "Pacific/Honolulu", fixed)    # UTC-10
+
+        # File names differ purely because of the configured timezone.
+        self.assertTrue(ahead.endswith("2026-07-09.log"), ahead)
+        self.assertTrue(behind.endswith("2026-07-08.log"), behind)
+        self.assertNotEqual(ahead, behind)
+
+        # And both files are actually created on disk with the tz-derived names.
+        self.assertTrue(os.path.isfile(os.path.join(directory, "2026-07-09.log")))
+        self.assertTrue(os.path.isfile(os.path.join(directory, "2026-07-08.log")))
+
+    def test_get_time_reflects_configured_timezone(self):
+        import pendulum
+
+        fixed = pendulum.datetime(2026, 7, 8, 23, 30, 0, tz="UTC")
+        self.config.set("logging.channels.timezone", "Pacific/Kiritimati")
+        with patch("pendulum.now", return_value=fixed):
+            now = BaseDriver().get_time()
+        self.assertEqual(now.to_date_string(), "2026-07-09")
+        self.assertEqual(now.timezone_name, "Pacific/Kiritimati")
+
+
 class ChannelConstructionTest(unittest.TestCase):
     def test_terminal_channel_uses_terminal_driver(self):
         channel = TerminalChannel()
