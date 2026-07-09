@@ -1,6 +1,6 @@
 # FastAPI Startkit
 
-[![codecov](https://codecov.io/gh/fastapi-startkit/fastapi-startkit-modules/graph/badge.svg)](https://codecov.io/gh/fastapi-startkit/fastapi-startkit-modules)
+[![codecov](https://codecov.io/gh/fastapi-startkit/fastapi-startkit-framework/graph/badge.svg)](https://codecov.io/gh/fastapi-startkit/fastapi-startkit-framework)
 [![PyPI version](https://img.shields.io/pypi/v/fastapi-startkit.svg)](https://pypi.org/project/fastapi-startkit/)
 [![Python versions](https://img.shields.io/pypi/pyversions/fastapi-startkit.svg)](https://pypi.org/project/fastapi-startkit/)
 
@@ -51,7 +51,7 @@ uv run pytest --cov --cov-report=term-missing
 ```
 
 Coverage is collected in CI and reported to
-[Codecov](https://codecov.io/gh/fastapi-startkit/fastapi-startkit-modules).
+[Codecov](https://codecov.io/gh/fastapi-startkit/fastapi-startkit-framework).
 
 ## License
 

@@ -49,7 +49,7 @@ jobs:
                 uses: codecov/codecov-action@v5
                 with:
                     token: ${{ secrets.CODECOV_TOKEN }}
-                    slug: fastapi-startkit/fastapi-startkit-modules
+                    slug: fastapi-startkit/fastapi-startkit-framework
                     files: fastapi_startkit/coverage.xml
                     flags: fastapi_startkit
                     fail_ci_if_error: false
