@@ -2,6 +2,7 @@ from unittest import IsolatedAsyncioTestCase
 
 from fastapi_startkit.masoniteorm.collection import Collection
 from fastapi_startkit.masoniteorm.models.model import Model
+from fastapi_startkit.masoniteorm.relationships import HasOne
 
 from ..fixtures.model import Articles, Profile, User
 from ..sqlite.test_case import TestCase
@@ -746,41 +747,53 @@ class TestCollection(TestCase):
         self.assertFalse(collection == different)
 
 
-class _StubRelationship:
-    """Relationship whose get_related returns a non-Collection result."""
+class _SingleResultHasOne(HasOne):
+    """A real HasOne whose get_related is forced to return a single (non-Collection) row.
 
-    async def get_related(self, query, relation):
+    Collection.load() always hands the *whole* Collection to get_related, and every
+    real relationship branches on ``isinstance(relation, Collection)`` to return a
+    Collection in that case (see get_related in HasOne, HasMany, BelongsTo, the Morph*
+    and *Through relationships). So the non-Collection branch of load() — the
+    ``model.add_relation(...)`` fallback — is unreachable by any real relationship
+    driven through load(); it is defensive code.
+
+    Overriding only get_related is therefore the single narrowest way to exercise that
+    branch while keeping the rest of the path real: a real Model, the real HasOne
+    map_related, and the real Model.add_relation / _relationships all run unchanged.
+    """
+
+    async def get_related(self, query, relation, eagers=(), callback=None):
         return {"id": 99}
 
-    def map_related(self, related_result):
-        return related_result
 
+class _Widget(Model):
+    __table__ = "widgets"
+    __timestamps__ = False
 
-class _StubModel:
-    stub = _StubRelationship()
-
-    def __init__(self):
-        self.relations = {}
-
-    def add_relation(self, data):
-        self.relations.update(data)
+    gadget: "_Widget" = _SingleResultHasOne("Widget", "widget_id", "id")
 
 
 class TestCollectionLoad(IsolatedAsyncioTestCase):
-    """Covers the load() paths that don't require a database."""
+    """Covers the load() branches that a live database cannot reach.
+
+    Genuine relationship loading against real HasOne/HasMany relationships and a live
+    SQLite database is covered by TestCollection.test_load_* above. These tests cover
+    the empty-collection short-circuit and the defensive non-Collection fallback, which
+    no DB-backed relationship produces (see _SingleResultHasOne for why).
+    """
 
     async def test_load_on_empty_collection_is_noop(self):
         collection = Collection([])
-        self.assertIs(await collection.load("stub"), collection)
+        self.assertIs(await collection.load("gadget"), collection)
 
     async def test_load_registers_non_collection_result_via_add_relation(self):
-        collection = Collection([_StubModel(), _StubModel()])
+        collection = Collection([_Widget(), _Widget()])
 
-        result = await collection.load("stub")
+        result = await collection.load("gadget")
 
         self.assertIs(result, collection)
         for model in collection:
-            self.assertEqual(model.relations["stub"], {"id": 99})
+            self.assertEqual(model._relationships["gadget"], {"id": 99})
 
     def test_with_relationship_autoloading_is_noop(self):
         self.assertIsNone(Collection([]).with_relationship_autoloading())
