@@ -1,8 +1,20 @@
-import io
+"""Tests for the Logging system.
+
+Written in pytest style — test classes with plain ``assert`` and fixtures —
+while keeping the rigorous, mutation-verified assertions: the Slack test pins
+the concrete Slack endpoint (never ``driver.slack_url``, which would be
+circular) and the daily-file test proves the file name changes with the
+configured timezone by inspecting real files on disk.
+"""
+
 import logging
-import unittest
-from contextlib import redirect_stdout
+import os
+import re
+import tempfile
 from unittest.mock import MagicMock, patch
+
+import pendulum
+import pytest
 
 from fastapi_startkit.application import Application, app as get_app
 from fastapi_startkit.logging.ChannelFactory import ChannelFactory
@@ -30,44 +42,43 @@ from fastapi_startkit.logging.managers import LoggingManager
 from fastapi_startkit.logging.providers.log_provider import LogProvider
 
 
-_saved_state = {}
+# ---------------------------------------------------------------------------
+# Module boot
+# ---------------------------------------------------------------------------
 
 
-def setUpModule():
+@pytest.fixture(scope="module", autouse=True)
+def booted_log_app():
     """Boot a testing Application with the LogProvider so the logging config,
-    the channel/driver factories, and the `logger` channel are wired up exactly
-    as they are at runtime — the framework does the registration, not the test.
+    the channel/driver factories, and the ``logger`` channel are wired up
+    exactly as they are at runtime — the framework does the registration, not
+    the test.
 
     Booting installs a global LoggingHandler on the real root logger and swaps
-    the global app singleton, so both are captured here and restored in
-    tearDownModule to stop this module's setup from leaking into other tests.
+    the global app singleton, so both are captured here and restored on
+    teardown to stop this module's setup from leaking into other tests.
     """
     from fastapi_startkit.container.container import Container
 
     root = logging.getLogger()
-    _saved_state["handlers"] = list(root.handlers)
-    _saved_state["level"] = root.level
+    saved_handlers = list(root.handlers)
+    saved_level = root.level
     try:
-        _saved_state["app"] = Container.instance()
+        saved_app = Container.instance()
     except Exception:
-        _saved_state["app"] = None
+        saved_app = None
 
     Application(env="testing", providers=[LogProvider])
+    yield
 
-
-def tearDownModule():
-    """Restore the real root logger and the global app singleton."""
-    from fastapi_startkit.container.container import Container
-
-    root = logging.getLogger()
     for handler in list(root.handlers):
-        if handler not in _saved_state.get("handlers", []):
+        if handler not in saved_handlers:
             root.removeHandler(handler)
-    root.setLevel(_saved_state.get("level", logging.WARNING))
+    root.setLevel(saved_level)
 
     Logger.instance = None
-    if _saved_state.get("app") is not None:
-        Container.set_instance(_saved_state["app"])
+    if saved_app is not None:
+        Container.set_instance(saved_app)
 
 
 class RecordingDriver(BaseDriver):
@@ -93,60 +104,76 @@ class RecordingDriver(BaseDriver):
         raise AttributeError(name)
 
 
-class ChannelFactoryTest(unittest.TestCase):
+# ---------------------------------------------------------------------------
+# ChannelFactory / DriverFactory — name → class lookup
+# ---------------------------------------------------------------------------
+
+
+class TestChannelFactory:
     def test_make_returns_registered_channel_classes(self):
-        self.assertIs(ChannelFactory.make("single"), SingleChannel)
-        self.assertIs(ChannelFactory.make("daily"), DailyChannel)
-        self.assertIs(ChannelFactory.make("terminal"), TerminalChannel)
-        self.assertIs(ChannelFactory.make("stack"), StackChannel)
+        assert ChannelFactory.make("single") is SingleChannel
+        assert ChannelFactory.make("daily") is DailyChannel
+        assert ChannelFactory.make("terminal") is TerminalChannel
+        assert ChannelFactory.make("stack") is StackChannel
 
     def test_make_returns_none_for_unknown_channel(self):
-        self.assertIsNone(ChannelFactory.make("does-not-exist"))
+        assert ChannelFactory.make("does-not-exist") is None
 
     def test_register_adds_new_channels(self):
         marker = object()
         try:
             ChannelFactory.register({"custom_test_channel": marker})
-            self.assertIs(ChannelFactory.make("custom_test_channel"), marker)
+            assert ChannelFactory.make("custom_test_channel") is marker
         finally:
             ChannelFactory.channels.pop("custom_test_channel", None)
 
 
-class DriverFactoryTest(unittest.TestCase):
+class TestDriverFactory:
     def test_make_maps_names_to_driver_classes(self):
-        self.assertIs(DriverFactory.make("single"), LogSingleDriver)
-        self.assertIs(DriverFactory.make("daily"), LogSingleDriver)
-        self.assertIs(DriverFactory.make("slack"), LogSlackDriver)
-        self.assertIs(DriverFactory.make("syslog"), LogSyslogDriver)
-        self.assertIs(DriverFactory.make("terminal"), LogTerminalDriver)
+        assert DriverFactory.make("single") is LogSingleDriver
+        assert DriverFactory.make("daily") is LogSingleDriver
+        assert DriverFactory.make("slack") is LogSlackDriver
+        assert DriverFactory.make("syslog") is LogSyslogDriver
+        assert DriverFactory.make("terminal") is LogTerminalDriver
 
     def test_make_returns_none_for_unknown_driver(self):
-        self.assertIsNone(DriverFactory.make("unknown"))
+        assert DriverFactory.make("unknown") is None
 
 
-class BaseDriverShouldRunTest(unittest.TestCase):
-    def setUp(self):
-        self.driver = BaseDriver()
+# ---------------------------------------------------------------------------
+# BaseDriver.should_run — level filtering
+# ---------------------------------------------------------------------------
 
-    def test_returns_true_when_no_max_level(self):
-        self.assertTrue(self.driver.should_run("debug", None))
 
-    def test_more_severe_level_runs_under_a_less_severe_threshold(self):
+class TestBaseDriverShouldRun:
+    @pytest.fixture
+    def driver(self):
+        return BaseDriver()
+
+    def test_returns_true_when_no_max_level(self, driver):
+        assert driver.should_run("debug", None) is True
+
+    def test_more_severe_level_runs_under_a_less_severe_threshold(self, driver):
         # error (index 3) is more severe than info (index 6)
-        self.assertTrue(self.driver.should_run("error", "info"))
+        assert driver.should_run("error", "info") is True
 
-    def test_less_severe_level_is_filtered_out(self):
+    def test_less_severe_level_is_filtered_out(self, driver):
         # debug (index 7) is less severe than info (index 6)
-        self.assertFalse(self.driver.should_run("debug", "info"))
+        assert driver.should_run("debug", "info") is False
 
-    def test_equal_level_runs(self):
-        self.assertTrue(self.driver.should_run("info", "info"))
+    def test_equal_level_runs(self, driver):
+        assert driver.should_run("info", "info") is True
 
-    def test_get_time_returns_formatted_datetime(self):
-        self.assertIsInstance(self.driver.get_time().to_datetime_string(), str)
+    def test_get_time_returns_formatted_datetime(self, driver):
+        assert isinstance(driver.get_time().to_datetime_string(), str)
 
 
-class BaseChannelTest(unittest.TestCase):
+# ---------------------------------------------------------------------------
+# BaseChannel — delegates level methods to its driver
+# ---------------------------------------------------------------------------
+
+
+class TestBaseChannel:
     def _channel(self, should_run=True, max_level="debug"):
         channel = BaseChannel()
         channel.driver = RecordingDriver(should_run=should_run)
@@ -157,25 +184,30 @@ class BaseChannelTest(unittest.TestCase):
         channel = self._channel(should_run=True)
         for level in ("emergency", "alert", "critical", "error", "warning", "notice", "info", "debug"):
             result = getattr(channel, level)("message")
-            self.assertEqual(result, f"{level}:message")
-        self.assertEqual(len(channel.driver.calls), 8)
+            assert result == f"{level}:message"
+        assert len(channel.driver.calls) == 8
 
     def test_level_methods_are_suppressed_when_not_allowed(self):
         channel = self._channel(should_run=False)
-        self.assertIsNone(channel.info("message"))
-        self.assertIsNone(channel.error("message"))
-        self.assertEqual(channel.driver.calls, [])
+        assert channel.info("message") is None
+        assert channel.error("message") is None
+        assert channel.driver.calls == []
 
     def test_log_reports_whether_level_should_run(self):
-        self.assertTrue(self._channel(should_run=True).log("info", "m"))
-        self.assertFalse(self._channel(should_run=False).log("info", "m"))
+        assert self._channel(should_run=True).log("info", "m") is True
+        assert self._channel(should_run=False).log("info", "m") is False
 
     def test_channel_builds_a_new_channel_instance(self):
         channel = self._channel()
-        self.assertIsInstance(channel.channel("terminal"), TerminalChannel)
+        assert isinstance(channel.channel("terminal"), TerminalChannel)
 
 
-class MultiBaseChannelTest(unittest.TestCase):
+# ---------------------------------------------------------------------------
+# MultiBaseChannel — broadcasts to every wrapped channel
+# ---------------------------------------------------------------------------
+
+
+class TestMultiBaseChannel:
     def _multi(self, should_run=True):
         inner = BaseChannel()
         inner.driver = RecordingDriver(should_run=should_run)
@@ -189,106 +221,104 @@ class MultiBaseChannelTest(unittest.TestCase):
         for level in ("emergency", "alert", "critical", "error", "warning", "notice", "info", "debug"):
             getattr(multi, level)("message")
         recorded = [level for level, _ in inner.driver.calls]
-        self.assertEqual(
-            recorded,
-            ["emergency", "alert", "critical", "error", "warning", "notice", "info", "debug"],
-        )
+        assert recorded == [
+            "emergency", "alert", "critical", "error", "warning", "notice", "info", "debug",
+        ]
 
     def test_skips_channels_that_should_not_run(self):
         multi, inner = self._multi(should_run=False)
         multi.info("message")
         multi.error("message")
-        self.assertEqual(inner.driver.calls, [])
+        assert inner.driver.calls == []
 
 
-class TerminalDriverTest(unittest.TestCase):
-    def setUp(self):
-        self.driver = LogTerminalDriver()
+# ---------------------------------------------------------------------------
+# LogTerminalDriver — writes formatted lines to stdout
+# ---------------------------------------------------------------------------
 
-    def test_get_format_includes_time_level_and_message(self):
-        formatted = self.driver.get_format("hello", "INFO")
-        self.assertIn("INFO", formatted)
-        self.assertIn("hello", formatted)
-        self.assertRegex(formatted, r"\d{4}-\d{2}-\d{2}")
 
-    def test_each_level_writes_to_stdout(self):
+class TestTerminalDriver:
+    @pytest.fixture
+    def driver(self):
+        return LogTerminalDriver()
+
+    def test_get_format_includes_time_level_and_message(self, driver):
+        formatted = driver.get_format("hello", "INFO")
+        assert "INFO" in formatted
+        assert "hello" in formatted
+        assert re.search(r"\d{4}-\d{2}-\d{2}", formatted)
+
+    def test_each_level_writes_to_stdout(self, driver, capsys):
         for level, method in (
-            ("EMERGENCY", self.driver.emergency),
-            ("ALERT", self.driver.alert),
-            ("CRITICAL", self.driver.critical),
-            ("ERROR", self.driver.error),
-            ("WARNING", self.driver.warning),
-            ("NOTICE", self.driver.notice),
-            ("INFO", self.driver.info),
-            ("DEBUG", self.driver.debug),
+            ("EMERGENCY", driver.emergency),
+            ("ALERT", driver.alert),
+            ("CRITICAL", driver.critical),
+            ("ERROR", driver.error),
+            ("WARNING", driver.warning),
+            ("NOTICE", driver.notice),
+            ("INFO", driver.info),
+            ("DEBUG", driver.debug),
         ):
-            buffer = io.StringIO()
-            with redirect_stdout(buffer):
-                method("payload")
-            output = buffer.getvalue()
-            self.assertIn(level, output)
-            self.assertIn("payload", output)
+            method("payload")
+            output = capsys.readouterr().out
+            assert level in output
+            assert "payload" in output
 
 
-class SingleDriverTest(unittest.TestCase):
-    def setUp(self):
+# ---------------------------------------------------------------------------
+# LogSingleDriver — writes formatted levels to a file
+# ---------------------------------------------------------------------------
+
+
+class TestSingleDriver:
+    @pytest.fixture(autouse=True)
+    def isolate_root_named(self):
         # The single/syslog drivers log through the "root"-named logger; disable
         # propagation so records do not reach the installed LoggingHandler.
-        self.root_named = logging.getLogger("root")
-        self._propagate = self.root_named.propagate
-        self.root_named.propagate = False
-        self._existing_handlers = list(self.root_named.handlers)
-
-    def tearDown(self):
-        for handler in list(self.root_named.handlers):
-            if handler not in self._existing_handlers:
-                self.root_named.removeHandler(handler)
+        root_named = logging.getLogger("root")
+        propagate = root_named.propagate
+        root_named.propagate = False
+        existing = list(root_named.handlers)
+        yield
+        for handler in list(root_named.handlers):
+            if handler not in existing:
+                root_named.removeHandler(handler)
                 handler.close()
-        self.root_named.propagate = self._propagate
+        root_named.propagate = propagate
 
-    def test_writes_formatted_levels_to_the_file(self):
-        import tempfile
-        import os
+    def test_writes_formatted_levels_to_the_file(self, tmp_path):
+        path = str(tmp_path / "single.log")
+        driver = LogSingleDriver(path=path, max_level="debug")
+        driver.error("boom")
+        driver.info("ping")
+        contents = open(path).read()
+        assert "ERROR" in contents
+        assert "boom" in contents
+        assert "INFO" in contents
+        assert "ping" in contents
 
-        fd, path = tempfile.mkstemp(suffix=".log")
-        os.close(fd)
-        try:
-            driver = LogSingleDriver(path=path, max_level="debug")
-            driver.error("boom")
-            driver.info("ping")
-            with open(path) as handle:
-                contents = handle.read()
-            self.assertIn("ERROR", contents)
-            self.assertIn("boom", contents)
-            self.assertIn("INFO", contents)
-            self.assertIn("ping", contents)
-        finally:
-            os.remove(path)
-
-    def test_change_format_replaces_handlers(self):
-        import tempfile
-        import os
-
-        fd, path = tempfile.mkstemp(suffix=".log")
-        os.close(fd)
-        try:
-            driver = LogSingleDriver(path=path, max_level="debug")
-            before = len(driver.log.handlers)
-            driver.change_format("%(message)s")
-            self.assertLessEqual(len(driver.log.handlers), before)
-            self.assertTrue(len(driver.log.handlers) >= 1)
-        finally:
-            os.remove(path)
+    def test_change_format_replaces_handlers(self, tmp_path):
+        path = str(tmp_path / "reformat.log")
+        driver = LogSingleDriver(path=path, max_level="debug")
+        before = len(driver.log.handlers)
+        driver.change_format("%(message)s")
+        assert len(driver.log.handlers) <= before
+        assert len(driver.log.handlers) >= 1
 
 
-class SlackDriverTest(unittest.TestCase):
+# ---------------------------------------------------------------------------
+# LogSlackDriver — posts to the Slack Web API (mocked)
+# ---------------------------------------------------------------------------
+
+
+class TestSlackDriver:
     def _driver(self):
         return LogSlackDriver(token="tok", channel="#bot", username="bot", emoji=":x:")
 
     def test_get_format_includes_level_and_message(self):
         formatted = self._driver().get_format("hi", "ERROR")
-        self.assertIn("ERROR", formatted)
-        self.assertIn("hi", formatted)
+        assert "ERROR" in formatted
+        assert "hi" in formatted
 
     def test_level_methods_post_to_slack(self):
         driver = self._driver()
@@ -299,14 +329,14 @@ class SlackDriverTest(unittest.TestCase):
             driver.error("boom")
             requests_mock.post.assert_called_once()
             url, payload = requests_mock.post.call_args.args
-            # Assert the concrete Slack endpoint, not driver.slack_url (that would be
-            # circular — it is the value that produced the call).
-            self.assertEqual(url, "https://slack.com/api/chat.postMessage")
-            self.assertIn("boom", payload["text"])
-            self.assertIn("ERROR", payload["text"])
-            self.assertEqual(payload["token"], "tok")
-            self.assertEqual(payload["channel"], "C123")
-            self.assertEqual(payload["username"], "bot")
+            # Assert the concrete Slack endpoint, not driver.slack_url (that
+            # would be circular — it is the value that produced the call).
+            assert url == "https://slack.com/api/chat.postMessage"
+            assert "boom" in payload["text"]
+            assert "ERROR" in payload["text"]
+            assert payload["token"] == "tok"
+            assert payload["channel"] == "C123"
+            assert payload["username"] == "bot"
 
     def test_find_channel_resolves_channel_id(self):
         driver = self._driver()
@@ -314,7 +344,7 @@ class SlackDriverTest(unittest.TestCase):
         response.json.return_value = {"channels": [{"name": "bot", "id": "C123"}]}
         with patch("fastapi_startkit.logging.drivers.LogSlackDriver.requests") as requests_mock:
             requests_mock.post.return_value = response
-            self.assertEqual(driver.find_channel("#bot"), "C123")
+            assert driver.find_channel("#bot") == "C123"
 
     def test_find_channel_raises_when_missing(self):
         driver = self._driver()
@@ -322,11 +352,16 @@ class SlackDriverTest(unittest.TestCase):
         response.json.return_value = {"channels": [{"name": "other", "id": "C999"}]}
         with patch("fastapi_startkit.logging.drivers.LogSlackDriver.requests") as requests_mock:
             requests_mock.post.return_value = response
-            with self.assertRaises(Exception):
+            with pytest.raises(Exception):
                 driver.find_channel("#bot")
 
 
-class SyslogDriverTest(unittest.TestCase):
+# ---------------------------------------------------------------------------
+# LogSyslogDriver — routes levels to the underlying logger
+# ---------------------------------------------------------------------------
+
+
+class TestSyslogDriver:
     def test_levels_route_to_the_underlying_logger(self):
         with patch("fastapi_startkit.logging.drivers.LogSyslogDriver.logging.handlers.SysLogHandler"):
             driver = LogSyslogDriver(path="/dev/null")
@@ -339,188 +374,192 @@ class SyslogDriverTest(unittest.TestCase):
         driver.log.critical.assert_called_once_with("halt")
 
 
-class TimezoneAwareLogFileTest(unittest.TestCase):
+# ---------------------------------------------------------------------------
+# Timezone-aware daily log file — the on-disk name follows configured tz
+# ---------------------------------------------------------------------------
+
+
+class TestTimezoneAwareLogFile:
     """The daily log file name comes from get_time(), which resolves
-    `logging.channels.timezone` — so the file that gets generated on disk must
+    ``logging.channels.timezone`` — so the file that gets generated on disk must
     follow the application's configured timezone, not the machine/UTC clock."""
 
-    def setUp(self):
-        self.config = get_app().make("config")
-        self.root_named = logging.getLogger("root")
-        self._propagate = self.root_named.propagate
-        self.root_named.propagate = False
-        self._existing_handlers = list(self.root_named.handlers)
-
-    def tearDown(self):
-        for handler in list(self.root_named.handlers):
-            if handler not in self._existing_handlers:
-                self.root_named.removeHandler(handler)
+    @pytest.fixture(autouse=True)
+    def config(self):
+        config = get_app().make("config")
+        root_named = logging.getLogger("root")
+        propagate = root_named.propagate
+        root_named.propagate = False
+        existing = list(root_named.handlers)
+        yield config
+        for handler in list(root_named.handlers):
+            if handler not in existing:
+                root_named.removeHandler(handler)
                 handler.close()
-        self.root_named.propagate = self._propagate
+        root_named.propagate = propagate
         # Restore to the code's default so other tests' get_time() keeps working.
-        self.config.set("logging.channels.timezone", "UTC")
+        config.set("logging.channels.timezone", "UTC")
 
-    def _daily_path(self, directory, tz, fixed_instant):
-        self.config.set("logging.channels.timezone", tz)
+    @staticmethod
+    def _daily_path(config, directory, tz, fixed_instant):
+        config.set("logging.channels.timezone", tz)
         with patch("pendulum.now", return_value=fixed_instant):
             return DailyChannel(driver="daily", path=directory).driver.path
 
-    def test_daily_file_date_follows_configured_timezone(self):
-        import os
-        import tempfile
-
-        import pendulum
-
-        # 23:30 UTC sits on a day boundary: timezones ahead of UTC are already on
-        # the next calendar day, timezones behind are still on the previous one.
+    def test_daily_file_date_follows_configured_timezone(self, config):
+        # 23:30 UTC sits on a day boundary: timezones ahead of UTC are already
+        # on the next calendar day, timezones behind are still on the previous.
         fixed = pendulum.datetime(2026, 7, 8, 23, 30, 0, tz="UTC")
         directory = tempfile.mkdtemp()
 
-        ahead = self._daily_path(directory, "Pacific/Kiritimati", fixed)  # UTC+14
-        behind = self._daily_path(directory, "Pacific/Honolulu", fixed)  # UTC-10
+        ahead = self._daily_path(config, directory, "Pacific/Kiritimati", fixed)  # UTC+14
+        behind = self._daily_path(config, directory, "Pacific/Honolulu", fixed)  # UTC-10
 
         # File names differ purely because of the configured timezone.
-        self.assertTrue(ahead.endswith("2026-07-09.log"), ahead)
-        self.assertTrue(behind.endswith("2026-07-08.log"), behind)
-        self.assertNotEqual(ahead, behind)
+        assert ahead.endswith("2026-07-09.log"), ahead
+        assert behind.endswith("2026-07-08.log"), behind
+        assert ahead != behind
 
         # And both files are actually created on disk with the tz-derived names.
-        self.assertTrue(os.path.isfile(os.path.join(directory, "2026-07-09.log")))
-        self.assertTrue(os.path.isfile(os.path.join(directory, "2026-07-08.log")))
+        assert os.path.isfile(os.path.join(directory, "2026-07-09.log"))
+        assert os.path.isfile(os.path.join(directory, "2026-07-08.log"))
 
-    def test_get_time_reflects_configured_timezone(self):
-        import pendulum
-
+    def test_get_time_reflects_configured_timezone(self, config):
         fixed = pendulum.datetime(2026, 7, 8, 23, 30, 0, tz="UTC")
-        self.config.set("logging.channels.timezone", "Pacific/Kiritimati")
+        config.set("logging.channels.timezone", "Pacific/Kiritimati")
         with patch("pendulum.now", return_value=fixed):
             now = BaseDriver().get_time()
-        self.assertEqual(now.to_date_string(), "2026-07-09")
-        self.assertEqual(now.timezone_name, "Pacific/Kiritimati")
+        assert now.to_date_string() == "2026-07-09"
+        assert now.timezone_name == "Pacific/Kiritimati"
 
 
-class ChannelConstructionTest(unittest.TestCase):
+# ---------------------------------------------------------------------------
+# Channel construction — each channel wires up the right driver
+# ---------------------------------------------------------------------------
+
+
+class TestChannelConstruction:
+    @staticmethod
+    def _close_file_handlers(channel):
+        for handler in list(channel.driver.log.handlers):
+            if isinstance(handler, logging.FileHandler):
+                channel.driver.log.removeHandler(handler)
+                handler.close()
+
     def test_terminal_channel_uses_terminal_driver(self):
         channel = TerminalChannel()
-        self.assertEqual(channel.max_level, "info")
-        self.assertIsInstance(channel.driver, LogTerminalDriver)
+        assert channel.max_level == "info"
+        assert isinstance(channel.driver, LogTerminalDriver)
 
-    def test_single_channel_builds_single_driver(self):
-        import tempfile
-        import os
-
-        directory = tempfile.mkdtemp()
-        path = os.path.join(directory, "single.log")
+    def test_single_channel_builds_single_driver(self, tmp_path):
+        path = str(tmp_path / "single.log")
+        channel = SingleChannel(driver="single", path=path)
         try:
-            channel = SingleChannel(driver="single", path=path)
-            self.assertIsInstance(channel.driver, LogSingleDriver)
+            assert isinstance(channel.driver, LogSingleDriver)
         finally:
-            for handler in list(channel.driver.log.handlers):
-                if isinstance(handler, logging.FileHandler):
-                    channel.driver.log.removeHandler(handler)
-                    handler.close()
+            self._close_file_handlers(channel)
 
-    def test_daily_channel_writes_dated_file(self):
-        import tempfile
-
-        directory = tempfile.mkdtemp()
-        channel = DailyChannel(driver="daily", path=directory)
+    def test_daily_channel_writes_dated_file(self, tmp_path):
+        channel = DailyChannel(driver="daily", path=str(tmp_path))
         try:
-            self.assertIsInstance(channel.driver, LogSingleDriver)
-            self.assertTrue(channel.driver.path.endswith(".log"))
+            assert isinstance(channel.driver, LogSingleDriver)
+            assert channel.driver.path.endswith(".log")
         finally:
-            for handler in list(channel.driver.log.handlers):
-                if isinstance(handler, logging.FileHandler):
-                    channel.driver.log.removeHandler(handler)
-                    handler.close()
+            self._close_file_handlers(channel)
 
     def test_stack_channel_collects_known_channels(self):
         channel = StackChannel(channels=["terminal"])
-        self.assertEqual(len(channel.channels), 1)
-        self.assertIsInstance(channel.channels[0], TerminalChannel)
+        assert len(channel.channels) == 1
+        assert isinstance(channel.channels[0], TerminalChannel)
 
     def test_stack_channel_ignores_unknown_channels(self):
         channel = StackChannel(channels=["nope-not-real"])
-        self.assertEqual(channel.channels, [])
+        assert channel.channels == []
 
-    def test_stack_channel_respects_level_thresholds(self):
+    def test_stack_channel_respects_level_thresholds(self, capsys):
         channel = StackChannel(channels=["terminal"])
-        buffer = io.StringIO()
-        with redirect_stdout(buffer):
-            channel.info("shown")
-        self.assertIn("shown", buffer.getvalue())
+        channel.info("shown")
+        assert "shown" in capsys.readouterr().out
 
-        buffer = io.StringIO()
-        with redirect_stdout(buffer):
-            channel.debug("hidden")
+        channel.debug("hidden")
         # terminal level is "info", so debug is filtered out
-        self.assertEqual(buffer.getvalue(), "")
+        assert capsys.readouterr().out == ""
 
 
-class LoggerFacadeTest(unittest.TestCase):
-    def setUp(self):
-        self.app = get_app()
-        self._had_logger = False
+# ---------------------------------------------------------------------------
+# Logger facade — delegates to the resolved channel
+# ---------------------------------------------------------------------------
+
+
+class TestLoggerFacade:
+    @pytest.fixture(autouse=True)
+    def channel(self):
+        app = get_app()
+        had_logger = False
         try:
-            self._previous = self.app.make("logger")
-            self._had_logger = True
+            previous = app.make("logger")
+            had_logger = True
         except Exception:
-            self._previous = None
-        self.channel = MagicMock()
-        self.app.bind("logger", self.channel)
+            previous = None
+        channel = MagicMock()
+        app.bind("logger", channel)
         Logger.instance = None
-
-    def tearDown(self):
+        yield channel
         Logger.instance = None
-        if self._had_logger:
-            self.app.bind("logger", self._previous)
+        if had_logger:
+            app.bind("logger", previous)
 
-    def test_level_methods_delegate_to_resolved_channel(self):
+    def test_level_methods_delegate_to_resolved_channel(self, channel):
         Logger.info("hello")
-        self.channel.info.assert_called_once()
-        (message,), _ = self.channel.info.call_args
-        self.assertTrue(message.endswith("hello"))
-        self.assertIn(" - ", message)
+        channel.info.assert_called_once()
+        (message,), _ = channel.info.call_args
+        assert message.endswith("hello")
+        assert " - " in message
 
-    def test_error_and_debug_delegate(self):
+    def test_error_and_debug_delegate(self, channel):
         Logger.error("bad")
         Logger.debug("trace")
-        self.channel.error.assert_called_once()
-        self.channel.debug.assert_called_once()
+        channel.error.assert_called_once()
+        channel.debug.assert_called_once()
 
-    def test_log_dispatches_to_named_level(self):
+    def test_log_dispatches_to_named_level(self, channel):
         with patch.object(Logger, "info") as info_mock:
             Logger.log("INFO", "x")
             info_mock.assert_called_once_with("x")
 
-    def test_log_falls_back_to_error_for_unknown_level(self):
+    def test_log_falls_back_to_error_for_unknown_level(self, channel):
         with patch.object(Logger, "error") as error_mock:
             Logger.log("bogus", "x")
             error_mock.assert_called_once_with("x")
 
-    def test_logger_info_returns_caller_location(self):
+    def test_logger_info_returns_caller_location(self, channel):
         info = Logger.logger_info()
-        self.assertIsInstance(info, str)
-        self.assertIn(" - ", info)
-        self.assertNotIn("logging/logger.py", info)
+        assert isinstance(info, str)
+        assert " - " in info
+        assert "logging/logger.py" not in info
 
 
-class LoggingManagerTest(unittest.TestCase):
-    def setUp(self):
-        self.root = logging.getLogger()
-        self._handlers = list(self.root.handlers)
+# ---------------------------------------------------------------------------
+# LoggingManager — channel lookup and root-logger wiring
+# ---------------------------------------------------------------------------
 
-    def tearDown(self):
-        for handler in list(self.root.handlers):
-            if handler not in self._handlers:
-                self.root.removeHandler(handler)
+
+class TestLoggingManager:
+    @pytest.fixture(autouse=True)
+    def restore_root_handlers(self):
+        root = logging.getLogger()
+        handlers = list(root.handlers)
+        yield
+        for handler in list(root.handlers):
+            if handler not in handlers:
+                root.removeHandler(handler)
 
     def test_channel_delegates_to_channel_factory(self):
         sentinel = object()
         factory = MagicMock()
         factory.make.return_value = MagicMock(return_value=sentinel)
         manager = LoggingManager(channel_factory=factory, driver_factory=None)
-        self.assertIs(manager.channel("single"), sentinel)
+        assert manager.channel("single") is sentinel
         factory.make.assert_called_once_with("single")
 
     def test_configure_python_logging_installs_handler_once(self):
@@ -528,18 +567,23 @@ class LoggingManagerTest(unittest.TestCase):
         LoggingManager.configure_python_logging()
         LoggingManager.configure_python_logging()
         installed = [h for h in root.handlers if isinstance(h, LoggingHandler)]
-        self.assertEqual(len(installed), 1)
+        assert len(installed) == 1
 
 
-class LoggingHandlerTest(unittest.TestCase):
-    def setUp(self):
-        self.root = logging.getLogger()
-        self._handlers = list(self.root.handlers)
+# ---------------------------------------------------------------------------
+# LoggingHandler — bridges the stdlib logger into the framework logger
+# ---------------------------------------------------------------------------
 
-    def tearDown(self):
-        for handler in list(self.root.handlers):
-            if handler not in self._handlers:
-                self.root.removeHandler(handler)
+
+class TestLoggingHandler:
+    @pytest.fixture(autouse=True)
+    def restore_root_handlers(self):
+        root = logging.getLogger()
+        handlers = list(root.handlers)
+        yield
+        for handler in list(root.handlers):
+            if handler not in handlers:
+                root.removeHandler(handler)
 
     def test_emit_forwards_record_to_logger(self):
         handler = LoggingHandler()
@@ -556,93 +600,102 @@ class LoggingHandlerTest(unittest.TestCase):
             handler.emit(record)
             log_mock.assert_called_once()
             args, _ = log_mock.call_args
-            self.assertEqual(args[0], "ERROR")
-            self.assertIn("kaboom", args[1])
+            assert args[0] == "ERROR"
+            assert "kaboom" in args[1]
 
     def test_install_is_idempotent(self):
         root = logging.getLogger()
         LoggingHandler.install()
         LoggingHandler.install()
-        self.assertEqual(len([h for h in root.handlers if isinstance(h, LoggingHandler)]), 1)
+        assert len([h for h in root.handlers if isinstance(h, LoggingHandler)]) == 1
 
 
-class MakeDirectoryTest(unittest.TestCase):
+# ---------------------------------------------------------------------------
+# make_directory — creates parent directories for a log path
+# ---------------------------------------------------------------------------
+
+
+class TestMakeDirectory:
     def test_returns_false_for_existing_file(self):
-        import tempfile
-        import os
-
         fd, path = tempfile.mkstemp()
         os.close(fd)
         try:
-            self.assertFalse(make_directory(path))
+            assert make_directory(path) is False
         finally:
             os.remove(path)
 
-    def test_creates_missing_parent_directories(self):
-        import tempfile
-        import os
+    def test_creates_missing_parent_directories(self, tmp_path):
+        target = os.path.join(str(tmp_path), "nested", "deep", "file.log")
+        assert make_directory(target) is True
+        assert os.path.isdir(os.path.join(str(tmp_path), "nested", "deep"))
 
-        base = tempfile.mkdtemp()
-        target = os.path.join(base, "nested", "deep", "file.log")
-        self.assertTrue(make_directory(target))
-        self.assertTrue(os.path.isdir(os.path.join(base, "nested", "deep")))
-
-    def test_returns_true_without_recreating_existing_parent(self):
-        import tempfile
-        import os
-
-        base = tempfile.mkdtemp()
-        target = os.path.join(base, "file.log")
-        self.assertTrue(make_directory(target))
-        self.assertFalse(os.path.isfile(target))
+    def test_returns_true_without_recreating_existing_parent(self, tmp_path):
+        target = os.path.join(str(tmp_path), "file.log")
+        assert make_directory(target) is True
+        assert not os.path.isfile(target)
 
 
-class LoggingConfigTest(unittest.TestCase):
+# ---------------------------------------------------------------------------
+# LoggingConfig — default channels and dataclass defaults
+# ---------------------------------------------------------------------------
+
+
+class TestLoggingConfig:
     def test_default_channels_are_present(self):
         config = LoggingConfig()
-        self.assertIn("stack", config.channels)
-        self.assertIn("daily", config.channels)
-        self.assertIn("terminal", config.channels)
-        self.assertIsInstance(config.default, str)
+        assert "stack" in config.channels
+        assert "daily" in config.channels
+        assert "terminal" in config.channels
+        assert isinstance(config.default, str)
 
     def test_channel_dataclass_defaults(self):
-        self.assertEqual(config_channels.SingleChannel().driver, "single")
-        self.assertEqual(config_channels.SingleChannel().level, "debug")
-        self.assertEqual(config_channels.StackChannel().channels, ["daily", "terminal"])
-        self.assertEqual(config_channels.DailyChannel().driver, "daily")
-        self.assertEqual(config_channels.TerminalChannel().level, "info")
-        self.assertEqual(config_channels.SlackChannel().driver, "slack")
-        self.assertEqual(config_channels.SyslogChannel().path, "/var/run/syslog")
+        assert config_channels.SingleChannel().driver == "single"
+        assert config_channels.SingleChannel().level == "debug"
+        assert config_channels.StackChannel().channels == ["daily", "terminal"]
+        assert config_channels.DailyChannel().driver == "daily"
+        assert config_channels.TerminalChannel().level == "info"
+        assert config_channels.SlackChannel().driver == "slack"
+        assert config_channels.SyslogChannel().path == "/var/run/syslog"
 
 
-class ListenerTest(unittest.TestCase):
+# ---------------------------------------------------------------------------
+# LoggerExceptionListener — logs exception details
+# ---------------------------------------------------------------------------
+
+
+class TestListener:
     def test_handle_logs_exception_details(self):
         logger = MagicMock()
         listener = LoggerExceptionListener(logger)
-        self.assertEqual(listener.listens, ["*"])
+        assert listener.listens == ["*"]
         listener.handle(ValueError("nope"), "app.py", 42)
         logger.error.assert_called_once()
         (message,), _ = logger.error.call_args
-        self.assertIn("ValueError", message)
-        self.assertIn("app.py", message)
-        self.assertIn("42", message)
+        assert "ValueError" in message
+        assert "app.py" in message
+        assert "42" in message
 
 
-class LogProviderTest(unittest.TestCase):
+# ---------------------------------------------------------------------------
+# LogProvider — registers factories and swaps in the logger channel
+# ---------------------------------------------------------------------------
+
+
+class TestLogProvider:
     def test_register_binds_factories_and_manager(self):
         application = get_app()
         LogProvider(application).register()
         # The container auto-resolves bound classes into instances on make().
-        self.assertIsInstance(application.make("LogChannelFactory"), ChannelFactory)
-        self.assertIsInstance(application.make("LogDriverFactory"), DriverFactory)
-        self.assertIsInstance(application.make("LoggingManager"), LoggingManager)
+        assert isinstance(application.make("LogChannelFactory"), ChannelFactory)
+        assert isinstance(application.make("LogDriverFactory"), DriverFactory)
+        assert isinstance(application.make("LoggingManager"), LoggingManager)
 
     def test_register_merges_default_config(self):
         from fastapi_startkit.facades import Config
 
         application = get_app()
         LogProvider(application).register()
-        self.assertEqual(Config.get("logging.default"), "stack")
+        assert Config.get("logging.default") == "stack"
 
     def test_boot_binds_and_swaps_logger_channel(self):
         application = get_app()
@@ -653,8 +706,8 @@ class LogProviderTest(unittest.TestCase):
         config.set("logging.default", "terminal")
         try:
             provider.boot()
-            self.assertIsInstance(application.make("logger"), TerminalChannel)
-            self.assertIn("logging", application.published_resources)
+            assert isinstance(application.make("logger"), TerminalChannel)
+            assert "logging" in application.published_resources
         finally:
             config.set("logging.default", original_default)
 
@@ -664,4 +717,4 @@ class LogProviderTest(unittest.TestCase):
         provider = LogProvider(mock_app)
         provider.boot()
         called_keys = [call.args[0] for call in mock_app.make.call_args_list if call.args]
-        self.assertNotIn("LoggingManager", called_keys)
+        assert "LoggingManager" not in called_keys
