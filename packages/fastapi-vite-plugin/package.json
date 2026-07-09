@@ -12,11 +12,11 @@
     "author": "Bedram Tamang",
     "repository": {
         "type": "git",
-        "url": "https://github.com/fastapi-startkit/fastapi-startkit-modules.git",
+        "url": "https://github.com/fastapi-startkit/fastapi-startkit-framework.git",
         "directory": "packages/fastapi-vite-plugin"
     },
     "bugs": {
-        "url": "https://github.com/fastapi-startkit/fastapi-startkit-modules/issues"
+        "url": "https://github.com/fastapi-startkit/fastapi-startkit-framework/issues"
     },
     "homepage": "https://fastapi-startkit.github.io/",
     "type": "module",
