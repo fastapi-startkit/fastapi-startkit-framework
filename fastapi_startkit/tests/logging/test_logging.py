@@ -658,7 +658,3 @@ class LogProviderTest(unittest.TestCase):
         provider.boot()
         called_keys = [call.args[0] for call in mock_app.make.call_args_list if call.args]
         self.assertNotIn("LoggingManager", called_keys)
-
-
-if __name__ == "__main__":
-    unittest.main()
