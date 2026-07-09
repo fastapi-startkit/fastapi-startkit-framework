@@ -1,3 +1,28 @@
+"""Unit tests for :class:`BelongsToMany`, run against a mocked query builder.
+
+These tests mock the query builder (see ``conftest.make_builder``) instead of
+running against real sqlite because ``BelongsToMany`` is not currently wired to
+this fork's async ``QueryBuilder``. A real many-to-many fixture already exists
+(``Store``/``Product`` + the ``product_store`` pivot in ``fixtures/migration.py``),
+so the blocker is framework wiring, not test data:
+
+* The async ``QueryBuilder`` (``masoniteorm/models/builder.py``) does not implement
+  ``table()``, ``without_global_scopes()`` or ``add_select()``, all of which
+  ``BelongsToMany`` calls (e.g. ``BelongsToMany.py`` lines 78, 227, 463). Real
+  access/eager-load/``where_has`` raise ``AttributeError``.
+* ``BaseRelationship.get_builder()`` calls ``self.fn()`` with no arguments while
+  ``BelongsToMany.__init__`` assigns ``self.fn = lambda x: ...``, so resolving the
+  related builder raises ``TypeError: <lambda>() missing 1 required positional
+  argument: 'x'``.
+* ``attach``/``detach`` chain ``Pivot.on(...).table(...).without_global_scopes()
+  .create(...)`` on a plain ``Pivot`` model that has none of those chainable
+  builder methods, so the chain resolves to ``None`` and raises ``TypeError``.
+
+Mocking the builder lets these tests exercise the relationship's own logic (key
+inference, pivot hydration, join/select construction) in isolation. Wiring the
+async ``QueryBuilder`` for real-DB coverage is tracked in the project backlog.
+"""
+
 from unittest.mock import MagicMock, patch
 
 

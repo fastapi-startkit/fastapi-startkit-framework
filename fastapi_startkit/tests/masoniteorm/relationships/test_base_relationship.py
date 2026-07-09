@@ -1,3 +1,13 @@
+"""Unit tests for the abstract ``BaseRelationship`` contract.
+
+These tests assert ``BaseRelationship``'s key handling and that its abstract
+hooks raise ``NotImplementedError``. The join-clause test mocks the query builder
+(see ``conftest.make_builder``) because this fork's async ``QueryBuilder`` is not
+wired for the relationship builder chain (it lacks ``table()`` /
+``without_global_scopes()`` / ``add_select()``); this is documented for the whole
+relationships suite in ``conftest.py``.
+"""
+
 from unittest.mock import MagicMock
 
 import pytest

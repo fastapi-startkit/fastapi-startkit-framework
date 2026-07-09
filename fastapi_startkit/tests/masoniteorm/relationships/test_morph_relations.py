@@ -1,3 +1,15 @@
+"""Unit tests for the polymorphic relationships (MorphOne/MorphMany/MorphToMany/MorphTo).
+
+``MorphOne`` and ``MorphToMany`` are tested with mocks because their
+``morph_map()`` implementations reference an undefined ``load_config`` name
+(``MorphOne.py`` line 134, ``MorphToMany.py`` line 103) and raise ``NameError``
+when called for real. ``MorphMany`` is likewise mocked: its resolved builder is
+not wired to this fork's async ``QueryBuilder``. ``MorphTo`` does work against
+real sqlite and is additionally covered end-to-end in
+``sqlite/relationships/test_sqlite_polymorphic.py``. The framework fixes needed
+for real-DB coverage of the other morphs are tracked in the project backlog.
+"""
+
 from unittest.mock import MagicMock
 
 import pytest
