@@ -292,8 +292,10 @@ class SlackDriverTest(unittest.TestCase):
 
     def test_level_methods_post_to_slack(self):
         driver = self._driver()
-        with patch("fastapi_startkit.logging.drivers.LogSlackDriver.requests") as requests_mock, \
-                patch.object(driver, "find_channel", return_value="C123"):
+        with (
+            patch("fastapi_startkit.logging.drivers.LogSlackDriver.requests") as requests_mock,
+            patch.object(driver, "find_channel", return_value="C123"),
+        ):
             driver.error("boom")
             requests_mock.post.assert_called_once()
             url, payload = requests_mock.post.call_args.args
@@ -374,8 +376,8 @@ class TimezoneAwareLogFileTest(unittest.TestCase):
         fixed = pendulum.datetime(2026, 7, 8, 23, 30, 0, tz="UTC")
         directory = tempfile.mkdtemp()
 
-        ahead = self._daily_path(directory, "Pacific/Kiritimati", fixed)   # UTC+14
-        behind = self._daily_path(directory, "Pacific/Honolulu", fixed)    # UTC-10
+        ahead = self._daily_path(directory, "Pacific/Kiritimati", fixed)  # UTC+14
+        behind = self._daily_path(directory, "Pacific/Honolulu", fixed)  # UTC-10
 
         # File names differ purely because of the configured timezone.
         self.assertTrue(ahead.endswith("2026-07-09.log"), ahead)
@@ -542,8 +544,13 @@ class LoggingHandlerTest(unittest.TestCase):
     def test_emit_forwards_record_to_logger(self):
         handler = LoggingHandler()
         record = logging.LogRecord(
-            name="test", level=logging.ERROR, pathname=__file__, lineno=1,
-            msg="kaboom", args=(), exc_info=None,
+            name="test",
+            level=logging.ERROR,
+            pathname=__file__,
+            lineno=1,
+            msg="kaboom",
+            args=(),
+            exc_info=None,
         )
         with patch("fastapi_startkit.logging.logger.Logger.log") as log_mock:
             handler.emit(record)
