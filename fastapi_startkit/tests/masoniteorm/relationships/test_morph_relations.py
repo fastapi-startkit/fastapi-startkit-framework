@@ -126,9 +126,7 @@ def test_morph_many_register_related():
 
 
 def test_morph_many_morph_map_reads_registry(monkeypatch):
-    monkeypatch.setattr(
-        registry.Registry, "get_morph_map", classmethod(lambda cls: {"article": Article})
-    )
+    monkeypatch.setattr(registry.Registry, "get_morph_map", classmethod(lambda cls: {"article": Article}))
     rel = MorphMany(lambda self: None)
 
     assert rel.morph_map() == {"article": Article}
@@ -350,9 +348,7 @@ def test_morph_to_map_related_returns_input():
 
 
 def test_morph_to_morph_map_reads_registry(monkeypatch):
-    monkeypatch.setattr(
-        registry.Registry, "get_morph_map", classmethod(lambda cls: {"article": Article})
-    )
+    monkeypatch.setattr(registry.Registry, "get_morph_map", classmethod(lambda cls: {"article": Article}))
     rel = MorphTo("Like")
 
     assert rel.morph_map() == {"article": Article}
@@ -362,9 +358,7 @@ def test_morph_to_getattr_delegates_to_related_builder(monkeypatch):
     resolved_instance = MagicMock()
     resolved_instance._related_builder.some_attr = "delegated"
     resolved_model = MagicMock(return_value=resolved_instance)
-    monkeypatch.setattr(
-        registry.Registry, "resolve", classmethod(lambda cls, name: resolved_model)
-    )
+    monkeypatch.setattr(registry.Registry, "resolve", classmethod(lambda cls, name: resolved_model))
 
     rel = MorphTo("Like")
 

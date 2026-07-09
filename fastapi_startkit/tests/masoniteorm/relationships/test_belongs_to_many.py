@@ -1,6 +1,5 @@
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from fastapi_startkit.masoniteorm.collection import Collection
 from fastapi_startkit.masoniteorm.models import registry
@@ -36,9 +35,7 @@ def make_relationship(table="store_product", **kwargs):
 
 
 def test_init_resolves_string_name(monkeypatch):
-    monkeypatch.setattr(
-        registry.Registry, "resolve", classmethod(lambda cls, name: "resolved")
-    )
+    monkeypatch.setattr(registry.Registry, "resolve", classmethod(lambda cls, name: "resolved"))
     rel = BelongsToMany("Product")
 
     assert rel.fn("x") == "resolved"
@@ -201,9 +198,7 @@ def test_attach_includes_timestamps(pivot):
 @patch("fastapi_startkit.masoniteorm.relationships.BelongsToMany.Pivot")
 def test_detach_deletes_pivot_record(pivot):
     rel = make_relationship()
-    chain = (
-        pivot.on.return_value.table.return_value.without_global_scopes.return_value.where.return_value
-    )
+    chain = pivot.on.return_value.table.return_value.without_global_scopes.return_value.where.return_value
 
     current = MagicMock()
     current.id = 1
@@ -235,9 +230,7 @@ def test_attach_related_creates_pivot_record(pivot):
 @patch("fastapi_startkit.masoniteorm.relationships.BelongsToMany.Pivot")
 def test_detach_related_deletes_pivot_record(pivot):
     rel = make_relationship()
-    chain = (
-        pivot.on.return_value.table.return_value.without_global_scopes.return_value.where.return_value
-    )
+    chain = pivot.on.return_value.table.return_value.without_global_scopes.return_value.where.return_value
 
     current = MagicMock()
     current.id = 2
