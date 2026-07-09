@@ -5,6 +5,7 @@ from cleo.testers.command_tester import CommandTester
 
 from fastapi_startkit.masoniteorm.commands.DBMigrateCommand import DBMigrateCommand
 from fastapi_startkit.masoniteorm.commands.MigrateFreshCommand import MigrateFreshCommand
+from fastapi_startkit.masoniteorm.commands.MigrateRefreshCommand import MigrateRefreshCommand
 from fastapi_startkit.masoniteorm.commands.MigrateResetCommand import MigrateResetCommand
 from fastapi_startkit.masoniteorm.commands.MigrateRollbackCommand import MigrateRollbackCommand
 from fastapi_startkit.masoniteorm.commands.MigrateStatusCommand import MigrateStatusCommand
@@ -101,6 +102,17 @@ class TestMigrateCommands(unittest.TestCase):
         tester.execute("--connection sqlite")
         output = tester.io.fetch_output()
         self.assertIn("Rolled back:", output)
+        self.assertIn("create_posts_table", output)
+
+    def test_refresh_resets_and_remigrates(self):
+        asyncio.run(self._migrate())
+
+        cmd = self._make_command(MigrateRefreshCommand)
+        tester = CommandTester(cmd)
+        tester.execute("--connection sqlite")
+        output = tester.io.fetch_output()
+        self.assertIn("Rolled back:", output)
+        self.assertIn("Migrated:", output)
         self.assertIn("create_posts_table", output)
 
     def test_fresh_drops_all_tables_and_remigrates(self):
