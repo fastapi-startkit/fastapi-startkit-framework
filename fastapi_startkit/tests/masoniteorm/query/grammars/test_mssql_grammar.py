@@ -5,13 +5,6 @@ from fastapi_startkit.masoniteorm.query.grammars.MSSQLGrammar import MSSQLGramma
 from fastapi_startkit.masoniteorm.query.processors.MSSQLPostProcessor import MSSQLPostProcessor
 
 
-def builder():
-    """A QueryBuilder wired to the MSSQL grammar — to_sql() needs no live connection."""
-    qb = QueryBuilder(connection=None, grammar=MSSQLGrammar, processor=MSSQLPostProcessor)
-    qb._table = "users"
-    return qb
-
-
 class TestMSSQLGrammarSelect(unittest.TestCase):
     def setUp(self):
         query = QueryBuilder(connection=None, grammar=MSSQLGrammar, processor=MSSQLPostProcessor)
@@ -29,75 +22,75 @@ class TestMSSQLGrammarSelect(unittest.TestCase):
 
     def test_select_distinct(self):
         self.assertEqual(
-            builder().select("name").distinct().to_sql(),
+            self.query.select("name").distinct().to_sql(),
             "SELECT DISTINCT [users].[name] FROM [users]",
         )
 
     def test_where_with_operator(self):
         self.assertEqual(
-            builder().where("age", ">", 18).to_sql(),
+            self.query.where("age", ">", 18).to_sql(),
             "SELECT * FROM [users] WHERE [users].[age] > '18'",
         )
 
     def test_where_equals(self):
         self.assertEqual(
-            builder().where("name", "Joe").to_sql(),
+            self.query.where("name", "Joe").to_sql(),
             "SELECT * FROM [users] WHERE [users].[name] = 'Joe'",
         )
 
     def test_or_where(self):
         self.assertEqual(
-            builder().where("age", 18).or_where("age", "<", 5).to_sql(),
+            self.query.where("age", 18).or_where("age", "<", 5).to_sql(),
             "SELECT * FROM [users] WHERE [users].[age] = '18' OR [users].[age] < '5'",
         )
 
     def test_where_null(self):
         self.assertEqual(
-            builder().where_null("name").to_sql(),
+            self.query.where_null("name").to_sql(),
             "SELECT * FROM [users] WHERE [users].[name] IS NULL",
         )
 
     def test_where_in(self):
         self.assertEqual(
-            builder().where_in("id", [1, 2, 3]).to_sql(),
+            self.query.where_in("id", [1, 2, 3]).to_sql(),
             "SELECT * FROM [users] WHERE [users].[id] IN ('1','2','3')",
         )
 
     def test_where_between(self):
         self.assertEqual(
-            builder().between("age", 10, 20).to_sql(),
+            self.query.between("age", 10, 20).to_sql(),
             "SELECT * FROM [users] WHERE [users].[age] BETWEEN '10' AND '20'",
         )
 
     def test_where_like(self):
         self.assertEqual(
-            builder().where("name", "like", "%Jo%").to_sql(),
+            self.query.where("name", "like", "%Jo%").to_sql(),
             "SELECT * FROM [users] WHERE [users].[name] LIKE '%Jo%'",
         )
 
     def test_limit_uses_top(self):
-        self.assertEqual(builder().limit(5).to_sql(), "SELECT TOP 5 * FROM [users]")
+        self.assertEqual(self.query.limit(5).to_sql(), "SELECT TOP 5 * FROM [users]")
 
     def test_offset_uses_fetch_next(self):
         self.assertEqual(
-            builder().limit(5).offset(10).to_sql(),
+            self.query.limit(5).offset(10).to_sql(),
             "SELECT * FROM [users] OFFSET 10 ROWS FETCH NEXT 5 ROWS ONLY",
         )
 
     def test_order_by(self):
         self.assertEqual(
-            builder().order_by("name", "desc").to_sql(),
+            self.query.order_by("name", "desc").to_sql(),
             "SELECT * FROM [users] ORDER BY [name] DESC",
         )
 
     def test_group_by(self):
         self.assertEqual(
-            builder().group_by("age").to_sql(),
+            self.query.group_by("age").to_sql(),
             "SELECT * FROM [users] GROUP BY [users].[age]",
         )
 
     def test_inner_join(self):
-        qb = builder().join("profiles", "users.id", "=", "profiles.user_id")
+        qb = self.query.join("profiles", "users.id", "=", "profiles.user_id")
         self.assertEqual(
             qb.to_sql(),
             "SELECT * FROM [users] INNER JOIN [profiles] ON [users].[id] = [profiles].[user_id]",
@@ -105,6 +98,11 @@ class TestMSSQLGrammarSelect(unittest.TestCase):
 
 
 class TestMSSQLGrammarWrites(unittest.TestCase):
+    def setUp(self):
+        query = QueryBuilder(connection=None, grammar=MSSQLGrammar, processor=MSSQLPostProcessor)
+        query._table = "users"
+        self.query = query
+
     def test_insert(self):
         grammar = MSSQLGrammar(columns={"name": "Joe", "email": "j@x.com"}, table="users")
         self.assertEqual(
@@ -113,7 +111,7 @@ class TestMSSQLGrammarWrites(unittest.TestCase):
         )
 
     def test_delete(self):
-        qb = builder().where("id", 1).set_action("delete")
+        qb = self.query.where("id", 1).set_action("delete")
         self.assertEqual(qb.to_sql(), "DELETE FROM [users] WHERE [users].[id] = '1'")
 
 
