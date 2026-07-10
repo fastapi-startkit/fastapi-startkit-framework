@@ -1,5 +1,5 @@
 from commands.example_command import ExampleCommand
-from fastapi_startkit.providers import Provider
+from fastapi_startkit.support import Provider
 
 
 class ConsoleServiceProvider(Provider):

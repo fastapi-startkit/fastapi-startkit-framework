@@ -1,6 +1,6 @@
 import os
 import shlex
-from fastapi_startkit.providers.app_provider import AppProvider
+from fastapi_startkit.foundation.app_provider import AppProvider
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 from typing import Type, Callable, Any, List, TypeVar, Generic

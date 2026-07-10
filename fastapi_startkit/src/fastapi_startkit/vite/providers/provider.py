@@ -1,7 +1,7 @@
 import os
 
 
-from fastapi_startkit.providers import Provider
+from fastapi_startkit.support import Provider
 from ..config.vite import ViteConfig
 
 from ..vite import Vite

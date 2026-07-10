@@ -1,4 +1,4 @@
-from ...providers import Provider
+from fastapi_startkit.support import Provider
 
 from ..Configuration import Configuration
 

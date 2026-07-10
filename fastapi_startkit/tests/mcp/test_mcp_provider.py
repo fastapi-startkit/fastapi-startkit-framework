@@ -1,7 +1,7 @@
 """Tests for McpProvider."""
 
 from fastapi_startkit.mcp import McpProvider
-from fastapi_startkit.providers import Provider
+from fastapi_startkit.support import Provider
 
 
 def test_mcp_provider_is_a_provider():

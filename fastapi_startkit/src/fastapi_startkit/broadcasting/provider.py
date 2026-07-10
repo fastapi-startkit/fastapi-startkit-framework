@@ -5,7 +5,7 @@ import importlib.util
 import sys
 from pathlib import Path
 
-from ..providers import Provider
+from fastapi_startkit.support import Provider
 from .config import BroadcastingConfig
 from .manager import BroadcastManager
 from .reverb.server import ReverbServer
