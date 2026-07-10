@@ -22,7 +22,9 @@ class TestMySQLPlatformCreate(unittest.TestCase):
         sql = self.platform.compile_create_sql(self._basic_table())
         self.assertEqual(
             sql,
-            ["CREATE TABLE `users` (`id` INT NOT NULL PRIMARY KEY, `name` VARCHAR(255) NOT NULL, `bio` VARCHAR(255) NULL)"],
+            [
+                "CREATE TABLE `users` (`id` INT NOT NULL PRIMARY KEY, `name` VARCHAR(255) NOT NULL, `bio` VARCHAR(255) NULL)"
+            ],
         )
 
     def test_compile_create_sql_if_not_exists(self):

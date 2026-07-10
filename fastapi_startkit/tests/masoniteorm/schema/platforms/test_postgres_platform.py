@@ -22,7 +22,9 @@ class TestPostgresPlatformCreate(unittest.TestCase):
         sql = self.platform.compile_create_sql(self._basic_table())
         self.assertEqual(
             sql,
-            ['CREATE TABLE "users" ("id" INTEGER NOT NULL PRIMARY KEY, "name" VARCHAR(255) NOT NULL, "bio" VARCHAR(255) NULL)'],
+            [
+                'CREATE TABLE "users" ("id" INTEGER NOT NULL PRIMARY KEY, "name" VARCHAR(255) NOT NULL, "bio" VARCHAR(255) NULL)'
+            ],
         )
 
     def test_compile_create_sql_if_not_exists(self):
@@ -149,7 +151,7 @@ class TestPostgresPlatformAlter(unittest.TestCase):
             self.platform.compile_alter_sql(diff),
             [
                 'ALTER TABLE "users" ADD COLUMN "x" INTEGER NOT NULL',
-                'COMMENT ON TABLE "users" is \'a table\'',
+                "COMMENT ON TABLE \"users\" is 'a table'",
             ],
         )
 
