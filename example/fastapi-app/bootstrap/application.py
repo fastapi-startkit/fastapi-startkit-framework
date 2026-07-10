@@ -7,7 +7,7 @@ from config.fastapi import FastAPIConfig
 from config.logging import LoggingConfig
 
 app: Application = Application(
-    base_path=str(Path(__file__).parent.parent),  # App root, resolved relative to this file (bootstrap/ -> root).
+    base_path=str(Path(__file__).parent.parent),
     providers=[
         (LogProvider, LoggingConfig),
         (FastAPIProvider, FastAPIConfig),
