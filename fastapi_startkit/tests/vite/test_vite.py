@@ -147,7 +147,7 @@ class TestProductionMode:
         assert "/build/assets/app-abc123.js" in html
         assert "/build/assets/vendor-xyz.js" in html
         assert "/build/assets/app-def456.css" in html
-        assert "rel=\"modulepreload\"" in html
+        assert 'rel="modulepreload"' in html
         assert "<script" in html
         assert "<link" in html
 
@@ -293,9 +293,7 @@ class TestInternalHelpers:
 
     def test_parse_attributes(self, public_path):
         vite = Vite(public_path)
-        attrs = vite._parse_attributes(
-            {"type": "module", "async": True, "defer": False, "nonce": None, "src": "/x.js"}
-        )
+        attrs = vite._parse_attributes({"type": "module", "async": True, "defer": False, "nonce": None, "src": "/x.js"})
         assert 'type="module"' in attrs
         assert "async" in attrs
         assert 'src="/x.js"' in attrs

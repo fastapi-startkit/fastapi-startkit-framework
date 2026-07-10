@@ -4,7 +4,7 @@ from fastapi_startkit.exceptions.exceptions import LoaderNotFound
 from fastapi_startkit.loader.Loader import Loader, parameters_filter
 
 
-MODULE_SOURCE = '''
+MODULE_SOURCE = """
 from collections import UserList
 
 
@@ -21,7 +21,7 @@ SPEED = 5
 
 def bark():
     return "woof"
-'''
+"""
 
 
 @pytest.fixture

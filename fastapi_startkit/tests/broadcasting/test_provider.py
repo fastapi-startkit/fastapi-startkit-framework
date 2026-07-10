@@ -1,7 +1,5 @@
 from types import SimpleNamespace
 
-from fastapi.testclient import TestClient
-
 from fastapi_startkit.application import Application
 from fastapi_startkit.broadcasting.manager import BroadcastManager
 from fastapi_startkit.broadcasting.provider import ReverbProvider
@@ -79,9 +77,7 @@ class TestAuthEndpoint:
 
     async def test_private_channel_denied_without_rule(self, tmp_path):
         handler = auth_handler(mount_auth(tmp_path))
-        response = await handler(
-            FakeRequest("application/json", json_body={"channel_name": "private-secret"})
-        )
+        response = await handler(FakeRequest("application/json", json_body={"channel_name": "private-secret"}))
         assert response.status_code == 403
 
     async def test_accepts_form_encoded_body(self, tmp_path):
@@ -93,9 +89,7 @@ class TestAuthEndpoint:
 
     async def test_uses_request_state_user(self, tmp_path):
         handler = auth_handler(mount_auth(tmp_path))
-        response = await handler(
-            FakeRequest("application/json", json_body={"channel_name": "orders"}, user=object())
-        )
+        response = await handler(FakeRequest("application/json", json_body={"channel_name": "orders"}, user=object()))
         assert response.status_code == 200
 
     async def test_resolves_user_from_callable_auth_service(self, tmp_path):
