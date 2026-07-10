@@ -13,12 +13,17 @@ def builder():
 
 
 class TestMSSQLGrammarSelect(unittest.TestCase):
+    def setUp(self):
+        query = QueryBuilder(connection=None, grammar=MSSQLGrammar, processor=MSSQLPostProcessor)
+        query._table = "users"
+        self.query = query
+
     def test_select_all(self):
-        self.assertEqual(builder().to_sql(), "SELECT * FROM [users]")
+        self.assertEqual(self.query.to_sql(), "SELECT * FROM [users]")
 
     def test_select_columns(self):
         self.assertEqual(
-            builder().select("name", "email").to_sql(),
+            self.query.select("name", "email").to_sql(),
             "SELECT [users].[name], [users].[email] FROM [users]",
         )
 
@@ -149,7 +154,3 @@ class TestMSSQLGrammarPrimitives(unittest.TestCase):
         self.assertEqual(self.grammar.join_keywords["left"], "LEFT JOIN")
         self.assertEqual(self.grammar.join_keywords["right"], "RIGHT JOIN")
         self.assertEqual(self.grammar.join_keywords["outer"], "OUTER JOIN")
-
-
-if __name__ == "__main__":
-    unittest.main()

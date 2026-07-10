@@ -143,7 +143,3 @@ class TestMSSQLPostProcessor(unittest.TestCase):
         result = MSSQLPostProcessor().get_column_value(builder, "name", {}, None, None)
 
         self.assertEqual(result, {})
-
-
-if __name__ == "__main__":
-    unittest.main()

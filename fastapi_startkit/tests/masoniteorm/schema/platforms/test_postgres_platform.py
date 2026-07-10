@@ -220,7 +220,3 @@ class TestPostgresPlatformHelpers(unittest.TestCase):
     def test_wrap_helpers(self):
         self.assertEqual(self.platform.wrap_table("users"), '"users"')
         self.assertEqual(self.platform.wrap_column("name"), '"name"')
-
-
-if __name__ == "__main__":
-    unittest.main()

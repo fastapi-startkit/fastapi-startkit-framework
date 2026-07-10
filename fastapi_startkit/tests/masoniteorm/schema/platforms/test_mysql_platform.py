@@ -222,7 +222,3 @@ class TestMySQLPlatformHelpers(unittest.TestCase):
         reversed_map = {v: k for k, v in self.platform.type_map.items()}
         self.assertEqual(self.platform.get_column_type(reversed_map, "CHAR(1)"), "char")
         self.assertEqual(self.platform.get_column_type(reversed_map, "INT"), "integer")
-
-
-if __name__ == "__main__":
-    unittest.main()
