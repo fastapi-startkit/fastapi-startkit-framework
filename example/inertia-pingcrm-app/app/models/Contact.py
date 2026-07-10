@@ -4,6 +4,7 @@ from fastapi_startkit.masoniteorm.models import Model
 
 class Contact(Model):
     """Contact Model."""
+
     __table__ = "contacts"
 
     id: int

@@ -21,13 +21,15 @@ class UserFactory(Factory):
     def configure(self):
         async def making(user):
             print(f"Making user: {user.name}")
-        
+
         async def created(user):
             print(f"Created user: {user.name}")
 
         return self.after_making(making).after_creating(created)
 
     def suspended(self):
-        return self.state(lambda attributes: {
-            "account_status": "suspended",
-        })
+        return self.state(
+            lambda attributes: {
+                "account_status": "suspended",
+            }
+        )

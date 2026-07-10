@@ -4,6 +4,7 @@ from fastapi_startkit.masoniteorm import Model
 
 class User(Model):
     """User Model."""
+
     __table__ = "users"
     __hidden__ = ["password", "remember_token"]
 

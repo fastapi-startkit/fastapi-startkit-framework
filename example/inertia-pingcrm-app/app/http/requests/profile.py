@@ -5,4 +5,4 @@ class ProfileUpdateRequest(RequestModel):
     first_name: str
     last_name: str
     email: str
-    password: str = ''
+    password: str = ""
