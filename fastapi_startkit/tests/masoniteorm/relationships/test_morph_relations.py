@@ -98,7 +98,13 @@ def test_morph_many_get_related_single():
     rel.morph_map = lambda: {"article": Article}
     rel.polymorphic_builder = morph_builder()
 
-    assert rel.get_related(None, Article(3)) == "GET_RESULT"
+    result = rel.get_related(None, Article(3))
+
+    builder = rel.polymorphic_builder
+    assert result == "GET_RESULT"
+    builder.where.assert_any_call("record_type", "article")
+    builder.where.assert_any_call("record_id", 3)
+    builder.get.assert_called_once()
 
 
 def test_morph_many_get_related_single_with_callback():
@@ -107,9 +113,14 @@ def test_morph_many_get_related_single_with_callback():
     rel.polymorphic_builder = morph_builder()
     callback = MagicMock(return_value=morph_builder())
 
-    rel.get_related(None, Article(3), callback=callback)
+    result = rel.get_related(None, Article(3), callback=callback)
 
-    callback.assert_called_once()
+    builder = rel.polymorphic_builder
+    # The callback receives the fully-filtered builder, not a bare mock.
+    callback.assert_called_once_with(builder)
+    builder.where.assert_any_call("record_type", "article")
+    builder.where.assert_any_call("record_id", 3)
+    assert result == "GET_RESULT"
 
 
 def test_morph_many_get_related_collection():
@@ -118,7 +129,15 @@ def test_morph_many_get_related_collection():
     rel.polymorphic_builder = morph_builder()
 
     relation = Collection([Article(1), Article(2)])
-    assert rel.get_related(None, relation) == "GET_RESULT"
+    result = rel.get_related(None, relation)
+
+    builder = rel.polymorphic_builder
+    assert result == "GET_RESULT"
+    builder.where.assert_called_once_with("likes.record_type", "article")
+    where_in_args = builder.where_in.call_args.args
+    assert where_in_args[0] == "record_id"
+    assert list(where_in_args[1]) == [1, 2]
+    builder.get.assert_called_once()
 
 
 def test_morph_many_register_related():
@@ -172,7 +191,15 @@ def test_morph_one_apply_query_returns_first():
     instance = MagicMock()
     instance.get_primary_key_value.return_value = 2
 
-    assert rel.apply_query(owner_builder, instance) == "FIRST_RESULT"
+    result = rel.apply_query(owner_builder, instance)
+
+    builder = rel.polymorphic_builder
+    assert result == "FIRST_RESULT"
+    builder.where.assert_any_call("record_type", "article")
+    builder.where.assert_any_call("record_id", 2)
+    # MorphOne resolves to a single row: .first(), never .get().
+    builder.first.assert_called_once()
+    builder.get.assert_not_called()
 
 
 def test_morph_one_get_related_single():
@@ -180,7 +207,14 @@ def test_morph_one_get_related_single():
     rel.morph_map = lambda: {"article": Article}
     rel.polymorphic_builder = morph_builder()
 
-    assert rel.get_related(None, Article(4)) == "FIRST_RESULT"
+    result = rel.get_related(None, Article(4))
+
+    builder = rel.polymorphic_builder
+    assert result == "FIRST_RESULT"
+    builder.where.assert_any_call("record_type", "article")
+    builder.where.assert_any_call("record_id", 4)
+    builder.first.assert_called_once()
+    builder.get.assert_not_called()
 
 
 def test_morph_one_get_related_collection():
@@ -189,7 +223,15 @@ def test_morph_one_get_related_collection():
     rel.polymorphic_builder = morph_builder()
 
     relation = Collection([Article(1), Article(2)])
-    assert rel.get_related(None, relation) == "GET_RESULT"
+    result = rel.get_related(None, relation)
+
+    builder = rel.polymorphic_builder
+    assert result == "GET_RESULT"
+    builder.where.assert_called_once_with("likes.record_type", "article")
+    where_in_args = builder.where_in.call_args.args
+    assert where_in_args[0] == "record_id"
+    assert list(where_in_args[1]) == [1, 2]
+    builder.get.assert_called_once()
 
 
 def test_morph_one_register_related_uses_first():

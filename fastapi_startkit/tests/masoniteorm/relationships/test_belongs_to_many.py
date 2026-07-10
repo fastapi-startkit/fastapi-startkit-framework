@@ -25,6 +25,7 @@ async ``QueryBuilder`` for real-DB coverage is tracked in the project backlog.
 
 from unittest.mock import MagicMock, patch
 
+import pytest
 
 from fastapi_startkit.masoniteorm.collection import Collection
 from fastapi_startkit.masoniteorm.models import registry
@@ -187,7 +188,7 @@ def test_get_with_count_query_selects_star_when_no_columns():
     builder.select.assert_called_once_with("*")
 
 
-@patch("fastapi_startkit.masoniteorm.relationships.BelongsToMany.Pivot")
+@patch("fastapi_startkit.masoniteorm.relationships.BelongsToMany.Pivot", autospec=True)
 def test_attach_creates_pivot_record(pivot):
     rel = make_relationship()
     chain = pivot.on.return_value.table.return_value.without_global_scopes.return_value
@@ -203,7 +204,7 @@ def test_attach_creates_pivot_record(pivot):
     chain.create.assert_called_once_with({"store_id": 1, "product_id": 9})
 
 
-@patch("fastapi_startkit.masoniteorm.relationships.BelongsToMany.Pivot")
+@patch("fastapi_startkit.masoniteorm.relationships.BelongsToMany.Pivot", autospec=True)
 def test_attach_includes_timestamps(pivot):
     rel = make_relationship(with_timestamps=True)
     chain = pivot.on.return_value.table.return_value.without_global_scopes.return_value
@@ -220,7 +221,7 @@ def test_attach_includes_timestamps(pivot):
     assert "created_at" in data and "updated_at" in data
 
 
-@patch("fastapi_startkit.masoniteorm.relationships.BelongsToMany.Pivot")
+@patch("fastapi_startkit.masoniteorm.relationships.BelongsToMany.Pivot", autospec=True)
 def test_detach_deletes_pivot_record(pivot):
     rel = make_relationship()
     chain = pivot.on.return_value.table.return_value.without_global_scopes.return_value.where.return_value
@@ -236,7 +237,16 @@ def test_detach_deletes_pivot_record(pivot):
     chain.delete.assert_called_once()
 
 
-@patch("fastapi_startkit.masoniteorm.relationships.BelongsToMany.Pivot")
+# ``attach_related`` calls ``Pivot.table(...)`` first, but ``Pivot`` exposes no
+# ``table`` classmethod (only the instance chain ``Pivot.on(...).table(...)`` does).
+# The autospec mock surfaces this signature drift as an ``AttributeError``; the
+# bare-MagicMock version silently masked it. Framework fix tracked in backlog #738.
+@pytest.mark.xfail(
+    raises=AttributeError,
+    strict=True,
+    reason="Pivot has no table() classmethod; attach_related() drift, backlog #738",
+)
+@patch("fastapi_startkit.masoniteorm.relationships.BelongsToMany.Pivot", autospec=True)
 def test_attach_related_creates_pivot_record(pivot):
     rel = make_relationship()
     chain = pivot.table.return_value.on.return_value.without_global_scopes.return_value
@@ -252,7 +262,7 @@ def test_attach_related_creates_pivot_record(pivot):
     chain.create.assert_called_once_with({"store_id": 2, "product_id": 7})
 
 
-@patch("fastapi_startkit.masoniteorm.relationships.BelongsToMany.Pivot")
+@patch("fastapi_startkit.masoniteorm.relationships.BelongsToMany.Pivot", autospec=True)
 def test_detach_related_deletes_pivot_record(pivot):
     rel = make_relationship()
     chain = pivot.on.return_value.table.return_value.without_global_scopes.return_value.where.return_value
@@ -312,7 +322,7 @@ async def test_get_related_hydrates_pivot(monkeypatch):
     query_builder = make_builder(table_name="products", get_result=fetched)
     rel.get_builder = MagicMock(return_value=query_builder)
 
-    with patch("fastapi_startkit.masoniteorm.relationships.BelongsToMany.Pivot"):
+    with patch("fastapi_startkit.masoniteorm.relationships.BelongsToMany.Pivot", autospec=True):
         owner_query = make_builder(table_name="stores")
 
         class Relation:
@@ -350,7 +360,7 @@ async def test_apply_query_hydrates_with_timestamps_and_fields():
     owner.get_table_name.return_value = "stores"
     owner.id = 5
 
-    with patch("fastapi_startkit.masoniteorm.relationships.BelongsToMany.Pivot"):
+    with patch("fastapi_startkit.masoniteorm.relationships.BelongsToMany.Pivot", autospec=True):
         out = await rel.apply_query(query, owner)
 
     assert out is fetched
@@ -367,7 +377,7 @@ async def test_apply_query_infers_pivot_table_when_missing():
     owner = MagicMock()
     owner.get_table_name.return_value = "stores"
 
-    with patch("fastapi_startkit.masoniteorm.relationships.BelongsToMany.Pivot"):
+    with patch("fastapi_startkit.masoniteorm.relationships.BelongsToMany.Pivot", autospec=True):
         await rel.apply_query(query, owner)
 
     assert rel._table == "product_store"
