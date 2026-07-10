@@ -51,7 +51,7 @@ class Configuration:
         self.set(path, merged_config)
 
     def set(self, path, value):
-        from fastapi_startkit.helpers.dataclass import Dataclass
+        from fastapi_startkit.support.dataclass import Dataclass
 
         self._config[path] = Dataclass.to_dict(value)
 

@@ -1,11 +1,10 @@
 from typing import TYPE_CHECKING
 
 from fastapi_startkit.support import Str
-
-from fastapi_startkit.helpers.dataclass import Dataclass
+from fastapi_startkit.support.dataclass import Dataclass
 
 if TYPE_CHECKING:
-    from ..application import Application
+    from fastapi_startkit.application import Application
 
 
 class Provider:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi_startkit.providers import Provider
+from fastapi_startkit.support import Provider
 
 
 class AIProvider(Provider):

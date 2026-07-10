@@ -4,7 +4,7 @@ from unittest import mock
 import pytest
 
 from fastapi_startkit.application import Application
-from fastapi_startkit.providers import Provider
+from fastapi_startkit.support import Provider
 from fastapi_startkit.vite import ViteProvider
 from fastapi_startkit.vite.config.vite import ViteConfig
 

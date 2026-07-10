@@ -1,5 +1,5 @@
 from fastapi_startkit.console.publish_command import PublishCommand
-from fastapi_startkit.providers import Provider
+from fastapi_startkit.support import Provider
 
 
 class AppProvider(Provider):
