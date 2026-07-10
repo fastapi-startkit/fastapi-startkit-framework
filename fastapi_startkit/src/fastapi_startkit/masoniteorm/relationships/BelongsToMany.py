@@ -497,7 +497,12 @@ class BelongsToMany(BaseRelationship):
                 }
             )
 
-        return Pivot.on(current_model.get_builder().connection).table(self._table).without_global_scopes().create(data)
+        return (
+            Pivot.on(current_model.get_builder().connection_name)
+            .table(self._table)
+            .without_global_scopes()
+            .create(data)
+        )
 
     def detach(self, current_model, related_record):
         data = {
@@ -508,7 +513,7 @@ class BelongsToMany(BaseRelationship):
         self._table = self._table or self.get_pivot_table_name(current_model, related_record)
 
         return (
-            Pivot.on(current_model.get_builder().connection)
+            Pivot.on(current_model.get_builder().connection_name)
             .table(self._table)
             .without_global_scopes()
             .where(data)
@@ -532,8 +537,8 @@ class BelongsToMany(BaseRelationship):
             )
 
         return (
-            Pivot.table(self._table)
-            .on(current_model.get_builder().connection_name)
+            Pivot.on(current_model.get_builder().connection_name)
+            .table(self._table)
             .without_global_scopes()
             .create(data)
         )

@@ -28,6 +28,10 @@ class Model(Attribute, Relationship, ObservesEvents):
 
     __fillable__: list[str] = []
 
+    # Declarative global scopes as {action: {name: callable(builder)}}. Kept per-class
+    # via copy-on-write in add_global_scope so subclasses never mutate a shared dict.
+    __global_scopes__: dict = {}
+
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         Registry.register(cls)
@@ -52,7 +56,7 @@ class Model(Attribute, Relationship, ObservesEvents):
     def __init__(self, attributes: dict = None, **kwargs):
         super().__init__(attributes, **kwargs)
         self.connection = getattr(self.__class__, "__connection__", "default")
-        self._global_scopes = {}
+        self._global_scopes = self._boot_global_scopes()
         self.__with__ = {}
         self._exists = False
         self._was_recently_created = False
@@ -86,6 +90,38 @@ class Model(Attribute, Relationship, ObservesEvents):
 
     def get_related(self, key: str):
         return getattr(self.__class__, key)
+
+    def _boot_global_scopes(self) -> dict:
+        """Collect global scopes from declarations up the MRO plus `scope_*` methods."""
+        scopes: dict = {}
+        for klass in reversed(type(self).__mro__):
+            declared = klass.__dict__.get("__global_scopes__")
+            if declared:
+                for action, named in declared.items():
+                    scopes.setdefault(action, {}).update(named)
+
+        for name in dir(type(self)):
+            if name.startswith("scope_") and len(name) > len("scope_"):
+                method = getattr(self, name)
+                if callable(method):
+                    scopes.setdefault("select", {})[name[len("scope_") :]] = method
+
+        return scopes
+
+    @classmethod
+    def add_global_scope(cls, name: str, callback, action: str = "select") -> type["Model"]:
+        """Register a global scope on this model. `callback` receives the QueryBuilder."""
+        if "__global_scopes__" not in cls.__dict__:
+            cls.__global_scopes__ = {}
+        cls.__global_scopes__.setdefault(action, {})[name] = callback
+        return cls
+
+    @classmethod
+    def without_global_scopes(cls) -> "QueryBuilder":
+        return cls.query().without_global_scopes()
+
+    def table(self, name: str) -> "QueryBuilder":
+        return self.new_query().table(name)
 
     @classmethod
     def with_(cls, *eagers) -> "QueryBuilder":
