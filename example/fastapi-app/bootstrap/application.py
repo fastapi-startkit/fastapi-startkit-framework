@@ -4,11 +4,12 @@ from fastapi_startkit import Application
 from fastapi_startkit.logging import LogProvider
 from providers.fastapi_provider import FastAPIProvider
 from config.fastapi import FastAPIConfig
+from config.logging import LoggingConfig
 
 app: Application = Application(
-    base_path=str(Path.cwd()), # This always gives path relative to the execution.
+    base_path=str(Path(__file__).parent.parent),
     providers=[
-        LogProvider,
+        (LogProvider, LoggingConfig),
         (FastAPIProvider, FastAPIConfig),
-    ]
+    ],
 )
