@@ -251,6 +251,14 @@ class Model(Attribute, Relationship, ObservesEvents):
     async def count(cls, column: str = "*"):
         return await cls.query().count(column)
 
+    @classmethod
+    def chunk(cls, count: int):
+        return cls.query().chunk(count)
+
+    @classmethod
+    def chunk_by_id(cls, count: int, column: str = None, alias: str = None):
+        return cls.query().chunk_by_id(count, column, alias)
+
     def set_connection(self, connection: str):
         self.connection = connection
 

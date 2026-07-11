@@ -347,6 +347,51 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
         results = await self.limit(per_page + 1).offset(offset).get()
         return SimplePaginator(results, per_page, page)
 
+    async def chunk(self, count: int):
+        """Yield results in batches of ``count`` using offset/limit paging.
+
+        Mirrors Laravel's ``chunk()``: iteration stops as soon as a batch
+        comes back empty or shorter than ``count``, so it never loops forever.
+        """
+        if count <= 0:
+            raise ValueError("chunk() size must be a positive integer.")
+
+        page = 0
+        while True:
+            results = await self.limit(count).offset(page * count).get()
+            if len(results) == 0:
+                break
+
+            yield results
+
+            if len(results) < count:
+                break
+            page += 1
+
+    async def chunk_by_id(self, count: int, column: str = None, alias: str = None):
+        if count <= 0:
+            raise ValueError("chunk_by_id() size must be a positive integer.")
+
+        column = column or self._model.__primary_key__
+        alias = alias or column
+        base_wheres = list(self._wheres)
+        last_id = None
+        while True:
+            self._wheres = list(base_wheres)
+            if last_id is not None:
+                self.where(column, ">", last_id)
+
+            self._order_by = ()
+            results = await self.order_by(column, "asc").limit(count).get()
+            if len(results) == 0:
+                break
+
+            yield results
+
+            if len(results) < count:
+                break
+            last_id = getattr(results.last(), alias)
+
     def new(self):
         return self.connection.query()
 
