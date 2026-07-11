@@ -44,6 +44,7 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
         self._bindings = ()
 
         self._global_scopes = {}
+        self._scopes_applied = False
         self._action = "select"
 
     def set_action(self, action: str) -> "QueryBuilder":
@@ -54,6 +55,22 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
         self._model = model
         self._table = model.get_table_name()
         self._global_scopes = model._global_scopes
+        return self
+
+    def table(self, name: str) -> "QueryBuilder":
+        self._table = name
+        return self
+
+    @property
+    def connection_name(self) -> str:
+        model = getattr(self, "_model", None)
+        if model is not None:
+            return model.get_connection_name()
+        return "default"
+
+    def without_global_scopes(self) -> "QueryBuilder":
+        """Discard every registered global scope so this query runs unfiltered."""
+        self._global_scopes = {}
         return self
 
     def with_(self, *eagers) -> "QueryBuilder":
@@ -111,7 +128,7 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
         return results.first()
 
     async def get(self, columns=None):
-        # TODO: apply scopes
+        self.run_scopes()
         if not columns:
             columns = []
         return await self.get_models(columns)
@@ -130,7 +147,10 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
         return self._bindings
 
     def run_scopes(self) -> "QueryBuilder":
-        for name, scope in self._global_scopes.get(self._action, {}).items():
+        if self._scopes_applied:
+            return self
+        self._scopes_applied = True
+        for _name, scope in self._global_scopes.get(self._action, {}).items():
             scope(self)
         return self
 
@@ -270,6 +290,10 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
 
     async def create(self, attributes: dict):
         model = self._model.new_model_instance(attributes)
+        # Honor an explicit table override (e.g. pivot inserts) that would otherwise
+        # be lost when save() rebuilds the query from the model's own table name.
+        if self._table:
+            model.__table__ = self._table
         await model.save()
 
         return model
