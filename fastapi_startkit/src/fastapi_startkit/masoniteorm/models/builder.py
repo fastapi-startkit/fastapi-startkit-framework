@@ -369,14 +369,6 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
             page += 1
 
     async def chunk_by_id(self, count: int, column: str = None, alias: str = None):
-        """Yield results in batches using keyset pagination.
-
-        Mirrors Laravel's ``chunkById()``: orders by ``column`` (the primary
-        key by default) ascending and filters ``column > last_seen`` each pass.
-        This stays correct even when rows are inserted or deleted mid-iteration,
-        unlike offset paging. ``alias`` reads the last-seen value from a
-        differently named selected column when the ordering column is aliased.
-        """
         if count <= 0:
             raise ValueError("chunk_by_id() size must be a positive integer.")
 
