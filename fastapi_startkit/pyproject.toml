@@ -120,7 +120,7 @@ fixable = ["F401"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-norecursedirs = ["masoniteorm.backup", ".venv", "dist", "build", "__pycache__"]
+norecursedirs = [".venv", "dist", "build", "__pycache__"]
 
 [tool.coverage.run]
 source = ["src/fastapi_startkit"]
