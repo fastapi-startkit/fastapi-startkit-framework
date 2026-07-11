@@ -105,6 +105,7 @@ dev = [
     "faker>=40.13.0",
     "langchain>=1.0.0",
     "langchain-core>=1.0.0",
+    "pyright>=1.1.411",
 ]
 
 
@@ -117,6 +118,19 @@ fixable = ["F401"]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
+
+[tool.pyright]
+include = ["src/fastapi_startkit"]
+exclude = [
+    "**/tests",
+    "**/migrations",
+    "**/*.backup",
+    "**/*_backup",
+    "**/__pycache__",
+    "**/.venv",
+]
+typeCheckingMode = "basic"
+pythonVersion = "3.12"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
