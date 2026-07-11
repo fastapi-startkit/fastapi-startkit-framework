@@ -368,29 +368,58 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
                 break
             page += 1
 
-    async def chunk_by_id(self, count: int, column: str = None, alias: str = None):
+    async def chunk_by_id(self, count: int, column: str = None, alias: str = None, descending: bool = False):
         if count <= 0:
             raise ValueError("chunk_by_id() size must be a positive integer.")
 
         column = column or self._model.__primary_key__
         alias = alias or column
-        base_wheres = list(self._wheres)
-        last_id = None
-        while True:
-            self._wheres = list(base_wheres)
-            if last_id is not None:
-                self.where(column, ">", last_id)
+        operator = "<" if descending else ">"
+        direction = "desc" if descending else "asc"
 
-            self._order_by = ()
-            results = await self.order_by(column, "asc").limit(count).get()
-            if len(results) == 0:
+        base_wheres = list(self._wheres)
+        offset = self._offset or 0
+        remaining = self._limit if self._limit is not False else None
+
+        last_id = None
+        page = 1
+        while True:
+            limit = count if remaining is None else min(count, remaining)
+            if limit == 0:
                 break
+
+            self._wheres = list(base_wheres)
+            self._order_by = ()
+            # The starting offset only applies to the first page; keyset
+            # filtering drives every page after that.
+            self._offset = offset if page == 1 else False
+            if last_id is not None:
+                self.where(column, operator, last_id)
+
+            results = await self.order_by(column, direction).limit(limit).get()
+            count_results = len(results)
+            if count_results == 0:
+                break
+
+            if remaining is not None:
+                remaining = max(remaining - count_results, 0)
 
             yield results
 
-            if len(results) < count:
+            last_id = results.last().get_attributes().get(alias)
+            if last_id is None:
+                raise RuntimeError(
+                    f"The chunk_by_id operation was aborted because the [{alias}] "
+                    "column is not present in the query result."
+                )
+
+            if count_results != count:
                 break
-            last_id = getattr(results.last(), alias)
+            page += 1
+
+    async def chunk_by_id_desc(self, count: int, column: str = None, alias: str = None):
+        async for results in self.chunk_by_id(count, column, alias, descending=True):
+            yield results
 
     def new(self):
         return self.connection.query()

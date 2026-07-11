@@ -256,8 +256,12 @@ class Model(Attribute, Relationship, ObservesEvents):
         return cls.query().chunk(count)
 
     @classmethod
-    def chunk_by_id(cls, count: int, column: str = None, alias: str = None):
-        return cls.query().chunk_by_id(count, column, alias)
+    def chunk_by_id(cls, count: int, column: str = None, alias: str = None, descending: bool = False):
+        return cls.query().chunk_by_id(count, column, alias, descending)
+
+    @classmethod
+    def chunk_by_id_desc(cls, count: int, column: str = None, alias: str = None):
+        return cls.query().chunk_by_id_desc(count, column, alias)
 
     def set_connection(self, connection: str):
         self.connection = connection
