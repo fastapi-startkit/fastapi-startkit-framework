@@ -460,8 +460,7 @@ class BelongsToMany(BaseRelationship):
         if not builder._columns:
             builder = builder.select("*")
 
-        return_query = builder.add_select(
-            f"{query.get_table_name()}_count",
+        return_query = builder.select_sub(
             lambda q: (
                 q.count("*")
                 .where_column(
@@ -477,6 +476,7 @@ class BelongsToMany(BaseRelationship):
                     ),
                 )
             ),
+            f"{query.get_table_name()}_count",
         )
 
         return return_query
