@@ -312,7 +312,7 @@ class TestFactoryHasRelationship(TestCase):
         self.assertIsNotNone(article)
         self.assertEqual(article.get_attribute("user_id"), user_id)
 
-    async def test_has_with_count_creates_multiple_children(self):
+    async def test_has_creates_multiple_children(self):
         user = await UserFactory.new().has(ArticleFactory.new().count(3)).create()
         user_id = user.get_attribute("id")
         articles = await Articles.where("user_id", user_id).get()
@@ -330,7 +330,7 @@ class TestFactoryForRelationship(TestCase):
         user = await User.find(user_id)
         self.assertIsNotNone(user)
 
-    async def test_for_with_count_injects_same_parent(self):
+    async def test_for_with_multiple_children_injects_same_parent(self):
         # All profiles share the same parent User
         profiles = await ProfileFactory.new().count(2).for_(UserFactory.new()).create()
         user_ids = {p.get_attribute("user_id") for p in profiles}

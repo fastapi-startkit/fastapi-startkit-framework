@@ -180,7 +180,7 @@ class HasManyThrough(BaseRelationship):
 
         return_query = current_builder.select_sub(
             lambda q: (
-                q.count("*")
+                q.select_count("*")
                 .join(
                     f"{intermediate_table}",
                     f"{intermediate_table}.{self.foreign_key}",

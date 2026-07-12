@@ -721,7 +721,7 @@ class TestCollection(TestCase):
         item = collection.random()
         self.assertEqual(item, 3)
 
-    def test_random_with_count(self):
+    def test_random_returns_subset(self):
         collection = Collection([1, 2, 3, 4])
         items = collection.random(2)
         self.assertEqual(items.count(), 2)

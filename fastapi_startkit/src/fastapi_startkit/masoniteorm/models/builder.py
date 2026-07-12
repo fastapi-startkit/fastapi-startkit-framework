@@ -302,6 +302,15 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
     async def count(self, column: str = "*"):
         return await self.aggregate("COUNT", column)
 
+    def select_count(self, column: str = "*", alias: str | None = None) -> "QueryBuilder":
+        """Add a ``COUNT`` aggregate to the selection and return the builder.
+
+        The synchronous, query-building counterpart to :meth:`count` (which
+        executes). Used to compose correlated ``COUNT`` subqueries.
+        """
+        self._aggregates += (AggregateExpression("COUNT", column, alias if alias is not None else False),)
+        return self
+
     async def exists(self) -> bool:
         """Return True if any record matches the current query, False otherwise."""
         return (await self.count() or 0) > 0
@@ -558,6 +567,15 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
         else:
             related.query_has(self, method="or_where_exists")
         return self
+
+    def with_count(self, relation: str, callback=None) -> "QueryBuilder":
+        """Add a correlated ``{relation}_count`` column to the selection.
+
+        The optional ``callback`` receives the count subquery builder to add
+        further constraints (e.g. ``lambda q: q.where(...)``).
+        """
+        related = getattr(self._model.__class__, relation)
+        return related.get_with_count_query(self, callback)
 
     @classmethod
     def clean_bindings(cls, values):

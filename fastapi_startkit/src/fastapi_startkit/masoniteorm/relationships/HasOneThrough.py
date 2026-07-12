@@ -206,7 +206,7 @@ class HasOneThrough(BaseRelationship):
 
         return_query = current_builder.select_sub(
             lambda q: (
-                q.count("*")
+                q.select_count("*")
                 .join(
                     f"{int_table}",
                     f"{int_table}.{self.foreign_key}",

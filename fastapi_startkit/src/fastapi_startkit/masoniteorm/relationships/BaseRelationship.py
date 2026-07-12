@@ -79,9 +79,25 @@ class BaseRelationship:
         )
 
     def get_with_count_query(self, builder, callback):
-        """Adds a clause to the query to get the record count of the relationship"""
-        klass = self.__class__.__name__
-        raise NotImplementedError(f"{klass} relationship does not implement the 'get_with_count_query' method")
+        """Add a correlated ``{attribute}_count`` column to ``builder``.
+
+        Default implementation for direct relationships (HasMany/HasOne/
+        BelongsTo): counts related rows whose foreign key matches the owner's
+        local key. Through/pivot relationships override this.
+        """
+        related = self.get_builder()
+        related_table = related.get_table_name()
+
+        subquery = related.select_count("*").where_column(
+            f"{related_table}.{self.foreign_key}",
+            f"{builder.get_table_name()}.{self.local_key}",
+        )
+        if callback:
+            callback(subquery)
+
+        if not builder._columns:
+            builder.select(f"{builder.get_table_name()}.*")
+        return builder.select_sub(subquery, f"{self.attribute}_count")
 
     def attach(self, current_model, related_record):
         """Link a related model to the current model"""
