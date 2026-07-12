@@ -1,6 +1,5 @@
 from fastapi_startkit.masoniteorm import Model
 
-from ..fixtures.db import DB
 from ..test_case import TestCase
 
 
@@ -27,14 +26,25 @@ def category_name_subquery():
 class TestSqliteOrderBySubquery(TestCase):
     async def asyncSetUp(self):
         await super().asyncSetUp()
-        conn = DB.connection("default")
-        await conn.execute("CREATE TABLE categories (id INTEGER PRIMARY KEY, name TEXT)")
-        await conn.execute("CREATE TABLE posts (id INTEGER PRIMARY KEY, title TEXT, category_id INTEGER)")
+        async with await self.schema.create("categories") as table:
+            table.id()
+            table.string("name")
+        async with await self.schema.create("posts") as table:
+            table.id()
+            table.string("title")
+            table.integer("category_id")
         # Category ids deliberately NOT in alphabetical order, so ordering by the
         # correlated name subquery differs from ordering by id/category_id.
-        await conn.execute("INSERT INTO categories (id, name) VALUES (1, 'Zebra'), (2, 'Apple'), (3, 'Mango')")
-        await conn.execute(
-            "INSERT INTO posts (id, title, category_id) VALUES (1, 'z', 1), (2, 'a', 2), (3, 'm', 3), (4, 'a2', 2)"
+        await Category.query().insert(
+            [{"id": 1, "name": "Zebra"}, {"id": 2, "name": "Apple"}, {"id": 3, "name": "Mango"}]
+        )
+        await Post.query().insert(
+            [
+                {"id": 1, "title": "z", "category_id": 1},
+                {"id": 2, "title": "a", "category_id": 2},
+                {"id": 3, "title": "m", "category_id": 3},
+                {"id": 4, "title": "a2", "category_id": 2},
+            ]
         )
 
     async def test_order_by_correlated_subquery(self):
