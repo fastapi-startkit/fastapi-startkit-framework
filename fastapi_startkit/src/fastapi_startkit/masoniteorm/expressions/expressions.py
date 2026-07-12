@@ -100,13 +100,17 @@ class SelectExpression:
 class OrderByExpression:
     """A helper class to manage select expressions."""
 
-    def __init__(self, column, direction="ASC", raw=False, bindings=()):
-        self.column = column.strip()
-
+    def __init__(self, column, direction="ASC", raw=False, bindings=(), builder=None):
         self.raw = raw
-
         self.direction = direction
         self.bindings = bindings
+        self.builder = builder
+
+        if builder is not None:
+            self.column = None
+            return
+
+        self.column = column.strip()
 
         if raw is False:
             if self.column.endswith(" desc"):

@@ -164,8 +164,11 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
         self._offset = offset
         return self
 
-    def order_by(self, column: str, direction: str = "asc") -> "QueryBuilder":
+    def order_by(self, column, direction: str = "asc") -> "QueryBuilder":
         direction = direction.upper()
+        if isinstance(column, QueryBuilder):
+            self._order_by += (OrderByExpression(None, direction, builder=column),)
+            return self
         for col in column.split(","):
             col = col.strip()
             self._order_by += (OrderByExpression(col, direction),)
