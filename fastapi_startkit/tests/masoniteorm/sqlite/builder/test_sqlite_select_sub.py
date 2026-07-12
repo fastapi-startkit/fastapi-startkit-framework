@@ -1,6 +1,5 @@
 from fastapi_startkit.masoniteorm import Model
 
-from ..fixtures.db import DB
 from ..test_case import TestCase
 
 
@@ -41,19 +40,39 @@ def category_name_subquery():
 class TestSqliteSelectSub(TestCase):
     async def asyncSetUp(self):
         await super().asyncSetUp()
-        conn = DB.connection("default")
-        await conn.execute("CREATE TABLE categories (id INTEGER PRIMARY KEY, name TEXT)")
-        await conn.execute("CREATE TABLE posts (id INTEGER PRIMARY KEY, title TEXT, category_id INTEGER)")
-        await conn.execute("INSERT INTO categories (id, name) VALUES (1, 'Zebra'), (2, 'Apple'), (3, 'Mango')")
-        await conn.execute(
-            "INSERT INTO posts (id, title, category_id) VALUES (1, 'z', 1), (2, 'a', 2), (3, 'm', 3), (4, 'a2', 2)"
+        async with await self.schema.create("categories") as table:
+            table.id()
+            table.string("name")
+        async with await self.schema.create("posts") as table:
+            table.id()
+            table.string("title")
+            table.integer("category_id")
+        async with await self.schema.create("accounts") as table:
+            table.id()
+            table.string("name")
+        async with await self.schema.create("logins") as table:
+            table.id()
+            table.integer("user_id")
+            table.string("created_at")
+
+        await Category.query().insert(
+            [{"id": 1, "name": "Zebra"}, {"id": 2, "name": "Apple"}, {"id": 3, "name": "Mango"}]
         )
-        await conn.execute("CREATE TABLE accounts (id INTEGER PRIMARY KEY, name TEXT)")
-        await conn.execute("CREATE TABLE logins (id INTEGER PRIMARY KEY, user_id INTEGER, created_at TEXT)")
-        await conn.execute("INSERT INTO accounts (id, name) VALUES (1, 'Alice'), (2, 'Bob')")
-        await conn.execute(
-            "INSERT INTO logins (id, user_id, created_at) VALUES "
-            "(1, 1, '2024-01-01'), (2, 1, '2024-03-01'), (3, 2, '2024-02-01')"
+        await Post.query().insert(
+            [
+                {"id": 1, "title": "z", "category_id": 1},
+                {"id": 2, "title": "a", "category_id": 2},
+                {"id": 3, "title": "m", "category_id": 3},
+                {"id": 4, "title": "a2", "category_id": 2},
+            ]
+        )
+        await Account.query().insert([{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}])
+        await Login.query().insert(
+            [
+                {"id": 1, "user_id": 1, "created_at": "2024-01-01"},
+                {"id": 2, "user_id": 1, "created_at": "2024-03-01"},
+                {"id": 3, "user_id": 2, "created_at": "2024-02-01"},
+            ]
         )
 
     async def test_select_sub_with_builder(self):
