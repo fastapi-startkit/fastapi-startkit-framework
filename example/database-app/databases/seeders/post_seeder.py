@@ -1,4 +1,4 @@
-from fastapi_startkit.masoniteorm.seeds import Seeder
+from fastapi_startkit.masoniteorm.seeders import Seeder
 
 from app.models import Post, User, Tag, PostTag
 

@@ -1,4 +1,4 @@
-from fastapi_startkit.masoniteorm.seeds import Seeder
+from fastapi_startkit.masoniteorm.seeders import Seeder
 from app.models.course import Course
 from app.models.review import Review
 

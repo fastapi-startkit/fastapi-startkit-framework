@@ -2,7 +2,7 @@ import pydoc
 
 
 class Seeder:
-    def __init__(self, seed_path="databases/seeds", connection=None):
+    def __init__(self, seed_path="databases/seeders", connection=None):
         self.ran_seeds = []
         self.seed_path = seed_path
         self.connection = connection

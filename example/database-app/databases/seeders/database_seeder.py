@@ -1,4 +1,4 @@
-from fastapi_startkit.masoniteorm.seeds import Seeder
+from fastapi_startkit.masoniteorm.seeders import Seeder
 from .category_seeder import CategorySeeder
 from .user_seeder import UserSeeder
 from .course_seeder import CourseSeeder
