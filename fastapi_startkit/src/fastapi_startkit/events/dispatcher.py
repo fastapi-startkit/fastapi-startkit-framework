@@ -6,6 +6,7 @@ coroutine listeners are supported — coroutine results are awaited transparentl
 """
 
 import inspect
+from fnmatch import fnmatchcase
 from typing import TYPE_CHECKING, Any, Callable, cast, overload
 
 if TYPE_CHECKING:
@@ -28,7 +29,9 @@ class Dispatcher:
         """Register a listener for one or more events.
 
         ``events`` may be an event class, a string name, or a list of either.
-        Used as a decorator when ``listener`` is omitted.
+        String names may contain ``*`` wildcards (e.g. ``"user.*"``) — the
+        listener then fires for any matching event name. Used as a decorator
+        when ``listener`` is omitted.
         """
         if listener is None:
 
@@ -43,7 +46,7 @@ class Dispatcher:
         return None
 
     def has_listeners(self, event) -> bool:
-        return bool(self._listeners.get(self._event_key(event)))
+        return bool(self._get_listeners(self._event_key(event)))
 
     def forget(self, event) -> None:
         """Remove all listeners registered for a given event."""
@@ -63,7 +66,7 @@ class Dispatcher:
         name, args = self._parse_event_payload(event, payload)
 
         responses: list[Any] = []
-        for listener in self._listeners.get(name, []):
+        for listener in self._get_listeners(name):
             response = await self._call_listener(listener, args)
 
             if halt and response is not None:
@@ -92,6 +95,15 @@ class Dispatcher:
     def _event_names(self, events) -> list[str]:
         items = events if isinstance(events, (list, tuple)) else [events]
         return [self._event_key(event) for event in items]
+
+    def _get_listeners(self, name: str) -> list:
+        """All listeners for an event name: exact matches first, then any
+        wildcard-pattern listeners whose pattern matches the name."""
+        listeners = list(self._listeners.get(name, []))
+        for pattern, pattern_listeners in self._listeners.items():
+            if pattern != name and "*" in pattern and fnmatchcase(name, pattern):
+                listeners.extend(pattern_listeners)
+        return listeners
 
     def _event_key(self, event) -> str:
         if isinstance(event, str):

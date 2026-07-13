@@ -162,6 +162,87 @@ async def test_listen_as_decorator():
     assert callable(handler)
 
 
+async def test_wildcard_listener_fires_on_matching_event():
+    dispatcher = Dispatcher()
+    seen = []
+    dispatcher.listen("user.*", lambda: seen.append(True))
+
+    await dispatcher.dispatch("user.created")
+
+    assert seen == [True]
+
+
+async def test_wildcard_listener_does_not_fire_on_non_matching_event():
+    dispatcher = Dispatcher()
+    seen = []
+    dispatcher.listen("user.*", lambda: seen.append(True))
+
+    await dispatcher.dispatch("order.created")
+
+    assert seen == []
+
+
+async def test_wildcard_receives_event_payload():
+    dispatcher = Dispatcher()
+    captured = []
+    dispatcher.listen("user.*", lambda name: captured.append(name))
+
+    await dispatcher.dispatch("user.created", "ada")
+
+    assert captured == ["ada"]
+
+
+async def test_multiple_wildcard_patterns_each_match_independently():
+    dispatcher = Dispatcher()
+    seen = []
+    dispatcher.listen("user.*", lambda: seen.append("user"))
+    dispatcher.listen("*.created", lambda: seen.append("created"))
+    dispatcher.listen("order.*", lambda: seen.append("order"))
+
+    await dispatcher.dispatch("user.created")
+
+    assert sorted(seen) == ["created", "user"]
+
+
+async def test_wildcard_and_exact_listeners_both_fire_exact_first():
+    dispatcher = Dispatcher()
+    order = []
+    dispatcher.listen("user.*", lambda: order.append("wildcard"))
+    dispatcher.listen("user.created", lambda: order.append("exact"))
+
+    await dispatcher.dispatch("user.created")
+
+    assert order == ["exact", "wildcard"]
+
+
+async def test_wildcard_matches_across_multiple_segments():
+    dispatcher = Dispatcher()
+    seen = []
+    dispatcher.listen("user.*", lambda: seen.append(True))
+
+    await dispatcher.dispatch("user.profile.updated")
+
+    assert seen == [True]
+
+
+async def test_until_halts_across_exact_and_wildcard():
+    dispatcher = Dispatcher()
+    dispatcher.listen("user.created", lambda: None)
+    dispatcher.listen("user.*", lambda: "handled")
+
+    result = await dispatcher.until("user.created")
+
+    assert result == "handled"
+
+
+def test_has_listeners_true_for_wildcard_match():
+    dispatcher = Dispatcher()
+    dispatcher.listen("user.*", lambda: None)
+
+    assert dispatcher.has_listeners("user.created") is True
+    assert dispatcher.has_listeners("order.created") is False
+
+
 def test_has_listeners():
     dispatcher = Dispatcher()
     assert dispatcher.has_listeners(UserRegistered) is False
