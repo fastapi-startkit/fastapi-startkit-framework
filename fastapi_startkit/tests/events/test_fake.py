@@ -125,3 +125,17 @@ def test_listen_and_has_listeners_pass_through_to_real_dispatcher():
 
     assert fake.has_listeners(UserRegistered) is True
     assert dispatcher.has_listeners(UserRegistered) is True
+
+
+def test_forget_and_flush_pass_through_to_real_dispatcher():
+    dispatcher = Dispatcher()
+    fake = EventFake(dispatcher)
+    fake.listen(UserRegistered, lambda e: None)
+    fake.listen(OrderShipped, lambda e: None)
+
+    fake.forget(UserRegistered)
+    assert fake.has_listeners(UserRegistered) is False
+    assert fake.has_listeners(OrderShipped) is True
+
+    fake.flush()
+    assert fake.has_listeners(OrderShipped) is False

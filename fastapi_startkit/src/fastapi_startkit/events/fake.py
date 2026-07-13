@@ -36,6 +36,12 @@ class EventFake:
     def has_listeners(self, event) -> bool:
         return self._dispatcher.has_listeners(event)
 
+    def forget(self, event) -> None:
+        self._dispatcher.forget(event)
+
+    def flush(self) -> None:
+        self._dispatcher.flush()
+
     def dispatched(self, event, callback: Callable | None = None) -> list:
         """Return recorded dispatches for an event, optionally filtered."""
         records = self._dispatched.get(self._dispatcher._event_key(event), [])
