@@ -1,4 +1,4 @@
-from fastapi_startkit.masoniteorm.seeds import Seeder
+from fastapi_startkit.masoniteorm.seeders import Seeder
 from app.models.category import Category
 from app.models.course import Course
 from app.models.user import User

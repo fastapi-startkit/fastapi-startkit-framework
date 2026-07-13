@@ -50,7 +50,7 @@ class MakeModelCommand(Command):
             "seeders-directory",
             "S",
             flag=False,
-            default="databases/seeds",
+            default="databases/seeders",
             description="The location of the seeders directory",
         ),
     ]

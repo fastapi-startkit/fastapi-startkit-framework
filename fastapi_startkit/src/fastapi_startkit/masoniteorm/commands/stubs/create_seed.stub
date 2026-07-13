@@ -1,6 +1,6 @@
 """__SEEDER_NAME__ Seeder."""
 
-from masoniteorm.seeds import Seeder
+from fastapi_startkit.masoniteorm.seeders import Seeder
 
 
 class __SEEDER_NAME__(Seeder):
