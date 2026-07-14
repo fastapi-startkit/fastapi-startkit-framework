@@ -1,3 +1,5 @@
+import asyncio
+import importlib.util
 import os
 import shutil
 import tempfile
@@ -9,6 +11,9 @@ from fastapi_startkit.masoniteorm.commands.MakeMigrationCommand import MakeMigra
 from fastapi_startkit.masoniteorm.commands.MakeModelCommand import MakeModelCommand
 from fastapi_startkit.masoniteorm.commands.MakeObserverCommand import MakeObserverCommand
 from fastapi_startkit.masoniteorm.commands.MakeSeedCommand import MakeSeedCommand
+from fastapi_startkit.masoniteorm.migrations.Migration import Migration
+
+from .fixtures.app import create_app, DB_PATH
 
 
 class _TempCwdTestCase(unittest.TestCase):
@@ -30,55 +35,147 @@ class _TempCwdTestCase(unittest.TestCase):
     def _tester(self, command_class):
         return CommandTester(command_class())
 
-    def _read_single_file(self, directory):
+    def _generated_file(self, directory):
         files = [f for f in os.listdir(directory) if f.endswith(".py")]
         self.assertEqual(len(files), 1, f"expected one generated file in {directory}, got {files}")
-        with open(os.path.join(directory, files[0])) as fp:
-            return files[0], fp.read()
+        return os.path.join(directory, files[0])
+
+    def _read_single_file(self, directory):
+        path = self._generated_file(directory)
+        with open(path) as fp:
+            return os.path.basename(path), fp.read()
 
 
 class TestMakeMigrationCommand(_TempCwdTestCase):
-    def test_creates_migration_with_inferred_table(self):
-        os.makedirs("databases/migrations")
-        tester = self._tester(MakeMigrationCommand)
-        tester.execute("create_posts_table")
+    """Real sqlite integration tests: a generated migration is actually executed
+    against a live sqlite database and the resulting schema is inspected, rather
+    than asserting on the generated file's text.
+    """
 
-        output = tester.io.fetch_output()
+    @classmethod
+    def setUpClass(cls):
+        cls.app = create_app()
+
+    def setUp(self):
+        super().setUp()
+        asyncio.run(self._reset_db())
+
+    def tearDown(self):
+        super().tearDown()
+        if DB_PATH.exists():
+            DB_PATH.unlink()
+
+    async def _reset_db(self):
+        db = self.app.make("db")
+        await db.clear()
+        schema = db.get_schema_builder()
+        for table in await schema.get_all_tables():
+            if table.startswith("sqlite_"):
+                continue
+            await schema.drop_table_if_exists(table)
+
+    def _generate(self, args, directory="databases/migrations"):
+        os.makedirs(directory, exist_ok=True)
+        tester = self._tester(MakeMigrationCommand)
+        tester.execute(args)
+        return self._generated_file(directory), tester.io.fetch_output()
+
+    @staticmethod
+    def _load_migration_class(file_path):
+        spec = importlib.util.spec_from_file_location(
+            f"generated_migration_{os.path.basename(file_path).replace('.py', '')}",
+            file_path,
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        for obj in vars(module).values():
+            if isinstance(obj, type) and issubclass(obj, Migration) and obj is not Migration:
+                return obj
+        raise AssertionError(f"no Migration subclass found in {file_path}")
+
+    def _run_generated_migration(self, file_path):
+        asyncio.run(self._execute_up(file_path))
+
+    async def _execute_up(self, file_path):
+        migration_class = self._load_migration_class(file_path)
+        db = self.app.make("db")
+        await db.clear()
+        schema = db.get_schema_builder()
+        await migration_class(connection="sqlite", schema=schema).up()
+
+    async def _create_table(self, name):
+        db = self.app.make("db")
+        await db.clear()
+        schema = db.get_schema_builder()
+        async with await schema.create(name) as table:
+            table.increments("id")
+
+    def _has_table(self, table):
+        return asyncio.run(self._async_has_table(table))
+
+    async def _async_has_table(self, table):
+        db = self.app.make("db")
+        await db.clear()
+        return await db.get_schema_builder().has_table(table)
+
+    def _has_column(self, table, column):
+        return asyncio.run(self._async_has_column(table, column))
+
+    async def _async_has_column(self, table, column):
+        db = self.app.make("db")
+        await db.clear()
+        return await db.get_schema_builder().has_column(table, column)
+
+    # -- behavior is proven by the real sqlite schema the generated migration
+    # produces when executed, not by the generated file's text --
+
+    def test_inferred_table_migration_creates_real_table(self):
+        file_path, output = self._generate("create_posts_table")
         self.assertIn("Migration file created:", output)
 
-        file_name, content = self._read_single_file("databases/migrations")
-        self.assertTrue(file_name.endswith("_create_posts_table.py"))
-        self.assertIn("class CreatePostsTable(Migration)", content)
-        self.assertIn('self.schema.create("posts")', content)
+        self.assertFalse(self._has_table("posts"))
+        self._run_generated_migration(file_path)
 
-    def test_create_option_uses_create_stub(self):
-        os.makedirs("databases/migrations")
-        tester = self._tester(MakeMigrationCommand)
-        tester.execute("add_users --create users")
+        self.assertTrue(self._has_table("posts"))
+        self.assertTrue(self._has_column("posts", "id"))
+        self.assertTrue(self._has_column("posts", "created_at"))
+        self.assertTrue(self._has_column("posts", "updated_at"))
 
-        _, content = self._read_single_file("databases/migrations")
-        self.assertIn('self.schema.create("users")', content)
+    def test_create_option_creates_named_table(self):
+        file_path, _ = self._generate("add_users --create users")
 
-    def test_table_option_uses_table_stub(self):
-        os.makedirs("databases/migrations")
-        tester = self._tester(MakeMigrationCommand)
-        tester.execute("modify_users --table users")
+        self._run_generated_migration(file_path)
 
-        _, content = self._read_single_file("databases/migrations")
-        self.assertIn('self.schema.table("users")', content)
-        self.assertNotIn("self.schema.create", content)
+        self.assertTrue(self._has_table("users"))
+        self.assertTrue(self._has_column("users", "id"))
 
-    def test_custom_directory_option(self):
-        os.makedirs("custom/migrations")
-        tester = self._tester(MakeMigrationCommand)
-        tester.execute("create_posts_table --directory custom/migrations")
+    def test_table_option_migration_executes_against_existing_table(self):
+        # The table (alter) stub has an empty ``up`` body, so there is no new
+        # column to assert -- the meaningful real-DB check is that the generated
+        # alter migration executes cleanly against an existing table.
+        asyncio.run(self._create_table("widgets"))
+        file_path, _ = self._generate("modify_widgets --table widgets")
 
-        output = tester.io.fetch_output()
+        self._run_generated_migration(file_path)
+
+        self.assertTrue(self._has_table("widgets"))
+
+    def test_custom_directory_migration_runs_from_custom_location(self):
+        file_path, output = self._generate(
+            "create_posts_table --directory custom/migrations",
+            directory="custom/migrations",
+        )
         self.assertIn("custom/migrations", output)
-        self.assertTrue(any(f.endswith(".py") for f in os.listdir("custom/migrations")))
+
+        self._run_generated_migration(file_path)
+
+        self.assertTrue(self._has_table("posts"))
 
 
 class TestMakeModelCommand(_TempCwdTestCase):
+    # make:model emits a plain Python class with no schema side effects, so
+    # there is nothing to run against a database -- the generated file content
+    # is the only meaningful contract to assert.
     def test_creates_model_file(self):
         os.makedirs("app")
         tester = self._tester(MakeModelCommand)
@@ -115,6 +212,10 @@ class TestMakeModelCommand(_TempCwdTestCase):
 
 
 class TestMakeSeedCommand(_TempCwdTestCase):
+    # make:seed emits a Seeder subclass with an empty ``run`` body; it performs
+    # no database work on its own, so the generated file content is the only
+    # meaningful contract (seeders executing against a real DB are covered in
+    # test_db_seed_command.py).
     def test_creates_seed_file(self):
         os.makedirs("databases/seeders")
         tester = self._tester(MakeSeedCommand)
@@ -137,6 +238,8 @@ class TestMakeSeedCommand(_TempCwdTestCase):
 
 
 class TestMakeObserverCommand(_TempCwdTestCase):
+    # make:observer emits a plain observer class with no schema side effects, so
+    # the generated file content is the only meaningful contract to assert.
     def test_creates_observer_file(self):
         tester = self._tester(MakeObserverCommand)
         tester.execute("Post")
