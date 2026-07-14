@@ -12,24 +12,6 @@ from .fixtures.databases.seeders.recorder import CALLS
 FIXTURE_SEED_PATH = "tests.masoniteorm.commands.fixtures.databases.seeders"
 
 
-class FakeSeeder:
-    """Records constructor args and awaited methods, mocking DB side effects."""
-
-    instances = []
-
-    def __init__(self, seed_path="databases/seeders", connection=None):
-        self.seed_path = seed_path
-        self.connection = connection
-        self.calls = []
-        FakeSeeder.instances.append(self)
-
-    async def run_database_seed(self):
-        self.calls.append(("run_database_seed", None))
-
-    async def run_specific_seed(self, seed):
-        self.calls.append(("run_specific_seed", seed))
-
-
 class TestDBSeedCommand(unittest.TestCase):
     def setUp(self):
         from .fixtures.app import create_app
@@ -54,69 +36,47 @@ class TestDBSeedCommand(unittest.TestCase):
     # -- option/argument resolution, exercised against a mocked Seeder --
 
     def test_runs_database_seeder_by_default(self):
-        FakeSeeder.instances = []
-        with mock.patch("fastapi_startkit.masoniteorm.seeders.Seeder", FakeSeeder):
+        with mock.patch("fastapi_startkit.masoniteorm.seeders.Seeder", autospec=True) as MockSeeder:
             output = self._run("")
 
         self.assertIn("Database Seeder seeded!", output)
-        seeder = FakeSeeder.instances[-1]
-        self.assertEqual(seeder.calls, [("run_database_seed", None)])
-        self.assertEqual(seeder.seed_path, "databases/seeders")
-        self.assertEqual(seeder.connection, "default")
+        MockSeeder.assert_called_once_with(seed_path="databases/seeders", connection="default")
+        MockSeeder.return_value.run_database_seed.assert_awaited_once_with()
+        MockSeeder.return_value.run_specific_seed.assert_not_awaited()
 
     def test_seeds_specific_table_from_argument(self):
-        FakeSeeder.instances = []
-        with mock.patch("fastapi_startkit.masoniteorm.seeders.Seeder", FakeSeeder):
+        with mock.patch("fastapi_startkit.masoniteorm.seeders.Seeder", autospec=True) as MockSeeder:
             output = self._run("posts")
 
         self.assertIn("PostsTableSeeder seeded!", output)
-        seeder = FakeSeeder.instances[-1]
-        self.assertEqual(
-            seeder.calls,
-            [("run_specific_seed", "posts_table_seeder.PostsTableSeeder")],
-        )
+        MockSeeder.return_value.run_specific_seed.assert_awaited_once_with("posts_table_seeder.PostsTableSeeder")
 
     def test_class_option_resolves_plain_class_name(self):
-        FakeSeeder.instances = []
-        with mock.patch("fastapi_startkit.masoniteorm.seeders.Seeder", FakeSeeder):
+        with mock.patch("fastapi_startkit.masoniteorm.seeders.Seeder", autospec=True) as MockSeeder:
             output = self._run("--class PostSeeder")
 
         self.assertIn("PostSeeder seeded!", output)
-        seeder = FakeSeeder.instances[-1]
-        self.assertEqual(
-            seeder.calls,
-            [("run_specific_seed", "post_seeder.PostSeeder")],
-        )
+        MockSeeder.return_value.run_specific_seed.assert_awaited_once_with("post_seeder.PostSeeder")
 
     def test_class_option_resolves_table_seeder_suffix(self):
-        FakeSeeder.instances = []
-        with mock.patch("fastapi_startkit.masoniteorm.seeders.Seeder", FakeSeeder):
+        with mock.patch("fastapi_startkit.masoniteorm.seeders.Seeder", autospec=True) as MockSeeder:
             output = self._run("--class PostTableSeeder")
 
         self.assertIn("PostTableSeeder seeded!", output)
-        seeder = FakeSeeder.instances[-1]
-        self.assertEqual(
-            seeder.calls,
-            [("run_specific_seed", "post_table_seeder.PostTableSeeder")],
-        )
+        MockSeeder.return_value.run_specific_seed.assert_awaited_once_with("post_table_seeder.PostTableSeeder")
 
     def test_class_option_accepts_dotted_path(self):
-        FakeSeeder.instances = []
-        with mock.patch("fastapi_startkit.masoniteorm.seeders.Seeder", FakeSeeder):
+        with mock.patch("fastapi_startkit.masoniteorm.seeders.Seeder", autospec=True) as MockSeeder:
             output = self._run("--class custom.MySeeder")
 
         self.assertIn("MySeeder seeded!", output)
-        seeder = FakeSeeder.instances[-1]
-        self.assertEqual(seeder.calls, [("run_specific_seed", "custom.MySeeder")])
+        MockSeeder.return_value.run_specific_seed.assert_awaited_once_with("custom.MySeeder")
 
     def test_connection_and_directory_options_are_forwarded(self):
-        FakeSeeder.instances = []
-        with mock.patch("fastapi_startkit.masoniteorm.seeders.Seeder", FakeSeeder):
+        with mock.patch("fastapi_startkit.masoniteorm.seeders.Seeder", autospec=True) as MockSeeder:
             self._run("--connection sqlite --directory db/seeds")
 
-        seeder = FakeSeeder.instances[-1]
-        self.assertEqual(seeder.seed_path, "db/seeds")
-        self.assertEqual(seeder.connection, "sqlite")
+        MockSeeder.assert_called_once_with(seed_path="db/seeds", connection="sqlite")
 
     # -- end-to-end, driven through the registered console app against real fixture seeders --
 
