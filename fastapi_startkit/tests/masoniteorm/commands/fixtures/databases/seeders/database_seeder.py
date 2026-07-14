@@ -1,8 +1,8 @@
 from fastapi_startkit.masoniteorm.seeders import Seeder
 
-from .recorder import CALLS
+from ...models import SeededUser
 
 
 class DatabaseSeeder(Seeder):
     async def run(self):
-        CALLS.append(("database", self.connection))
+        await SeededUser.create({"name": "database-seeder"})
