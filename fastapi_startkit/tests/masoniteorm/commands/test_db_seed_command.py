@@ -45,7 +45,7 @@ class TestDBSeedCommand(unittest.TestCase):
         self.assertIn("Database Seeder seeded!", output)
         seeder = FakeSeeder.instances[-1]
         self.assertEqual(seeder.calls, [("run_database_seed", None)])
-        self.assertEqual(seeder.seed_path, "databases/seeds")
+        self.assertEqual(seeder.seed_path, "databases/seeders")
         self.assertEqual(seeder.connection, "default")
 
     def test_seeds_specific_table_from_argument(self):
