@@ -1,8 +1,8 @@
 from fastapi_startkit.masoniteorm.seeders import Seeder
 
-from .recorder import CALLS
+from ...models import SeededUser
 
 
 class UserTableSeeder(Seeder):
     async def run(self):
-        CALLS.append(("user_table", self.connection))
+        await SeededUser.create({"name": "user-table-seeder"})
