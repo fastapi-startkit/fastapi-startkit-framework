@@ -1,8 +1,8 @@
 from fastapi_startkit.masoniteorm.seeders import Seeder
 
-from .recorder import CALLS
+from ...models import SeededUser
 
 
 class SpecialSeeder(Seeder):
     async def run(self):
-        CALLS.append(("special", self.connection))
+        await SeededUser.create({"name": "special-seeder"})
