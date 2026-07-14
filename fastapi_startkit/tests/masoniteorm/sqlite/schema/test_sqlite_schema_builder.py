@@ -374,7 +374,7 @@ class TestSQLiteSchemaBuilder(TestCase):
         sql, _ = mock_select.call_args[0]
         self.assertEqual(
             sql,
-            "SELECT column_name FROM information_schema.columns WHERE table_name='users' and column_name='name'",
+            "SELECT name FROM pragma_table_info('users') WHERE name='name'",
         )
 
     async def test_can_have_unsigned_columns(self):

@@ -418,9 +418,7 @@ class SQLitePlatform(Platform):
         return f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table}'"
 
     def compile_column_exists(self, table, column):
-        return (
-            f"SELECT column_name FROM information_schema.columns WHERE table_name='{table}' and column_name='{column}'"
-        )
+        return f"SELECT name FROM pragma_table_info('{table}') WHERE name='{column}'"
 
     def compile_get_all_tables(self, database, schema=None):
         return "SELECT name FROM sqlite_master WHERE type='table'"
