@@ -116,18 +116,18 @@ class TestMakeModelCommand(_TempCwdTestCase):
 
 class TestMakeSeedCommand(_TempCwdTestCase):
     def test_creates_seed_file(self):
-        os.makedirs("databases/seeds")
+        os.makedirs("databases/seeders")
         tester = self._tester(MakeSeedCommand)
         tester.execute("Post")
 
         output = tester.io.fetch_output()
         self.assertIn("Seed file created:", output)
 
-        content = open(os.path.join("databases/seeds", "post_table_seeder.py")).read()
+        content = open(os.path.join("databases/seeders", "post_table_seeder.py")).read()
         self.assertIn("class PostTableSeeder(Seeder)", content)
 
     def test_reports_when_seed_already_exists(self):
-        os.makedirs("databases/seeds")
+        os.makedirs("databases/seeders")
         self._tester(MakeSeedCommand).execute("Post")
 
         tester = self._tester(MakeSeedCommand)
