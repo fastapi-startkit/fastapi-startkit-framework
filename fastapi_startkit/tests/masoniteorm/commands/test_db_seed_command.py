@@ -28,7 +28,7 @@ class TestDBSeedCommand(unittest.TestCase):
     def setUp(self):
         FakeSeeder.instances = []
         patcher = mock.patch(
-            "fastapi_startkit.masoniteorm.seeds.Seeder",
+            "fastapi_startkit.masoniteorm.seeders.Seeder",
             FakeSeeder,
         )
         patcher.start()
