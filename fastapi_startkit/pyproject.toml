@@ -106,6 +106,7 @@ dev = [
     "langchain>=1.0.0",
     "langchain-core>=1.0.0",
     "pyright>=1.1.411",
+    "pytest-benchmark>=5.2.3",
 ]
 
 
@@ -135,6 +136,10 @@ pythonVersion = "3.12"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 norecursedirs = [".venv", "dist", "build", "__pycache__"]
+markers = [
+    "benchmark: performance benchmark, excluded by default (run with -m benchmark)",
+]
+addopts = "-m 'not benchmark'"
 
 [tool.coverage.run]
 source = ["src/fastapi_startkit"]
