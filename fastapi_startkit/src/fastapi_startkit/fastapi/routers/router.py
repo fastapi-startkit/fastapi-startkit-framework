@@ -66,38 +66,38 @@ class Router:
     def _add_route(
         self,
         path: str,
-        endpoint: Callable[..., Any],
+        action: Callable[..., Any],
         methods: List[str],
         **kwargs: Unpack[RouteOptions],
     ) -> None:
         self.router.add_api_route(
             path,
-            endpoint,
+            action,
             methods=methods,
             responses=kwargs.pop("responses", None) or {},  # type: ignore[misc]
             **kwargs,
         )
 
-    def get(self, path: str, endpoint: Callable[..., Any], **kwargs: Unpack[RouteOptions]) -> None:
-        self._add_route(path, endpoint, ["GET"], **kwargs)
+    def get(self, path: str, action: Callable[..., Any], **kwargs: Unpack[RouteOptions]) -> None:
+        self._add_route(path, action, ["GET"], **kwargs)
 
-    def post(self, path: str, endpoint: Callable[..., Any], **kwargs: Unpack[RouteOptions]) -> None:
-        self._add_route(path, endpoint, ["POST"], **kwargs)
+    def post(self, path: str, action: Callable[..., Any], **kwargs: Unpack[RouteOptions]) -> None:
+        self._add_route(path, action, ["POST"], **kwargs)
 
-    def put(self, path: str, endpoint: Callable[..., Any], **kwargs: Unpack[RouteOptions]) -> None:
-        self._add_route(path, endpoint, ["PUT"], **kwargs)
+    def put(self, path: str, action: Callable[..., Any], **kwargs: Unpack[RouteOptions]) -> None:
+        self._add_route(path, action, ["PUT"], **kwargs)
 
-    def patch(self, path: str, endpoint: Callable[..., Any], **kwargs: Unpack[RouteOptions]) -> None:
-        self._add_route(path, endpoint, ["PATCH"], **kwargs)
+    def patch(self, path: str, action: Callable[..., Any], **kwargs: Unpack[RouteOptions]) -> None:
+        self._add_route(path, action, ["PATCH"], **kwargs)
 
-    def delete(self, path: str, endpoint: Callable[..., Any], **kwargs: Unpack[RouteOptions]) -> None:
-        self._add_route(path, endpoint, ["DELETE"], **kwargs)
+    def delete(self, path: str, action: Callable[..., Any], **kwargs: Unpack[RouteOptions]) -> None:
+        self._add_route(path, action, ["DELETE"], **kwargs)
 
-    def head(self, path: str, endpoint: Callable[..., Any], **kwargs: Unpack[RouteOptions]) -> None:
-        self._add_route(path, endpoint, ["HEAD"], **kwargs)
+    def head(self, path: str, action: Callable[..., Any], **kwargs: Unpack[RouteOptions]) -> None:
+        self._add_route(path, action, ["HEAD"], **kwargs)
 
-    def options(self, path: str, endpoint: Callable[..., Any], **kwargs: Unpack[RouteOptions]) -> None:
-        self._add_route(path, endpoint, ["OPTIONS"], **kwargs)
+    def options(self, path: str, action: Callable[..., Any], **kwargs: Unpack[RouteOptions]) -> None:
+        self._add_route(path, action, ["OPTIONS"], **kwargs)
 
     def resource(
         self,
