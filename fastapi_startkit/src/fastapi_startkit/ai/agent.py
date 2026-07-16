@@ -225,7 +225,7 @@ class Agent:
     def _build_model(self, model: str | None = None, provider_options: dict | None = None) -> Any:
         from .model_builder import ModelBuilder  # noqa: PLC0415
 
-        return ModelBuilder(agent=self).build(model, provider_options)
+        return ModelBuilder(agent=self).get_model_for(model, provider_options)
 
     def _to_agent_response(self, result: Any) -> AgentResponse:
         messages = result.get("messages", []) if isinstance(result, dict) else []
