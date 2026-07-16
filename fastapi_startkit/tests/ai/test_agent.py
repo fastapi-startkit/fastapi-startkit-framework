@@ -7,7 +7,7 @@ from langchain_core.tools import tool
 
 from fastapi_startkit.ai import AIConfig, Document, fake_chat_model
 from fastapi_startkit.ai.agent import Agent
-from fastapi_startkit.ai.model_builder import ModelBuilder
+from fastapi_startkit.ai.model_builder import Ai
 from fastapi_startkit.ai.response import AgentResponse
 from fastapi_startkit.application import app
 
@@ -156,15 +156,15 @@ class TestAgent(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(chunks, ["Python Developer at Shopify"])
 
     def test_resolve_model_falls_back_to_lab_default(self):
-        self.assertEqual(ModelBuilder(Agent())._resolve_model(), "gemini-2.5-flash-lite")
+        self.assertEqual(Ai()._resolve_model(Agent()), "gemini-2.5-flash-lite")
 
         class AnthropicAgent(Agent):
             provider = "anthropic"
 
-        self.assertEqual(ModelBuilder(AnthropicAgent())._resolve_model(), "claude-sonnet-4-6")
+        self.assertEqual(Ai()._resolve_model(AnthropicAgent()), "claude-sonnet-4-6")
 
     def test_resolve_model_prefers_explicit_override(self):
-        self.assertEqual(ModelBuilder(Agent())._resolve_model("my-model"), "my-model")
+        self.assertEqual(Ai()._resolve_model(Agent(), "my-model"), "my-model")
 
     def test_instructions_lead_the_message_list(self):
         messages = JobAssistant()._build_messages("find me a job")
