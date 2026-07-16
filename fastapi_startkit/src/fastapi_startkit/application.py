@@ -1,9 +1,12 @@
 import os
 import shlex
+from enum import Enum
 from fastapi_startkit.foundation.app_provider import AppProvider
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
-from typing import Type, Callable, Any, List, TypeVar, Generic
+from typing import Type, Callable, Any, Dict, List, Sequence, TypeVar, Union, Generic
+
+from typing_extensions import TypedDict, Unpack
 
 from .config import AppConfig
 from .configuration.providers import ConfigurationProvider
@@ -11,8 +14,11 @@ from .container import Container
 from .environment.environment import Environment
 
 if TYPE_CHECKING:
-    from fastapi import FastAPI, APIRouter
+    from fastapi import FastAPI, APIRouter, params
+    from fastapi.routing import APIRoute
     from starlette.middleware.base import BaseHTTPMiddleware
+    from starlette.responses import Response
+    from starlette.routing import BaseRoute
 
 from fastapi_startkit.exceptions import ExceptionHandler
 
@@ -22,6 +28,20 @@ def app() -> "Container":
 
 
 TConfig = TypeVar("TConfig", bound=AppConfig)
+
+
+class IncludeRouterOptions(TypedDict, total=False):
+    """Keyword arguments accepted by `FastAPI.include_router()`."""
+
+    prefix: str
+    tags: Optional[List[Union[str, Enum]]]
+    dependencies: "Optional[Sequence[params.Depends]]"
+    responses: Optional[Dict[Union[int, str], Dict[str, Any]]]
+    deprecated: Optional[bool]
+    include_in_schema: bool
+    default_response_class: "Type[Response]"
+    callbacks: "Optional[List[BaseRoute]]"
+    generate_unique_id_function: "Callable[[APIRoute], str]"
 
 
 class Application(Container, Generic[TConfig]):
@@ -142,7 +162,7 @@ class Application(Container, Generic[TConfig]):
         return self._fastapi.trace(path, **kwargs)
 
     # Include routers
-    def include_router(self, router: "APIRouter", **kwargs):
+    def include_router(self, router: "APIRouter", **kwargs: Unpack[IncludeRouterOptions]) -> "Application[TConfig]":
         self.fastapi.include_router(router, **kwargs)
         return self
 
