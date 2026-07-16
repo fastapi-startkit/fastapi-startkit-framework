@@ -10,21 +10,22 @@ from .evals import TestJudgeAgent, TrajectoryEvaluator, TrajectoryMatchMode
 from .fakes import fake_chat_model
 from .image import Image, ImageResponse
 from .image_factory import ImageFactory
+from .model_builder import Ai
 from .providers.ai_provider import AIProvider
 from .response import AgentResponse, AgentSnapshot
-from .testing import AgentBinding, FakeAgent, NoFakeResponse, RecordingAgent
+from .testing import AgentBinding, AgentModelFake, RecordingAgent
 
 __all__ = [
     "Agent",
+    "Ai",
     "Middleware",
     "AgentBinding",
+    "AgentModelFake",
     "AgentResponse",
     "AgentSnapshot",
     "AIConfig",
     "AIProvider",
     "AnthropicConfig",
-    "FakeAgent",
-    "NoFakeResponse",
     "RecordingAgent",
     "Audio",
     "AudioResponse",

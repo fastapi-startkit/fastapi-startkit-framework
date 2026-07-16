@@ -1,11 +1,11 @@
-"""Tests for ModelBuilder's fake-model registry.
+"""Tests for Ai's fake-model registry.
 
-ModelBuilder.fake() swaps the chat model a given agent (by class name or
-instance) resolves to for a deterministic GenericFakeChatModel that replays
-a fixed list of message turns — no live LLM call, no network access.
-ModelBuilder(agent=...).get_model_for() is what Agent._build_model() calls:
-it returns the registered fake when one exists, otherwise it builds a real
-provider model exactly as ModelBuilder.build() always has.
+Ai.fake() swaps the chat model a given agent (by class name or instance)
+resolves to for a deterministic GenericFakeChatModel that replays a fixed
+list of message turns — no live LLM call, no network access.
+Ai().get_model_for(agent) is what Agent._build_model() calls: it returns
+the registered fake when one exists, otherwise it builds a real provider
+model exactly as Ai.build() always has.
 """
 
 import unittest
@@ -16,7 +16,7 @@ from langchain_core.messages import AIMessage, ToolCall
 from langchain_core.tools import tool
 
 from fastapi_startkit.ai.agent import Agent
-from fastapi_startkit.ai.model_builder import ModelBuilder
+from fastapi_startkit.ai.model_builder import Ai
 from fastapi_startkit.application import app
 
 
@@ -35,47 +35,61 @@ class SimpleAgent(Agent):
     pass
 
 
-class TestModelBuilderFakeBase(unittest.IsolatedAsyncioTestCase):
+class TestAiFakeBase(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         from fastapi_startkit.ai import AIConfig
 
         container = app()
         container.bind("ai", AIConfig())
         container.make("config").set("ai", AIConfig())
-        self.addCleanup(ModelBuilder.reset_fakes)
+        self.addCleanup(Ai.reset_fakes)
 
 
-class TestModelBuilderFakeRegistration(TestModelBuilderFakeBase):
+class TestAiFakeRegistration(TestAiFakeBase):
     def test_fake_registers_a_model_for_an_agent_class_name(self):
-        ModelBuilder.fake("SimpleAgent", [AIMessage(content="hi")])
+        Ai.fake("SimpleAgent", [AIMessage(content="hi")])
 
-        self.assertTrue(ModelBuilder.has_fake_model_for("SimpleAgent"))
+        self.assertTrue(Ai.has_fake_model_for("SimpleAgent"))
 
     def test_fake_accepts_an_agent_instance_keyed_by_its_class_name(self):
-        ModelBuilder.fake(SimpleAgent(), [AIMessage(content="hi")])
+        Ai.fake(SimpleAgent(), [AIMessage(content="hi")])
 
-        self.assertTrue(ModelBuilder.has_fake_model_for(SimpleAgent()))
-        self.assertTrue(ModelBuilder.has_fake_model_for("SimpleAgent"))
+        self.assertTrue(Ai.has_fake_model_for(SimpleAgent()))
+        self.assertTrue(Ai.has_fake_model_for("SimpleAgent"))
 
     def test_has_fake_model_for_is_false_when_nothing_registered(self):
-        self.assertFalse(ModelBuilder.has_fake_model_for("SimpleAgent"))
+        self.assertFalse(Ai.has_fake_model_for("SimpleAgent"))
 
     def test_fake_coerces_plain_strings_into_ai_messages(self):
-        model = ModelBuilder.fake("SimpleAgent", ["plain text reply"])
+        model = Ai.fake("SimpleAgent", ["plain text reply"])
 
         result = model.invoke([])
 
         self.assertEqual(result.content, "plain text reply")
 
     def test_fake_returns_the_registered_chat_model(self):
-        model = ModelBuilder.fake("SimpleAgent", [AIMessage(content="hi")])
+        model = Ai.fake("SimpleAgent", [AIMessage(content="hi")])
 
-        self.assertIs(ModelBuilder.get_fake_model_for("SimpleAgent"), model)
+        self.assertIs(Ai.get_fake_model_for("SimpleAgent"), model)
+
+    def test_forget_removes_a_single_registration(self):
+        Ai.fake("SimpleAgent", [AIMessage(content="hi")])
+        Ai.fake("JobAssistant", [AIMessage(content="hi")])
+
+        Ai.forget("SimpleAgent")
+
+        self.assertFalse(Ai.has_fake_model_for("SimpleAgent"))
+        self.assertTrue(Ai.has_fake_model_for("JobAssistant"))
+
+    def test_forget_is_a_no_op_when_nothing_registered(self):
+        Ai.forget("SimpleAgent")
+
+        self.assertFalse(Ai.has_fake_model_for("SimpleAgent"))
 
 
-class TestModelBuilderGetModelFor(TestModelBuilderFakeBase):
+class TestAiGetModelFor(TestAiFakeBase):
     def test_returns_registered_fake_without_building_a_real_model(self):
-        fake_model = ModelBuilder.fake("SimpleAgent", [AIMessage(content="faked")])
+        fake_model = Ai.fake("SimpleAgent", [AIMessage(content="faked")])
 
         def fail_if_called(*args, **kwargs):
             raise AssertionError("init_chat_model must not be called when a fake is registered")
@@ -84,7 +98,7 @@ class TestModelBuilderGetModelFor(TestModelBuilderFakeBase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
-        resolved = ModelBuilder(agent=SimpleAgent()).get_model_for()
+        resolved = Ai().get_model_for(SimpleAgent())
 
         self.assertIs(resolved, fake_model)
 
@@ -94,21 +108,21 @@ class TestModelBuilderGetModelFor(TestModelBuilderFakeBase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
-        resolved = ModelBuilder(agent=SimpleAgent()).get_model_for()
+        resolved = Ai().get_model_for(SimpleAgent())
 
         self.assertIs(resolved, sentinel)
 
 
-class TestAgentPromptUsesFakeModelEndToEnd(TestModelBuilderFakeBase):
+class TestAgentPromptUsesFakeModelEndToEnd(TestAiFakeBase):
     async def test_prompt_replays_the_registered_fake_model_reply(self):
-        ModelBuilder.fake("SimpleAgent", [AIMessage(content="faked via model builder")])
+        Ai.fake("SimpleAgent", [AIMessage(content="faked via ai")])
 
         result = await SimpleAgent().prompt("hi there")
 
-        self.assertEqual(result.content, "faked via model builder")
+        self.assertEqual(result.content, "faked via ai")
 
     async def test_prompt_runs_a_faked_tool_call_end_to_end(self):
-        ModelBuilder.fake(
+        Ai.fake(
             "JobAssistant",
             [
                 AIMessage(
@@ -123,6 +137,6 @@ class TestAgentPromptUsesFakeModelEndToEnd(TestModelBuilderFakeBase):
         self.assertEqual(result.content, "Python Developer at Shopify")
 
     async def test_registering_a_fake_does_not_affect_other_agent_classes(self):
-        ModelBuilder.fake("SimpleAgent", [AIMessage(content="only for SimpleAgent")])
+        Ai.fake("SimpleAgent", [AIMessage(content="only for SimpleAgent")])
 
-        self.assertFalse(ModelBuilder.has_fake_model_for("JobAssistant"))
+        self.assertFalse(Ai.has_fake_model_for("JobAssistant"))

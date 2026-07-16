@@ -5,7 +5,6 @@ import functools
 import hashlib
 import inspect
 import json
-import re
 import sys
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -18,21 +17,11 @@ if TYPE_CHECKING:
     from .document import Document
 
 
-class NoFakeResponse(LookupError):
-    pass
-
-
 def _matches(pattern: str, message: str) -> bool:
     pattern, message = pattern.lower(), message.lower()
     if any(ch in pattern for ch in "*?["):
         return fnmatch.fnmatch(message, pattern)
     return pattern in message
-
-
-def _reply_text(reply: Any) -> str:
-    if isinstance(reply, AgentResponse):
-        return reply.content
-    return getattr(reply, "content", None) or str(reply)
 
 
 class _Recorder:
@@ -65,33 +54,46 @@ def _joined(value: Any) -> str:
     return "".join(value) if isinstance(value, list) else value
 
 
-def _word_chunks(text: str) -> list[str]:
-    """Split text into word chunks (word + trailing whitespace) so a fake can
-    mimic a token stream. Loss-less: ``"".join(_word_chunks(t)) == t``."""
-    return re.findall(r"\S+\s*", text) or [text]
+class AgentModelFake:
+    """Registers a fixed, ordered list of replies as ``agent_cls``'s chat
+    model for the duration of a ``with`` block (or a decorated function).
 
+    Unlike the old pattern-matching stand-in, this swaps only the model —
+    ``prompt()``/``stream()`` still run the real message-building, pipeline,
+    and tool-execution path; see ``Ai.fake()``.
+    """
 
-class FakeAgent(_Recorder):
-    def __init__(self, responses: dict[str, Any] | None = None) -> None:
-        super().__init__()
-        self.responses = responses or {}
+    def __init__(self, agent_cls: type[Agent], responses: list) -> None:
+        self._agent_cls = agent_cls
+        self._responses = responses
 
-    def _resolve(self, message: str) -> str:
-        if not self.responses:
-            return ""
-        for pattern, reply in self.responses.items():
-            if _matches(pattern, message):
-                return _reply_text(reply)
-        raise NoFakeResponse(f"No fake response matched message: {message!r}")
+    def __enter__(self) -> None:
+        from .model_builder import Ai
 
-    async def prompt(self, message: str, attachments: list[Document] | None = None) -> AgentResponse:
-        self._record_call(message, attachments)
-        return AgentResponse(content=self._resolve(message))
+        Ai.fake(self._agent_cls.__name__, self._responses)
 
-    async def stream(self, message: str) -> AsyncIterator[str]:
-        self._record_call(message, None)
-        for chunk in _word_chunks(self._resolve(message)):
-            yield chunk
+    def __exit__(self, *_exc: Any) -> bool:
+        from .model_builder import Ai
+
+        Ai.forget(self._agent_cls.__name__)
+        return False
+
+    def __call__(self, func: Callable) -> Callable:
+        if inspect.iscoroutinefunction(func):
+
+            @functools.wraps(func)
+            async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+                with self:
+                    return await func(*args, **kwargs)
+
+            return async_wrapper
+
+        @functools.wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            with self:
+                return func(*args, **kwargs)
+
+        return wrapper
 
 
 class RecordingAgent(_Recorder):

@@ -233,7 +233,7 @@ class TestJudgeAgentWithAgentFakeOutput(unittest.TestCase):
 
     async def _fake_response(self) -> AgentResponse:
         agent = SimpleAgent()
-        with SimpleAgent.fake({"*weather*": AgentResponse(content="It is sunny in San Francisco.")}):
+        with SimpleAgent.fake(["It is sunny in San Francisco."]):
             return await agent.prompt("What is the weather in San Francisco?")
 
     def test_fake_agent_reply_matches_reference_trajectory_in_strict_mode(self):

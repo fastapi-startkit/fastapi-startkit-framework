@@ -1,9 +1,12 @@
 """Tests for Agent.fake() / Agent.record() and the assert_prompted/reset helpers.
 
-``Agent.fake()`` binds a canned stand-in into the container for the duration of a
-``with`` block. ``Agent.record()`` binds a record-and-replay stand-in: on a cassette
-miss it calls the real agent once and caches the response to disk; on a hit it
-replays from the cassette without calling the agent again.
+``Agent.fake()`` registers a fixed, ordered list of replies as a deterministic
+stand-in chat model (see ``Ai.fake()``) for the duration of a ``with`` block —
+each call to ``prompt()``/``stream()`` replays the next reply, going through
+the real message-building / pipeline / tool-execution path, only the model at
+the bottom is swapped. ``Agent.record()`` binds a record-and-replay stand-in:
+on a cassette miss it calls the real agent once and caches the response to
+disk; on a hit it replays from the cassette without calling the agent again.
 """
 
 import json
@@ -13,6 +16,7 @@ import unittest
 from unittest import mock
 
 from fastapi_startkit.ai.agent import Agent
+from fastapi_startkit.ai.model_builder import Ai
 from fastapi_startkit.ai.response import AgentResponse
 
 
@@ -21,92 +25,78 @@ class SimpleAgent(Agent):
 
 
 class TestAgentFake(unittest.IsolatedAsyncioTestCase):
-    async def test_fake_with_agent_response_returns_it(self):
+    def tearDown(self):
+        Ai.reset_fakes()
+
+    async def test_fake_replays_the_only_response(self):
         agent = SimpleAgent()
-        with SimpleAgent.fake({"*": AgentResponse(content="Hello world!")}):
+        with SimpleAgent.fake(["Hello world!"]):
             result = await agent.prompt("anything")
 
         self.assertEqual(result.content, "Hello world!")
 
-    async def test_fake_does_not_call_provider_run(self):
+    async def test_fake_does_not_call_provider_build(self):
+        import langchain.chat_models as chat_models
+
+        def fail_if_called(*args, **kwargs):
+            raise AssertionError("init_chat_model must not be called when a fake is registered")
+
+        patcher = mock.patch.object(chat_models, "init_chat_model", fail_if_called)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
         agent = SimpleAgent()
-        called = []
-
-        original_run = agent._run
-
-        async def patched_run(*args, **kwargs):
-            called.append(True)
-            return await original_run(*args, **kwargs)
-
-        agent._run = patched_run
-
-        with SimpleAgent.fake({"*": AgentResponse(content="faked")}):
+        with SimpleAgent.fake(["faked"]):
             await agent.prompt("hello")
 
-        self.assertEqual(called, [], "_run() must not be called when a fake matches")
-
-    async def test_fake_with_exact_pattern(self):
+    async def test_fake_replays_responses_in_order(self):
         agent = SimpleAgent()
-        with SimpleAgent.fake({"hello": AgentResponse(content="matched hello")}):
-            result = await agent.prompt("hello")
+        with SimpleAgent.fake(["first reply", "second reply"]):
+            first = await agent.prompt("call one")
+            second = await agent.prompt("call two")
 
-        self.assertEqual(result.content, "matched hello")
+        self.assertEqual(first.content, "first reply")
+        self.assertEqual(second.content, "second reply")
 
-    async def test_fake_glob_hello_wildcard(self):
+    async def test_fake_raises_once_responses_are_exhausted(self):
         agent = SimpleAgent()
-        with SimpleAgent.fake({"*hello*": AgentResponse(content="hi there")}):
-            result = await agent.prompt("say hello to me")
+        with SimpleAgent.fake(["only reply"]):
+            await agent.prompt("call one")
 
-        self.assertEqual(result.content, "hi there")
+            with self.assertRaises(RuntimeError):
+                await agent.prompt("call two")
 
-    async def test_fake_glob_analyze_wildcard(self):
-        agent = SimpleAgent()
-        with SimpleAgent.fake({"*analyze*": AgentResponse(content="analysis done")}):
-            result = await agent.prompt("please analyze this report")
+    async def test_fake_unregisters_after_the_block_exits(self):
+        with SimpleAgent.fake(["faked"]):
+            self.assertTrue(Ai.has_fake_model_for("SimpleAgent"))
 
-        self.assertEqual(result.content, "analysis done")
+        self.assertFalse(Ai.has_fake_model_for("SimpleAgent"))
 
-    async def test_fake_no_match_raises(self):
-        agent = SimpleAgent()
-        with SimpleAgent.fake({"*hello*": AgentResponse(content="hi")}):
-            with self.assertRaises(Exception):
-                await agent.prompt("goodbye")
+    async def test_fake_as_decorator(self):
+        @SimpleAgent.fake(["decorated reply"])
+        async def run():
+            return await SimpleAgent().prompt("call")
 
-    async def test_fake_glob_case_insensitive(self):
-        agent = SimpleAgent()
-        with SimpleAgent.fake({"*HELLO*": AgentResponse(content="case insensitive")}):
-            result = await agent.prompt("say hello please")
+        result = await run()
 
-        self.assertEqual(result.content, "case insensitive")
-
-    async def test_fake_first_matching_pattern_wins(self):
-        agent = SimpleAgent()
-        with SimpleAgent.fake(
-            {
-                "*hello*": AgentResponse(content="first match"),
-                "*hello world*": AgentResponse(content="second match"),
-            }
-        ):
-            result = await agent.prompt("hello world")
-
-        self.assertEqual(result.content, "first match")
+        self.assertEqual(result.content, "decorated reply")
 
     async def test_assert_prompted_passes_after_one_call(self):
         agent = SimpleAgent()
-        with SimpleAgent.fake({"*": AgentResponse(content="ok")}):
+        with SimpleAgent.fake(["ok"]):
             await agent.prompt("first")
             agent.assert_prompted()
 
     async def test_assert_prompted_times_2_passes_after_exactly_2_calls(self):
         agent = SimpleAgent()
-        with SimpleAgent.fake({"*": AgentResponse(content="ok")}):
+        with SimpleAgent.fake(["ok", "ok"]):
             await agent.prompt("first")
             await agent.prompt("second")
             agent.assert_prompted(times=2)
 
     async def test_assert_prompted_times_fails_when_count_mismatch(self):
         agent = SimpleAgent()
-        with SimpleAgent.fake({"*": AgentResponse(content="ok")}):
+        with SimpleAgent.fake(["ok"]):
             await agent.prompt("only once")
 
             with self.assertRaises(AssertionError):
@@ -128,7 +118,7 @@ class TestAgentFake(unittest.IsolatedAsyncioTestCase):
 
     async def test_assert_not_prompted_fails_after_one_call(self):
         agent = SimpleAgent()
-        with SimpleAgent.fake({"*": AgentResponse(content="ok")}):
+        with SimpleAgent.fake(["ok"]):
             await agent.prompt("a prompt")
 
             with self.assertRaises(AssertionError):
@@ -136,7 +126,7 @@ class TestAgentFake(unittest.IsolatedAsyncioTestCase):
 
     async def test_reset_clears_call_log(self):
         agent = SimpleAgent()
-        with SimpleAgent.fake({"*": AgentResponse(content="ok")}):
+        with SimpleAgent.fake(["ok"]):
             await agent.prompt("first")
             self.assertEqual(len(agent._call_log), 1)
 
@@ -150,7 +140,7 @@ class TestAgentFake(unittest.IsolatedAsyncioTestCase):
 
     async def test_assert_not_prompted_passes_after_reset(self):
         agent = SimpleAgent()
-        with SimpleAgent.fake({"*": AgentResponse(content="ok")}):
+        with SimpleAgent.fake(["ok"]):
             await agent.prompt("call before reset")
 
         agent.reset()
@@ -159,33 +149,31 @@ class TestAgentFake(unittest.IsolatedAsyncioTestCase):
     async def test_fake_rebinding_overrides_previous(self):
         agent = SimpleAgent()
 
-        with SimpleAgent.fake({"*": AgentResponse(content="first fake")}):
+        with SimpleAgent.fake(["first fake"]):
             self.assertEqual((await agent.prompt("call")).content, "first fake")
 
-        with SimpleAgent.fake({"*": AgentResponse(content="second fake")}):
+        with SimpleAgent.fake(["second fake"]):
             self.assertEqual((await agent.prompt("call again")).content, "second fake")
 
     async def test_stream_returns_fake_response(self):
         agent = SimpleAgent()
-        with SimpleAgent.fake({"*hello*": AgentResponse(content="Faked stream!")}):
+        with SimpleAgent.fake(["Faked stream!"]):
             chunks = [chunk async for chunk in agent.stream("hello world")]
 
-        # A faked stream is split into word chunks but rejoins to the value.
         self.assertEqual("".join(chunks), "Faked stream!")
         self.assertGreater(len(chunks), 1)
         agent.assert_prompted(times=1)
 
-    async def test_fake_stream_splits_value_into_word_chunks(self):
+    async def test_stream_replays_the_registered_text_exactly(self):
         agent = SimpleAgent()
-        with SimpleAgent.fake({"*": "Hello there, friend"}):
+        with SimpleAgent.fake(["Hello there, friend"]):
             chunks = [chunk async for chunk in agent.stream("hi")]
 
-        self.assertEqual(chunks, ["Hello ", "there, ", "friend"])
         self.assertEqual("".join(chunks), "Hello there, friend")
 
     async def test_stream_records_one_call_not_two(self):
         agent = SimpleAgent()
-        with SimpleAgent.fake({"*": AgentResponse(content="x")}):
+        with SimpleAgent.fake(["x"]):
             [chunk async for chunk in agent.stream("once")]
 
         # Streaming must log exactly one prompt — not one for stream + one for prompt.

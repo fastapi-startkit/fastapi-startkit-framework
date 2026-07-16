@@ -8,19 +8,19 @@ if TYPE_CHECKING:
     from .agent import Agent
 
 
-class ModelBuilder:
+class Ai:
     # Keyed by agent class name (see _key()) so a fake can be registered
     # before any instance of that agent exists. get_model_for() consults
     # this registry, so a faked agent runs through the same message-building
     # / pipeline / tool-execution path as a real one — only the model at the
     # bottom is swapped for a deterministic stand-in.
-    fake_models: dict[str, Any] = {}
-    # Reserved for response-level fakes (mirroring fake_models, but for
+    fake_agent_models: dict[str, Any] = {}
+    # Reserved for response-level fakes (mirroring fake_agent_models, but for
     # cached final replies rather than whole chat models). Not yet wired up.
-    fake_responses: dict[str, Any] = {}
+    fake_agent_responses: dict[str, Any] = {}
 
-    def __init__(self, agent: "Agent") -> None:
-        self._agent = agent
+    def __init__(self) -> None:
+        pass
 
     @staticmethod
     def _key(agent: "Agent | str") -> str:
@@ -38,59 +38,63 @@ class ModelBuilder:
 
         turns = [message if hasattr(message, "content") else AIMessage(content=str(message)) for message in messages]
         model = GenericFakeChatModel(messages=iter(turns))
-        cls.fake_models[cls._key(agent)] = model
+        cls.fake_agent_models[cls._key(agent)] = model
         return model
 
     @classmethod
     def has_fake_model_for(cls, agent: "Agent | str") -> bool:
-        return cls._key(agent) in cls.fake_models
+        return cls._key(agent) in cls.fake_agent_models
 
     @classmethod
     def get_fake_model_for(cls, agent: "Agent | str") -> Any:
-        return cls.fake_models[cls._key(agent)]
+        return cls.fake_agent_models[cls._key(agent)]
+
+    @classmethod
+    def forget(cls, agent: "Agent | str") -> None:
+        cls.fake_agent_models.pop(cls._key(agent), None)
 
     @classmethod
     def reset_fakes(cls) -> None:
-        cls.fake_models.clear()
-        cls.fake_responses.clear()
+        cls.fake_agent_models.clear()
+        cls.fake_agent_responses.clear()
 
-    def get_model_for(self, model: str | None = None, provider_options: dict | None = None) -> Any:
+    def get_model_for(self, agent: "Agent", model: str | None = None, provider_options: dict | None = None) -> Any:
         """Resolve the model to run: a registered fake if one exists for
-        this builder's agent, otherwise a freshly-built provider model."""
-        if self.has_fake_model_for(self._agent):
-            return self.get_fake_model_for(self._agent)
-        return self.build(model, provider_options)
+        ``agent``, otherwise a freshly-built provider model."""
+        if self.has_fake_model_for(agent):
+            return self.get_fake_model_for(agent)
+        return self.build(agent, model, provider_options)
 
-    def build(self, model: str | None = None, provider_options: dict | None = None) -> Any:
+    def build(self, agent: "Agent", model: str | None = None, provider_options: dict | None = None) -> Any:
         from langchain.chat_models import init_chat_model  # noqa: PLC0415
 
-        lab = Lab.get_provider(self._agent.provider)
+        lab = Lab.get_provider(agent.provider)
         kwargs: dict[str, Any] = {"model_provider": lab.get_provider_key()}
 
         api_key = lab.get_api_key()
         if api_key:
             kwargs["api_key"] = api_key
-        if self._agent.max_tokens:
-            kwargs["max_tokens"] = self._agent.max_tokens
-        if self._agent.top_p != 1.0:
-            kwargs["top_p"] = self._agent.top_p
-        if self._agent.timeout:
-            kwargs["timeout"] = self._agent.timeout
+        if agent.max_tokens:
+            kwargs["max_tokens"] = agent.max_tokens
+        if agent.top_p != 1.0:
+            kwargs["top_p"] = agent.top_p
+        if agent.timeout:
+            kwargs["timeout"] = agent.timeout
 
-        kwargs.update(self._resolve_provider_options(provider_options))
+        kwargs.update(self._resolve_provider_options(agent, provider_options))
 
-        chat_model = init_chat_model(self._resolve_model(model), **kwargs)
+        chat_model = init_chat_model(self._resolve_model(agent, model), **kwargs)
 
-        tools = list(self._agent.tools())
+        tools = list(agent.tools())
         return chat_model.bind_tools(tools) if tools else chat_model
 
-    def _resolve_model(self, override: str | None = None) -> str:
-        return Lab.get_provider(self._agent.provider).get_model(override or self._agent.model or None)
+    def _resolve_model(self, agent: "Agent", override: str | None = None) -> str:
+        return Lab.get_provider(agent.provider).get_model(override or agent.model or None)
 
-    def _resolve_provider_options(self, override: dict | None = None) -> dict:
-        options = dict(self._agent.provider_options().get(self._agent.provider, {}))
+    def _resolve_provider_options(self, agent: "Agent", override: dict | None = None) -> dict:
+        options = dict(agent.provider_options().get(agent.provider, {}))
         if override:
-            provider_specific = override.get(self._agent.provider, override)
+            provider_specific = override.get(agent.provider, override)
             if isinstance(provider_specific, dict):
                 options.update(provider_specific)
         return options
