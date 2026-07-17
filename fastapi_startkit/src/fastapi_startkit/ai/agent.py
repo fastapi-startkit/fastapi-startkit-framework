@@ -73,12 +73,8 @@ class Agent:
 
         swapped = self._faked()
         if swapped is not None:
-            if hasattr(swapped, "stream"):
-                async for chunk in swapped.stream(message):
-                    yield chunk
-            else:
-                response = await swapped.prompt(message)
-                yield response.content
+            async for chunk in swapped.stream(message):
+                yield chunk
             return
 
         async for chunk in self._stream(message, model=model, provider_options=provider_options):
