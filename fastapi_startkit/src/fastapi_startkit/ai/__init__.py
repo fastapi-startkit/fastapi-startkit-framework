@@ -11,20 +11,18 @@ from .image import Image, ImageResponse
 from .image_factory import ImageFactory
 from .providers.ai_provider import AIProvider
 from .response import AgentResponse, AgentSnapshot
-from .testing import AgentBinding, FakeAgent, NoFakeResponse, RecordingAgent
+from .testing import AgentFake, AgentRecordFake
 
 __all__ = [
     "Agent",
     "Middleware",
-    "AgentBinding",
+    "AgentFake",
+    "AgentRecordFake",
     "AgentResponse",
     "AgentSnapshot",
     "AIConfig",
     "AIProvider",
     "AnthropicConfig",
-    "FakeAgent",
-    "NoFakeResponse",
-    "RecordingAgent",
     "Audio",
     "AudioResponse",
     "AudioFactory",

@@ -9,8 +9,27 @@ if TYPE_CHECKING:
 
 
 class ModelBuilder:
+    _fakes: dict[type, Any] = {}
+
     def __init__(self, agent: "Agent") -> None:
         self._agent = agent
+
+    @classmethod
+    def register_fake(cls, agent_cls: type, model: Any) -> None:
+        cls._fakes[agent_cls] = model
+
+    @classmethod
+    def clear_fake(cls, agent_cls: type) -> None:
+        cls._fakes.pop(agent_cls, None)
+
+    def has_fake(self) -> bool:
+        return type(self._agent) in self._fakes
+
+    def get_model_for(self, model: str | None = None, provider_options: dict | None = None) -> Any:
+        double = self._fakes.get(type(self._agent))
+        if double is not None:
+            return double
+        return self.build(model, provider_options)
 
     def build(self, model: str | None = None, provider_options: dict | None = None) -> Any:
         from langchain.chat_models import init_chat_model  # noqa: PLC0415
