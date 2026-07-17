@@ -188,27 +188,37 @@ class Agent:
 
         return messages
 
-    def _build_model(self, model: str | None = None, provider_options: dict | None = None) -> Any:
+    def _build_model(
+        self, model: str | None = None, provider_options: dict | None = None, structured: bool = True
+    ) -> Any:
         from .ai import Ai  # noqa: PLC0415
 
-        return Ai().get_model_for(self, model, provider_options)
+        return Ai().get_model_for(self, model, provider_options, structured)
 
     def _to_agent_response(self, result: Any) -> AgentResponse:
+        parsed = None
+        structured = isinstance(result, dict) and "parsed" in result and "raw" in result
+        if structured:
+            parsed = result.get("parsed")
+            result = result.get("raw")
+
         messages = result.get("messages", []) if isinstance(result, dict) else []
         final = messages[-1] if messages else result
 
         content = getattr(final, "content", "")
         if not isinstance(content, str):
             content = str(content)
+        if structured and not content and hasattr(parsed, "model_dump_json"):
+            content = parsed.model_dump_json()
 
-        tool_calls = list(getattr(final, "tool_calls", None) or [])
+        tool_calls = [] if structured else list(getattr(final, "tool_calls", None) or [])
 
         usage: dict[str, Any] = {}
         meta = getattr(final, "usage_metadata", None)
         if meta:
             usage = {"input": meta.get("input_tokens", 0), "output": meta.get("output_tokens", 0)}
 
-        return AgentResponse(content=content, tool_calls=tool_calls, usage=usage, raw=result)
+        return AgentResponse(content=content, tool_calls=tool_calls, usage=usage, raw=result, parsed=parsed)
 
     def _apply_schema(self, response: AgentResponse) -> AgentResponse:
         schema = self.schema()
@@ -253,7 +263,7 @@ class Agent:
         from .runner import StreamRunner  # noqa: PLC0415
 
         messages = self._build_messages(message)
-        chat_model = self._build_model(model, provider_options)
+        chat_model = self._build_model(model, provider_options, structured=False)
         chain = list(self.middleware())
 
         def core(m: Any) -> Response:
