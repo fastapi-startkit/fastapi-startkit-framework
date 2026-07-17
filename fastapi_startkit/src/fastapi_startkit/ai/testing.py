@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import fnmatch
 import functools
 import hashlib
@@ -117,10 +116,10 @@ class RecordingAgent(_Recorder):
     """Bound as ``agent`` by ``with Agent.record(cassette) as agent:``.
 
     Fluent testing handle around a record-and-replay session: ``prompt()``
-    is synchronous (wraps the real, async agent call) and each call mutates
-    the handle's "current turn" state, which the ``assert_*`` methods judge
-    against — mirroring how a browser-testing ``page`` object exposes
-    assertions against the current page state.
+    is async (it's the same real agent call underneath, just cached) and
+    each call mutates the handle's "current turn" state, which the
+    ``assert_*`` methods judge against — mirroring how a browser-testing
+    ``page`` object exposes assertions against the current page state.
 
     On a cassette miss, the real agent is called once and the response is
     cached to disk (keyed by the conversation history so far, plus the new
@@ -186,25 +185,21 @@ class RecordingAgent(_Recorder):
             turn["tool_calls"] = response.tool_calls
         self._transcript.append(turn)
 
-    async def _prompt_async(self, message: str, attachments: list[Document] | None = None) -> AgentResponse:
+    async def prompt(self, message: str, *, attachments: list[Document] | None = None) -> AgentResponse:
+        """Run (or replay) one turn and make it the "current" response that
+        assert_*() methods judge."""
         self._record_call(message, attachments)
         cassette, store = self._load()
         key = self._key(message, attachments)
+        start = time.monotonic()
         if key in store:
             response = self._response_from_cache(store[key])
         else:
             response = await self._real._run(message, attachments=attachments)
             self._save(cassette, store, key, self._cache_prompt_value(response))
-        self._remember_turn(message, response)
-        return response
-
-    def prompt(self, message: str, *, attachments: list[Document] | None = None) -> AgentResponse:
-        """Synchronous fluent entry point: run (or replay) one turn and make
-        it the "current" response that assert_*() methods judge."""
-        start = time.monotonic()
-        response = asyncio.run(self._prompt_async(message, attachments))
         self.last_elapsed = time.monotonic() - start
         self.last_response = response
+        self._remember_turn(message, response)
         return response
 
     async def stream(self, message: str) -> AsyncIterator[str]:

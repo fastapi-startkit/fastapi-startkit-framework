@@ -51,7 +51,7 @@ class Agent:
     ) -> AgentResponse:
         stand_in = self._faked()
         if stand_in is not None:
-            response = await stand_in._prompt_async(message, attachments=attachments)
+            response = await stand_in.prompt(message, attachments=attachments)
             self._log_call("prompt", message)
             return self._apply_schema(response)
 
