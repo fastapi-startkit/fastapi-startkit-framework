@@ -16,7 +16,7 @@ import unittest
 from unittest import mock
 
 from fastapi_startkit.ai.agent import Agent
-from fastapi_startkit.ai.model_builder import Ai
+from fastapi_startkit.ai.ai import Ai
 from fastapi_startkit.ai.response import AgentResponse
 
 
@@ -204,7 +204,8 @@ class TestAgentRecord(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(calls, ["hello"])
             self.assertTrue(os.path.exists(cassette))
             with open(cassette) as f:
-                self.assertIn("recorded reply", json.load(f).values())
+                store = json.load(f)
+            self.assertTrue(any(v.get("content") == "recorded reply" for v in store.values()))
 
     async def test_second_run_replays_without_calling_run(self):
         calls = self.setup_agent("recorded reply")

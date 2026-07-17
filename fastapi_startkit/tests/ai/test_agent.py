@@ -7,7 +7,7 @@ from langchain_core.tools import tool
 
 from fastapi_startkit.ai import AIConfig, Document, fake_chat_model
 from fastapi_startkit.ai.agent import Agent
-from fastapi_startkit.ai.model_builder import Ai
+from fastapi_startkit.ai.ai import Ai
 from fastapi_startkit.ai.response import AgentResponse
 from fastapi_startkit.application import app
 

@@ -73,12 +73,8 @@ class Agent:
 
         swapped = self._faked()
         if swapped is not None:
-            if hasattr(swapped, "stream"):
-                async for chunk in swapped.stream(message):
-                    yield chunk
-            else:
-                response = await swapped.prompt(message)
-                yield response.content
+            async for chunk in swapped.stream(message):
+                yield chunk
             return
 
         async for chunk in self._stream(message, model=model, provider_options=provider_options):
@@ -91,10 +87,10 @@ class Agent:
         return AgentModelFake(cls, responses)
 
     @classmethod
-    def record(cls, cassette: str | None = None) -> "AgentBinding":
+    def record(cls, cassette: str | None = None, messages: list | None = None) -> "AgentBinding":
         from .testing import AgentBinding, RecordingAgent
 
-        return AgentBinding(cls, RecordingAgent(cls(), cassette))
+        return AgentBinding(cls, RecordingAgent(cls(), cassette, messages))
 
     @classmethod
     def _binding(cls) -> Any:
@@ -193,7 +189,7 @@ class Agent:
         return messages
 
     def _build_model(self, model: str | None = None, provider_options: dict | None = None) -> Any:
-        from .model_builder import Ai  # noqa: PLC0415
+        from .ai import Ai  # noqa: PLC0415
 
         return Ai().get_model_for(self, model, provider_options)
 

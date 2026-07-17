@@ -6,14 +6,13 @@ from .config.config import AnthropicConfig, ElevenLabsConfig, GoogleConfig, Open
 from .config.ai import AIConfig
 from .decorators import max_steps, max_tokens, model, provider, timeout, top_p
 from .document import Document
-from .evals import TestJudgeAgent, TrajectoryEvaluator, TrajectoryMatchMode
 from .fakes import fake_chat_model
 from .image import Image, ImageResponse
 from .image_factory import ImageFactory
-from .model_builder import Ai
+from .ai import Ai
 from .providers.ai_provider import AIProvider
 from .response import AgentResponse, AgentSnapshot
-from .testing import AgentBinding, AgentModelFake, RecordingAgent
+from .testing import AgentBinding, AgentModelFake, RecordingAgent, ToolCallView
 
 __all__ = [
     "Agent",
@@ -27,6 +26,7 @@ __all__ = [
     "AIProvider",
     "AnthropicConfig",
     "RecordingAgent",
+    "ToolCallView",
     "Audio",
     "AudioResponse",
     "AudioFactory",
@@ -38,9 +38,6 @@ __all__ = [
     "ImageFactory",
     "ImageResponse",
     "OpenAIConfig",
-    "TestJudgeAgent",
-    "TrajectoryEvaluator",
-    "TrajectoryMatchMode",
     "max_steps",
     "max_tokens",
     "model",
