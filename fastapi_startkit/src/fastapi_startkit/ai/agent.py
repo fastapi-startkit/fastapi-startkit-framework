@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, AsyncIterator, Callable, Optional, Type
 from .document import Document
 from .response import AgentResponse, AgentSnapshot
 from .testing import AgentBinding
+from .transport import InlineFakeTransport, LiveTransport, StandInTransport, Transport
 
 if TYPE_CHECKING:
     from langchain_core.tools import BaseTool
@@ -49,31 +50,12 @@ class Agent:
         attachments: list[Document] | None = None,
         provider_options: dict | None = None,
     ) -> AgentResponse:
-        stand_in = self._faked()
-        if stand_in is not None:
-            response = await stand_in.prompt(message, attachments=attachments)
-            self._log_call("prompt", message)
-            return self._apply_schema(response)
-
-        _run_kwargs = dict(
+        response = await self._transport(message).prompt(
+            message,
             model=model,
             attachments=attachments,
             provider_options=provider_options,
         )
-
-        match = self._match_fake(message)
-        if match is not None:
-            if isinstance(match, AgentSnapshot):
-                response = await match.resolve(self, message, **_run_kwargs)
-            else:
-                response = match
-            self._log_call("prompt", message)
-            return self._apply_schema(response)
-
-        messages = self._build_messages(message, attachments)
-        chat_model = self._build_model(model, provider_options)
-
-        response = await self._run_pipeline(chat_model, messages)
         self._log_call("prompt", message)
         return self._apply_schema(response)
 
@@ -85,26 +67,11 @@ class Agent:
         provider_options: dict | None = None,
     ) -> AsyncIterator[str]:
         self._log_call("stream", message)
-
-        swapped = self._faked()
-        if swapped is not None:
-            if hasattr(swapped, "stream"):
-                async for chunk in swapped.stream(message):
-                    yield chunk
-            else:
-                response = await swapped.prompt(message)
-                yield response.content
-            return
-
-        fake = self._match_fake(message)
-        if fake is not None:
-            if isinstance(fake, AgentSnapshot):
-                response = await fake.resolve(self, message)
-            else:
-                response = fake
-            yield response.content
-            return
-        async for chunk in self._stream(message, model=model, provider_options=provider_options):
+        async for chunk in self._transport(message).stream(
+            message,
+            model=model,
+            provider_options=provider_options,
+        ):
             yield chunk
 
     @classmethod
@@ -134,6 +101,17 @@ class Agent:
     def _faked(self) -> Any:
         binding = type(self)._binding()
         return binding if binding is not self else None
+
+    def _transport(self, message: str) -> Transport:
+        stand_in = self._faked()
+        if stand_in is not None:
+            return StandInTransport(self, stand_in)
+
+        match = self._match_fake(message)
+        if match is not None:
+            return InlineFakeTransport(self, match)
+
+        return LiveTransport(self)
 
     def assert_prompted(self, times: int | None = None) -> None:
         calls = [c for c in self._call_log if c["method"] in ("prompt", "stream")]
