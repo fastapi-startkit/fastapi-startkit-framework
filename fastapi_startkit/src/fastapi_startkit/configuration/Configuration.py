@@ -1,5 +1,5 @@
 from fastapi_startkit.loader import Loader
-from ..utils.structures import data
+from ..support.structures import data
 from ..exceptions import InvalidConfigurationSetup
 
 

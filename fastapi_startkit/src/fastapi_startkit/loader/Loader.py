@@ -4,7 +4,7 @@ import inspect
 import pkgutil
 
 from ..exceptions import LoaderNotFound
-from ..utils.structures import load
+from ..support.structures import load
 
 
 def parameters_filter(obj_name, obj):
