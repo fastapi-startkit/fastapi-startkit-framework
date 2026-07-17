@@ -6,7 +6,7 @@ from unittest import mock
 from pydantic import BaseModel
 
 from fastapi_startkit.ai.agent import Agent
-from fastapi_startkit.ai.model_builder import Ai
+from fastapi_startkit.ai.ai import Ai
 from fastapi_startkit.ai.response import AgentResponse
 
 

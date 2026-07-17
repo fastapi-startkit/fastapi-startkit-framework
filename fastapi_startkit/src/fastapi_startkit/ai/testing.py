@@ -68,12 +68,12 @@ class AgentModelFake:
         self._responses = responses
 
     def __enter__(self) -> None:
-        from .model_builder import Ai
+        from .ai import Ai
 
         Ai.fake(self._agent_cls.__name__, self._responses)
 
     def __exit__(self, *_exc: Any) -> bool:
-        from .model_builder import Ai
+        from .ai import Ai
 
         Ai.forget(self._agent_cls.__name__)
         return False

@@ -10,7 +10,7 @@ from .evals import TestJudgeAgent, TrajectoryEvaluator, TrajectoryMatchMode
 from .fakes import fake_chat_model
 from .image import Image, ImageResponse
 from .image_factory import ImageFactory
-from .model_builder import Ai
+from .ai import Ai
 from .providers.ai_provider import AIProvider
 from .response import AgentResponse, AgentSnapshot
 from .testing import AgentBinding, AgentModelFake, RecordingAgent

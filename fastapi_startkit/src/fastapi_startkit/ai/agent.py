@@ -193,7 +193,7 @@ class Agent:
         return messages
 
     def _build_model(self, model: str | None = None, provider_options: dict | None = None) -> Any:
-        from .model_builder import Ai  # noqa: PLC0415
+        from .ai import Ai  # noqa: PLC0415
 
         return Ai().get_model_for(self, model, provider_options)
 
