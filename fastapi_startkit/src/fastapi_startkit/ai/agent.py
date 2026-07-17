@@ -51,7 +51,7 @@ class Agent:
     ) -> AgentResponse:
         stand_in = self._faked()
         if stand_in is not None:
-            response = await stand_in.prompt(message, attachments=attachments)
+            response = await stand_in._prompt_async(message, attachments=attachments)
             self._log_call("prompt", message)
             return self._apply_schema(response)
 
@@ -91,10 +91,10 @@ class Agent:
         return AgentModelFake(cls, responses)
 
     @classmethod
-    def record(cls, cassette: str | None = None) -> "AgentBinding":
+    def record(cls, cassette: str | None = None, messages: list | None = None) -> "AgentBinding":
         from .testing import AgentBinding, RecordingAgent
 
-        return AgentBinding(cls, RecordingAgent(cls(), cassette))
+        return AgentBinding(cls, RecordingAgent(cls(), cassette, messages))
 
     @classmethod
     def _binding(cls) -> Any:
