@@ -271,7 +271,10 @@ class RecordingAgent(_Recorder):
     async def _judge_live(self, model: str, expectation: str, content: str, provider: str | None = None) -> dict:
         from .judge import JudgeAgent  # noqa: PLC0415
 
-        return await JudgeAgent(model=model, provider=provider).judge(expectation, content)
+        judge = JudgeAgent()
+        judge.model = model
+        judge.provider = provider
+        return await judge.judge(expectation, content)
 
 
 class AgentBinding:

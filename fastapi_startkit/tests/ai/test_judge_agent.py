@@ -20,7 +20,8 @@ class TestJudgeAgent(unittest.IsolatedAsyncioTestCase):
     async def test_judge_parses_a_passing_verdict_from_the_model_response(self):
         verdict = '{"passed": true, "reasoning": "Greets the user politely."}'
         with JudgeAgent.fake([verdict]):
-            judge = JudgeAgent(model="gpt-3.5-turbo")
+            judge = JudgeAgent()
+            judge.model = "gpt-3.5-turbo"
             result = await judge.judge("The llm should respond with greetings", "Hello there!")
 
         self.assertEqual(result, {"passed": True, "reasoning": "Greets the user politely."})
@@ -28,7 +29,8 @@ class TestJudgeAgent(unittest.IsolatedAsyncioTestCase):
     async def test_judge_parses_a_failing_verdict(self):
         verdict = '{"passed": false, "reasoning": "Not a greeting."}'
         with JudgeAgent.fake([verdict]):
-            judge = JudgeAgent(model="gpt-3.5-turbo")
+            judge = JudgeAgent()
+            judge.model = "gpt-3.5-turbo"
             result = await judge.judge("The llm should respond with greetings", "Completely unrelated")
 
         self.assertFalse(result["passed"])
@@ -36,7 +38,8 @@ class TestJudgeAgent(unittest.IsolatedAsyncioTestCase):
     async def test_judge_tolerates_prose_around_the_json_block(self):
         verdict = 'Sure! Here is the verdict:\n{"passed": true, "reasoning": "ok"}\nHope that helps.'
         with JudgeAgent.fake([verdict]):
-            judge = JudgeAgent(model="gpt-3.5-turbo")
+            judge = JudgeAgent()
+            judge.model = "gpt-3.5-turbo"
             result = await judge.judge("greet", "Hello!")
 
         self.assertTrue(result["passed"])
@@ -47,13 +50,18 @@ class TestJudgeAgent(unittest.IsolatedAsyncioTestCase):
         self.assertIn("The llm should respond with greetings", prompt)
         self.assertIn("Hello there!", prompt)
 
-    async def test_model_and_provider_are_set_from_constructor(self):
-        judge = JudgeAgent(model="gpt-4o-mini", provider="openai")
+    def test_model_and_provider_are_plain_agent_attributes(self):
+        """No custom constructor — set like any other Agent's model/provider."""
+        judge = JudgeAgent()
+        judge.model = "gpt-4o-mini"
+        judge.provider = "openai"
+
         self.assertEqual(judge.model, "gpt-4o-mini")
         self.assertEqual(judge.provider, "openai")
 
-    async def test_constructor_args_are_optional(self):
+    def test_model_and_provider_default_to_agent_defaults(self):
         judge = JudgeAgent()
+
         self.assertIsNone(judge.model)
         self.assertIsNone(judge.provider)
 

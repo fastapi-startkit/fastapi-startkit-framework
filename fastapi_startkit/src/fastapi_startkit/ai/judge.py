@@ -9,18 +9,12 @@ from .agent import Agent
 class JudgeAgent(Agent):
     """Grades a response against a natural-language expectation.
 
-    Just an ``Agent`` — the verdict call goes through the same model
-    resolution, provider handling, and pipeline as any other agent, so it's
-    fakeable via ``JudgeAgent.fake()`` and replayable via
-    ``JudgeAgent.record()`` instead of hand-rolling a separate langchain call.
+    Just an ``Agent`` — set ``.model``/``.provider`` like any other agent
+    and the verdict call goes through the same model resolution, provider
+    handling, and pipeline as any other agent, so it's fakeable via
+    ``JudgeAgent.fake()`` and replayable via ``JudgeAgent.record()`` instead
+    of hand-rolling a separate langchain call.
     """
-
-    def __init__(self, model: str | None = None, provider: str | None = None) -> None:
-        super().__init__()
-        if model is not None:
-            self.model = model
-        if provider is not None:
-            self.provider = provider
 
     async def judge(self, expectation: str, content: str) -> dict:
         response = await self.prompt(self._build_prompt(expectation, content))
