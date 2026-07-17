@@ -21,11 +21,6 @@ class Ai:
 
     @classmethod
     def fake(cls, agent: "Agent | str", messages: list) -> Any:
-        """Register a deterministic stand-in chat model for ``agent``.
-
-        Replays ``messages`` in order via a GenericFakeChatModel — no live
-        LLM call. Plain strings are coerced into ``AIMessage(content=...)``.
-        """
         from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
         from langchain_core.messages import AIMessage
 
@@ -51,14 +46,24 @@ class Ai:
         cls.fake_agent_models.clear()
         cls.fake_agent_responses.clear()
 
-    def get_model_for(self, agent: "Agent", model: str | None = None, provider_options: dict | None = None) -> Any:
-        """Resolve the model to run: a registered fake if one exists for
-        ``agent``, otherwise a freshly-built provider model."""
+    def get_model_for(
+        self,
+        agent: "Agent",
+        model: str | None = None,
+        provider_options: dict | None = None,
+        structured: bool = True,
+    ) -> Any:
         if self.has_fake_model_for(agent):
             return self.get_fake_model_for(agent)
-        return self.build(agent, model, provider_options)
+        return self.build(agent, model, provider_options, structured)
 
-    def build(self, agent: "Agent", model: str | None = None, provider_options: dict | None = None) -> Any:
+    def build(
+        self,
+        agent: "Agent",
+        model: str | None = None,
+        provider_options: dict | None = None,
+        structured: bool = True,
+    ) -> Any:
         from langchain.chat_models import init_chat_model  # noqa: PLC0415
 
         lab = Lab.get_provider(agent.provider)
@@ -79,7 +84,13 @@ class Ai:
         chat_model = init_chat_model(self._resolve_model(agent, model), **kwargs)
 
         tools = list(agent.tools())
-        return chat_model.bind_tools(tools) if tools else chat_model
+        chat_model = chat_model.bind_tools(tools) if tools else chat_model
+
+        schema = agent.schema()
+        if structured and schema is not None:
+            chat_model = chat_model.with_structured_output(schema, include_raw=True)
+
+        return chat_model
 
     def _resolve_model(self, agent: "Agent", override: str | None = None) -> str:
         return Lab.get_provider(agent.provider).get_model(override or agent.model or None)

@@ -27,6 +27,9 @@ class Runner:
         history: list[Message] = list(messages)
         response: AIMessage = await self.model.ainvoke(history)  # type: ignore[assignment]
 
+        if isinstance(response, dict) and "parsed" in response:
+            return response  # type: ignore[return-value]
+
         if not response.tool_calls:
             return response
 

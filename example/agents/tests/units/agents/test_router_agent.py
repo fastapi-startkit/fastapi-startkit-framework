@@ -1,16 +1,18 @@
 from langchain_core.messages import AIMessage, HumanMessage
 
 from app.agents.chat import RouterAgent
+from tests.test_case import TestCase
 
 
-class TestRouterAgent:
+class TestRouterAgent(TestCase):
     async def test_the_router_agent(self):
         with RouterAgent.record("record_stream.json") as agent:
             await agent.prompt("hello")
             agent.assert_text_response()
             agent.assert_tool_not_called(["job_search_tool"])
-            agent.assert_response_judged(
-                model="gpt-3.5-turbo",
+            await agent.assert_response_judged(
+                model="gemini-3.5-flash-lite",
+                provider="google",
                 expectation="The llm should respond with greetings",
             )
             agent.assert_response_time_lt(5)

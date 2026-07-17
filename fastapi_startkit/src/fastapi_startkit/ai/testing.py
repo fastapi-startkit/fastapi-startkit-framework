@@ -5,7 +5,6 @@ import functools
 import hashlib
 import inspect
 import json
-import re
 import sys
 import time
 from collections.abc import AsyncIterator
@@ -244,49 +243,38 @@ class RecordingAgent(_Recorder):
         assert self.last_elapsed is not None, "No prompt() call has been made yet."
         assert self.last_elapsed < seconds, f"Expected response time < {seconds}s, took {self.last_elapsed:.3f}s"
 
-    def assert_response_judged(self, *, model: str, expectation: str) -> None:
+    async def assert_response_judged(self, *, model: str, expectation: str, provider: str | None = None) -> None:
         response = self._require_response()
-        verdict = self._judge(model, expectation, response.content)
+        verdict = await self._judge(model, expectation, response.content, provider)
         assert verdict.get("passed"), (
             f"Judge ({model}) rejected the response for expectation {expectation!r}: "
             f"{verdict.get('reasoning', '')!r} — response was {response.content!r}"
         )
 
-    def _judge(self, model: str, expectation: str, content: str) -> dict:
+    async def _judge(self, model: str, expectation: str, content: str, provider: str | None = None) -> dict:
         cassette, store = self._load()
-        key = self._judge_key(model, expectation, content)
+        key = self._judge_key(model, expectation, content, provider)
         if key in store:
             return store[key]
-        verdict = self._judge_live(model, expectation, content)
+        verdict = await self._judge_live(model, expectation, content, provider)
         self._save(cassette, store, key, verdict)
         return verdict
 
     @staticmethod
-    def _judge_key(model: str, expectation: str, content: str) -> str:
+    def _judge_key(model: str, expectation: str, content: str, provider: str | None = None) -> str:
         payload = json.dumps(
-            {"judge_model": model, "expectation": expectation, "content": content},
+            {"judge_model": model, "judge_provider": provider, "expectation": expectation, "content": content},
             sort_keys=True,
         )
         return "judge:" + hashlib.sha256(payload.encode()).hexdigest()
 
-    def _judge_live(self, model: str, expectation: str, content: str) -> dict:
-        from langchain.chat_models import init_chat_model  # noqa: PLC0415
+    async def _judge_live(self, model: str, expectation: str, content: str, provider: str | None = None) -> dict:
+        from .judge import JudgeAgent  # noqa: PLC0415
 
-        prompt = (
-            "You are grading whether an AI agent's response satisfies an expectation.\n"
-            f"Expectation: {expectation}\n"
-            f"Response: {content}\n\n"
-            'Reply with strict JSON only, no prose: {"passed": true|false, "reasoning": "<one sentence>"}'
-        )
-        chat_model = init_chat_model(model)
-        result = chat_model.invoke(prompt)
-        return self._parse_verdict(result.content)
-
-    @staticmethod
-    def _parse_verdict(raw: str) -> dict:
-        match = re.search(r"\{.*\}", raw, re.DOTALL)
-        data = json.loads(match.group(0) if match else raw)
-        return {"passed": bool(data.get("passed")), "reasoning": data.get("reasoning", "")}
+        judge = JudgeAgent()
+        judge.model = model
+        judge.provider = provider
+        return await judge.judge(expectation, content)
 
 
 class AgentBinding:
