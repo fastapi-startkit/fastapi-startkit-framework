@@ -9,14 +9,7 @@ if TYPE_CHECKING:
 
 
 class Ai:
-    # Keyed by agent class name (see _key()) so a fake can be registered
-    # before any instance of that agent exists. get_model_for() consults
-    # this registry, so a faked agent runs through the same message-building
-    # / pipeline / tool-execution path as a real one — only the model at the
-    # bottom is swapped for a deterministic stand-in.
     fake_agent_models: dict[str, Any] = {}
-    # Reserved for response-level fakes (mirroring fake_agent_models, but for
-    # cached final replies rather than whole chat models). Not yet wired up.
     fake_agent_responses: dict[str, Any] = {}
 
     def __init__(self) -> None:
