@@ -129,7 +129,7 @@ exclude = [
     "**/__pycache__",
     "**/.venv",
 ]
-typeCheckingMode = "basic"
+typeCheckingMode = "standard"
 pythonVersion = "3.12"
 
 [tool.pytest.ini_options]

@@ -4,12 +4,11 @@ from typing import TYPE_CHECKING, Any, AsyncIterator, Callable, Optional, Type
 
 from .document import Document
 from .response import AgentResponse
-from .testing import AgentBinding
 
 if TYPE_CHECKING:
     from langchain_core.tools import BaseTool
 
-    from .testing import AgentModelFake
+    from .testing import AgentFake, AgentRecordFake
 
 
 class Agent:
@@ -81,16 +80,16 @@ class Agent:
             yield chunk
 
     @classmethod
-    def fake(cls, responses: list) -> "AgentModelFake":
-        from .testing import AgentModelFake
+    def fake(cls, responses: list) -> "AgentFake":
+        from .testing import AgentFake
 
-        return AgentModelFake(cls, responses)
+        return AgentFake(cls, responses)
 
     @classmethod
-    def record(cls, cassette: str | None = None, messages: list | None = None) -> "AgentBinding":
-        from .testing import AgentBinding, RecordingAgent
+    def record(cls, cassette: str | None = None, messages: list | None = None) -> "AgentRecordFake":
+        from .testing import AgentRecordFake
 
-        return AgentBinding(cls, RecordingAgent(cls(), cassette, messages))
+        return AgentRecordFake(cls(), cassette, messages)
 
     @classmethod
     def _binding(cls) -> Any:

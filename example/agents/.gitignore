@@ -7,3 +7,6 @@ storage
 node_modules
 /public/build
 /public/hot
+.ruff_cache
+.pytest_cache
+.ai
