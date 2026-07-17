@@ -222,7 +222,7 @@ class Agent:
 
     def _apply_schema(self, response: AgentResponse) -> AgentResponse:
         schema = self.schema()
-        if schema is not None and not self.tools() and response.parsed is None and response.content:
+        if schema is not None and response.parsed is None and response.content:
             response.parsed = self._build_schema(schema, response.content)
         return response
 

@@ -22,35 +22,18 @@ class Runner:
         self._tools: dict[str, BaseTool] = {tool.name: tool for tool in agent.tools()}
         self.model: Runnable[Any, BaseMessage] = model
         self.max_steps = agent.max_steps
-        self._schema = agent.schema()
-        self._schema_tool = self._schema_tool_name(self._schema) if self._schema is not None else None
 
     async def run(self, messages: Sequence[Message]) -> BaseMessage:
         history: list[Message] = list(messages)
         response: AIMessage = await self.model.ainvoke(history)  # type: ignore[assignment]
 
-        tool_calls = list(getattr(response, "tool_calls", None) or [])
-        if not tool_calls:
+        if isinstance(response, dict) and "parsed" in response:
+            return response  # type: ignore[return-value]
+
+        if not response.tool_calls:
             return response
 
-        for call in tool_calls:
-            if call.get("name") == self._schema_tool:
-                parsed = self._parse_schema(call.get("args") or {})
-                return {"raw": response, "parsed": parsed, "parsing_error": None}  # type: ignore[return-value]
-
-        return (await self._run_tools(tool_calls))[-1]
-
-    def _parse_schema(self, args: dict[str, Any]) -> Any:
-        schema = self._schema
-        if hasattr(schema, "model_validate"):
-            return schema.model_validate(args)
-        return schema(**args)
-
-    @staticmethod
-    def _schema_tool_name(schema: Any) -> str:
-        from langchain_core.utils.function_calling import convert_to_openai_tool  # noqa: PLC0415
-
-        return convert_to_openai_tool(schema)["function"]["name"]
+        return (await self._run_tools(response.tool_calls))[-1]
 
     async def _run_tools(self, tool_calls: list[ToolCall]) -> list[BaseMessage]:
         return [await self._resolve_tool(call["name"]).ainvoke(call) for call in tool_calls]
