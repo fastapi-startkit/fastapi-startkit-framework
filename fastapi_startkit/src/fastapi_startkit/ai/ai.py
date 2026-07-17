@@ -85,16 +85,10 @@ class Ai:
 
         tools = list(agent.tools())
         schema = agent.schema()
-
         if structured and schema is not None:
-            if tools:
-                return chat_model.bind_tools([*tools, schema])
-            return chat_model.with_structured_output(schema, include_raw=True)
+            tools.append(schema)
 
-        if tools:
-            return chat_model.bind_tools(tools)
-
-        return chat_model
+        return chat_model.bind_tools(tools) if tools else chat_model
 
     def _resolve_model(self, agent: "Agent", override: str | None = None) -> str:
         return Lab.get_provider(agent.provider).get_model(override or agent.model or None)

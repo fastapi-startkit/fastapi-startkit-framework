@@ -1,12 +1,12 @@
 """Structured output.
 
-An Agent's schema() and tools() are passed to the model in a single payload:
-
-- schema + tools -> bind_tools([*tools, schema]); the model picks a real tool
-  call OR the schema as its structured answer. If it picks the schema, we parse
-  and return the structured result; otherwise we run the tool it asked for.
-- schema only -> with_structured_output(); the shape is enforced.
-- tools only / neither -> unchanged.
+An Agent's schema() is appended to its tools() and the whole set is bound to
+the model in a single payload via bind_tools([*tools, schema]). The model picks
+per turn: a real tool call (which the Runner executes) or the schema as its
+structured answer (which the Runner parses into response.parsed). If a
+schema-only agent replies with plain JSON text instead of the tool call,
+_apply_schema still parses it, so the structured result comes through either
+way.
 
 The fake/record paths bypass build(), so they keep parsing the JSON-string
 content via schema() for deterministic replay.
@@ -76,15 +76,10 @@ class TestBuild(unittest.TestCase):
     def _fake_model(self):
         class FakeModel:
             bound = None
-            structured = None
 
             def bind_tools(self, tools, **kwargs):
                 self.bound = list(tools)
                 return "BOUND"
-
-            def with_structured_output(self, schema, **kwargs):
-                self.structured = (schema, kwargs)
-                return "STRUCTURED"
 
         fake = FakeModel()
         self._patch_init(fake)
@@ -96,16 +91,15 @@ class TestBuild(unittest.TestCase):
         result = Ai().build(ToolMovieAgent())
 
         self.assertEqual(result, "BOUND")
-        self.assertIn(noop, fake.bound)
-        self.assertIn(Movie, fake.bound)
+        self.assertEqual(fake.bound, [noop, Movie])
 
-    def test_schema_only_uses_enforced_structured_output(self):
+    def test_schema_only_binds_the_schema_as_a_tool(self):
         fake = self._fake_model()
 
         result = Ai().build(MovieAgent())
 
-        self.assertEqual(result, "STRUCTURED")
-        self.assertEqual(fake.structured, (Movie, {"include_raw": True}))
+        self.assertEqual(result, "BOUND")
+        self.assertEqual(fake.bound, [Movie])
 
     def test_tools_only_binds_just_the_tools(self):
         fake = self._fake_model()
@@ -152,18 +146,6 @@ class TestRunner(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result.content, "hello")
 
-    async def test_passes_structured_output_dict_through(self):
-        parsed = Movie(title="Inception", year=2010)
-        payload = {"raw": AIMessage(content=""), "parsed": parsed, "parsing_error": None}
-
-        class Model:
-            async def ainvoke(self, messages):
-                return payload
-
-        result = await Runner(MovieAgent(), Model()).run(["hi"])
-
-        self.assertEqual(result, payload)
-
 
 class TestResponseMapping(unittest.TestCase):
     def test_unwraps_include_raw_into_parsed_and_content(self):
@@ -191,23 +173,33 @@ class TestPromptEndToEnd(unittest.IsolatedAsyncioTestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    async def test_schema_only_populates_parsed(self):
-        parsed = Movie(title="Inception", year=2010)
-
-        class Structured:
-            async def ainvoke(self, messages):
-                return {"raw": AIMessage(content=""), "parsed": parsed, "parsing_error": None}
-
+    async def test_schema_only_populates_parsed_from_the_schema_tool_call(self):
         class FakeModel:
-            def with_structured_output(self, schema, **kwargs):
-                return Structured()
+            def bind_tools(self, tools, **kwargs):
+                return self
+
+            async def ainvoke(self, messages):
+                return AIMessage(content="", tool_calls=[_schema_tool_call(title="Inception", year=2010)])
 
         self._patch(FakeModel())
 
         response = await MovieAgent().prompt("best nolan movie")
 
-        self.assertEqual(response.parsed, parsed)
-        self.assertEqual(response.content, parsed.model_dump_json())
+        self.assertEqual(response.parsed, Movie(title="Inception", year=2010))
+
+    async def test_schema_only_parses_plain_json_text_when_model_skips_the_tool(self):
+        class FakeModel:
+            def bind_tools(self, tools, **kwargs):
+                return self
+
+            async def ainvoke(self, messages):
+                return AIMessage(content='{"title": "Inception", "year": 2010}')
+
+        self._patch(FakeModel())
+
+        response = await MovieAgent().prompt("best nolan movie")
+
+        self.assertEqual(response.parsed, Movie(title="Inception", year=2010))
 
     async def test_schema_plus_tools_returns_structured_when_model_chooses_it(self):
         class FakeModel:
