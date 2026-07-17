@@ -1,36 +1,34 @@
 from __future__ import annotations
 
-import json
-import re
+from pydantic import BaseModel
 
 from .agent import Agent
+
+
+class Verdict(BaseModel):
+    passed: bool
+    reasoning: str = ""
 
 
 class JudgeAgent(Agent):
     """Grades a response against a natural-language expectation.
 
-    Just an ``Agent`` — set ``.model``/``.provider`` like any other agent
-    and the verdict call goes through the same model resolution, provider
-    handling, and pipeline as any other agent, so it's fakeable via
-    ``JudgeAgent.fake()`` and replayable via ``JudgeAgent.record()`` instead
-    of hand-rolling a separate langchain call.
+    A plain ``Agent`` whose ``schema()`` is a ``Verdict`` model, so the JSON
+    reply is parsed into a typed result through the standard structured-output
+    path — no hand-rolled verdict parsing. Set ``.model``/``.provider`` like
+    any other agent; it's fakeable via ``fake()`` and replayable via
+    ``record()`` for free.
     """
 
-    async def judge(self, expectation: str, content: str) -> dict:
-        response = await self.prompt(self._build_prompt(expectation, content))
-        return self._parse_verdict(response.content)
-
-    @staticmethod
-    def _build_prompt(expectation: str, content: str) -> str:
+    def instructions(self) -> str:
         return (
-            "You are grading whether an AI agent's response satisfies an expectation.\n"
-            f"Expectation: {expectation}\n"
-            f"Response: {content}\n\n"
+            "You are grading whether an AI agent's response satisfies an expectation. "
             'Reply with strict JSON only, no prose: {"passed": true|false, "reasoning": "<one sentence>"}'
         )
 
-    @staticmethod
-    def _parse_verdict(raw: str) -> dict:
-        match = re.search(r"\{.*\}", raw, re.DOTALL)
-        data = json.loads(match.group(0) if match else raw)
-        return {"passed": bool(data.get("passed")), "reasoning": data.get("reasoning", "")}
+    def schema(self):
+        return Verdict
+
+    async def judge(self, expectation: str, content: str) -> dict:
+        response = await self.prompt(f"Expectation: {expectation}\n\nResponse to grade:\n{content}")
+        return response.parsed.model_dump()

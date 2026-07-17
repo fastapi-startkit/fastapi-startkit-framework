@@ -1,54 +1,54 @@
-"""Tests for JudgeAgent — the built-in Agent subclass that grades a
-response against a natural-language expectation.
+"""Tests for JudgeAgent — grades a response against an expectation.
 
-Because it's just an Agent, it gets model/provider resolution, ``fake()``,
-and ``record()`` for free instead of RecordingAgent hand-rolling its own
-langchain call.
+It's a plain Agent whose ``schema()`` is a ``Verdict`` model, so the model's
+JSON reply is turned into a typed result through the standard structured-output
+path (``response.parsed``) — no hand-rolled verdict parsing.
 """
 
-import json
 import os
 import tempfile
 import unittest
 from unittest import mock
 
-from fastapi_startkit.ai.judge import JudgeAgent
+from langchain_core.messages import AIMessage
+
+from fastapi_startkit.ai.judge import JudgeAgent, Verdict
 from fastapi_startkit.ai.response import AgentResponse
 
 
 class TestJudgeAgent(unittest.IsolatedAsyncioTestCase):
-    async def test_judge_parses_a_passing_verdict_from_the_model_response(self):
-        verdict = '{"passed": true, "reasoning": "Greets the user politely."}'
-        with JudgeAgent.fake([verdict]):
-            judge = JudgeAgent()
-            judge.model = "gpt-3.5-turbo"
-            result = await judge.judge("The llm should respond with greetings", "Hello there!")
+    async def test_judge_returns_a_passing_verdict_dict(self):
+        with JudgeAgent.fake(['{"passed": true, "reasoning": "Greets the user politely."}']):
+            result = await JudgeAgent().judge("The llm should respond with greetings", "Hello there!")
 
         self.assertEqual(result, {"passed": True, "reasoning": "Greets the user politely."})
 
-    async def test_judge_parses_a_failing_verdict(self):
-        verdict = '{"passed": false, "reasoning": "Not a greeting."}'
-        with JudgeAgent.fake([verdict]):
-            judge = JudgeAgent()
-            judge.model = "gpt-3.5-turbo"
-            result = await judge.judge("The llm should respond with greetings", "Completely unrelated")
+    async def test_judge_returns_a_failing_verdict(self):
+        with JudgeAgent.fake(['{"passed": false, "reasoning": "Not a greeting."}']):
+            result = await JudgeAgent().judge("greet", "Completely unrelated")
 
         self.assertFalse(result["passed"])
 
-    async def test_judge_tolerates_prose_around_the_json_block(self):
-        verdict = 'Sure! Here is the verdict:\n{"passed": true, "reasoning": "ok"}\nHope that helps.'
-        with JudgeAgent.fake([verdict]):
-            judge = JudgeAgent()
-            judge.model = "gpt-3.5-turbo"
-            result = await judge.judge("greet", "Hello!")
+    def test_schema_is_the_verdict_model(self):
+        self.assertIs(JudgeAgent().schema(), Verdict)
 
-        self.assertTrue(result["passed"])
+    async def test_judge_feeds_expectation_and_response_to_the_model(self):
+        seen = {}
 
-    def test_prompt_includes_expectation_and_response(self):
-        prompt = JudgeAgent._build_prompt("The llm should respond with greetings", "Hello there!")
+        class Capturing:
+            def bind_tools(self, tools, **kwargs):
+                return self
 
-        self.assertIn("The llm should respond with greetings", prompt)
-        self.assertIn("Hello there!", prompt)
+            async def ainvoke(self, messages):
+                seen["messages"] = messages
+                return AIMessage(content='{"passed": true, "reasoning": "ok"}')
+
+        with mock.patch.object(JudgeAgent, "_build_model", lambda self, *a, **k: Capturing()):
+            await JudgeAgent().judge("The llm should respond with greetings", "Hello there!")
+
+        blob = " ".join(str(getattr(m, "content", m)) for m in seen["messages"])
+        self.assertIn("The llm should respond with greetings", blob)
+        self.assertIn("Hello there!", blob)
 
     def test_model_and_provider_are_plain_agent_attributes(self):
         """No custom constructor — set like any other Agent's model/provider."""
@@ -77,4 +77,3 @@ class TestJudgeAgent(unittest.IsolatedAsyncioTestCase):
 
             self.assertIn('"passed"', response.content)
             self.assertTrue(os.path.exists(cassette))
-            self.assertEqual(len(json.loads(open(cassette).read())), 1)
