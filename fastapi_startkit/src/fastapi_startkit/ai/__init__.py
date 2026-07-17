@@ -13,21 +13,20 @@ from .ai import Ai
 from .judge import JudgeAgent
 from .providers.ai_provider import AIProvider
 from .response import AgentResponse, AgentSnapshot
-from .testing import AgentBinding, AgentModelFake, RecordingAgent, ToolCallView
+from .testing import AgentFake, AgentRecordFake, ToolCallView
 
 __all__ = [
     "Agent",
     "Ai",
     "Middleware",
-    "AgentBinding",
-    "AgentModelFake",
+    "AgentFake",
     "AgentResponse",
     "AgentSnapshot",
     "AIConfig",
     "AIProvider",
     "AnthropicConfig",
     "JudgeAgent",
-    "RecordingAgent",
+    "AgentRecordFake",
     "ToolCallView",
     "Audio",
     "AudioResponse",

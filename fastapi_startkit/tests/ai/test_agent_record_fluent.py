@@ -1,6 +1,6 @@
 """Tests for the fluent Agent.record() testing DSL.
 
-``with Agent.record(cassette) as agent:`` binds a ``RecordingAgent`` handle
+``with Agent.record(cassette) as agent:`` binds an ``AgentRecordFake`` handle
 whose async ``prompt()`` and assertion methods judge the most recent turn —
 mirroring how a browser-testing ``page`` object exposes assertions against
 current page state:
@@ -24,7 +24,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 from fastapi_startkit.ai.agent import Agent
 from fastapi_startkit.ai.response import AgentResponse
-from fastapi_startkit.ai.testing import RecordingAgent
+from fastapi_startkit.ai.testing import AgentRecordFake
 
 
 class SimpleAgent(Agent):
@@ -254,7 +254,7 @@ class TestAssertResponseJudged(unittest.IsolatedAsyncioTestCase):
         self.setup_agent("Hello there, welcome!")
         with tempfile.TemporaryDirectory() as tmp:
             with mock.patch.object(
-                RecordingAgent,
+                AgentRecordFake,
                 "_judge_live",
                 mock.AsyncMock(return_value={"passed": True, "reasoning": "greets the user"}),
             ):
@@ -268,7 +268,7 @@ class TestAssertResponseJudged(unittest.IsolatedAsyncioTestCase):
         self.setup_agent("Completely unrelated content")
         with tempfile.TemporaryDirectory() as tmp:
             with mock.patch.object(
-                RecordingAgent,
+                AgentRecordFake,
                 "_judge_live",
                 mock.AsyncMock(return_value={"passed": False, "reasoning": "not a greeting"}),
             ):
@@ -284,7 +284,7 @@ class TestAssertResponseJudged(unittest.IsolatedAsyncioTestCase):
         judge = mock.AsyncMock(return_value={"passed": True, "reasoning": "ok"})
         with tempfile.TemporaryDirectory() as tmp:
             cassette = os.path.join(tmp, "c.json")
-            with mock.patch.object(RecordingAgent, "_judge_live", judge):
+            with mock.patch.object(AgentRecordFake, "_judge_live", judge):
                 with SimpleAgent.record(cassette) as agent:
                     await agent.prompt("hello")
                     await agent.assert_response_judged(model="gpt-3.5-turbo", expectation="greet")
@@ -297,14 +297,14 @@ class TestAssertResponseJudged(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             cassette = os.path.join(tmp, "c.json")
             with mock.patch.object(
-                RecordingAgent, "_judge_live", mock.AsyncMock(return_value={"passed": True, "reasoning": "ok"})
+                AgentRecordFake, "_judge_live", mock.AsyncMock(return_value={"passed": True, "reasoning": "ok"})
             ):
                 with SimpleAgent.record(cassette) as agent:
                     await agent.prompt("hello")
                     await agent.assert_response_judged(model="gpt-3.5-turbo", expectation="greet")
 
             judge = mock.AsyncMock(side_effect=AssertionError("must not be called on replay"))
-            with mock.patch.object(RecordingAgent, "_judge_live", judge):
+            with mock.patch.object(AgentRecordFake, "_judge_live", judge):
                 with SimpleAgent.record(cassette) as agent:
                     await agent.prompt("hello")
                     await agent.assert_response_judged(model="gpt-3.5-turbo", expectation="greet")
@@ -321,7 +321,7 @@ class TestAssertResponseJudged(unittest.IsolatedAsyncioTestCase):
         self.setup_agent("Hello there!")
         judge = mock.AsyncMock(return_value={"passed": True, "reasoning": "ok"})
         with tempfile.TemporaryDirectory() as tmp:
-            with mock.patch.object(RecordingAgent, "_judge_live", judge):
+            with mock.patch.object(AgentRecordFake, "_judge_live", judge):
                 with SimpleAgent.record(os.path.join(tmp, "c.json")) as agent:
                     await agent.prompt("hello")
                     await agent.assert_response_judged(model="gpt-3.5-turbo", provider="openai", expectation="greet")

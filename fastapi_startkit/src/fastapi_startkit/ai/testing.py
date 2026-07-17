@@ -55,11 +55,10 @@ def _joined(value: Any) -> str:
     return "".join(value) if isinstance(value, list) else value
 
 
-class AgentModelFake:
+class AgentFake:
     """Registers a fixed, ordered list of replies as ``agent_cls``'s chat
     model for the duration of a ``with`` block (or a decorated function).
 
-    Unlike the old pattern-matching stand-in, this swaps only the model —
     ``prompt()``/``stream()`` still run the real message-building, pipeline,
     and tool-execution path; see ``Ai.fake()``.
     """
@@ -111,7 +110,7 @@ class ToolCallView:
         return f"ToolCallView(name={self.name!r}, args={self.args!r})"
 
 
-class RecordingAgent(_Recorder):
+class AgentRecordFake(_Recorder):
     """Bound as ``agent`` by ``with Agent.record(cassette) as agent:``.
 
     Fluent testing handle around a record-and-replay session: ``prompt()``
@@ -124,6 +123,11 @@ class RecordingAgent(_Recorder):
     cached to disk (keyed by the conversation history so far, plus the new
     message, so two sessions with different histories but the same latest
     message text don't collide). On a hit, it's replayed with no live call.
+
+    Entering the ``with`` block also binds this handle into the container
+    under the agent class's name, so any other instance of that class
+    created during the block (e.g. by application code under test) is
+    routed through the same recording session.
     """
 
     def __init__(self, real: Agent, cassette: str | None = None, messages: list | None = None) -> None:
@@ -159,7 +163,7 @@ class RecordingAgent(_Recorder):
 
     def _load(self) -> tuple[Path, dict]:
         cassette = self.cassette
-        assert cassette is not None, "RecordingAgent has no cassette resolved"
+        assert cassette is not None, "AgentRecordFake has no cassette resolved"
         return cassette, (json.loads(cassette.read_text()) if cassette.exists() else {})
 
     def _save(self, cassette: Path, store: dict, key: str, value: Any) -> None:
@@ -276,34 +280,25 @@ class RecordingAgent(_Recorder):
         judge.provider = provider
         return await judge.judge(expectation, content)
 
-
-class AgentBinding:
-    def __init__(self, agent_cls: type[Agent], stand_in: Any) -> None:
-        self._agent_cls = agent_cls
-        self._stand_in = stand_in
-
     def _resolve_cassette(self, filename: str, qualname: str) -> None:
-        stand_in = self._stand_in
-        if not isinstance(stand_in, RecordingAgent):
-            return
         here = Path(filename).parent
-        if stand_in.cassette is None:
-            stand_in.cassette = here / "cassettes" / f"{qualname.replace('.', '_')}.json"
-        elif not stand_in.cassette.is_absolute():
-            stand_in.cassette = here / stand_in.cassette
+        if self.cassette is None:
+            self.cassette = here / "cassettes" / f"{qualname.replace('.', '_')}.json"
+        elif not self.cassette.is_absolute():
+            self.cassette = here / self.cassette
 
-    def __enter__(self) -> Any:
+    def __enter__(self) -> "AgentRecordFake":
         from fastapi_startkit.application import app
 
         caller = sys._getframe(1).f_code
         self._resolve_cassette(caller.co_filename, caller.co_qualname)
-        app().bind(self._agent_cls.__name__, self._stand_in)
-        return self._stand_in
+        app().bind(type(self._real).__name__, self)
+        return self
 
     def __exit__(self, *_exc: Any) -> bool:
         from fastapi_startkit.application import app
 
-        app().unbind(self._agent_cls.__name__)
+        app().unbind(type(self._real).__name__)
         return False
 
     def __call__(self, func: Callable) -> Callable:
