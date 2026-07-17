@@ -84,12 +84,15 @@ class Ai:
         chat_model = init_chat_model(self._resolve_model(agent, model), **kwargs)
 
         tools = list(agent.tools())
+        schema = agent.schema()
+
+        if structured and schema is not None:
+            if tools:
+                return chat_model.bind_tools([*tools, schema])
+            return chat_model.with_structured_output(schema, include_raw=True)
+
         if tools:
             return chat_model.bind_tools(tools)
-
-        schema = agent.schema()
-        if structured and schema is not None:
-            return chat_model.with_structured_output(schema, include_raw=True)
 
         return chat_model
 

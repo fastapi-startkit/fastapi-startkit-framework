@@ -1,6 +1,15 @@
-"""Structured output: when an Agent declares a schema() and has no tools, the
-model is built with with_structured_output() so the provider enforces the
-shape, rather than relying on prompt instructions + post-hoc JSON parsing.
+"""Structured output.
+
+An Agent's schema() and tools() are passed to the model in a single payload:
+
+- schema + tools -> bind_tools([*tools, schema]); the model picks a real tool
+  call OR the schema as its structured answer. If it picks the schema, we parse
+  and return the structured result; otherwise we run the tool it asked for.
+- schema only -> with_structured_output(); the shape is enforced.
+- tools only / neither -> unchanged.
+
+The fake/record paths bypass build(), so they keep parsing the JSON-string
+content via schema() for deterministic replay.
 """
 
 import unittest
@@ -30,7 +39,7 @@ class MovieAgent(Agent):
 
 @tool
 def noop(query: str) -> str:
-    """A no-op tool."""
+    """A no-op tool that echoes its query."""
     return query
 
 
@@ -42,12 +51,15 @@ class ToolMovieAgent(Agent):
         return [noop]
 
 
-def _structured_payload(parsed: Movie) -> dict:
-    raw = AIMessage(content="", tool_calls=[{"name": "Movie", "args": {}, "id": "1", "type": "tool_call"}])
-    return {"raw": raw, "parsed": parsed, "parsing_error": None}
+def _schema_tool_call(**args) -> dict:
+    return {"name": "Movie", "args": args, "id": "1", "type": "tool_call"}
 
 
-class TestBuildStructuredOutput(unittest.TestCase):
+def _real_tool_call(**args) -> dict:
+    return {"name": "noop", "args": args, "id": "2", "type": "tool_call"}
+
+
+class TestBuild(unittest.TestCase):
     def setUp(self):
         container = app()
         container.bind("ai", AIConfig())
@@ -61,86 +73,88 @@ class TestBuildStructuredOutput(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    def test_wraps_with_structured_output_when_schema_and_no_tools(self):
-        captured = {}
-
+    def _fake_model(self):
         class FakeModel:
-            def with_structured_output(self, schema, **kwargs):
-                captured["schema"] = schema
-                captured["kwargs"] = kwargs
-                return "STRUCTURED"
+            bound = None
+            structured = None
 
             def bind_tools(self, tools, **kwargs):
+                self.bound = list(tools)
                 return "BOUND"
 
-        self._patch_init(FakeModel())
+            def with_structured_output(self, schema, **kwargs):
+                self.structured = (schema, kwargs)
+                return "STRUCTURED"
+
+        fake = FakeModel()
+        self._patch_init(fake)
+        return fake
+
+    def test_schema_and_tools_are_bound_together_in_one_payload(self):
+        fake = self._fake_model()
+
+        result = Ai().build(ToolMovieAgent())
+
+        self.assertEqual(result, "BOUND")
+        self.assertIn(noop, fake.bound)
+        self.assertIn(Movie, fake.bound)
+
+    def test_schema_only_uses_enforced_structured_output(self):
+        fake = self._fake_model()
 
         result = Ai().build(MovieAgent())
 
         self.assertEqual(result, "STRUCTURED")
-        self.assertIs(captured["schema"], Movie)
-        self.assertEqual(captured["kwargs"], {"include_raw": True})
+        self.assertEqual(fake.structured, (Movie, {"include_raw": True}))
 
-    def test_tools_take_precedence_over_structured_output(self):
-        class FakeModel:
-            def with_structured_output(self, schema, **kwargs):
-                return "STRUCTURED"
+    def test_tools_only_binds_just_the_tools(self):
+        fake = self._fake_model()
 
-            def bind_tools(self, tools, **kwargs):
-                return "BOUND"
+        class ToolAgent(Agent):
+            def tools(self):
+                return [noop]
 
-        self._patch_init(FakeModel())
+        result = Ai().build(ToolAgent())
 
-        self.assertEqual(Ai().build(ToolMovieAgent()), "BOUND")
+        self.assertEqual(result, "BOUND")
+        self.assertEqual(fake.bound, [noop])
 
-    def test_structured_false_returns_the_plain_model(self):
-        class FakeModel:
-            def with_structured_output(self, schema, **kwargs):
-                return "STRUCTURED"
+    def test_streaming_drops_the_schema_from_the_payload(self):
+        fake = self._fake_model()
 
-            def bind_tools(self, tools, **kwargs):
-                return "BOUND"
+        result = Ai().build(ToolMovieAgent(), structured=False)
 
-        fake = FakeModel()
-        self._patch_init(fake)
-
-        self.assertIs(Ai().build(MovieAgent(), structured=False), fake)
+        self.assertEqual(result, "BOUND")
+        self.assertEqual(fake.bound, [noop])
 
     def test_no_schema_no_tools_returns_the_plain_model(self):
-        class FakeModel:
-            def with_structured_output(self, schema, **kwargs):
-                return "STRUCTURED"
-
-            def bind_tools(self, tools, **kwargs):
-                return "BOUND"
-
-        fake = FakeModel()
-        self._patch_init(fake)
+        fake = self._fake_model()
 
         self.assertIs(Ai().build(Agent()), fake)
 
 
-class TestStructuredResponseMapping(unittest.TestCase):
-    def test_unwraps_include_raw_and_sets_parsed(self):
+class TestRunner(unittest.IsolatedAsyncioTestCase):
+    async def test_returns_structured_when_model_calls_the_schema(self):
+        class Model:
+            async def ainvoke(self, messages):
+                return AIMessage(content="", tool_calls=[_schema_tool_call(title="Inception", year=2010)])
+
+        result = await Runner(ToolMovieAgent(), Model()).run(["hi"])
+
+        self.assertEqual(result["parsed"], Movie(title="Inception", year=2010))
+
+    async def test_runs_the_tool_when_model_calls_a_real_tool(self):
+        class Model:
+            async def ainvoke(self, messages):
+                return AIMessage(content="", tool_calls=[_real_tool_call(query="hello")])
+
+        result = await Runner(ToolMovieAgent(), Model()).run(["hi"])
+
+        self.assertEqual(result.content, "hello")
+
+    async def test_passes_structured_output_dict_through(self):
         parsed = Movie(title="Inception", year=2010)
-
-        response = MovieAgent()._to_agent_response(_structured_payload(parsed))
-
-        self.assertIs(response.parsed, parsed)
-        self.assertEqual(response.content, parsed.model_dump_json())
-
-    def test_suppresses_the_synthetic_structured_output_tool_call(self):
-        parsed = Movie(title="Inception", year=2010)
-
-        response = MovieAgent()._to_agent_response(_structured_payload(parsed))
-
-        self.assertEqual(response.tool_calls, [])
-
-
-class TestRunnerStructuredOutput(unittest.IsolatedAsyncioTestCase):
-    async def test_runner_passes_structured_dict_through_without_running_tools(self):
-        parsed = Movie(title="Inception", year=2010)
-        payload = _structured_payload(parsed)
+        payload = {"raw": AIMessage(content=""), "parsed": parsed, "parsing_error": None}
 
         class Model:
             async def ainvoke(self, messages):
@@ -149,6 +163,18 @@ class TestRunnerStructuredOutput(unittest.IsolatedAsyncioTestCase):
         result = await Runner(MovieAgent(), Model()).run(["hi"])
 
         self.assertEqual(result, payload)
+
+
+class TestResponseMapping(unittest.TestCase):
+    def test_unwraps_include_raw_into_parsed_and_content(self):
+        parsed = Movie(title="Inception", year=2010)
+        raw = AIMessage(content="", tool_calls=[_schema_tool_call(title="Inception", year=2010)])
+
+        response = MovieAgent()._to_agent_response({"raw": raw, "parsed": parsed, "parsing_error": None})
+
+        self.assertIs(response.parsed, parsed)
+        self.assertEqual(response.content, parsed.model_dump_json())
+        self.assertEqual(response.tool_calls, [])
 
 
 class TestPromptEndToEnd(unittest.IsolatedAsyncioTestCase):
@@ -160,7 +186,12 @@ class TestPromptEndToEnd(unittest.IsolatedAsyncioTestCase):
     def tearDown(self):
         Ai.reset_fakes()
 
-    async def test_prompt_populates_parsed_via_structured_output(self):
+    def _patch(self, model):
+        patcher = mock.patch.object(chat_models, "init_chat_model", lambda *a, **k: model)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    async def test_schema_only_populates_parsed(self):
         parsed = Movie(title="Inception", year=2010)
 
         class Structured:
@@ -171,14 +202,39 @@ class TestPromptEndToEnd(unittest.IsolatedAsyncioTestCase):
             def with_structured_output(self, schema, **kwargs):
                 return Structured()
 
-            def bind_tools(self, tools, **kwargs):
-                return self
-
-        patcher = mock.patch.object(chat_models, "init_chat_model", lambda *a, **k: FakeModel())
-        patcher.start()
-        self.addCleanup(patcher.stop)
+        self._patch(FakeModel())
 
         response = await MovieAgent().prompt("best nolan movie")
 
         self.assertEqual(response.parsed, parsed)
         self.assertEqual(response.content, parsed.model_dump_json())
+
+    async def test_schema_plus_tools_returns_structured_when_model_chooses_it(self):
+        class FakeModel:
+            def bind_tools(self, tools, **kwargs):
+                return self
+
+            async def ainvoke(self, messages):
+                return AIMessage(content="", tool_calls=[_schema_tool_call(title="Inception", year=2010)])
+
+        self._patch(FakeModel())
+
+        response = await ToolMovieAgent().prompt("best nolan movie")
+
+        self.assertEqual(response.parsed, Movie(title="Inception", year=2010))
+        self.assertEqual(response.tool_calls, [])
+
+    async def test_schema_plus_tools_runs_the_tool_when_model_chooses_it(self):
+        class FakeModel:
+            def bind_tools(self, tools, **kwargs):
+                return self
+
+            async def ainvoke(self, messages):
+                return AIMessage(content="", tool_calls=[_real_tool_call(query="hello")])
+
+        self._patch(FakeModel())
+
+        response = await ToolMovieAgent().prompt("run the tool")
+
+        self.assertIsNone(response.parsed)
+        self.assertEqual(response.content, "hello")
