@@ -10,6 +10,7 @@ from .fakes import fake_chat_model
 from .image import Image, ImageResponse
 from .image_factory import ImageFactory
 from .ai import Ai
+from .judge import JudgeAgent
 from .providers.ai_provider import AIProvider
 from .response import AgentResponse, AgentSnapshot
 from .testing import AgentBinding, AgentModelFake, RecordingAgent, ToolCallView
@@ -25,6 +26,7 @@ __all__ = [
     "AIConfig",
     "AIProvider",
     "AnthropicConfig",
+    "JudgeAgent",
     "RecordingAgent",
     "ToolCallView",
     "Audio",
