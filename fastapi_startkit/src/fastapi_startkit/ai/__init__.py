@@ -1,3 +1,12 @@
+"""FastAPI Startkit AI package.
+
+.. warning::
+
+    The AI package is under active development. APIs may change without notice
+    as we experiment with the best integration patterns. Use with caution in
+    production.
+"""
+
 from .agent import Agent
 from .pipeline import Middleware
 from .audio import Audio, AudioResponse
