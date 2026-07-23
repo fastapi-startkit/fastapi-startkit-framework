@@ -30,6 +30,35 @@ class TestConnectionFactoryBuildUrl(unittest.TestCase):
         url = ConnectionFactory.build_url(config)
         self.assertEqual(url, "postgresql+asyncpg://user:pass@db.example.com:5432/mydb")
 
+    def test_sqlite_config_relative_database(self):
+        config = {
+            "driver": "sqlite",
+            "database": "database.sqlite",
+        }
+        url = ConnectionFactory.build_url(config)
+        self.assertEqual(url, "sqlite+aiosqlite:///database.sqlite")
+
+    def test_sqlite_config_absolute_database(self):
+        config = {
+            "driver": "sqlite",
+            "database": "/var/data/database.sqlite",
+        }
+        url = ConnectionFactory.build_url(config)
+        self.assertEqual(url, "sqlite+aiosqlite:////var/data/database.sqlite")
+
+    def test_sqlite_config_ignores_host_user_password_port(self):
+        """SQLite has no host/user/password/port -- extra keys must not leak into the URL."""
+        config = {
+            "driver": "sqlite",
+            "database": "database.sqlite",
+            "host": "localhost",
+            "username": "root",
+            "password": "secret",
+            "port": "",
+        }
+        url = ConnectionFactory.build_url(config)
+        self.assertEqual(url, "sqlite+aiosqlite:///database.sqlite")
+
     def test_sqlite_config_via_url_passthrough(self):
         config = {
             "driver": "sqlite",
