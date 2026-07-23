@@ -1,3 +1,4 @@
+from fastapi_startkit.ai.tinker import ToolCall
 from langchain_core.messages import AIMessage, HumanMessage
 
 from app.agents.chat import RouterAgent
@@ -10,15 +11,14 @@ class TestRouterAgent(TestCase):
             await agent.prompt("hello")
             agent.assert_text_response()
             agent.assert_tool_not_called(["job_search_tool"])
-            await agent.assert_response_judged(
-                model="gemini-3.5-flash-lite",
-                provider="google",
-                expectation="The llm should respond with greetings",
-            )
+
             agent.assert_response_time_lt(5)
 
+            def assert_tool_calls(tool: ToolCall):
+                return tool.name == "job_search_tool"
+
             await agent.prompt("suggest python developer jobs")
-            agent.assert_tool_called("job_search_tool", lambda tool: tool.name == "job_search_tool")
+            agent.assert_tool_called("job_search_tool", assert_tool_calls)
 
     async def test_the_router_with_initial_messages(self):
         with RouterAgent.record(

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from fastapi_startkit.inertia import Inertia
+from langchain.agents import create_agent
 
 from app.agents.chat import RouterAgent
 from app.requests.chat import ChatRequest
@@ -20,6 +21,10 @@ async def index(request: Request):
 
 @api.post("/chat")
 async def chat(request: ChatRequest):
+    from fastapi_startkit.application import app
+
+    agent = create_agent(checkpointer=await app().make("checkpointer"))
+
     response = await RouterAgent().prompt(request.message)
     return {"content": response.content}
 

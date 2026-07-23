@@ -5,12 +5,13 @@ from typing import TYPE_CHECKING, Any
 from .lab import Lab
 
 if TYPE_CHECKING:
+    from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+
     from .agent import Agent
 
 
 class Ai:
-    fake_agent_models: dict[str, Any] = {}
-    fake_agent_responses: dict[str, Any] = {}
+    _fakes: dict[str, GenericFakeChatModel] = {}
 
     def __init__(self) -> None:
         pass
@@ -26,43 +27,40 @@ class Ai:
 
         turns = [message if hasattr(message, "content") else AIMessage(content=str(message)) for message in messages]
         model = GenericFakeChatModel(messages=iter(turns))
-        cls.fake_agent_models[cls._key(agent)] = model
+        cls._fakes[cls._key(agent)] = model
         return model
 
     @classmethod
     def has_fake_model_for(cls, agent: "Agent | str") -> bool:
-        return cls._key(agent) in cls.fake_agent_models
+        return cls._key(agent) in cls._fakes
 
     @classmethod
     def get_fake_model_for(cls, agent: "Agent | str") -> Any:
-        return cls.fake_agent_models[cls._key(agent)]
+        return cls._fakes[cls._key(agent)]
 
     @classmethod
     def forget(cls, agent: "Agent | str") -> None:
-        cls.fake_agent_models.pop(cls._key(agent), None)
+        cls._fakes.pop(cls._key(agent), None)
 
     @classmethod
     def reset_fakes(cls) -> None:
-        cls.fake_agent_models.clear()
-        cls.fake_agent_responses.clear()
+        cls._fakes.clear()
 
     def get_model_for(
         self,
         agent: "Agent",
         model: str | None = None,
         provider_options: dict | None = None,
-        structured: bool = True,
     ) -> Any:
         if self.has_fake_model_for(agent):
             return self.get_fake_model_for(agent)
-        return self.build(agent, model, provider_options, structured)
+        return self.build(agent, model, provider_options)
 
     def build(
         self,
         agent: "Agent",
         model: str | None = None,
         provider_options: dict | None = None,
-        structured: bool = True,
     ) -> Any:
         from langchain.chat_models import init_chat_model  # noqa: PLC0415
 
@@ -87,7 +85,7 @@ class Ai:
         chat_model = chat_model.bind_tools(tools) if tools else chat_model
 
         schema = agent.schema()
-        if structured and schema is not None:
+        if schema is not None:
             chat_model = chat_model.with_structured_output(schema, include_raw=True)
 
         return chat_model

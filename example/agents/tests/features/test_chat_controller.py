@@ -1,3 +1,5 @@
+from dumpdie import dd
+
 from app.agents.chat import RouterAgent
 
 from tests.test_case import TestCase
@@ -28,13 +30,13 @@ class TestChatController(TestCase):
         response.assert_ok()
         response.assert_stream_contains('Hello there, This is stream chat, Hope you are doing well.')
 
-    @RouterAgent.record("record_no_stream.json")
+    @RouterAgent.log("record_no_stream.json")
     async def test_it_records_without_stream(self):
         response = await self.post("/chat", json={"message": "Hi, I am Alex, This is unittest, Please respond by calling my name."})
         response.assert_ok()
         response.assert_contents("Alex")
 
-    @RouterAgent.record("record_stream.json")
+    @RouterAgent.log("record_stream.json")
     async def test_chat_responds_for_other_greetings(self):
         response = await self.post("/chat/stream", json={
             "message": "Hi, I am Bedram, This is unittest, Please respond by calling my name."
@@ -42,3 +44,11 @@ class TestChatController(TestCase):
 
         response.assert_ok()
         response.assert_stream_contains("Bedram")
+
+    @RouterAgent.log("job_search.json")
+    async def test_user_can_perform_the_job_search(self):
+        response = await self.post("/chat", json={
+            "message": "suggest me python developer jobs"
+        })
+
+        response.assert_ok()

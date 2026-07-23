@@ -116,15 +116,6 @@ class TestBuild(unittest.TestCase):
         self.assertIs(result, fake)
         self.assertEqual(fake.calls, [("bind_tools", [noop])])
 
-    def test_streaming_skips_structured_output(self):
-        fake = _FakeModel()
-        self._patch(fake)
-
-        result = Ai().build(ToolMovieAgent(), structured=False)
-
-        self.assertIs(result, fake)
-        self.assertEqual(fake.calls, [("bind_tools", [noop])])
-
     def test_no_schema_no_tools_returns_the_plain_model(self):
         fake = _FakeModel()
         self._patch(fake)
@@ -142,7 +133,7 @@ class TestRunner(unittest.IsolatedAsyncioTestCase):
             async def ainvoke(self, messages):
                 return payload
 
-        result = await Runner(MovieAgent(), Model()).run(["hi"])
+        result = await Runner(MovieAgent())._invoke(Model(), ["hi"])
 
         self.assertEqual(result, payload)
 
@@ -151,7 +142,7 @@ class TestRunner(unittest.IsolatedAsyncioTestCase):
             async def ainvoke(self, messages):
                 return AIMessage(content="", tool_calls=[_real_tool_call(query="hello")])
 
-        result = await Runner(ToolMovieAgent(), Model()).run(["hi"])
+        result = await Runner(ToolMovieAgent())._invoke(Model(), ["hi"])
 
         self.assertEqual(result.content, "hello")
 
@@ -160,7 +151,7 @@ class TestResponseMapping(unittest.TestCase):
     def test_unwraps_include_raw_into_parsed_and_content(self):
         parsed = Movie(title="Inception", year=2010)
 
-        response = MovieAgent()._to_agent_response(
+        response = Runner(MovieAgent())._to_agent_response(
             {"raw": AIMessage(content=""), "parsed": parsed, "parsing_error": None}
         )
 

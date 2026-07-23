@@ -53,11 +53,11 @@ class TestAgentSchema(unittest.IsolatedAsyncioTestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             cassette = os.path.join(tmp, "user.json")
-            with mock.patch.object(UserAgent, "_run", fake_run):
-                with UserAgent.record(cassette):
-                    recorded = await UserAgent().prompt("get the user")
-                with UserAgent.record(cassette):
-                    replayed = await UserAgent().prompt("get the user")
+            with mock.patch.object(UserAgent, "prompt", fake_run):
+                with UserAgent.record(cassette) as agent:
+                    recorded = await agent.prompt("get the user")
+                with UserAgent.record(cassette) as agent:
+                    replayed = await agent.prompt("get the user")
 
         self.assertEqual(recorded.parsed, User(id="u-9", name="Sam"))
         self.assertEqual(replayed.parsed, User(id="u-9", name="Sam"))

@@ -12,6 +12,7 @@ dependencies = [
     "fastapi-startkit[ai,database,fastapi,sqlite]==0.44.0",
     "langchain>=1.3.10",
     "langchain-google-genai>=4.2.5",
+    "langgraph-checkpoint-postgres>=3.1.0",
 ]
 
 [tool.uv]

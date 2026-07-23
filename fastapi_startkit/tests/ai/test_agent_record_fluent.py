@@ -23,6 +23,7 @@ from unittest import mock
 from langchain_core.messages import AIMessage, HumanMessage
 
 from fastapi_startkit.ai.agent import Agent
+from fastapi_startkit.ai.runner import Runner
 from fastapi_startkit.ai.response import AgentResponse
 from fastapi_startkit.ai.testing import AgentRecordFake
 
@@ -44,7 +45,7 @@ class TestFluentPromptMechanics(unittest.IsolatedAsyncioTestCase):
             content, tool_calls = queue.pop(0)
             return AgentResponse(content=content, tool_calls=tool_calls or [])
 
-        patcher = mock.patch.object(SimpleAgent, "_run", fake_run)
+        patcher = mock.patch.object(SimpleAgent, "prompt", fake_run)
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -85,7 +86,7 @@ class TestAssertTextResponse(unittest.IsolatedAsyncioTestCase):
         async def fake_run(agent_self, message, **kwargs):
             return AgentResponse(content=content, tool_calls=tool_calls or [])
 
-        patcher = mock.patch.object(SimpleAgent, "_run", fake_run)
+        patcher = mock.patch.object(SimpleAgent, "prompt", fake_run)
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -116,7 +117,7 @@ class TestAssertToolCalled(unittest.IsolatedAsyncioTestCase):
         async def fake_run(agent_self, message, **kwargs):
             return AgentResponse(content="", tool_calls=tool_calls)
 
-        patcher = mock.patch.object(SimpleAgent, "_run", fake_run)
+        patcher = mock.patch.object(SimpleAgent, "prompt", fake_run)
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -156,7 +157,7 @@ class TestAssertToolNotCalled(unittest.IsolatedAsyncioTestCase):
         async def fake_run(agent_self, message, **kwargs):
             return AgentResponse(content="Hello!", tool_calls=tool_calls)
 
-        patcher = mock.patch.object(SimpleAgent, "_run", fake_run)
+        patcher = mock.patch.object(SimpleAgent, "prompt", fake_run)
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -181,7 +182,7 @@ class TestAssertResponseTimeLt(unittest.IsolatedAsyncioTestCase):
         async def fake_run(agent_self, message, **kwargs):
             return AgentResponse(content="Hello!")
 
-        patcher = mock.patch.object(SimpleAgent, "_run", fake_run)
+        patcher = mock.patch.object(SimpleAgent, "prompt", fake_run)
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -212,7 +213,7 @@ class TestRecordMessagesSeed(unittest.IsolatedAsyncioTestCase):
         seed = [HumanMessage(content="Hi"), AIMessage(content="Hello, how can I help?")]
         with tempfile.TemporaryDirectory() as tmp:
             with SimpleAgent.record(os.path.join(tmp, "c.json"), messages=seed) as agent:
-                built = agent._real._build_messages("suggest python developer jobs")
+                built = Runner(agent._real)._build_messages("suggest python developer jobs")
 
         self.assertEqual(built[0], seed[0])
         self.assertEqual(built[1], seed[1])
@@ -225,7 +226,7 @@ class TestRecordMessagesSeed(unittest.IsolatedAsyncioTestCase):
             async def run_a(agent_self, message, **kwargs):
                 return AgentResponse(content="job list A")
 
-            with mock.patch.object(SimpleAgent, "_run", run_a):
+            with mock.patch.object(SimpleAgent, "prompt", run_a):
                 with SimpleAgent.record(cassette) as agent:
                     response_a = await agent.prompt("suggest python developer jobs")
 
@@ -233,7 +234,7 @@ class TestRecordMessagesSeed(unittest.IsolatedAsyncioTestCase):
                 return AgentResponse(content="job list B")
 
             seed = [HumanMessage(content="Hi"), AIMessage(content="Hello, how can I help?")]
-            with mock.patch.object(SimpleAgent, "_run", run_b):
+            with mock.patch.object(SimpleAgent, "prompt", run_b):
                 with SimpleAgent.record(cassette, messages=seed) as agent:
                     response_b = await agent.prompt("suggest python developer jobs")
 
@@ -246,7 +247,7 @@ class TestAssertResponseJudged(unittest.IsolatedAsyncioTestCase):
         async def fake_run(agent_self, message, **kwargs):
             return AgentResponse(content=content)
 
-        patcher = mock.patch.object(SimpleAgent, "_run", fake_run)
+        patcher = mock.patch.object(SimpleAgent, "prompt", fake_run)
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -339,8 +340,8 @@ class TestExistingRecordApiIsUnaffected(unittest.IsolatedAsyncioTestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             cassette = os.path.join(tmp, "c.json")
-            with mock.patch.object(SimpleAgent, "_run", fake_run):
-                with SimpleAgent.record(cassette):
-                    result = await SimpleAgent().prompt("hello")
+            with mock.patch.object(SimpleAgent, "prompt", fake_run):
+                with SimpleAgent.record(cassette) as agent:
+                    result = await agent.prompt("hello")
 
         self.assertEqual(result.content, "recorded reply")

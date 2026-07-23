@@ -9,7 +9,7 @@ jobs = [
 ]
 
 
-@tool
+@tool(description="Use this tools if user wants to search for jobs")
 def job_search_tool(query: str) -> list:
     """Searches for jobs based on the given query. Supports wildcards (* and ?) in each term."""
     import fnmatch
@@ -17,9 +17,7 @@ def job_search_tool(query: str) -> list:
     patterns = [f"*{term}*" for term in query.lower().split()]
 
     return [
-        job for job in jobs
-        if any(
-            fnmatch.fnmatch(" ".join(str(v) for v in job.values()).lower(), pattern)
-            for pattern in patterns
-        )
+        job
+        for job in jobs
+        if any(fnmatch.fnmatch(" ".join(str(v) for v in job.values()).lower(), pattern) for pattern in patterns)
     ]

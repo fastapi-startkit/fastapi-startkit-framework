@@ -11,11 +11,13 @@ from config.fastapi import FastAPIConfig
 from config.logging import LoggingConfig
 from config.vite import ViteConfig
 from app.providers.fastapi_provider import FastapiProvider
+from app.providers.langchain_provider import LangChainProvider
 
 app: Application = Application(
     base_path=Path(__file__).resolve().parent.parent,
     providers=[
         AISkillProvider,
+        LangChainProvider,
         (LogProvider,LoggingConfig),
         (FastapiProvider, FastAPIConfig),
         AIProvider,

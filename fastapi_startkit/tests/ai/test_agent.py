@@ -1,15 +1,38 @@
+import json
+import re
 import unittest
+from typing import cast
 from unittest import mock
 
 import langchain.chat_models as chat_models
-from langchain_core.messages import AIMessage, ToolCall
+from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+from langchain_core.messages import AIMessage, AIMessageChunk, ToolCall
+from langchain_core.outputs import ChatGenerationChunk
 from langchain_core.tools import tool
 
-from fastapi_startkit.ai import AIConfig, Document, fake_chat_model
+from fastapi_startkit.ai import AIConfig, Document
 from fastapi_startkit.ai.agent import Agent
+from fastapi_startkit.ai.runner import Runner
 from fastapi_startkit.ai.ai import Ai
 from fastapi_startkit.ai.response import AgentResponse
 from fastapi_startkit.application import app
+
+
+class StreamingToolFake(GenericFakeChatModel):
+    # GenericFakeChatModel can't stream tool calls; this emits tool-call chunks
+    # so streamed-tool-result behaviour stays testable without a shared fakes module.
+    def _stream(self, messages, stop=None, run_manager=None, **kwargs):
+        message = cast(AIMessage, next(self.messages))
+        content = message.content if isinstance(message.content, str) else str(message.content)
+        for token in re.split(r"(\s)", content):
+            if token:
+                yield ChatGenerationChunk(message=AIMessageChunk(content=token, id=message.id))
+        if message.tool_calls:
+            chunks = [
+                {"name": c["name"], "args": json.dumps(c.get("args", {})), "id": c.get("id"), "index": i}
+                for i, c in enumerate(message.tool_calls)
+            ]
+            yield ChatGenerationChunk(message=AIMessageChunk(content="", tool_call_chunks=chunks, id=message.id))
 
 
 @tool
@@ -32,12 +55,9 @@ class TestAgent(unittest.IsolatedAsyncioTestCase):
         container.bind("ai", AIConfig())
         container.make("config").set("ai", AIConfig())
 
-    def setup_agent(self, turns: list[AIMessage]):
-        model = fake_chat_model(turns)
-        patcher = mock.patch.object(chat_models, "init_chat_model", lambda *a, **k: model)
-        patcher.start()
-        self.addCleanup(patcher.stop)
-        return model
+    def setup_agent(self, turns: list, agent_cls: type[Agent] = Agent):
+        Ai.fake(agent_cls.__name__, turns)
+        self.addCleanup(Ai.reset_fakes)
 
     async def test_prompt_returns_agent_response(self):
         self.setup_agent([AIMessage(content="hello back")])
@@ -47,7 +67,6 @@ class TestAgent(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsInstance(result, AgentResponse)
         self.assertEqual(result.content, "hello back")
-        agent.assert_prompted()
 
     async def test_search_jobs_tool_returns_listing(self):
         self.setup_agent(
@@ -56,7 +75,8 @@ class TestAgent(unittest.IsolatedAsyncioTestCase):
                     content="",
                     tool_calls=[ToolCall(name="search_jobs", args={"query": "python"}, id="c1", type="tool_call")],
                 ),
-            ]
+            ],
+            JobAssistant,
         )
 
         result = await JobAssistant().prompt("find me a python job")
@@ -79,7 +99,7 @@ class TestAgent(unittest.IsolatedAsyncioTestCase):
         def fake_init(model, **kwargs):
             captured["model"] = model
             captured["provider"] = kwargs.get("model_provider")
-            return fake_chat_model([AIMessage(content="ok")])
+            return GenericFakeChatModel(messages=iter([AIMessage(content="ok")]))
 
         patcher = mock.patch.object(chat_models, "init_chat_model", fake_init)
         patcher.start()
@@ -101,8 +121,6 @@ class TestAgent(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("".join(chunks), "streamed reply")
 
     async def test_middleware_streams_token_by_token_and_runs_after_hook(self):
-        self.setup_agent([AIMessage(content="one two three")])
-
         events: list = []
 
         class Logger:
@@ -114,6 +132,8 @@ class TestAgent(unittest.IsolatedAsyncioTestCase):
             def middleware(self):
                 return [Logger()]
 
+        self.setup_agent([AIMessage(content="one two three")], LoggedAgent)
+
         chunks = [chunk async for chunk in LoggedAgent().stream("hi")]
 
         # Middleware must not buffer: the model's tokens arrive as separate chunks...
@@ -123,8 +143,6 @@ class TestAgent(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(events, ["before", "after"])
 
     async def test_middleware_after_hook_runs_on_prompt(self):
-        self.setup_agent([AIMessage(content="done")])
-
         events: list = []
 
         class Logger:
@@ -136,20 +154,25 @@ class TestAgent(unittest.IsolatedAsyncioTestCase):
             def middleware(self):
                 return [Logger()]
 
+        self.setup_agent([AIMessage(content="done")], LoggedAgent)
+
         result = await LoggedAgent().prompt("hi")
 
         self.assertEqual(result.content, "done")
         self.assertEqual(events, ["before", "after"])
 
     async def test_stream_yields_tool_result_without_calling_model_again(self):
-        self.setup_agent(
-            [
-                AIMessage(
-                    content="",
-                    tool_calls=[ToolCall(name="search_jobs", args={"query": "python"}, id="c1", type="tool_call")],
-                ),
-            ]
+        Ai._fakes["JobAssistant"] = StreamingToolFake(
+            messages=iter(
+                [
+                    AIMessage(
+                        content="",
+                        tool_calls=[ToolCall(name="search_jobs", args={"query": "python"}, id="c1", type="tool_call")],
+                    ),
+                ]
+            )
         )
+        self.addCleanup(Ai.reset_fakes)
 
         chunks = [chunk async for chunk in JobAssistant().stream("find me a python job")]
 
@@ -167,7 +190,7 @@ class TestAgent(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(Ai()._resolve_model(Agent(), "my-model"), "my-model")
 
     def test_instructions_lead_the_message_list(self):
-        messages = JobAssistant()._build_messages("find me a job")
+        messages = Runner(JobAssistant())._build_messages("find me a job")
 
         self.assertEqual(messages[0], {"role": "system", "content": "You help users find jobs."})
         self.assertEqual(sum(m.get("role") == "system" for m in messages), 1)
@@ -177,19 +200,19 @@ class TestAgent(unittest.IsolatedAsyncioTestCase):
             def instructions(self) -> str:
                 return "Computed identity."
 
-        messages = DynamicAgent()._build_messages("hi")
+        messages = Runner(DynamicAgent())._build_messages("hi")
 
         self.assertEqual(messages[0], {"role": "system", "content": "Computed identity."})
 
     def test_no_instructions_prepends_no_system_message(self):
-        messages = Agent()._build_messages("hi")
+        messages = Runner(Agent())._build_messages("hi")
 
         self.assertTrue(all(m.get("role") != "system" for m in messages))
 
     def test_build_messages_inlines_text_attachment(self):
         doc = Document(content="Q3 revenue was $1.2M.", name="q3-report.txt")
 
-        messages = Agent()._build_messages("Summarise this report.", attachments=[doc])
+        messages = Runner(Agent())._build_messages("Summarise this report.", attachments=[doc])
 
         user_content = messages[-1]["content"]
         self.assertEqual(user_content[0], {"type": "text", "text": "Summarise this report."})
@@ -199,7 +222,7 @@ class TestAgent(unittest.IsolatedAsyncioTestCase):
     def test_build_messages_encodes_binary_attachment_as_file_block(self):
         doc = Document(content=b"%PDF-1.7 ...", name="q3.pdf", media_type="application/pdf")
 
-        messages = Agent()._build_messages("Summarise", attachments=[doc])
+        messages = Runner(Agent())._build_messages("Summarise", attachments=[doc])
 
         block = messages[-1]["content"][1]
         self.assertEqual(block["type"], "file")

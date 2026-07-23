@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import fnmatch
 import functools
 import hashlib
 import inspect
@@ -18,65 +17,139 @@ if TYPE_CHECKING:
     from .document import Document
 
 
-def _matches(pattern: str, message: str) -> bool:
-    pattern, message = pattern.lower(), message.lower()
-    if any(ch in pattern for ch in "*?["):
-        return fnmatch.fnmatch(message, pattern)
-    return pattern in message
-
-
-class _Recorder:
-    def __init__(self) -> None:
-        self.calls: list[str] = []
-        self.attachments: list[list[Document]] = []
-
-    def _record_call(self, message: str, attachments: list[Document] | None) -> None:
-        self.calls.append(message)
-        self.attachments.append(list(attachments or []))
-
-    @property
-    def prompt_count(self) -> int:
-        return len(self.calls)
-
-    def assert_prompted(self, pattern: str | None = None) -> None:
-        if pattern is None:
-            assert self.calls, "Expected the agent to be prompted, but it never was."
-            return
-        assert any(_matches(pattern, message) for message in self.calls), (
-            f"Expected a prompt matching {pattern!r}, but none did. Got: {self.calls!r}"
-        )
-
-    def assert_not_prompted(self) -> None:
-        assert not self.calls, f"Expected no prompts, but got: {self.calls!r}"
-
-
 def _joined(value: Any) -> str:
-    """A cassette value is a buffered string or a list of stream chunks."""
     return "".join(value) if isinstance(value, list) else value
 
 
 class AgentFake:
-    """Registers a fixed, ordered list of replies as ``agent_cls``'s chat
-    model for the duration of a ``with`` block (or a decorated function).
-
-    ``prompt()``/``stream()`` still run the real message-building, pipeline,
-    and tool-execution path; see ``Ai.fake()``.
-    """
 
     def __init__(self, agent_cls: type[Agent], responses: list) -> None:
         self._agent_cls = agent_cls
-        self._responses = responses
+        self._responses = list(responses)
+        self._agent = agent_cls()
+        self._agent.messages = self._history  # type: ignore[method-assign]
+        self._records: list[dict] = []
+        self._last_response: AgentResponse | None = None
+        self.last_elapsed: float | None = None
 
-    def __enter__(self) -> None:
+    def _history(self) -> list:
+        return self._records
+
+    @property
+    def _prompts(self) -> list[str]:
+        return [r["content"] for r in self._records if r.get("role") == "user"]
+
+    def __enter__(self) -> "AgentFake":
         from .ai import Ai
 
         Ai.fake(self._agent_cls.__name__, self._responses)
+        return self
 
     def __exit__(self, *_exc: Any) -> bool:
         from .ai import Ai
 
         Ai.forget(self._agent_cls.__name__)
         return False
+
+    async def prompt(self, message: str, *, attachments: list[Document] | None = None) -> AgentResponse:
+        start = time.monotonic()
+        self._last_response = await self._agent.prompt(message, attachments=attachments)
+        self.last_elapsed = time.monotonic() - start
+        self._remember(message, self._last_response)
+        return self._last_response
+
+    async def stream(self, message: str) -> AsyncIterator[str]:
+        chunks: list[str] = []
+        async for chunk in self._agent.stream(message):
+            chunks.append(chunk)
+            yield chunk
+        self._last_response = AgentResponse(content="".join(chunks))
+        self._remember(message, self._last_response)
+
+    def _remember(self, message: str, response: AgentResponse) -> None:
+        self._records.append({"role": "user", "content": message})
+        self._records.append({"role": "assistant", "content": response.content})
+
+
+    def assert_prompt(self, expected: str | Callable[[str], bool]) -> None:
+        if callable(expected):
+            assert any(expected(p) for p in self._prompts), (
+                f"No recorded prompt satisfied the predicate. Got: {self._prompts!r}"
+            )
+        else:
+            assert any(expected in p for p in self._prompts), (
+                f"Expected a prompt containing {expected!r}, but none did. Got: {self._prompts!r}"
+            )
+
+    def assert_response(self, expected: str) -> None:
+        response = self._require_response()
+        assert expected in response.content, f"Expected response to contain {expected!r}, got {response.content!r}"
+
+    def assert_tool_call(self, name: str) -> None:
+        response = self._require_response()
+        called = [tc.get("name") for tc in response.tool_calls]
+        assert name in called, f"Expected tool {name!r} to be called, but got: {called}"
+
+    def assert_prompted(self, times: int | None = None) -> None:
+        if times is not None:
+            assert len(self._prompts) == times, f"Expected {times} prompt call(s), got {len(self._prompts)}"
+        else:
+            assert self._prompts, "Expected at least one prompt() or stream() call, but none were made"
+
+    def assert_not_prompted(self) -> None:
+        self.assert_prompted(times=0)
+
+    def reset(self) -> "AgentFake":
+        self._records.clear()
+        self._last_response = None
+        return self
+
+    def _require_response(self) -> AgentResponse:
+        assert self._last_response is not None, "No prompt() call has been made yet."
+        return self._last_response
+
+    def _tool_call_names(self) -> list[str]:
+        return [tc.get("name", "") for tc in self._require_response().tool_calls]
+
+    def assert_text_response(self) -> None:
+        response = self._require_response()
+        assert response.content, "Expected a non-empty text response, but content was empty."
+
+    def assert_tool_called(self, name: str, predicate: Callable[[ToolCallView], bool] | None = None) -> None:
+        response = self._require_response()
+        matches = [tc for tc in response.tool_calls if tc.get("name") == name]
+        assert matches, f"Expected tool {name!r} to be called, but it wasn't. Called: {self._tool_call_names()}"
+        if predicate is not None:
+            assert any(predicate(ToolCallView(tc)) for tc in matches), (
+                f"Tool {name!r} was called, but no call satisfied the given predicate."
+            )
+
+    def assert_tool_not_called(self, names: list[str]) -> None:
+        unexpected = set(self._tool_call_names()) & set(names)
+        assert not unexpected, f"Expected tools {sorted(names)} not to be called, but got: {sorted(unexpected)}"
+
+    def assert_response_time_lt(self, seconds: float) -> None:
+        assert self.last_elapsed is not None, "No prompt() call has been made yet."
+        assert self.last_elapsed < seconds, f"Expected response time < {seconds}s, took {self.last_elapsed:.3f}s"
+
+    async def assert_response_judged(self, *, model: str, expectation: str, provider: str | None = None) -> None:
+        response = self._require_response()
+        verdict = await self._judge(model, expectation, response.content, provider)
+        assert verdict.get("passed"), (
+            f"Judge ({model}) rejected the response for expectation {expectation!r}: "
+            f"{verdict.get('reasoning', '')!r} — response was {response.content!r}"
+        )
+
+    async def _judge(self, model: str, expectation: str, content: str, provider: str | None = None) -> dict:
+        return await self._judge_live(model, expectation, content, provider)
+
+    async def _judge_live(self, model: str, expectation: str, content: str, provider: str | None = None) -> dict:
+        from .judge import JudgeAgent  # noqa: PLC0415
+
+        judge = JudgeAgent()
+        judge.model = model
+        judge.provider = provider
+        return await judge.judge(expectation, content)
 
     def __call__(self, func: Callable) -> Callable:
         if inspect.iscoroutinefunction(func):
@@ -97,8 +170,6 @@ class AgentFake:
 
 
 class ToolCallView:
-    """Ergonomic, attribute-style view of a raw ``tool_calls`` dict, passed
-    to ``assert_tool_called``'s predicate."""
 
     def __init__(self, data: dict) -> None:
         self.name = data.get("name", "")
@@ -110,38 +181,18 @@ class ToolCallView:
         return f"ToolCallView(name={self.name!r}, args={self.args!r})"
 
 
-class AgentRecordFake(_Recorder):
-    """Bound as ``agent`` by ``with Agent.record(cassette) as agent:``.
-
-    Fluent testing handle around a record-and-replay session: ``prompt()``
-    is async (it's the same real agent call underneath, just cached) and
-    each call mutates the handle's "current turn" state, which the
-    ``assert_*`` methods judge against — mirroring how a browser-testing
-    ``page`` object exposes assertions against the current page state.
-
-    On a cassette miss, the real agent is called once and the response is
-    cached to disk (keyed by the conversation history so far, plus the new
-    message, so two sessions with different histories but the same latest
-    message text don't collide). On a hit, it's replayed with no live call.
-
-    Entering the ``with`` block also binds this handle into the container
-    under the agent class's name, so any other instance of that class
-    created during the block (e.g. by application code under test) is
-    routed through the same recording session.
-    """
-
+class AgentRecordFake(AgentFake):
     def __init__(self, real: Agent, cassette: str | None = None, messages: list | None = None) -> None:
-        super().__init__()
         self._real = real
         self.cassette: Path | None = Path(cassette) if cassette else None
         self._seed_messages: list = list(messages or [])
-        self._transcript: list[dict] = []
+        self._records: list[dict] = []
         self._real.messages = self._history  # type: ignore[method-assign]
-        self.last_response: AgentResponse | None = None
+        self._last_response: AgentResponse | None = None
         self.last_elapsed: float | None = None
 
     def _history(self) -> list:
-        return self._seed_messages + self._transcript
+        return self._seed_messages + self._records
 
     @staticmethod
     def _serialize(value: Any) -> Any:
@@ -182,78 +233,39 @@ class AgentRecordFake(_Recorder):
         return AgentResponse(content=_joined(value))
 
     def _remember_turn(self, message: str, response: AgentResponse) -> None:
-        self._transcript.append({"role": "user", "content": message})
+        self._records.append({"role": "user", "content": message})
         turn: dict[str, Any] = {"role": "assistant", "content": response.content}
         if response.tool_calls:
             turn["tool_calls"] = response.tool_calls
-        self._transcript.append(turn)
+        self._records.append(turn)
 
     async def prompt(self, message: str, *, attachments: list[Document] | None = None) -> AgentResponse:
-        """Run (or replay) one turn and make it the "current" response that
-        assert_*() methods judge."""
-        self._record_call(message, attachments)
         cassette, store = self._load()
         key = self._key(message, attachments)
         start = time.monotonic()
         if key in store:
             response = self._response_from_cache(store[key])
         else:
-            response = await self._real._run(message, attachments=attachments)
+            response = await self._real.prompt(message, attachments=attachments)
             self._save(cassette, store, key, self._cache_prompt_value(response))
+        response = self._real.runner()._apply_schema(response)
         self.last_elapsed = time.monotonic() - start
-        self.last_response = response
+        self._last_response = response
         self._remember_turn(message, response)
         return response
 
     async def stream(self, message: str) -> AsyncIterator[str]:
-        self._record_call(message, None)
         cassette, store = self._load()
         key = self._key(message, None)
         if key in store:
             value = store[key]
-            for chunk in value if isinstance(value, list) else [value]:
-                yield chunk
-            return
-        chunks = [chunk async for chunk in self._real._stream(message)]
-        self._save(cassette, store, key, chunks)
+            chunks = value if isinstance(value, list) else [value]
+        else:
+            chunks = [chunk async for chunk in self._real.stream(message)]
+            self._save(cassette, store, key, chunks)
         for chunk in chunks:
             yield chunk
-
-    def _require_response(self) -> AgentResponse:
-        assert self.last_response is not None, "No prompt() call has been made yet."
-        return self.last_response
-
-    def _tool_call_names(self) -> list[str]:
-        return [tc.get("name", "") for tc in self._require_response().tool_calls]
-
-    def assert_text_response(self) -> None:
-        response = self._require_response()
-        assert response.content, "Expected a non-empty text response, but content was empty."
-
-    def assert_tool_called(self, name: str, predicate: Callable[[ToolCallView], bool] | None = None) -> None:
-        response = self._require_response()
-        matches = [tc for tc in response.tool_calls if tc.get("name") == name]
-        assert matches, f"Expected tool {name!r} to be called, but it wasn't. Called: {self._tool_call_names()}"
-        if predicate is not None:
-            assert any(predicate(ToolCallView(tc)) for tc in matches), (
-                f"Tool {name!r} was called, but no call satisfied the given predicate."
-            )
-
-    def assert_tool_not_called(self, names: list[str]) -> None:
-        unexpected = set(self._tool_call_names()) & set(names)
-        assert not unexpected, f"Expected tools {sorted(names)} not to be called, but got: {sorted(unexpected)}"
-
-    def assert_response_time_lt(self, seconds: float) -> None:
-        assert self.last_elapsed is not None, "No prompt() call has been made yet."
-        assert self.last_elapsed < seconds, f"Expected response time < {seconds}s, took {self.last_elapsed:.3f}s"
-
-    async def assert_response_judged(self, *, model: str, expectation: str, provider: str | None = None) -> None:
-        response = self._require_response()
-        verdict = await self._judge(model, expectation, response.content, provider)
-        assert verdict.get("passed"), (
-            f"Judge ({model}) rejected the response for expectation {expectation!r}: "
-            f"{verdict.get('reasoning', '')!r} — response was {response.content!r}"
-        )
+        self._remember_turn(message, AgentResponse(content=_joined(chunks)))
 
     async def _judge(self, model: str, expectation: str, content: str, provider: str | None = None) -> dict:
         cassette, store = self._load()
@@ -272,14 +284,6 @@ class AgentRecordFake(_Recorder):
         )
         return "judge:" + hashlib.sha256(payload.encode()).hexdigest()
 
-    async def _judge_live(self, model: str, expectation: str, content: str, provider: str | None = None) -> dict:
-        from .judge import JudgeAgent  # noqa: PLC0415
-
-        judge = JudgeAgent()
-        judge.model = model
-        judge.provider = provider
-        return await judge.judge(expectation, content)
-
     def _resolve_cassette(self, filename: str, qualname: str) -> None:
         here = Path(filename).parent
         if self.cassette is None:
@@ -288,17 +292,11 @@ class AgentRecordFake(_Recorder):
             self.cassette = here / self.cassette
 
     def __enter__(self) -> "AgentRecordFake":
-        from fastapi_startkit.application import app
-
         caller = sys._getframe(1).f_code
         self._resolve_cassette(caller.co_filename, caller.co_qualname)
-        app().bind(type(self._real).__name__, self)
         return self
 
     def __exit__(self, *_exc: Any) -> bool:
-        from fastapi_startkit.application import app
-
-        app().unbind(type(self._real).__name__)
         return False
 
     def __call__(self, func: Callable) -> Callable:

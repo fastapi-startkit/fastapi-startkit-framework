@@ -6,7 +6,7 @@ from .config.config import AnthropicConfig, ElevenLabsConfig, GoogleConfig, Open
 from .config.ai import AIConfig
 from .decorators import max_steps, max_tokens, model, provider, timeout, top_p
 from .document import Document
-from .fakes import fake_chat_model
+from .graph import GraphAgent, GraphRunner, GraphState
 from .image import Image, ImageResponse
 from .image_factory import ImageFactory
 from .ai import Ai
@@ -33,8 +33,10 @@ __all__ = [
     "AudioFactory",
     "Document",
     "ElevenLabsConfig",
-    "fake_chat_model",
     "GoogleConfig",
+    "GraphAgent",
+    "GraphRunner",
+    "GraphState",
     "Image",
     "ImageFactory",
     "ImageResponse",

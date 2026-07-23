@@ -13,6 +13,7 @@ from unittest import mock
 from langchain_core.messages import AIMessage
 
 from fastapi_startkit.ai.judge import JudgeAgent, Verdict
+from fastapi_startkit.ai.runner import Runner
 from fastapi_startkit.ai.response import AgentResponse
 
 
@@ -43,7 +44,7 @@ class TestJudgeAgent(unittest.IsolatedAsyncioTestCase):
                 seen["messages"] = messages
                 return AIMessage(content='{"passed": true, "reasoning": "ok"}')
 
-        with mock.patch.object(JudgeAgent, "_build_model", lambda self, *a, **k: Capturing()):
+        with mock.patch.object(Runner, "_build_model", lambda self, *a, **k: Capturing()):
             await JudgeAgent().judge("The llm should respond with greetings", "Hello there!")
 
         blob = " ".join(str(getattr(m, "content", m)) for m in seen["messages"])
@@ -71,7 +72,7 @@ class TestJudgeAgent(unittest.IsolatedAsyncioTestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             cassette = os.path.join(tmp, "judge.json")
-            with mock.patch.object(JudgeAgent, "_run", fake_run):
+            with mock.patch.object(JudgeAgent, "prompt", fake_run):
                 with JudgeAgent.record(cassette) as agent:
                     response = await agent.prompt("grade this")
 
