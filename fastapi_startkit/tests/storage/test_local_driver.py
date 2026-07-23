@@ -7,6 +7,7 @@ import pytest
 
 from fastapi_startkit.storage.drivers.fake import FakeDriver
 from fastapi_startkit.storage.drivers.local import LocalDriver
+from fastapi_startkit.storage.file import File
 from fastapi_startkit.storage.filestream import FileStream
 
 
@@ -102,6 +103,95 @@ class TestLocalDriverPutGet:
         files = driver.get_files("")
         names = [f.name() for f in files]
         assert set(names) == {"a.txt", "b.txt"}
+
+    def test_get_files_skips_subdirectories(self, driver, tmp_path):
+        storage = tmp_path / "storage"
+        storage.mkdir(parents=True, exist_ok=True)
+        (storage / "file.txt").write_text("x")
+        (storage / "nested").mkdir()
+        files = driver.get_files("")
+        assert [f.name() for f in files] == ["file.txt"]
+
+
+class TestLocalDriverPathResolution:
+    def test_get_path_joins_relative_root_to_base_path(self, tmp_path):
+        app = MagicMock()
+        app.base_path = str(tmp_path)
+        driver = LocalDriver(app)
+        driver.set_options({"root": "storage"})
+        resolved = driver.get_path("file.txt")
+        assert resolved == os.path.join(str(tmp_path), "storage", "file.txt")
+
+    def test_get_path_uses_path_option_as_fallback(self, tmp_path):
+        app = MagicMock()
+        app.base_path = str(tmp_path)
+        driver = LocalDriver(app)
+        driver.set_options({"path": str(tmp_path / "assets")})
+        assert driver.get_path("f.txt").startswith(str(tmp_path / "assets"))
+
+    def test_get_name_appends_extension_to_alias(self, tmp_path):
+        app = MagicMock()
+        app.base_path = str(tmp_path)
+        driver = LocalDriver(app)
+        assert driver.get_name("photo.png", "avatar") == "avatar.png"
+
+    def test_make_directory_is_noop(self, tmp_path):
+        app = MagicMock()
+        app.base_path = str(tmp_path)
+        driver = LocalDriver(app)
+        assert driver.make_directory("anything") is None
+
+
+class _Upload:
+    """Minimal stand-in for an uploaded file: a string ``name`` and ``get_content``."""
+
+    def __init__(self, name, content):
+        self.name = name
+        self._content = content
+
+    def get_content(self):
+        return self._content
+
+
+class TestLocalDriverPutFileAndStore:
+    @pytest.fixture
+    def driver(self, tmp_path):
+        app = MagicMock()
+        app.base_path = str(tmp_path)
+        d = LocalDriver(app)
+        d.set_options({"root": str(tmp_path / "storage")})
+        return d
+
+    def test_put_file_writes_named_content(self, driver, tmp_path):
+        content = _Upload("source.txt", b"hello world")
+        stored = driver.put_file("uploads", content, name="renamed")
+        assert stored == os.path.join("uploads", "renamed.txt")
+        assert (tmp_path / "storage" / "uploads" / "renamed.txt").read_bytes() == b"hello world"
+
+    def test_put_file_generates_name_when_missing(self, driver, tmp_path):
+        content = _Upload("source.txt", b"data")
+        stored = driver.put_file("uploads", content)
+        assert stored.endswith(".txt")
+        assert (tmp_path / "storage" / stored).exists()
+
+    def test_store_writes_file_using_hash_path(self, driver, tmp_path):
+        f = File(b"binary-content", "report.pdf")
+        full_path = driver.store(f)
+        assert full_path.endswith(".pdf")
+        assert os.path.exists(full_path)
+        with open(full_path, "rb") as fh:
+            assert fh.read() == b"binary-content"
+
+    def test_store_with_explicit_name(self, driver, tmp_path):
+        f = File(b"x", "report.pdf")
+        full_path = driver.store(f, name="custom")
+        assert os.path.basename(full_path) == "custom.pdf"
+
+    def test_stream_returns_filestream(self, driver, tmp_path):
+        (tmp_path / "storage").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "storage" / "streamed.txt").write_text("streamed")
+        stream = driver.stream("streamed.txt")
+        assert isinstance(stream, FileStream)
 
 
 # ---------------------------------------------------------------------------
