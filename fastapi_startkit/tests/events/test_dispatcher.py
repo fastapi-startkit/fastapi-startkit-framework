@@ -1,4 +1,4 @@
-import pytest
+import unittest
 
 from fastapi_startkit.events import Dispatcher, Listener
 
@@ -13,297 +13,274 @@ class OrderShipped:
         self.order_id = order_id
 
 
-async def test_sync_listener_receives_event():
-    dispatcher = Dispatcher()
-    seen = []
-    dispatcher.listen(UserRegistered, lambda event: seen.append(event.name))
+class DispatcherTest(unittest.IsolatedAsyncioTestCase):
+    async def test_sync_listener_receives_event(self):
+        dispatcher = Dispatcher()
+        seen = []
+        dispatcher.listen(UserRegistered, lambda event: seen.append(event.name))
 
-    await dispatcher.dispatch(UserRegistered("ada"))
+        await dispatcher.dispatch(UserRegistered("ada"))
 
-    assert seen == ["ada"]
+        self.assertEqual(seen, ["ada"])
 
+    async def test_async_listener_is_awaited(self):
+        dispatcher = Dispatcher()
+        seen = []
 
-async def test_async_listener_is_awaited():
-    dispatcher = Dispatcher()
-    seen = []
+        async def listener(event):
+            seen.append(event.name)
 
-    async def listener(event):
-        seen.append(event.name)
+        dispatcher.listen(UserRegistered, listener)
+        await dispatcher.dispatch(UserRegistered("lin"))
 
-    dispatcher.listen(UserRegistered, listener)
-    await dispatcher.dispatch(UserRegistered("lin"))
+        self.assertEqual(seen, ["lin"])
 
-    assert seen == ["lin"]
+    async def test_class_listener_handle_is_called(self):
+        dispatcher = Dispatcher()
+        calls = []
 
+        class SendWelcomeEmail(Listener):
+            def handle(self, event):
+                calls.append(event.name)
 
-async def test_class_listener_handle_is_called():
-    dispatcher = Dispatcher()
-    calls = []
+        dispatcher.listen(UserRegistered, SendWelcomeEmail)
+        await dispatcher.dispatch(UserRegistered("grace"))
 
-    class SendWelcomeEmail(Listener):
-        def handle(self, event):
-            calls.append(event.name)
+        self.assertEqual(calls, ["grace"])
 
-    dispatcher.listen(UserRegistered, SendWelcomeEmail)
-    await dispatcher.dispatch(UserRegistered("grace"))
+    async def test_class_listener_with_async_handle(self):
+        dispatcher = Dispatcher()
+        calls = []
 
-    assert calls == ["grace"]
+        class SendWelcomeEmail:
+            async def handle(self, event):
+                calls.append(event.name)
 
+        dispatcher.listen(UserRegistered, SendWelcomeEmail)
+        await dispatcher.dispatch(UserRegistered("hopper"))
 
-async def test_class_listener_with_async_handle():
-    dispatcher = Dispatcher()
-    calls = []
+        self.assertEqual(calls, ["hopper"])
 
-    class SendWelcomeEmail:
-        async def handle(self, event):
-            calls.append(event.name)
+    async def test_multiple_listeners_fire_in_registration_order(self):
+        dispatcher = Dispatcher()
+        order = []
+        dispatcher.listen(UserRegistered, lambda e: order.append("first"))
+        dispatcher.listen(UserRegistered, lambda e: order.append("second"))
 
-    dispatcher.listen(UserRegistered, SendWelcomeEmail)
-    await dispatcher.dispatch(UserRegistered("hopper"))
+        await dispatcher.dispatch(UserRegistered("x"))
 
-    assert calls == ["hopper"]
+        self.assertEqual(order, ["first", "second"])
 
+    async def test_dispatch_returns_listener_responses(self):
+        dispatcher = Dispatcher()
+        dispatcher.listen(UserRegistered, lambda e: "a")
+        dispatcher.listen(UserRegistered, lambda e: "b")
 
-async def test_multiple_listeners_fire_in_registration_order():
-    dispatcher = Dispatcher()
-    order = []
-    dispatcher.listen(UserRegistered, lambda e: order.append("first"))
-    dispatcher.listen(UserRegistered, lambda e: order.append("second"))
+        responses = await dispatcher.dispatch(UserRegistered("x"))
 
-    await dispatcher.dispatch(UserRegistered("x"))
+        self.assertEqual(responses, ["a", "b"])
 
-    assert order == ["first", "second"]
+    async def test_returning_false_stops_propagation(self):
+        dispatcher = Dispatcher()
+        order = []
+        dispatcher.listen(UserRegistered, lambda e: order.append("first") or False)
+        dispatcher.listen(UserRegistered, lambda e: order.append("second"))
 
+        await dispatcher.dispatch(UserRegistered("x"))
 
-async def test_dispatch_returns_listener_responses():
-    dispatcher = Dispatcher()
-    dispatcher.listen(UserRegistered, lambda e: "a")
-    dispatcher.listen(UserRegistered, lambda e: "b")
+        self.assertEqual(order, ["first"])
 
-    responses = await dispatcher.dispatch(UserRegistered("x"))
+    async def test_until_returns_first_non_none_response(self):
+        dispatcher = Dispatcher()
+        dispatcher.listen(UserRegistered, lambda e: None)
+        dispatcher.listen(UserRegistered, lambda e: "handled")
+        dispatcher.listen(UserRegistered, lambda e: "ignored")
 
-    assert responses == ["a", "b"]
+        result = await dispatcher.until(UserRegistered("x"))
 
+        self.assertEqual(result, "handled")
 
-async def test_returning_false_stops_propagation():
-    dispatcher = Dispatcher()
-    order = []
-    dispatcher.listen(UserRegistered, lambda e: order.append("first") or False)
-    dispatcher.listen(UserRegistered, lambda e: order.append("second"))
+    async def test_string_event_with_payload_list_is_spread(self):
+        dispatcher = Dispatcher()
+        captured = []
+        dispatcher.listen("user.registered", lambda name, plan: captured.append((name, plan)))
 
-    await dispatcher.dispatch(UserRegistered("x"))
+        await dispatcher.dispatch("user.registered", ["ada", "pro"])
 
-    assert order == ["first"]
+        self.assertEqual(captured, [("ada", "pro")])
 
+    async def test_string_event_with_no_payload(self):
+        dispatcher = Dispatcher()
+        calls = []
+        dispatcher.listen("cache.flushed", lambda: calls.append(True))
 
-async def test_until_returns_first_non_none_response():
-    dispatcher = Dispatcher()
-    dispatcher.listen(UserRegistered, lambda e: None)
-    dispatcher.listen(UserRegistered, lambda e: "handled")
-    dispatcher.listen(UserRegistered, lambda e: "ignored")
+        await dispatcher.dispatch("cache.flushed")
 
-    result = await dispatcher.until(UserRegistered("x"))
+        self.assertEqual(calls, [True])
 
-    assert result == "handled"
+    async def test_string_event_with_scalar_payload(self):
+        dispatcher = Dispatcher()
+        captured = []
+        dispatcher.listen("cache.cleared", lambda key: captured.append(key))
 
+        await dispatcher.dispatch("cache.cleared", "users")
 
-async def test_string_event_with_payload_list_is_spread():
-    dispatcher = Dispatcher()
-    captured = []
-    dispatcher.listen("user.registered", lambda name, plan: captured.append((name, plan)))
+        self.assertEqual(captured, ["users"])
 
-    await dispatcher.dispatch("user.registered", ["ada", "pro"])
+    async def test_listen_accepts_a_list_of_events(self):
+        dispatcher = Dispatcher()
+        seen = []
+        dispatcher.listen([UserRegistered, OrderShipped], lambda e: seen.append(type(e).__name__))
 
-    assert captured == [("ada", "pro")]
+        await dispatcher.dispatch(UserRegistered("x"))
+        await dispatcher.dispatch(OrderShipped(1))
 
+        self.assertEqual(seen, ["UserRegistered", "OrderShipped"])
 
-async def test_string_event_with_no_payload():
-    dispatcher = Dispatcher()
-    calls = []
-    dispatcher.listen("cache.flushed", lambda: calls.append(True))
+    async def test_listen_as_decorator(self):
+        dispatcher = Dispatcher()
+        seen = []
 
-    await dispatcher.dispatch("cache.flushed")
+        @dispatcher.listen(UserRegistered)
+        def handler(event):
+            seen.append(event.name)
 
-    assert calls == [True]
+        await dispatcher.dispatch(UserRegistered("curie"))
 
+        self.assertEqual(seen, ["curie"])
+        self.assertTrue(callable(handler))
 
-async def test_string_event_with_scalar_payload():
-    dispatcher = Dispatcher()
-    captured = []
-    dispatcher.listen("cache.cleared", lambda key: captured.append(key))
+    async def test_wildcard_listener_fires_on_matching_event(self):
+        dispatcher = Dispatcher()
+        seen = []
+        dispatcher.listen("user.*", lambda: seen.append(True))
 
-    await dispatcher.dispatch("cache.cleared", "users")
+        await dispatcher.dispatch("user.created")
 
-    assert captured == ["users"]
+        self.assertEqual(seen, [True])
 
+    async def test_wildcard_listener_does_not_fire_on_non_matching_event(self):
+        dispatcher = Dispatcher()
+        seen = []
+        dispatcher.listen("user.*", lambda: seen.append(True))
 
-async def test_listen_accepts_a_list_of_events():
-    dispatcher = Dispatcher()
-    seen = []
-    dispatcher.listen([UserRegistered, OrderShipped], lambda e: seen.append(type(e).__name__))
+        await dispatcher.dispatch("order.created")
 
-    await dispatcher.dispatch(UserRegistered("x"))
-    await dispatcher.dispatch(OrderShipped(1))
+        self.assertEqual(seen, [])
 
-    assert seen == ["UserRegistered", "OrderShipped"]
+    async def test_wildcard_receives_event_payload(self):
+        dispatcher = Dispatcher()
+        captured = []
+        dispatcher.listen("user.*", lambda name: captured.append(name))
 
+        await dispatcher.dispatch("user.created", "ada")
 
-async def test_listen_as_decorator():
-    dispatcher = Dispatcher()
-    seen = []
+        self.assertEqual(captured, ["ada"])
 
-    @dispatcher.listen(UserRegistered)
-    def handler(event):
-        seen.append(event.name)
+    async def test_multiple_wildcard_patterns_each_match_independently(self):
+        dispatcher = Dispatcher()
+        seen = []
+        dispatcher.listen("user.*", lambda: seen.append("user"))
+        dispatcher.listen("*.created", lambda: seen.append("created"))
+        dispatcher.listen("order.*", lambda: seen.append("order"))
 
-    await dispatcher.dispatch(UserRegistered("curie"))
+        await dispatcher.dispatch("user.created")
 
-    assert seen == ["curie"]
-    assert callable(handler)
+        self.assertEqual(sorted(seen), ["created", "user"])
 
+    async def test_wildcard_and_exact_listeners_both_fire_exact_first(self):
+        dispatcher = Dispatcher()
+        order = []
+        dispatcher.listen("user.*", lambda: order.append("wildcard"))
+        dispatcher.listen("user.created", lambda: order.append("exact"))
 
-async def test_wildcard_listener_fires_on_matching_event():
-    dispatcher = Dispatcher()
-    seen = []
-    dispatcher.listen("user.*", lambda: seen.append(True))
+        await dispatcher.dispatch("user.created")
 
-    await dispatcher.dispatch("user.created")
+        self.assertEqual(order, ["exact", "wildcard"])
 
-    assert seen == [True]
+    async def test_wildcard_matches_across_multiple_segments(self):
+        dispatcher = Dispatcher()
+        seen = []
+        dispatcher.listen("user.*", lambda: seen.append(True))
 
+        await dispatcher.dispatch("user.profile.updated")
 
-async def test_wildcard_listener_does_not_fire_on_non_matching_event():
-    dispatcher = Dispatcher()
-    seen = []
-    dispatcher.listen("user.*", lambda: seen.append(True))
+        self.assertEqual(seen, [True])
 
-    await dispatcher.dispatch("order.created")
+    async def test_until_halts_across_exact_and_wildcard(self):
+        dispatcher = Dispatcher()
+        dispatcher.listen("user.created", lambda: None)
+        dispatcher.listen("user.*", lambda: "handled")
 
-    assert seen == []
+        result = await dispatcher.until("user.created")
 
+        self.assertEqual(result, "handled")
 
-async def test_wildcard_receives_event_payload():
-    dispatcher = Dispatcher()
-    captured = []
-    dispatcher.listen("user.*", lambda name: captured.append(name))
+    def test_has_listeners_true_for_wildcard_match(self):
+        dispatcher = Dispatcher()
+        dispatcher.listen("user.*", lambda: None)
 
-    await dispatcher.dispatch("user.created", "ada")
+        self.assertTrue(dispatcher.has_listeners("user.created"))
+        self.assertFalse(dispatcher.has_listeners("order.created"))
 
-    assert captured == ["ada"]
+    def test_has_listeners(self):
+        dispatcher = Dispatcher()
+        self.assertFalse(dispatcher.has_listeners(UserRegistered))
+        dispatcher.listen(UserRegistered, lambda e: None)
+        self.assertTrue(dispatcher.has_listeners(UserRegistered))
 
+    async def test_forget_removes_listeners(self):
+        dispatcher = Dispatcher()
+        seen = []
+        dispatcher.listen(UserRegistered, lambda e: seen.append(1))
+        dispatcher.forget(UserRegistered)
 
-async def test_multiple_wildcard_patterns_each_match_independently():
-    dispatcher = Dispatcher()
-    seen = []
-    dispatcher.listen("user.*", lambda: seen.append("user"))
-    dispatcher.listen("*.created", lambda: seen.append("created"))
-    dispatcher.listen("order.*", lambda: seen.append("order"))
+        await dispatcher.dispatch(UserRegistered("x"))
 
-    await dispatcher.dispatch("user.created")
+        self.assertEqual(seen, [])
+        self.assertFalse(dispatcher.has_listeners(UserRegistered))
 
-    assert sorted(seen) == ["created", "user"]
+    async def test_flush_removes_all_listeners(self):
+        dispatcher = Dispatcher()
+        dispatcher.listen(UserRegistered, lambda e: None)
+        dispatcher.listen(OrderShipped, lambda e: None)
 
+        dispatcher.flush()
 
-async def test_wildcard_and_exact_listeners_both_fire_exact_first():
-    dispatcher = Dispatcher()
-    order = []
-    dispatcher.listen("user.*", lambda: order.append("wildcard"))
-    dispatcher.listen("user.created", lambda: order.append("exact"))
+        self.assertFalse(dispatcher.has_listeners(UserRegistered))
+        self.assertFalse(dispatcher.has_listeners(OrderShipped))
 
-    await dispatcher.dispatch("user.created")
+    async def test_dispatch_with_no_listeners_returns_empty_list(self):
+        dispatcher = Dispatcher()
+        self.assertEqual(await dispatcher.dispatch(UserRegistered("x")), [])
 
-    assert order == ["exact", "wildcard"]
+    async def test_listener_class_dependencies_resolved_by_container(self):
+        from fastapi_startkit.container import Container
 
+        class Mailer:
+            def __init__(self):
+                self.sent = []
 
-async def test_wildcard_matches_across_multiple_segments():
-    dispatcher = Dispatcher()
-    seen = []
-    dispatcher.listen("user.*", lambda: seen.append(True))
+        container = Container()
+        mailer = Mailer()
+        container.bind("mailer", mailer)
 
-    await dispatcher.dispatch("user.profile.updated")
+        class SendWelcomeEmail:
+            def __init__(self, mailer: Mailer):
+                self.mailer = mailer
 
-    assert seen == [True]
+            def handle(self, event):
+                self.mailer.sent.append(event.name)
 
+        dispatcher = Dispatcher(container)
+        dispatcher.listen(UserRegistered, SendWelcomeEmail)
 
-async def test_until_halts_across_exact_and_wildcard():
-    dispatcher = Dispatcher()
-    dispatcher.listen("user.created", lambda: None)
-    dispatcher.listen("user.*", lambda: "handled")
+        await dispatcher.dispatch(UserRegistered("noether"))
 
-    result = await dispatcher.until("user.created")
+        self.assertEqual(mailer.sent, ["noether"])
 
-    assert result == "handled"
 
-
-def test_has_listeners_true_for_wildcard_match():
-    dispatcher = Dispatcher()
-    dispatcher.listen("user.*", lambda: None)
-
-    assert dispatcher.has_listeners("user.created") is True
-    assert dispatcher.has_listeners("order.created") is False
-
-
-def test_has_listeners():
-    dispatcher = Dispatcher()
-    assert dispatcher.has_listeners(UserRegistered) is False
-    dispatcher.listen(UserRegistered, lambda e: None)
-    assert dispatcher.has_listeners(UserRegistered) is True
-
-
-async def test_forget_removes_listeners():
-    dispatcher = Dispatcher()
-    seen = []
-    dispatcher.listen(UserRegistered, lambda e: seen.append(1))
-    dispatcher.forget(UserRegistered)
-
-    await dispatcher.dispatch(UserRegistered("x"))
-
-    assert seen == []
-    assert dispatcher.has_listeners(UserRegistered) is False
-
-
-async def test_flush_removes_all_listeners():
-    dispatcher = Dispatcher()
-    dispatcher.listen(UserRegistered, lambda e: None)
-    dispatcher.listen(OrderShipped, lambda e: None)
-
-    dispatcher.flush()
-
-    assert dispatcher.has_listeners(UserRegistered) is False
-    assert dispatcher.has_listeners(OrderShipped) is False
-
-
-async def test_dispatch_with_no_listeners_returns_empty_list():
-    dispatcher = Dispatcher()
-    assert await dispatcher.dispatch(UserRegistered("x")) == []
-
-
-async def test_listener_class_dependencies_resolved_by_container():
-    from fastapi_startkit.container import Container
-
-    class Mailer:
-        def __init__(self):
-            self.sent = []
-
-    container = Container()
-    mailer = Mailer()
-    container.bind("mailer", mailer)
-
-    class SendWelcomeEmail:
-        def __init__(self, mailer: Mailer):
-            self.mailer = mailer
-
-        def handle(self, event):
-            self.mailer.sent.append(event.name)
-
-    dispatcher = Dispatcher(container)
-    dispatcher.listen(UserRegistered, SendWelcomeEmail)
-
-    await dispatcher.dispatch(UserRegistered("noether"))
-
-    assert mailer.sent == ["noether"]
-
-
-def test_listener_abc_requires_handle():
-    with pytest.raises(TypeError):
-        Listener()  # type: ignore[abstract]
+class ListenerTest(unittest.TestCase):
+    def test_listener_abc_requires_handle(self):
+        with self.assertRaises(TypeError):
+            Listener()  # type: ignore[abstract]
