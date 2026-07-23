@@ -24,7 +24,7 @@ class BelongsToMany(BaseRelationship):
         with_fields=[],
     ):
         if isinstance(fn, str):
-            self.fn = self.fn = lambda x: registry.Registry.resolve(fn)
+            self.fn = lambda: registry.Registry.resolve(fn)
 
         self.local_key = local_foreign_key
         self.foreign_key = other_foreign_key
@@ -460,10 +460,9 @@ class BelongsToMany(BaseRelationship):
         if not builder._columns:
             builder = builder.select("*")
 
-        return_query = builder.add_select(
-            f"{query.get_table_name()}_count",
+        return_query = builder.select_sub(
             lambda q: (
-                q.count("*")
+                q.select_count("*")
                 .where_column(
                     f"{builder.get_table_name()}.{self.local_owner_key}",
                     f"{self._table}.{self.local_key}",
@@ -477,6 +476,7 @@ class BelongsToMany(BaseRelationship):
                     ),
                 )
             ),
+            f"{query.get_table_name()}_count",
         )
 
         return return_query

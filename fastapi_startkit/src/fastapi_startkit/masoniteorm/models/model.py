@@ -92,6 +92,10 @@ class Model(Attribute, Relationship, ObservesEvents):
         return cls.query().with_(*eagers)
 
     @classmethod
+    def with_count(cls, relation: str, callback=None) -> "QueryBuilder":
+        return cls.query().with_count(relation, callback)
+
+    @classmethod
     def where(cls, column, *args) -> "QueryBuilder":
         return cls.query().where(column, *args)
 
