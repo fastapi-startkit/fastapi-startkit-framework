@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING
 
 from fastapi_startkit.masoniteorm.models import Model
-from fastapi_startkit.masoniteorm.relationships import BelongsTo
+from fastapi_startkit.masoniteorm import BelongsTo
 
 if TYPE_CHECKING:
     from app.models.user import User

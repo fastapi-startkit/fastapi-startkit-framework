@@ -1,5 +1,6 @@
 import os
-from fastapi_startkit.providers.app_provider import AppProvider
+import shlex
+from fastapi_startkit.foundation.app_provider import AppProvider
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 from typing import Type, Callable, Any, List, TypeVar, Generic
@@ -7,6 +8,7 @@ from typing import Type, Callable, Any, List, TypeVar, Generic
 from .config import AppConfig
 from .configuration.providers import ConfigurationProvider
 from .container import Container
+from .events import EventServiceProvider
 from .environment.environment import Environment
 
 if TYPE_CHECKING:
@@ -26,6 +28,7 @@ TConfig = TypeVar("TConfig", bound=AppConfig)
 class Application(Container, Generic[TConfig]):
     DEFAULT_PROVIDERS = [
         ConfigurationProvider,
+        EventServiceProvider,
         AppProvider,
     ]
 
@@ -225,3 +228,20 @@ class Application(Container, Generic[TConfig]):
         from fastapi_startkit.console import ConsoleApplication
 
         ConsoleApplication(self).handle()
+
+    def run(self, command: str, args: "str | list[str] | None" = None) -> int:
+        from cleo.io.inputs.string_input import StringInput
+
+        from fastapi_startkit.console import ConsoleApplication
+
+        if isinstance(args, (list, tuple)):
+            args = shlex.join(str(arg) for arg in args)
+
+        command_line = f"{command} {args}".strip() if args else command
+
+        console = ConsoleApplication(self)
+        console.auto_exits(False)
+
+        console.find(command)
+
+        return console.run(StringInput(command_line))

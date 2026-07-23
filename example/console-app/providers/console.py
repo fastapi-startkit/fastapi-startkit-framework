@@ -1,5 +1,5 @@
 from commands.example_command import ExampleCommand
-from fastapi_startkit.providers import Provider
+from fastapi_startkit.support import Provider
 
 
 class ConsoleServiceProvider(Provider):
@@ -7,6 +7,4 @@ class ConsoleServiceProvider(Provider):
         pass
 
     def boot(self):
-        self.app.add_commands([
-            ExampleCommand
-        ])
+        self.app.add_commands([ExampleCommand])

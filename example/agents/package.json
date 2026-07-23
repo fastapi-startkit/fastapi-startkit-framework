@@ -1,0 +1,24 @@
+{
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "dev": "concurrently -c \"#fb7185,#fdba74\" \"uv run python artisan serve\" \"vite\"",
+        "build": "vite build",
+        "types:check": "tsc --noEmit"
+    },
+    "devDependencies": {
+        "@tailwindcss/vite": "^4.0.0",
+        "@types/react": "^19.2.17",
+        "@types/react-dom": "^19.2.3",
+        "fastapi-vite-plugin": "^0.0.3",
+        "tailwindcss": "^4.0.0",
+        "typescript": "^5.0.0",
+        "vite": "^8.0.0"
+    },
+    "dependencies": {
+        "@inertiajs/react": "^3.4.0",
+        "@vitejs/plugin-react": "^6.0.2",
+        "react": "^19.2.7",
+        "react-dom": "^19.2.7"
+    }
+}

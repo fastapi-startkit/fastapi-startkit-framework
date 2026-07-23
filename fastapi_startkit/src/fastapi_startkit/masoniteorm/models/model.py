@@ -93,6 +93,126 @@ class Model(Attribute, Relationship, ObservesEvents):
         return cls.query().with_(*eagers)
 
     @classmethod
+    def where(cls, column, *args) -> "QueryBuilder":
+        return cls.query().where(column, *args)
+
+    @classmethod
+    def or_where(cls, column, *args) -> "QueryBuilder":
+        return cls.query().or_where(column, *args)
+
+    @classmethod
+    def where_null(cls, column: str) -> "QueryBuilder":
+        return cls.query().where_null(column)
+
+    @classmethod
+    def where_not_null(cls, column: str) -> "QueryBuilder":
+        return cls.query().where_not_null(column)
+
+    @classmethod
+    def or_where_null(cls, column: str) -> "QueryBuilder":
+        return cls.query().or_where_null(column)
+
+    @classmethod
+    def or_where_not_null(cls, column: str) -> "QueryBuilder":
+        return cls.query().or_where_not_null(column)
+
+    @classmethod
+    def where_raw(cls, expression: str, bindings=()) -> "QueryBuilder":
+        return cls.query().where_raw(expression, bindings)
+
+    @classmethod
+    def or_where_raw(cls, expression: str, bindings=()) -> "QueryBuilder":
+        return cls.query().or_where_raw(expression, bindings)
+
+    @classmethod
+    def where_in(cls, column: str, values) -> "QueryBuilder":
+        return cls.query().where_in(column, values)
+
+    @classmethod
+    def where_not_in(cls, column: str, values) -> "QueryBuilder":
+        return cls.query().where_not_in(column, values)
+
+    @classmethod
+    def select(cls, *args) -> "QueryBuilder":
+        return cls.query().select(*args)
+
+    @classmethod
+    def limit(cls, limit: int) -> "QueryBuilder":
+        return cls.query().limit(limit)
+
+    @classmethod
+    def offset(cls, offset: int) -> "QueryBuilder":
+        return cls.query().offset(offset)
+
+    @classmethod
+    def order_by(cls, column: str, direction: str = "asc") -> "QueryBuilder":
+        return cls.query().order_by(column, direction)
+
+    @classmethod
+    def order_by_raw(cls, expression: str) -> "QueryBuilder":
+        return cls.query().order_by_raw(expression)
+
+    @classmethod
+    def latest(cls, column: str = "created_at") -> "QueryBuilder":
+        return cls.query().latest(column)
+
+    @classmethod
+    def oldest(cls, column: str = "created_at") -> "QueryBuilder":
+        return cls.query().oldest(column)
+
+    @classmethod
+    def group_by(cls, column: str) -> "QueryBuilder":
+        return cls.query().group_by(column)
+
+    @classmethod
+    def group_by_raw(cls, expression: str) -> "QueryBuilder":
+        return cls.query().group_by_raw(expression)
+
+    @classmethod
+    def having(cls, column: str, equality: str, value) -> "QueryBuilder":
+        return cls.query().having(column, equality, value)
+
+    @classmethod
+    def between(cls, column: str, low, high) -> "QueryBuilder":
+        return cls.query().between(column, low, high)
+
+    @classmethod
+    def not_between(cls, column: str, low, high) -> "QueryBuilder":
+        return cls.query().not_between(column, low, high)
+
+    @classmethod
+    def distinct(cls) -> "QueryBuilder":
+        return cls.query().distinct()
+
+    @classmethod
+    def join(cls, table: str, column1: str, equality: str, column2: str, clause: str = "join") -> "QueryBuilder":
+        return cls.query().join(table, column1, equality, column2, clause)
+
+    @classmethod
+    def left_join(cls, table: str, column1: str, equality: str, column2: str) -> "QueryBuilder":
+        return cls.query().left_join(table, column1, equality, column2)
+
+    @classmethod
+    def right_join(cls, table: str, column1: str, equality: str, column2: str) -> "QueryBuilder":
+        return cls.query().right_join(table, column1, equality, column2)
+
+    @classmethod
+    def where_column(cls, column1: str, column2: str) -> "QueryBuilder":
+        return cls.query().where_column(column1, column2)
+
+    @classmethod
+    def when(cls, condition, callback) -> "QueryBuilder":
+        return cls.query().when(condition, callback)
+
+    @classmethod
+    def where_exists(cls, builder: "QueryBuilder") -> "QueryBuilder":
+        return cls.query().where_exists(builder)
+
+    @classmethod
+    def or_where_exists(cls, builder: "QueryBuilder") -> "QueryBuilder":
+        return cls.query().or_where_exists(builder)
+
+    @classmethod
     def where_has(cls, relation: str, callback=None) -> "QueryBuilder":
         return cls.query().where_has(relation, callback)
 
@@ -139,6 +259,18 @@ class Model(Attribute, Relationship, ObservesEvents):
     def timestamps(self, timestamps: bool = True):
         self.__timestamps__ = timestamps
         return self
+
+    @classmethod
+    def chunk(cls, count: int):
+        return cls.query().chunk(count)
+
+    @classmethod
+    def chunk_by_id(cls, count: int, column: str = None, alias: str = None, descending: bool = False):
+        return cls.query().chunk_by_id(count, column, alias, descending)
+
+    @classmethod
+    def chunk_by_id_desc(cls, count: int, column: str = None, alias: str = None):
+        return cls.query().chunk_by_id_desc(count, column, alias)
 
     def set_connection(self, connection: str):
         self.connection = connection
@@ -204,6 +336,10 @@ class Model(Attribute, Relationship, ObservesEvents):
         await instance.save()
 
         return instance
+
+    @classmethod
+    async def insert(cls, values: dict | list) -> int | None:
+        return await cls.query().insert(values)
 
     async def update(self, attributes: dict) -> bool:
         if not self._exists:

@@ -1,4 +1,4 @@
-from fastapi_startkit.providers import Provider
+from fastapi_startkit.support import Provider
 
 class ConsoleProvider(Provider):
     def register(self) -> None:

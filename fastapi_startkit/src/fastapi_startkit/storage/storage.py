@@ -47,7 +47,7 @@ class StorageManager:
         """
         Replace the named disk with a FakeDriver backed by a temp directory.
 
-        The fake uses a plain LocalDriver under the hood (same as Laravel) so
+        The fake uses a plain LocalDriver under the hood so
         all normal storage operations work, and the returned object exposes
         assertion helpers (assertExists, assertMissing, assertCount, …).
 

@@ -133,3 +133,24 @@ class TestPostGresModel(TestCase):
 
         count = await User.count()
         self.assertEqual(count, 2)
+
+    async def test_insert_single_row(self):
+        await User.insert({"name": "Olivia", "email": "olivia@example.com", "is_admin": False})
+
+        user = await User.where("email", "olivia@example.com").first()
+        self.assertIsNotNone(user)
+        self.assertEqual(user.name, "Olivia")
+
+    async def test_insert_bulk_rows(self):
+        await User.insert(
+            [
+                {"name": "Peggy", "email": "peggy@example.com", "is_admin": False},
+                {"name": "Quentin", "email": "quentin@example.com", "is_admin": True},
+            ]
+        )
+
+        count = await User.count()
+        self.assertEqual(count, 2)
+
+        admin = await User.where("is_admin", True).first()
+        self.assertEqual(admin.name, "Quentin")

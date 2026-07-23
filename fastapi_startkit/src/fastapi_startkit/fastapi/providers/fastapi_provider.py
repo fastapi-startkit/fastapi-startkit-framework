@@ -3,7 +3,7 @@ from fastapi import FastAPI
 
 from fastapi_startkit.fastapi.commands import ServeCommand
 from fastapi_startkit.fastapi.config import FastAPIConfig
-from fastapi_startkit.providers import Provider
+from fastapi_startkit.support import Provider
 
 
 class FastAPIProvider(Provider):

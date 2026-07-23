@@ -14,7 +14,7 @@ from fastapi_startkit.masoniteorm.connections.factory import ConnectionFactory
 from fastapi_startkit.masoniteorm.connections.manager import DatabaseManager
 from fastapi_startkit.masoniteorm import Migrator
 from fastapi_startkit.masoniteorm import Model
-from fastapi_startkit.providers.Provider import Provider
+from fastapi_startkit.support import Provider
 
 
 class DatabaseProvider(Provider):

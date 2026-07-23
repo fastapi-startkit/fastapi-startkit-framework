@@ -40,7 +40,7 @@ class MigrateRefreshCommand(Command):
             "seed-directory",
             None,
             flag=False,
-            default="databases/seeds",
+            default="databases/seeders",
             description="The location of the seed directory",
         ),
     ]

@@ -1,11 +1,41 @@
 [project]
 name = "fastapi-startkit"
-version = "0.28.0"
-description = "Fastapi Starter kit components"
+version = "0.50.0"
+description = "A modular, provider-driven framework for building async Python web applications with FastAPI — bundling a service container, configuration system, an async-first ORM, facades, and a Cleo-powered console."
+readme = "README.md"
+keywords = [
+    "fastapi",
+    "framework",
+    "async",
+    "web",
+    "asgi",
+    "orm",
+    "sqlalchemy",
+    "pydantic",
+    "ioc-container",
+    "dependency-injection",
+    "service-provider",
+    "cli",
+    "console",
+    "configuration",
+    "microservices",
+    "starter-kit",
+    "boilerplate",
+]
 authors = [
     {name = "Bedram Tamang", email = "tmgbedu@gmail.com"}
 ]
 requires-python = ">=3.12,<4.0"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
 dependencies = [
     "dotty-dict>=1.3.1",
     "pendulum (>=3.1.0,<4.0.0)",
@@ -16,9 +46,16 @@ dependencies = [
     "pydantic>=2.12.5",
 ]
 
+[project.urls]
+Homepage = "https://fastapi-startkit.github.io"
+Documentation = "https://fastapi-startkit.github.io"
+Repository = "https://github.com/fastapi-startkit/fastapi-startkit-framework"
+Issues = "https://github.com/fastapi-startkit/fastapi-startkit-framework/issues"
+Changelog = "https://github.com/fastapi-startkit/fastapi-startkit-framework/releases"
+
 [project.optional-dependencies]
 fastapi = [
-    "fastapi[standard] (>=0.124.4,<0.125.0)",
+    "fastapi[standard]>=0.124.4",
     "itsdangerous>=2.2.0",
 ]
 database = [
@@ -47,6 +84,11 @@ inertia = [
     "markupsafe>=2.0",
 ]
 
+ai = [
+    "langchain>=1.0.0",
+    "langchain-core>=1.0.0",
+]
+
 [dependency-groups]
 dev = [
     "dumpdie>=1.5.0",
@@ -61,6 +103,10 @@ dev = [
     "aiomysql>=0.2.0",
     "sqlalchemy[asyncio]>=2.0.38",
     "fastapi[standard]>=0.124.4",
+    "faker>=40.13.0",
+    "langchain>=1.0.0",
+    "langchain-core>=1.0.0",
+    "pyright>=1.1.411",
 ]
 
 
@@ -74,9 +120,22 @@ fixable = ["F401"]
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 
+[tool.pyright]
+include = ["src/fastapi_startkit"]
+exclude = [
+    "**/tests",
+    "**/migrations",
+    "**/*.backup",
+    "**/*_backup",
+    "**/__pycache__",
+    "**/.venv",
+]
+typeCheckingMode = "basic"
+pythonVersion = "3.12"
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-norecursedirs = ["masoniteorm.backup", ".venv", "dist", "build", "__pycache__"]
+norecursedirs = [".venv", "dist", "build", "__pycache__"]
 
 [tool.coverage.run]
 source = ["src/fastapi_startkit"]
@@ -90,7 +149,7 @@ omit = [
 [tool.coverage.report]
 show_missing = true
 skip_covered = false
-fail_under = 40
+fail_under = 80
 exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",

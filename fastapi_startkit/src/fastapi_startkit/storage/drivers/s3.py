@@ -2,7 +2,7 @@ import os
 import uuid
 
 from ..file import File
-from ...utils.filesystem import get_extension
+from ..helper import get_extension
 
 
 class S3Driver:

@@ -1,8 +1,8 @@
 import pendulum
 import pytest
-from unittest.mock import MagicMock, patch
 
 from fastapi_startkit.carbon import Carbon
+from fastapi_startkit.exceptions.exceptions import DriverNotFound
 from fastapi_startkit.masoniteorm.models.fields import DateTimeField
 from fastapi_startkit.masoniteorm.connections.factory import ConnectionFactory
 from fastapi_startkit.masoniteorm.connections.manager import DatabaseManager
@@ -25,8 +25,10 @@ SQLITE_CONFIG = {
 
 
 @pytest.fixture
-def db():
-    return DatabaseManager(ConnectionFactory(), SQLITE_CONFIG)
+async def db():
+    manager = DatabaseManager(ConnectionFactory(), SQLITE_CONFIG)
+    yield manager
+    await manager.clear()
 
 
 @pytest.fixture
@@ -84,8 +86,9 @@ class TestDatabaseManager:
         assert conn1 is conn2
 
     def test_connection_raises_for_missing_driver(self):
-        # create_engine is called before the driver switch, so mock it to isolate
-        # the "Unsupported driver" branch in ConnectionFactory.make().
+        # make() now validates the driver before any engine is built, so an
+        # unsupported driver fails fast with a friendly framework error rather
+        # than a raw KeyError/ValueError from deep inside SQLAlchemy.
         factory = ConnectionFactory()
         bad_config = {
             "default": "mssql",
@@ -94,9 +97,8 @@ class TestDatabaseManager:
             },
         }
         dm = DatabaseManager(factory, bad_config)
-        with patch.object(ConnectionFactory, "create_engine", return_value=MagicMock()):
-            with pytest.raises(ValueError, match="Unsupported driver"):
-                dm.connection("mssql")
+        with pytest.raises(DriverNotFound, match="mssql"):
+            dm.connection("mssql")
 
 
 # ---------------------------------------------------------------------------

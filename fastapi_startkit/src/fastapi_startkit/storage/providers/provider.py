@@ -1,5 +1,5 @@
 from pathlib import Path
-from ...providers import Provider
+from fastapi_startkit.support import Provider
 from ..storage import StorageManager
 from ...configuration import config
 from ..drivers import LocalDriver, S3Driver

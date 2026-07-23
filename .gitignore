@@ -1,6 +1,7 @@
 .idea
 .DS_Store
 **/.venv
+**/node_modules/
 **/__pycache__/
 **/*.db
 **/*.sqlite3
@@ -8,6 +9,10 @@
 **/.env
 **/*.sqlite
 **/*.vite
+**/.coverage
+**/.coverage.*
+**/htmlcov/
+**/coverage.xml
 fastapi_startkit/dist
 fastapi_startkit.github.io.git
 laravel-repo
