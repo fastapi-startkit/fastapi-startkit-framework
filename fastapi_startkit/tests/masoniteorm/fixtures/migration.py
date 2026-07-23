@@ -1,10 +1,15 @@
 from fastapi_startkit.masoniteorm.schema import Schema
 
 
+_SQLITE_SYSTEM_TABLES = {"sqlite_sequence", "sqlite_stat1", "sqlite_stat2", "sqlite_stat3", "sqlite_stat4"}
+
+
 async def wipe(schema: Schema) -> None:
     for connection in ("default", "dev"):
         tables = await schema.on(connection).get_all_tables()
         for table in tables:
+            if table in _SQLITE_SYSTEM_TABLES:
+                continue
             await schema.on(connection).drop_table_if_exists(table)
 
 

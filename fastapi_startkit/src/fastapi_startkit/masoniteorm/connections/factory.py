@@ -26,11 +26,15 @@ class ConnectionFactory:
 
         driver = config["driver"]
         scheme = cls.DRIVER_URLS[driver]
+        db = config.get("database", "")
+
+        if driver == "sqlite":
+            return f"{scheme}:///{db}"
+
         user = config.get("username", "")
         pwd = config.get("password", "")
         host = config.get("host", "localhost")
         port = config.get("port", "")
-        db = config.get("database", "")
         return f"{scheme}://{user}:{pwd}@{host}:{port}/{db}"
 
     @classmethod

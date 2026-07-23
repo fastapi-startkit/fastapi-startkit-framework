@@ -1,6 +1,6 @@
 import json
 from markupsafe import Markup
-from fastapi_startkit.providers import Provider
+from fastapi_startkit.support import Provider
 from .inertia import Inertia
 from .middleware import InertiaMiddleware
 

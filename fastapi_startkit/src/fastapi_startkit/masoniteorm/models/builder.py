@@ -92,9 +92,7 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
 
         result = await self.find(primary_key, columns)
         if result is None:
-            raise ModelNotFoundException(
-                f"{self._model.__class__.__name__} with primary key {primary_key!r} not found."
-            )
+            raise ModelNotFoundException(f"{type(self._model).__name__} with primary key {primary_key!r} not found.")
         return result
 
     async def first_or_fail(self, columns=None):
@@ -102,7 +100,7 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
 
         result = await self.first(columns)
         if result is None:
-            raise ModelNotFoundException(f"{self._model.__name__} not found.")
+            raise ModelNotFoundException(f"{type(self._model).__name__} not found.")
         return result
 
     async def first(self, columns=None):
@@ -205,6 +203,14 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
         self._wheres += (QueryExpression(column, "=", None, "NOT NULL"),)
         return self
 
+    def or_where_null(self, column: str) -> "QueryBuilder":
+        self._wheres += (QueryExpression(column, "=", None, "NULL", keyword="or"),)
+        return self
+
+    def or_where_not_null(self, column: str) -> "QueryBuilder":
+        self._wheres += (QueryExpression(column, "=", None, "NOT NULL", keyword="or"),)
+        return self
+
     def where_not_in(self, column: str, values) -> "QueryBuilder":
         values = list(values) if not isinstance(values, list) else values
         self._wheres.append(QueryExpression(column, "NOT IN", values))
@@ -238,6 +244,10 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
 
     async def count(self, column: str = "*"):
         return await self.aggregate("COUNT", column)
+
+    async def exists(self) -> bool:
+        """Return True if any record matches the current query, False otherwise."""
+        return (await self.count() or 0) > 0
 
     async def sum(self, column: str):
         return await self.aggregate("SUM", column)
@@ -337,6 +347,80 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
         results = await self.limit(per_page + 1).offset(offset).get()
         return SimplePaginator(results, per_page, page)
 
+    async def chunk(self, count: int):
+        """Yield results in batches of ``count`` using offset/limit paging.
+
+        Mirrors Laravel's ``chunk()``: iteration stops as soon as a batch
+        comes back empty or shorter than ``count``, so it never loops forever.
+        """
+        if count <= 0:
+            raise ValueError("chunk() size must be a positive integer.")
+
+        page = 0
+        while True:
+            results = await self.limit(count).offset(page * count).get()
+            if len(results) == 0:
+                break
+
+            yield results
+
+            if len(results) < count:
+                break
+            page += 1
+
+    async def chunk_by_id(self, count: int, column: str = None, alias: str = None, descending: bool = False):
+        if count <= 0:
+            raise ValueError("chunk_by_id() size must be a positive integer.")
+
+        column = column or self._model.__primary_key__
+        alias = alias or column
+        operator = "<" if descending else ">"
+        direction = "desc" if descending else "asc"
+
+        base_wheres = list(self._wheres)
+        offset = self._offset or 0
+        remaining = self._limit if self._limit is not False else None
+
+        last_id = None
+        page = 1
+        while True:
+            limit = count if remaining is None else min(count, remaining)
+            if limit == 0:
+                break
+
+            self._wheres = list(base_wheres)
+            self._order_by = ()
+            # The starting offset only applies to the first page; keyset
+            # filtering drives every page after that.
+            self._offset = offset if page == 1 else False
+            if last_id is not None:
+                self.where(column, operator, last_id)
+
+            results = await self.order_by(column, direction).limit(limit).get()
+            count_results = len(results)
+            if count_results == 0:
+                break
+
+            if remaining is not None:
+                remaining = max(remaining - count_results, 0)
+
+            yield results
+
+            last_id = results.last().get_attributes().get(alias)
+            if last_id is None:
+                raise RuntimeError(
+                    f"The chunk_by_id operation was aborted because the [{alias}] "
+                    "column is not present in the query result."
+                )
+
+            if count_results != count:
+                break
+            page += 1
+
+    async def chunk_by_id_desc(self, count: int, column: str = None, alias: str = None):
+        async for results in self.chunk_by_id(count, column, alias, descending=True):
+            yield results
+
     def new(self):
         return self.connection.query()
 
@@ -369,6 +453,14 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
     def or_where(self, column, *args) -> "QueryBuilder":
         operator, value = self._extract_operator_value(*args)
         self._wheres += ((QueryExpression(column, operator, value, "value", keyword="or")),)
+        return self
+
+    def where_raw(self, expression: str, bindings=()) -> "QueryBuilder":
+        self._wheres += (QueryExpression(expression, "=", None, raw=True, bindings=bindings),)
+        return self
+
+    def or_where_raw(self, expression: str, bindings=()) -> "QueryBuilder":
+        self._wheres += (QueryExpression(expression, "=", None, raw=True, keyword="or", bindings=bindings),)
         return self
 
     def join(self, table: str, column1: str, equality: str, column2: str, clause: str = "join") -> "QueryBuilder":

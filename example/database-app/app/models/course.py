@@ -1,12 +1,7 @@
 from typing import TYPE_CHECKING
 
 from fastapi_startkit.masoniteorm.models import Model
-from fastapi_startkit.masoniteorm.relationships import (
-    BelongsTo,
-    HasMany,
-    BelongsToMany,
-    MorphMany,
-)
+from fastapi_startkit.masoniteorm import BelongsTo, HasMany, BelongsToMany, MorphMany
 
 if TYPE_CHECKING:
     from app.models.category import Category

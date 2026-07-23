@@ -4,7 +4,7 @@ import pytest
 
 from fastapi_startkit.application import Application
 from fastapi_startkit.container.container import Container
-from fastapi_startkit.providers import Provider
+from fastapi_startkit.support import Provider
 
 
 # ---------------------------------------------------------------------------

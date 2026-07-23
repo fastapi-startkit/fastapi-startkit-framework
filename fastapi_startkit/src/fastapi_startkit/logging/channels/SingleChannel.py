@@ -1,6 +1,6 @@
 from ..factory import DriverFactory
 from fastapi_startkit.facades import Config
-from fastapi_startkit.utils.filesystem import make_directory
+from ..file import make_directory
 from .BaseChannel import BaseChannel
 
 

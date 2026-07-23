@@ -1,5 +1,5 @@
 from fastapi_startkit.masoniteorm.models.model import Model
-from fastapi_startkit.masoniteorm.relationships import HasOne, BelongsTo
+from fastapi_startkit.masoniteorm import HasOne, BelongsTo
 from ..test_case import TestCase
 
 

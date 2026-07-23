@@ -29,7 +29,7 @@ class DBSeedCommand(Command):
             "directory",
             "d",
             flag=False,
-            default="databases/seeds",
+            default="databases/seeders",
             description="The location of the seed directory",
         ),
         option(
@@ -46,7 +46,7 @@ class DBSeedCommand(Command):
         return asyncio.run(self.handle_async())
 
     async def handle_async(self):
-        from ..seeds import Seeder
+        from ..seeders import Seeder
 
         seeder = Seeder(
             seed_path=self.option("directory"),

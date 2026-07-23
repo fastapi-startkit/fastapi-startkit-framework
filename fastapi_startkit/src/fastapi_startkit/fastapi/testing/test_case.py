@@ -1,5 +1,6 @@
 from abc import ABC
 
+from fastapi_startkit.fastapi.testing.test_response import TestResponse
 from fastapi_startkit.testing import TestCase
 from httpx import AsyncClient, ASGITransport
 
@@ -18,14 +19,17 @@ class HttpTestCase(TestCase, ABC):
         await self._client_ctx.__aexit__(None, None, None)
         await super().asyncTearDown()
 
-    async def get(self, url, **kwargs):
-        return await self.client.get(url, **kwargs)
+    async def get(self, url, **kwargs) -> TestResponse:
+        return TestResponse(await self.client.get(url, **kwargs))
 
-    async def post(self, url, **kwargs):
-        return await self.client.post(url, **kwargs)
+    async def post(self, url, **kwargs) -> TestResponse:
+        return TestResponse(await self.client.post(url, **kwargs))
 
-    async def put(self, url, **kwargs):
-        return await self.client.put(url, **kwargs)
+    async def put(self, url, **kwargs) -> TestResponse:
+        return TestResponse(await self.client.put(url, **kwargs))
 
-    async def delete(self, url, **kwargs):
-        return await self.client.delete(url, **kwargs)
+    async def patch(self, url, **kwargs) -> TestResponse:
+        return TestResponse(await self.client.patch(url, **kwargs))
+
+    async def delete(self, url, **kwargs) -> TestResponse:
+        return TestResponse(await self.client.delete(url, **kwargs))

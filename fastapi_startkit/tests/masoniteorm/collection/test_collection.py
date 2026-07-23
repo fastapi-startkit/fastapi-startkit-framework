@@ -1,7 +1,7 @@
 from fastapi_startkit.masoniteorm.collection import Collection
 from fastapi_startkit.masoniteorm.models.model import Model
 
-from ..fixtures.model import User
+from ..fixtures.model import Articles, Profile, User
 from ..sqlite.test_case import TestCase
 
 
@@ -16,6 +16,57 @@ class TestCollection(TestCase):
         serialized = users.serialize()
         self.assertTrue(isinstance(serialized, list))
         self.assertTrue(len(serialized) > 0)
+
+    async def test_load_has_one_relationship(self):
+        users = await User.all()
+
+        result = await users.load("profile")
+
+        self.assertIs(result, users)
+        admin = users.where("email", "admin@admin.com").first()
+        self.assertIn("profile", admin._relationships)
+        self.assertIsInstance(admin.profile, Profile)
+
+    async def test_load_has_many_relationship(self):
+        users = await User.all()
+
+        result = await users.load("articles")
+
+        self.assertIs(result, users)
+        admin = users.where("email", "admin@admin.com").first()
+        self.assertIn("articles", admin._relationships)
+        self.assertEqual(len(admin.articles), 1)
+        self.assertIsInstance(admin.articles[0], Articles)
+
+    async def test_load_multiple_relationships_at_once(self):
+        users = await User.all()
+
+        await users.load("profile", "articles")
+
+        admin = users.where("email", "admin@admin.com").first()
+        self.assertIn("profile", admin._relationships)
+        self.assertIn("articles", admin._relationships)
+
+    async def test_load_without_matching_related_records(self):
+        # Jane (id 2) has no articles, so get_related returns an empty
+        # collection and no relation is registered.
+        users = await User.where("id", 2).get()
+
+        result = await users.load("articles")
+
+        self.assertIs(result, users)
+        self.assertNotIn("articles", users.first()._relationships)
+
+    async def test_load_on_empty_collection_returns_self(self):
+        users = await User.where("id", 9999).get()
+        self.assertTrue(users.is_empty())
+
+        result = await users.load("profile")
+
+        self.assertIs(result, users)
+
+    def test_with_relationship_autoloading_is_noop(self):
+        self.assertIsNone(Collection([]).with_relationship_autoloading())
 
     def test_take(self):
         collection = Collection([1, 2, 3, 4])

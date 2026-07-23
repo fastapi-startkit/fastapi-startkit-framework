@@ -5,7 +5,7 @@ from shutil import copyfile, move
 
 from ..filestream import FileStream
 from ..file import File
-from ...utils.filesystem import get_extension
+from ..helper import get_extension
 
 
 class LocalDriver:

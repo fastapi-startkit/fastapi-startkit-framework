@@ -16,7 +16,7 @@ class MakeSeedCommand(Command):
             "directory",
             "d",
             flag=False,
-            default="databases/seeds",
+            default="databases/seeders",
             description="The location of the seed directory",
         ),
     ]

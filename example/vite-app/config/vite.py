@@ -10,3 +10,5 @@ class ViteConfig:
     asset_url: str = ""
     static_url: str = "/build"
     mount_static: bool = True
+    template: bool = True
+    templates_directory: str = "resources/templates"
