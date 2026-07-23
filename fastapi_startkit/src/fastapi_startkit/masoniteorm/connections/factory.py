@@ -36,9 +36,7 @@ class ConnectionFactory:
     @classmethod
     def _unsupported_driver_error(cls, driver: Any) -> DriverNotFound:
         supported = ", ".join(sorted(cls.DRIVER_URLS))
-        return DriverNotFound(
-            f"Unsupported database driver {driver!r}. Supported drivers are: {supported}."
-        )
+        return DriverNotFound(f"Unsupported database driver {driver!r}. Supported drivers are: {supported}.")
 
     @classmethod
     def build_url(cls, config: dict) -> str:
