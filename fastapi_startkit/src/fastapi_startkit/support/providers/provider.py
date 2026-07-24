@@ -5,13 +5,14 @@ from fastapi_startkit.support.dataclass import Dataclass
 
 if TYPE_CHECKING:
     from fastapi_startkit.application import Application
+    from fastapi_startkit.config import AppConfig
 
 
 class Provider:
     provider_key: str = None
 
-    def __init__(self, application: "Application", config: dict = None):
-        self.app: "Application" = application
+    def __init__(self, application: "Application[AppConfig]", config: dict = None):
+        self.app: "Application[AppConfig]" = application
         self.config = config or {}
 
         if self.provider_key is None:
