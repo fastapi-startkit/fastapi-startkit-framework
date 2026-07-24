@@ -6,64 +6,122 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Annotated, Any, TypedDict
 
-from langgraph.graph import END, StateGraph
+from langchain_core.runnables import RunnableConfig
+from langgraph.graph import END
 from langgraph.graph.message import add_messages
 
 from .agent import Agent
+from .pipeline import Response, build_pipeline
 from .response import AgentResponse
 from .runner import BaseRunner
 
 if TYPE_CHECKING:
+    from langgraph.graph.state import CompiledStateGraph
+
     from .document import Document
 
 
-class GraphState(TypedDict):
-
+class AgentState(TypedDict):
     messages: Annotated[list, add_messages]
     llm_calls: int
 
 
 class GraphAgent(Agent, ABC):
+    def __init__(self):
+        super().__init__()
 
     def runner(self) -> GraphRunner:
         return GraphRunner(self)
 
+    async def prompt(
+        self,
+        message: str,
+        *,
+        model: str | None = None,
+        attachments: list[Document] | None = None,
+        config: RunnableConfig | dict | None = None,
+        provider_options: dict | None = None,
+    ) -> AgentResponse:
+        return await self.runner().run(
+            message,
+            model=model,
+            attachments=attachments,
+            config=config,
+            provider_options=provider_options,
+        )
+
+    async def stream(
+        self,
+        message: str,
+        *,
+        model: str | None = None,
+        config: RunnableConfig | dict | None = None,
+        provider_options: dict | None = None,
+    ) -> AsyncIterator[str]:
+        async for chunk in self.runner().stream(
+            message, model=model, config=config, provider_options=provider_options
+        ):
+            yield chunk
+
     @abstractmethod
-    def graph(self, runner: GraphRunner) -> StateGraph:
+    async def graph(self, runner: GraphRunner) -> CompiledStateGraph:
         ...
 
 
 class GraphRunner(BaseRunner):
-
     agent: GraphAgent
 
     def __init__(self, agent: GraphAgent) -> None:
         super().__init__(agent)
-        self._chat_model: Any = None
+        self.model: Any = None
+        # The full structured response from the most recent stream() — captured so
+        # streamed runs expose content + tool_calls just like run(), not only text.
+        self.last_response: AgentResponse | None = None
 
-
-    async def llm(self, state: GraphState) -> dict:
-        reply = await self._chat_model.ainvoke(state["messages"])
+    async def llm(self, state: AgentState) -> dict:
+        reply = await self._invoke_model(state["messages"])
         return {"messages": [reply], "llm_calls": state.get("llm_calls", 0) + 1}
 
-    async def call_tools(self, state: GraphState) -> dict:
+    async def _invoke_model(self, messages: list) -> Any:
+        """Invoke the model, wrapped in the agent's middleware pipeline (the same
+        onion the plain ``Runner`` builds). Tool routing stays in the graph — the
+        middleware only wraps the single model call."""
+        chain = list(self.agent.middleware())
+        if not chain:
+            return await self.model.ainvoke(messages)
+
+        def core(model: Any) -> Response:
+            async def _run() -> AsyncIterator[Any]:
+                yield await model.ainvoke(messages)
+
+            return Response(_run)
+
+        pipeline = build_pipeline(chain, core)
+        return await pipeline(self.model)
+
+    async def call_tools(self, state: AgentState) -> dict:
         tools_by_name = {tool.name: tool for tool in self.agent.tools()}
         results = []
         for call in getattr(state["messages"][-1], "tool_calls", None) or []:
             results.append(await tools_by_name[call["name"]].ainvoke(call))
         return {"messages": results}
 
-    def route(self, state: GraphState) -> str:
+    def route(self, state: AgentState) -> str:
         return "tools" if getattr(state["messages"][-1], "tool_calls", None) else END
 
 
-    def _compile(self, model: str | None, provider_options: dict | None) -> Any:
-        self._chat_model = self._build_model(model, provider_options)
-        return self.agent.graph(self).compile()
+    async def _compile(self, model: str | None, provider_options: dict | None) -> Any:
+        self.model = self._build_model(model, provider_options)
+        return await self.agent.graph(self)
 
     @property
     def _config(self) -> dict:
         return {"recursion_limit": self.agent.max_steps * 2 + 1}
+
+    def _merge_config(self, config: RunnableConfig | dict | None) -> dict:
+        """Layer a caller-supplied config (e.g. ``configurable.thread_id`` for the
+        checkpointer) on top of the runner defaults."""
+        return {**self._config, **(config or {})}
 
     async def run(
         self,
@@ -71,12 +129,13 @@ class GraphRunner(BaseRunner):
         *,
         model: str | None = None,
         attachments: list[Document] | None = None,
+        config: RunnableConfig | dict | None = None,
         provider_options: dict | None = None,
     ) -> AgentResponse:
         started = time.perf_counter()
-        compiled = self._compile(model, provider_options)
+        compiled = await self._compile(model, provider_options)
         state = {"messages": self._build_messages(message, attachments), "llm_calls": 0}
-        result = await compiled.ainvoke(state, config=self._config)
+        result = await compiled.ainvoke(state, config=self._merge_config(config))
         response = self._apply_schema(self._to_response(result))
         response.runtime = time.perf_counter() - started
         return response
@@ -86,14 +145,25 @@ class GraphRunner(BaseRunner):
         message: str,
         *,
         model: str | None = None,
+        config: RunnableConfig | dict | None = None,
         provider_options: dict | None = None,
     ) -> AsyncIterator[str]:
-        compiled = self._compile(model, provider_options)
+        compiled = await self._compile(model, provider_options)
         state = {"messages": self._build_messages(message), "llm_calls": 0}
-        async for chunk, _meta in compiled.astream(state, stream_mode="messages", config=self._config):
-            text = chunk.content if isinstance(chunk.content, str) else str(chunk.content)
+        final_state: dict = {}
+        # "messages" streams tokens; "values" hands back the full state after each
+        # step, whose last snapshot carries every message (and its tool_calls).
+        async for mode, chunk in compiled.astream(
+            state, stream_mode=["messages", "values"], config=self._merge_config(config)
+        ):
+            if mode == "values":
+                final_state = chunk
+                continue
+            message_chunk, _meta = chunk
+            text = message_chunk.content if isinstance(message_chunk.content, str) else str(message_chunk.content)
             if text:
                 yield text
+        self.last_response = self._to_response(final_state) if final_state else AgentResponse(content="")
 
     @staticmethod
     def _to_response(result: dict) -> AgentResponse:

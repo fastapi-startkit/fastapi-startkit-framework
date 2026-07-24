@@ -12,7 +12,7 @@ from langchain_core.tools import tool
 from langgraph.graph import END, START, StateGraph
 
 from fastapi_startkit.ai.ai import Ai
-from fastapi_startkit.ai.graph import GraphAgent, GraphRunner, GraphState
+from fastapi_startkit.ai.graph import GraphAgent, GraphRunner, AgentState
 
 
 @tool
@@ -28,14 +28,14 @@ class MathAgent(GraphAgent):
     def tools(self):
         return [add]
 
-    def graph(self, runner: GraphRunner) -> StateGraph:
-        graph = StateGraph(GraphState)
+    async def graph(self, runner: GraphRunner):
+        graph = StateGraph(AgentState)
         graph.add_node("llm", runner.llm)
         graph.add_node("tools", runner.call_tools)
         graph.add_edge(START, "llm")
         graph.add_conditional_edges("llm", runner.route, ["tools", END])
         graph.add_edge("tools", "llm")
-        return graph
+        return graph.compile()
 
 
 # A tool-calling turn (add 3 + 4), then the model's final natural-language answer.
@@ -75,3 +75,32 @@ class TestGraphAgent(unittest.IsolatedAsyncioTestCase):
         with MathAgent.fake(["7"]) as agent:
             await agent.prompt("Add 3 and 4.")
             agent.assert_prompted(times=1)
+
+    async def test_middleware_wraps_the_llm_call(self):
+        recorder = RecordingMiddleware()
+
+        class MiddlewareAgent(MathAgent):
+            def middleware(self):
+                return [recorder]
+
+        with MiddlewareAgent.fake(["The answer is 7"]):
+            response = await MiddlewareAgent().prompt("What is 3 plus 4?")
+
+        self.assertEqual(response.content, "The answer is 7")
+        self.assertEqual(recorder.before, 1, "middleware handle() was never invoked")
+        self.assertEqual(recorder.after, 1, "middleware after-hook never fired")
+
+
+class RecordingMiddleware:
+    """A middleware that counts how often it wraps a model call."""
+
+    def __init__(self):
+        self.before = 0
+        self.after = 0
+
+    def handle(self, model, handler):
+        self.before += 1
+        return handler(model).then(lambda _final: self._record_after())
+
+    def _record_after(self):
+        self.after += 1

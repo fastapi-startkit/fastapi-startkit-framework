@@ -225,14 +225,18 @@ class TestAgentRecord(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(len(json.load(f)), 2)
 
     def setup_stream(self, chunks):
+        from fastapi_startkit.ai.runner import Runner
+
         calls = []
 
-        async def fake_stream(agent_self, message, **kwargs):
+        async def fake_stream(runner_self, message, **kwargs):
             calls.append(message)
             for chunk in chunks:
                 yield chunk
 
-        patcher = mock.patch.object(SimpleAgent, "stream", fake_stream)
+        # The fluent fakes drive the runner's stream() directly (so they can read
+        # the structured response it captures), so mock at that layer.
+        patcher = mock.patch.object(Runner, "stream", fake_stream)
         patcher.start()
         self.addCleanup(patcher.stop)
         return calls
@@ -247,7 +251,10 @@ class TestAgentRecord(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(chunks, ["Hel", "lo!"])
             self.assertEqual(calls, ["hi"])
             with open(cassette) as f:
-                self.assertEqual(list(json.load(f).values()), [["Hel", "lo!"]])
+                self.assertEqual(
+                    list(json.load(f).values()),
+                    [{"content": "Hello!", "tool_calls": [], "chunks": ["Hel", "lo!"]}],
+                )
 
     async def test_stream_second_run_replays_chunks_without_calling_stream(self):
         calls = self.setup_stream(["Hel", "lo!"])

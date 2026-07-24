@@ -51,19 +51,26 @@ class AgentFake:
         Ai.forget(self._agent_cls.__name__)
         return False
 
-    async def prompt(self, message: str, *, attachments: list[Document] | None = None) -> AgentResponse:
+    async def prompt(
+        self, message: str, *, attachments: list[Document] | None = None, config: dict | None = None
+    ) -> AgentResponse:
         start = time.monotonic()
-        self._last_response = await self._agent.prompt(message, attachments=attachments)
+        extra = {"config": config} if config is not None else {}
+        self._last_response = await self._agent.prompt(message, attachments=attachments, **extra)
         self.last_elapsed = time.monotonic() - start
         self._remember(message, self._last_response)
         return self._last_response
 
-    async def stream(self, message: str) -> AsyncIterator[str]:
+    async def stream(self, message: str, *, config: dict | None = None) -> AsyncIterator[str]:
         chunks: list[str] = []
-        async for chunk in self._agent.stream(message):
+        extra = {"config": config} if config is not None else {}
+        # Drive the runner directly so we can read the structured response it
+        # captures while streaming (content + tool_calls), not just joined text.
+        runner = self._agent.runner()
+        async for chunk in runner.stream(message, **extra):
             chunks.append(chunk)
             yield chunk
-        self._last_response = AgentResponse(content="".join(chunks))
+        self._last_response = getattr(runner, "last_response", None) or AgentResponse(content="".join(chunks))
         self._remember(message, self._last_response)
 
     def _remember(self, message: str, response: AgentResponse) -> None:
@@ -239,14 +246,17 @@ class AgentRecordFake(AgentFake):
             turn["tool_calls"] = response.tool_calls
         self._records.append(turn)
 
-    async def prompt(self, message: str, *, attachments: list[Document] | None = None) -> AgentResponse:
+    async def prompt(
+        self, message: str, *, attachments: list[Document] | None = None, config: dict | None = None
+    ) -> AgentResponse:
         cassette, store = self._load()
         key = self._key(message, attachments)
         start = time.monotonic()
         if key in store:
             response = self._response_from_cache(store[key])
         else:
-            response = await self._real.prompt(message, attachments=attachments)
+            extra = {"config": config} if config is not None else {}
+            response = await self._real.prompt(message, attachments=attachments, **extra)
             self._save(cassette, store, key, self._cache_prompt_value(response))
         response = self._real.runner()._apply_schema(response)
         self.last_elapsed = time.monotonic() - start
@@ -254,18 +264,37 @@ class AgentRecordFake(AgentFake):
         self._remember_turn(message, response)
         return response
 
-    async def stream(self, message: str) -> AsyncIterator[str]:
+    async def stream(self, message: str, *, config: dict | None = None) -> AsyncIterator[str]:
         cassette, store = self._load()
         key = self._key(message, None)
         if key in store:
             value = store[key]
-            chunks = value if isinstance(value, list) else [value]
+            if isinstance(value, dict):
+                chunks = value.get("chunks", [])
+                response = self._response_from_cache(value)
+            else:  # legacy cassette: a bare list of text chunks
+                chunks = value if isinstance(value, list) else [value]
+                response = AgentResponse(content=_joined(chunks))
+            for chunk in chunks:
+                yield chunk
         else:
-            chunks = [chunk async for chunk in self._real.stream(message)]
-            self._save(cassette, store, key, chunks)
-        for chunk in chunks:
-            yield chunk
-        self._remember_turn(message, AgentResponse(content=_joined(chunks)))
+            extra = {"config": config} if config is not None else {}
+            # Drive the runner directly to capture the structured response
+            # (content + tool_calls) it records while streaming.
+            runner = self._real.runner()
+            chunks = []
+            async for chunk in runner.stream(message, **extra):
+                chunks.append(chunk)
+                yield chunk
+            response = getattr(runner, "last_response", None) or AgentResponse(content=_joined(chunks))
+            self._save(
+                cassette,
+                store,
+                key,
+                {"content": response.content, "tool_calls": response.tool_calls, "chunks": chunks},
+            )
+        self._last_response = response
+        self._remember_turn(message, response)
 
     async def _judge(self, model: str, expectation: str, content: str, provider: str | None = None) -> dict:
         cassette, store = self._load()

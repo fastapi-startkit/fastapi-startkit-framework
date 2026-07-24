@@ -1,13 +1,13 @@
 from fastapi_startkit.ai.tinker import ToolCall
 from langchain_core.messages import AIMessage, HumanMessage
 
-from app.agents.chat import RouterAgent
+from app.agents.chat import ChatAgent
 from tests.test_case import TestCase
 
 
 class TestRouterAgent(TestCase):
     async def test_the_router_agent(self):
-        with RouterAgent.record("record_stream.json") as agent:
+        with ChatAgent.record("record_stream.json") as agent:
             await agent.prompt("hello")
             agent.assert_text_response()
             agent.assert_tool_not_called(["job_search_tool"])
@@ -21,7 +21,7 @@ class TestRouterAgent(TestCase):
             agent.assert_tool_called("job_search_tool", assert_tool_calls)
 
     async def test_the_router_with_initial_messages(self):
-        with RouterAgent.record(
+        with ChatAgent.record(
             "record_stream.json",
             messages=[
                 HumanMessage(content="Hi"),

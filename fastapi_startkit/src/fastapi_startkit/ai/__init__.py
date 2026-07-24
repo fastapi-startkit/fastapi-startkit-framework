@@ -6,7 +6,7 @@ from .config.config import AnthropicConfig, ElevenLabsConfig, GoogleConfig, Open
 from .config.ai import AIConfig
 from .decorators import max_steps, max_tokens, model, provider, timeout, top_p
 from .document import Document
-from .graph import GraphAgent, GraphRunner, GraphState
+from .graph import GraphAgent, GraphRunner, AgentState
 from .image import Image, ImageResponse
 from .image_factory import ImageFactory
 from .ai import Ai
@@ -36,7 +36,7 @@ __all__ = [
     "GoogleConfig",
     "GraphAgent",
     "GraphRunner",
-    "GraphState",
+    "AgentState",
     "Image",
     "ImageFactory",
     "ImageResponse",
