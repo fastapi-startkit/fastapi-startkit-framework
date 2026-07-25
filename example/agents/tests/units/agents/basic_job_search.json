@@ -1,15 +1,19 @@
 {
   "921847ca3e137cf6fb59760ecb38e34522a6df8f702eea6329b466b5f488d786": {
-    "content": "I found one job opening for a Frontend Developer at Startup Inc. It is a full-time position and is remote. Would you like to explore this opportunity or see other options?",
+    "content": "I found one opening for a Frontend Developer at Startup Inc, which is a remote, full-time position.",
     "tool_calls": [
       {
         "args": {
           "query": "python developer"
         },
-        "id": "b940618e-6f0a-4ba3-a88b-cd9802d49081",
+        "id": "313899e2-feab-4862-8ab8-9294be4bdf0a",
         "name": "job_search_tool",
         "type": "tool_call"
       }
-    ]
+    ],
+    "usage": {
+      "input": 117,
+      "output": 22
+    }
   }
 }

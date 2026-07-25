@@ -5,7 +5,6 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
-from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, ToolCall
 from langchain_core.runnables import Runnable
 from langchain_core.tools import BaseTool
@@ -103,10 +102,6 @@ class Runner(BaseRunner):
         messages = self._build_messages(message, attachments)
         model = self._build_model(model, provider_options)
 
-        create_agent(
-            model=model,
-            tools=self.agent.tools,
-        )
         response = await self._run_pipeline(model, messages)
         response = self._apply_schema(response)
         response.runtime = time.perf_counter() - started

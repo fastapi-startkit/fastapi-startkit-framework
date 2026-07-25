@@ -253,7 +253,7 @@ class TestAgentRecord(unittest.IsolatedAsyncioTestCase):
             with open(cassette) as f:
                 self.assertEqual(
                     list(json.load(f).values()),
-                    [{"content": "Hello!", "tool_calls": [], "chunks": ["Hel", "lo!"]}],
+                    [{"content": "Hello!", "tool_calls": [], "usage": {}, "chunks": ["Hel", "lo!"]}],
                 )
 
     async def test_stream_second_run_replays_chunks_without_calling_stream(self):

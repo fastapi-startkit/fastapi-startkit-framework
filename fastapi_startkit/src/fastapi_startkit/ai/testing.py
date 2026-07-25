@@ -22,7 +22,6 @@ def _joined(value: Any) -> str:
 
 
 class AgentFake:
-
     def __init__(self, agent_cls: type[Agent], responses: list) -> None:
         self._agent_cls = agent_cls
         self._responses = list(responses)
@@ -76,7 +75,6 @@ class AgentFake:
     def _remember(self, message: str, response: AgentResponse) -> None:
         self._records.append({"role": "user", "content": message})
         self._records.append({"role": "assistant", "content": response.content})
-
 
     def assert_prompt(self, expected: str | Callable[[str], bool]) -> None:
         if callable(expected):
@@ -177,7 +175,6 @@ class AgentFake:
 
 
 class ToolCallView:
-
     def __init__(self, data: dict) -> None:
         self.name = data.get("name", "")
         self.args = data.get("args") or {}
@@ -231,12 +228,16 @@ class AgentRecordFake(AgentFake):
 
     @staticmethod
     def _cache_prompt_value(response: AgentResponse) -> dict:
-        return {"content": response.content, "tool_calls": response.tool_calls}
+        return {"content": response.content, "tool_calls": response.tool_calls, "usage": response.usage}
 
     @staticmethod
     def _response_from_cache(value: Any) -> AgentResponse:
         if isinstance(value, dict) and "content" in value:
-            return AgentResponse(content=_joined(value.get("content", "")), tool_calls=value.get("tool_calls") or [])
+            return AgentResponse(
+                content=_joined(value.get("content", "")),
+                tool_calls=value.get("tool_calls") or [],
+                usage=value.get("usage") or {},
+            )
         return AgentResponse(content=_joined(value))
 
     def _remember_turn(self, message: str, response: AgentResponse) -> None:
@@ -291,7 +292,12 @@ class AgentRecordFake(AgentFake):
                 cassette,
                 store,
                 key,
-                {"content": response.content, "tool_calls": response.tool_calls, "chunks": chunks},
+                {
+                    "content": response.content,
+                    "tool_calls": response.tool_calls,
+                    "usage": response.usage,
+                    "chunks": chunks,
+                },
             )
         self._last_response = response
         self._remember_turn(message, response)

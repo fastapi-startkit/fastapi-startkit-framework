@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import time
@@ -58,14 +57,11 @@ class GraphAgent(Agent, ABC):
         config: RunnableConfig | dict | None = None,
         provider_options: dict | None = None,
     ) -> AsyncIterator[str]:
-        async for chunk in self.runner().stream(
-            message, model=model, config=config, provider_options=provider_options
-        ):
+        async for chunk in self.runner().stream(message, model=model, config=config, provider_options=provider_options):
             yield chunk
 
     @abstractmethod
-    async def graph(self, runner: GraphRunner) -> CompiledStateGraph:
-        ...
+    async def graph(self, runner: GraphRunner) -> CompiledStateGraph: ...
 
 
 class GraphRunner(BaseRunner):
@@ -108,7 +104,6 @@ class GraphRunner(BaseRunner):
 
     def route(self, state: AgentState) -> str:
         return "tools" if getattr(state["messages"][-1], "tool_calls", None) else END
-
 
     async def _compile(self, model: str | None, provider_options: dict | None) -> Any:
         self.model = self._build_model(model, provider_options)

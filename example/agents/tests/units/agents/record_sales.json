@@ -1,6 +1,10 @@
 {
   "64c72be4d72cc783cd8423906eef1db674cefba1ec988817da88df37eff05e2a": {
-    "content": "I do not have a plan to offer. I am a large language model, an AI. How can I help you?",
-    "tool_calls": []
+    "content": "I am a large language model, I don't have plans. Is there anything else I can help you with?",
+    "tool_calls": [],
+    "usage": {
+      "input": 51,
+      "output": 24
+    }
   }
 }

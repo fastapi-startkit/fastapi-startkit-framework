@@ -3,19 +3,23 @@
     "chunks": [
       "[{\"id\": 2, \"title\": \"Frontend Developer\", \"location\": \"Remote\", \"company\": \"Startup Inc\", \"type\": \"Full-time\"}]",
       "I",
-      " found a Python developer job for you at Startup Inc. It is a full-time position",
-      " and is remote.\n"
+      " found a job for you! It's a Full-time Frontend Developer position at Startup Inc,",
+      " located remotely."
     ],
-    "content": "I found a Python developer job for you at Startup Inc. It is a full-time position and is remote.\n",
+    "content": "I found a job for you! It's a Full-time Frontend Developer position at Startup Inc, located remotely.",
     "tool_calls": [
       {
         "args": {
           "query": "python developer"
         },
-        "id": "8ffe887c-db92-4ff8-9b2a-9ad8e318e3c4",
+        "id": "acfc0ac4-47bf-40b4-ac93-849a39ee95f0",
         "name": "job_search_tool",
         "type": "tool_call"
       }
-    ]
+    ],
+    "usage": {
+      "input": 117,
+      "output": 24
+    }
   }
 }

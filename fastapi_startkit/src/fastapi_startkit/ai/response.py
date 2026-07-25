@@ -37,7 +37,6 @@ class AgentResponse:
 
 @dataclass
 class AgentSnapshot:
-
     path: str
 
     def exists(self) -> bool:
