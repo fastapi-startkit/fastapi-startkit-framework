@@ -132,7 +132,27 @@ def to_response(transcript: list[dict]) -> AgentResponse:
                 content = entry.get("content", "")
             runtime += (entry.get("response_time") or 0) / 1000
 
-    return AgentResponse(content=content, tool_calls=tool_calls, usage=usage, tool_events=tool_events, runtime=runtime)
+    return AgentResponse(
+        content=content,
+        tool_calls=tool_calls,
+        usage=usage,
+        tool_events=tool_events,
+        runtime=runtime,
+        transcript=list(transcript),
+    )
+
+
+def accumulate_uses(transcript: list[dict], totals: dict) -> None:
+    """Add every ``ai`` entry's token ``uses`` in ``transcript`` into ``totals``
+    (keys: input, output, cache, total)."""
+    for entry in transcript or []:
+        if entry.get("type") != "ai":
+            continue
+        uses = entry.get("uses") or {}
+        totals["input"] += uses.get("input_token", 0)
+        totals["output"] += uses.get("output_token", 0)
+        totals["cache"] += uses.get("cache_token", 0)
+        totals["total"] += uses.get("total_token", 0)
 
 
 def chunks_from_transcript(transcript: list[dict]) -> list[str]:

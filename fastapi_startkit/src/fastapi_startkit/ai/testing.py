@@ -4,6 +4,7 @@ import functools
 import hashlib
 import inspect
 import json
+import operator
 import sys
 import time
 from collections.abc import AsyncIterator
@@ -21,6 +22,48 @@ def _joined(value: Any) -> str:
     return "".join(value) if isinstance(value, list) else value
 
 
+def _new_token_totals() -> dict:
+    return {"input": 0, "output": 0, "cache": 0, "total": 0}
+
+
+class TokenQuery:
+    """Fluent predicate over accumulated token totals, e.g.::
+
+        agent.assert_tokens(lambda x: x.where("input", "<=", 5000).where("output", "<=", 5000))
+
+    Fields: ``input`` / ``output`` / ``cache`` / ``total``.
+    """
+
+    _OPS = {
+        "<=": operator.le,
+        ">=": operator.ge,
+        "<": operator.lt,
+        ">": operator.gt,
+        "==": operator.eq,
+        "=": operator.eq,
+        "!=": operator.ne,
+    }
+
+    def __init__(self, totals: dict) -> None:
+        self._totals = totals
+        self._checks: list[tuple[str, str, float]] = []
+
+    def where(self, field: str, op: str, value: float) -> "TokenQuery":
+        self._checks.append((field, op, value))
+        return self
+
+    def failures(self) -> list[str]:
+        problems: list[str] = []
+        for field, op, value in self._checks:
+            compare = self._OPS.get(op)
+            if compare is None:
+                raise ValueError(f"Unsupported token operator {op!r}")
+            actual = self._totals.get(field, 0)
+            if not compare(actual, value):
+                problems.append(f"{field}={actual} is not {op} {value}")
+        return problems
+
+
 class AgentFake:
     def __init__(self, agent_cls: type[Agent], responses: list) -> None:
         self._agent_cls = agent_cls
@@ -30,6 +73,7 @@ class AgentFake:
         self._records: list[dict] = []
         self._last_response: AgentResponse | None = None
         self.last_elapsed: float | None = None
+        self._tokens: dict = _new_token_totals()
 
     def _history(self) -> list:
         return self._records
@@ -73,8 +117,30 @@ class AgentFake:
         self._remember(message, self._last_response)
 
     def _remember(self, message: str, response: AgentResponse) -> None:
+        self._accumulate_tokens(response)
         self._records.append({"role": "user", "content": message})
         self._records.append({"role": "assistant", "content": response.content})
+
+    def _accumulate_tokens(self, response: AgentResponse) -> None:
+        """Add a turn's token usage to the running totals. Prefer the per-message
+        ``uses`` on the transcript; fall back to the response's summary usage."""
+        from . import recording  # noqa: PLC0415
+
+        if response.transcript:
+            recording.accumulate_uses(response.transcript, self._tokens)
+        else:
+            self._tokens["input"] += response.usage.get("input", 0)
+            self._tokens["output"] += response.usage.get("output", 0)
+
+    def assert_tokens(self, predicate: Callable[[TokenQuery], Any]) -> None:
+        """Assert on the tokens accumulated across every prompt()/stream() so far.
+
+        agent.assert_tokens(lambda x: x.where("input", "<=", 5000).where("output", "<=", 5000))
+        """
+        query = TokenQuery(dict(self._tokens))
+        predicate(query)
+        failures = query.failures()
+        assert not failures, f"Token assertion failed: {'; '.join(failures)}. Accumulated tokens: {self._tokens}"
 
     def assert_prompt(self, expected: str | Callable[[str], bool]) -> None:
         if callable(expected):
@@ -107,6 +173,7 @@ class AgentFake:
     def reset(self) -> "AgentFake":
         self._records.clear()
         self._last_response = None
+        self._tokens = _new_token_totals()
         return self
 
     def _require_response(self) -> AgentResponse:
@@ -194,6 +261,7 @@ class AgentRecordFake(AgentFake):
         self._real.messages = self._history  # type: ignore[method-assign]
         self._last_response: AgentResponse | None = None
         self.last_elapsed: float | None = None
+        self._tokens: dict = _new_token_totals()
 
     def _history(self) -> list:
         return self._seed_messages + self._records
@@ -263,6 +331,7 @@ class AgentRecordFake(AgentFake):
         return AgentResponse(content=_joined(value))
 
     def _remember_turn(self, message: str, response: AgentResponse) -> None:
+        self._accumulate_tokens(response)
         self._records.append({"role": "user", "content": message})
         turn: dict[str, Any] = {"role": "assistant", "content": response.content}
         if response.tool_calls:
