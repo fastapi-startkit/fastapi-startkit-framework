@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import time
@@ -58,14 +57,11 @@ class GraphAgent(Agent, ABC):
         config: RunnableConfig | dict | None = None,
         provider_options: dict | None = None,
     ) -> AsyncIterator[str]:
-        async for chunk in self.runner().stream(
-            message, model=model, config=config, provider_options=provider_options
-        ):
+        async for chunk in self.runner().stream(message, model=model, config=config, provider_options=provider_options):
             yield chunk
 
     @abstractmethod
-    async def graph(self, runner: GraphRunner) -> CompiledStateGraph:
-        ...
+    async def graph(self, runner: GraphRunner) -> CompiledStateGraph: ...
 
 
 class GraphRunner(BaseRunner):
@@ -74,12 +70,11 @@ class GraphRunner(BaseRunner):
     def __init__(self, agent: GraphAgent) -> None:
         super().__init__(agent)
         self.model: Any = None
-        # The full structured response from the most recent stream() — captured so
-        # streamed runs expose content + tool_calls just like run(), not only text.
-        self.last_response: AgentResponse | None = None
 
     async def llm(self, state: AgentState) -> dict:
+        started = time.perf_counter()
         reply = await self._invoke_model(state["messages"])
+        self._record_ai_message(reply, (time.perf_counter() - started) * 1000)
         return {"messages": [reply], "llm_calls": state.get("llm_calls", 0) + 1}
 
     async def _invoke_model(self, messages: list) -> Any:
@@ -103,12 +98,14 @@ class GraphRunner(BaseRunner):
         tools_by_name = {tool.name: tool for tool in self.agent.tools()}
         results = []
         for call in getattr(state["messages"][-1], "tool_calls", None) or []:
-            results.append(await tools_by_name[call["name"]].ainvoke(call))
+            started = time.perf_counter()
+            message = await tools_by_name[call["name"]].ainvoke(call)
+            self._record_tool_message(call, message, (time.perf_counter() - started) * 1000)
+            results.append(message)
         return {"messages": results}
 
     def route(self, state: AgentState) -> str:
         return "tools" if getattr(state["messages"][-1], "tool_calls", None) else END
-
 
     async def _compile(self, model: str | None, provider_options: dict | None) -> Any:
         self.model = self._build_model(model, provider_options)
@@ -133,6 +130,7 @@ class GraphRunner(BaseRunner):
         provider_options: dict | None = None,
     ) -> AgentResponse:
         started = time.perf_counter()
+        self._reset_capture()
         compiled = await self._compile(model, provider_options)
         state = {"messages": self._build_messages(message, attachments), "llm_calls": 0}
         result = await compiled.ainvoke(state, config=self._merge_config(config))
@@ -148,6 +146,7 @@ class GraphRunner(BaseRunner):
         config: RunnableConfig | dict | None = None,
         provider_options: dict | None = None,
     ) -> AsyncIterator[str]:
+        self._reset_capture()
         compiled = await self._compile(model, provider_options)
         state = {"messages": self._build_messages(message), "llm_calls": 0}
         final_state: dict = {}
@@ -165,8 +164,7 @@ class GraphRunner(BaseRunner):
                 yield text
         self.last_response = self._to_response(final_state) if final_state else AgentResponse(content="")
 
-    @staticmethod
-    def _to_response(result: dict) -> AgentResponse:
+    def _to_response(self, result: dict) -> AgentResponse:
         messages = result.get("messages", [])
         final = messages[-1] if messages else None
         content = getattr(final, "content", "") or ""
@@ -180,4 +178,11 @@ class GraphRunner(BaseRunner):
         if meta:
             usage = {"input": meta.get("input_tokens", 0), "output": meta.get("output_tokens", 0)}
 
-        return AgentResponse(content=content, tool_calls=tool_calls, usage=usage, raw=result)
+        return AgentResponse(
+            content=content,
+            tool_calls=tool_calls,
+            usage=usage,
+            raw=result,
+            tool_events=list(self._tool_events),
+            transcript=list(self._transcript),
+        )

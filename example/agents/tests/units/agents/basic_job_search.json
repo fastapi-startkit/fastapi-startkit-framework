@@ -1,15 +1,45 @@
 {
-  "921847ca3e137cf6fb59760ecb38e34522a6df8f702eea6329b466b5f488d786": {
-    "content": "I found one job opening for a Frontend Developer at Startup Inc. It is a full-time position and is remote. Would you like to explore this opportunity or see other options?",
-    "tool_calls": [
-      {
-        "args": {
-          "query": "python developer"
-        },
-        "id": "b940618e-6f0a-4ba3-a88b-cd9802d49081",
-        "name": "job_search_tool",
-        "type": "tool_call"
+  "921847ca3e137cf6fb59760ecb38e34522a6df8f702eea6329b466b5f488d786": [
+    {
+      "content": "Suggest python developer jobs",
+      "type": "human"
+    },
+    {
+      "response_time": 3.6957909469492733,
+      "tool_calls": [
+        {
+          "args": {
+            "query": "python developer"
+          },
+          "id": "call_basic",
+          "name": "job_search_tool",
+          "type": "tool_call"
+        }
+      ],
+      "type": "ai",
+      "uses": {
+        "cache_token": 0,
+        "input_token": 117,
+        "output_token": 22,
+        "total_token": 139
       }
-    ]
-  }
+    },
+    {
+      "content": "[{\"id\": 2, \"title\": \"Frontend Developer\", \"location\": \"Remote\", \"company\": \"Startup Inc\", \"type\": \"Full-time\"}]",
+      "content_type": "json",
+      "response_time": 0.7865419611334801,
+      "type": "tool_response"
+    },
+    {
+      "content": "I found one opening for a Frontend Developer at Startup Inc, which is a remote, full-time position.",
+      "response_time": 2.021583030000329,
+      "type": "ai",
+      "uses": {
+        "cache_token": 0,
+        "input_token": 140,
+        "output_token": 22,
+        "total_token": 162
+      }
+    }
+  ]
 }

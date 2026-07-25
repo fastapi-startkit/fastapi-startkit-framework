@@ -1,0 +1,83 @@
+{
+  "034751ef1322a12f3406dad43313f9cdb31f4ea85d9452c22bf7529ad8e92614": [
+    {
+      "content": "hello",
+      "type": "human"
+    },
+    {
+      "content": "Hello! How can I help you today?",
+      "response_time": 1.286374987103045,
+      "type": "ai",
+      "uses": {
+        "cache_token": 0,
+        "input_token": 54,
+        "output_token": 9,
+        "total_token": 63
+      }
+    }
+  ],
+  "358018dc096ce95b78b7561f562ba049848d03fb8b41953ed75c22c9ad20e228": [
+    {
+      "content": "suggest python developer jobs",
+      "type": "human"
+    },
+    {
+      "response_time": 1.1794579913839698,
+      "tool_calls": [
+        {
+          "args": {
+            "query": "python developer"
+          },
+          "id": "call_router_2",
+          "name": "job_search_tool",
+          "type": "tool_call"
+        }
+      ],
+      "type": "ai",
+      "uses": {
+        "cache_token": 0,
+        "input_token": 117,
+        "output_token": 24,
+        "total_token": 141
+      }
+    },
+    {
+      "content": "[{\"id\": 2, \"title\": \"Frontend Developer\", \"location\": \"Remote\", \"company\": \"Startup Inc\", \"type\": \"Full-time\"}]",
+      "content_type": "json",
+      "response_time": 0.3560830373317003,
+      "type": "tool_response"
+    }
+  ],
+  "b6579ba866634a66229ddbed0463c8c990eaaaf349385fbc67c2c2c1886085cd": [
+    {
+      "content": "suggest python developer jobs",
+      "type": "human"
+    },
+    {
+      "response_time": 1.1740420013666153,
+      "tool_calls": [
+        {
+          "args": {
+            "query": "python developer"
+          },
+          "id": "call_router_1",
+          "name": "job_search_tool",
+          "type": "tool_call"
+        }
+      ],
+      "type": "ai",
+      "uses": {
+        "cache_token": 0,
+        "input_token": 117,
+        "output_token": 24,
+        "total_token": 141
+      }
+    },
+    {
+      "content": "[{\"id\": 2, \"title\": \"Frontend Developer\", \"location\": \"Remote\", \"company\": \"Startup Inc\", \"type\": \"Full-time\"}]",
+      "content_type": "json",
+      "response_time": 0.40095800068229437,
+      "type": "tool_response"
+    }
+  ]
+}

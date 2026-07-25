@@ -40,23 +40,21 @@ class Agent:
         return {}
 
     async def prompt(
-            self,
-            message: str,
-            *,
-            model: str | None = None,
-            attachments: list[Document] | None = None,
-            provider_options: dict | None = None,
+        self,
+        message: str,
+        *,
+        model: str | None = None,
+        attachments: list[Document] | None = None,
+        provider_options: dict | None = None,
     ) -> AgentResponse:
-        return await self.runner().run(
-            message, model=model, attachments=attachments, provider_options=provider_options
-        )
+        return await self.runner().run(message, model=model, attachments=attachments, provider_options=provider_options)
 
     async def stream(
-            self,
-            message: str,
-            *,
-            model: str | None = None,
-            provider_options: dict | None = None,
+        self,
+        message: str,
+        *,
+        model: str | None = None,
+        provider_options: dict | None = None,
     ) -> AsyncIterator[str]:
         async for chunk in self.runner().stream(message, model=model, provider_options=provider_options):
             yield chunk
