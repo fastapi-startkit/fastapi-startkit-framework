@@ -82,7 +82,7 @@ class TestAgent(unittest.IsolatedAsyncioTestCase):
         result = await JobAssistant().prompt("find me a python job")
 
         self.assertEqual(result.content, "Python Developer at Shopify")
-        self.assertEqual(result.tool_calls, [])
+        self.assertEqual([tc["name"] for tc in result.tool_calls], ["search_jobs"])
 
     async def test_prompt_maps_usage_metadata(self):
         self.setup_agent(

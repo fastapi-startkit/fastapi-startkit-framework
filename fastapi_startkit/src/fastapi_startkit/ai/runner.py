@@ -9,6 +9,7 @@ from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, Tool
 from langchain_core.runnables import Runnable
 from langchain_core.tools import BaseTool
 
+from . import recording
 from .pipeline import Response, build_pipeline
 from .response import AgentResponse
 
@@ -26,6 +27,55 @@ def _as_text(content: Any) -> str:
 class BaseRunner(ABC):
     def __init__(self, agent: Agent) -> None:
         self.agent = agent
+        self._reset_capture()
+        # Populated by stream() so the record-and-replay harness can persist the
+        # same structured turn a buffered prompt() produces.
+        self.last_response: AgentResponse | None = None
+
+    def _reset_capture(self) -> None:
+        """Clear the per-turn interaction captured across the model/tool calls."""
+        self._transcript: list[dict] = []
+        self._tool_events: list[dict] = []
+        self._requested_tool_calls: list[dict] = []
+        self._usage: dict = {}
+
+    @staticmethod
+    def _usage_from_message(message: Any) -> dict:
+        meta = getattr(message, "usage_metadata", None)
+        if not meta:
+            return {}
+        return {"input": meta.get("input_tokens", 0), "output": meta.get("output_tokens", 0)}
+
+    def _record_ai_message(
+        self, message: BaseMessage, response_time_ms: float, chunks: list[str] | None = None
+    ) -> None:
+        content = message.content if isinstance(message.content, str) else str(message.content)
+        tool_calls = list(getattr(message, "tool_calls", None) or [])
+        uses = recording.uses_from_usage_metadata(getattr(message, "usage_metadata", None))
+        self._transcript.append(
+            recording.AIMessage(
+                content=content, tool_calls=tool_calls, uses=uses, response_time=response_time_ms, chunks=chunks
+            ).to_dict()
+        )
+        if tool_calls:
+            self._requested_tool_calls = tool_calls
+        if getattr(message, "usage_metadata", None):
+            self._usage = {"input": uses["input_token"], "output": uses["output_token"]}
+
+    def _record_tool_message(self, call: ToolCall, message: BaseMessage, response_time_ms: float) -> None:
+        content = message.content if isinstance(message.content, str) else str(message.content)
+        entry = recording.ToolCallMessage(content=content, response_time=response_time_ms).to_dict()
+        self._transcript.append(entry)
+        self._tool_events.append(
+            {
+                "name": call["name"],
+                "args": call.get("args", {}),
+                "id": call.get("id"),
+                "content": content,
+                "content_type": entry["content_type"],
+                "response_time": response_time_ms,
+            }
+        )
 
     def _build_messages(self, message: str, attachments: list[Document] | None = None) -> list[dict]:
         agent = self.agent
@@ -99,6 +149,7 @@ class Runner(BaseRunner):
         provider_options: dict | None = None,
     ) -> AgentResponse:
         started = time.perf_counter()
+        self._reset_capture()
         messages = self._build_messages(message, attachments)
         model = self._build_model(model, provider_options)
 
@@ -139,14 +190,24 @@ class Runner(BaseRunner):
         if structured and not content and hasattr(parsed, "model_dump_json"):
             content = parsed.model_dump_json()
 
-        tool_calls = [] if structured else list(getattr(final, "tool_calls", None) or [])
+        # Prefer the tool calls the model actually requested (captured before the
+        # tool ran); ``final`` is the tool-result message, which carries none.
+        if structured:
+            tool_calls: list[dict] = []
+            usage: dict[str, Any] = {}
+        else:
+            tool_calls = self._requested_tool_calls or list(getattr(final, "tool_calls", None) or [])
+            usage = self._usage or self._usage_from_message(final)
 
-        usage: dict[str, Any] = {}
-        meta = getattr(final, "usage_metadata", None)
-        if meta:
-            usage = {"input": meta.get("input_tokens", 0), "output": meta.get("output_tokens", 0)}
-
-        return AgentResponse(content=content, tool_calls=tool_calls, usage=usage, raw=result, parsed=parsed)
+        return AgentResponse(
+            content=content,
+            tool_calls=tool_calls,
+            usage=usage,
+            raw=result,
+            parsed=parsed,
+            tool_events=list(self._tool_events),
+            transcript=list(self._transcript),
+        )
 
     async def stream(
         self,
@@ -155,6 +216,7 @@ class Runner(BaseRunner):
         model: str | None = None,
         provider_options: dict | None = None,
     ) -> AsyncIterator[str]:
+        self._reset_capture()
         messages = self._build_messages(message)
         chat_model = self._build_model(model, provider_options)
         chain = list(self.agent.middleware())
@@ -167,22 +229,38 @@ class Runner(BaseRunner):
         async for chunk in pipeline(chat_model):
             yield chunk
 
+        # Expose the same structured turn a buffered prompt() records, so the
+        # record-and-replay harness can persist streamed runs identically.
+        self.last_response = recording.to_response(self._transcript)
+        self.last_response.transcript = list(self._transcript)
+
     async def _invoke(self, model: Runnable[Any, BaseMessage], messages: list) -> BaseMessage:
+        started = time.perf_counter()
         response: AIMessage = await model.ainvoke(list(messages))  # type: ignore[assignment]
+        latency_ms = (time.perf_counter() - started) * 1000
         if isinstance(response, dict) and "parsed" in response:
             return response  # type: ignore[return-value]
+        self._record_ai_message(response, latency_ms)
         if not response.tool_calls:
             return response
         return (await self._run_tools(response.tool_calls))[-1]
 
     async def _invoke_stream(self, model: Runnable[Any, BaseMessage], messages: list) -> AsyncIterator[str]:
+        started = time.perf_counter()
         gathered: AIMessageChunk | None = None
+        chunks: list[str] = []
         async for chunk in model.astream(list(messages)):
             if chunk.content:
-                yield _as_text(chunk.content)
+                text = _as_text(chunk.content)
+                chunks.append(text)
+                yield text
             gathered = chunk if gathered is None else gathered + chunk  # type: ignore[operator]
 
-        if gathered is None or not gathered.tool_calls:
+        latency_ms = (time.perf_counter() - started) * 1000
+        if gathered is None:
+            return
+        self._record_ai_message(gathered, latency_ms, chunks=chunks)
+        if not gathered.tool_calls:
             return
         for message in await self._run_tools(gathered.tool_calls):
             yield _as_text(message.content)
@@ -195,5 +273,8 @@ class Runner(BaseRunner):
                 selected = tools[call["name"]]
             except KeyError:
                 raise ValueError(f"Agent has no tool named {call['name']!r}") from None
-            results.append(await selected.ainvoke(call))
+            started = time.perf_counter()
+            message = await selected.ainvoke(call)
+            self._record_tool_message(call, message, (time.perf_counter() - started) * 1000)
+            results.append(message)
         return results

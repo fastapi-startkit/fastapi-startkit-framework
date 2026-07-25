@@ -226,13 +226,35 @@ class AgentRecordFake(AgentFake):
         cassette.parent.mkdir(parents=True, exist_ok=True)
         cassette.write_text(json.dumps(store, indent=2, sort_keys=True))
 
-    @staticmethod
-    def _cache_prompt_value(response: AgentResponse) -> dict:
-        return {"content": response.content, "tool_calls": response.tool_calls, "usage": response.usage}
+    def _turn(self, message: str, response: AgentResponse, chunks: list[str] | None = None) -> list[dict]:
+        """Build the ordered per-turn transcript persisted to the cassette:
+        the human input followed by the interaction the runner captured. When a
+        stream did not capture a structured transcript, ``chunks`` are attached
+        to the synthesized answer so replay can re-emit them."""
+        from . import recording  # noqa: PLC0415
+
+        entries: list[dict] = [recording.HumanMessage(message).to_dict()]
+        if response.transcript:
+            entries.extend(response.transcript)
+        else:
+            entries.append(
+                recording.AIMessage(
+                    content=response.content,
+                    tool_calls=list(response.tool_calls),
+                    uses=recording.uses_from_agent_usage(response.usage),
+                    response_time=response.runtime * 1000,
+                    chunks=chunks,
+                ).to_dict()
+            )
+        return entries
 
     @staticmethod
     def _response_from_cache(value: Any) -> AgentResponse:
-        if isinstance(value, dict) and "content" in value:
+        from . import recording  # noqa: PLC0415
+
+        if recording.is_transcript(value):
+            return recording.to_response(value)
+        if isinstance(value, dict) and "content" in value:  # legacy flat shape
             return AgentResponse(
                 content=_joined(value.get("content", "")),
                 tool_calls=value.get("tool_calls") or [],
@@ -258,7 +280,7 @@ class AgentRecordFake(AgentFake):
         else:
             extra = {"config": config} if config is not None else {}
             response = await self._real.prompt(message, attachments=attachments, **extra)
-            self._save(cassette, store, key, self._cache_prompt_value(response))
+            self._save(cassette, store, key, self._turn(message, response))
         response = self._real.runner()._apply_schema(response)
         self.last_elapsed = time.monotonic() - start
         self._last_response = response
@@ -266,11 +288,16 @@ class AgentRecordFake(AgentFake):
         return response
 
     async def stream(self, message: str, *, config: dict | None = None) -> AsyncIterator[str]:
+        from . import recording  # noqa: PLC0415
+
         cassette, store = self._load()
         key = self._key(message, None)
         if key in store:
             value = store[key]
-            if isinstance(value, dict):
+            if recording.is_transcript(value):
+                chunks = recording.chunks_from_transcript(value)
+                response = self._response_from_cache(value)
+            elif isinstance(value, dict):  # legacy flat shape with buffered chunks
                 chunks = value.get("chunks", [])
                 response = self._response_from_cache(value)
             else:  # legacy cassette: a bare list of text chunks
@@ -281,24 +308,14 @@ class AgentRecordFake(AgentFake):
         else:
             extra = {"config": config} if config is not None else {}
             # Drive the runner directly to capture the structured response
-            # (content + tool_calls) it records while streaming.
+            # (content + tool_calls + chunks) it records while streaming.
             runner = self._real.runner()
             chunks = []
             async for chunk in runner.stream(message, **extra):
                 chunks.append(chunk)
                 yield chunk
             response = getattr(runner, "last_response", None) or AgentResponse(content=_joined(chunks))
-            self._save(
-                cassette,
-                store,
-                key,
-                {
-                    "content": response.content,
-                    "tool_calls": response.tool_calls,
-                    "usage": response.usage,
-                    "chunks": chunks,
-                },
-            )
+            self._save(cassette, store, key, self._turn(message, response, chunks=chunks))
         self._last_response = response
         self._remember_turn(message, response)
 

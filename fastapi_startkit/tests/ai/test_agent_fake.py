@@ -180,7 +180,11 @@ class TestAgentRecord(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(os.path.exists(cassette))
             with open(cassette) as f:
                 store = json.load(f)
-            self.assertTrue(any(v.get("content") == "recorded reply" for v in store.values()))
+            (turn,) = store.values()
+            self.assertEqual(turn[0], {"type": "human", "content": "hello"})
+            self.assertTrue(
+                any(entry.get("type") == "ai" and entry.get("content") == "recorded reply" for entry in turn)
+            )
 
     async def test_second_run_replays_without_calling_run(self):
         calls = self.setup_agent("recorded reply")
@@ -251,10 +255,11 @@ class TestAgentRecord(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(chunks, ["Hel", "lo!"])
             self.assertEqual(calls, ["hi"])
             with open(cassette) as f:
-                self.assertEqual(
-                    list(json.load(f).values()),
-                    [{"content": "Hello!", "tool_calls": [], "usage": {}, "chunks": ["Hel", "lo!"]}],
-                )
+                (turn,) = json.load(f).values()
+            self.assertEqual(turn[0], {"type": "human", "content": "hi"})
+            self.assertEqual(turn[1]["type"], "ai")
+            self.assertEqual(turn[1]["content"], "Hello!")
+            self.assertEqual(turn[1]["chunks"], ["Hel", "lo!"])
 
     async def test_stream_second_run_replays_chunks_without_calling_stream(self):
         calls = self.setup_stream(["Hel", "lo!"])

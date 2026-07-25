@@ -1,10 +1,19 @@
 {
-  "64c72be4d72cc783cd8423906eef1db674cefba1ec988817da88df37eff05e2a": {
-    "content": "I am a large language model, I don't have plans. Is there anything else I can help you with?",
-    "tool_calls": [],
-    "usage": {
-      "input": 51,
-      "output": 24
+  "64c72be4d72cc783cd8423906eef1db674cefba1ec988817da88df37eff05e2a": [
+    {
+      "content": "What plans do you offer?",
+      "type": "human"
+    },
+    {
+      "content": "I am a large language model, I don't have plans. Is there anything else I can help you with?",
+      "response_time": 2.0521670230664313,
+      "type": "ai",
+      "uses": {
+        "cache_token": 0,
+        "input_token": 51,
+        "output_token": 24,
+        "total_token": 75
+      }
     }
-  }
+  ]
 }

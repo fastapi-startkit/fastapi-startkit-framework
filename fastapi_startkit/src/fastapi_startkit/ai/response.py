@@ -17,6 +17,8 @@ class AgentResponse:
     raw: Any = None
     parsed: Any = None
     runtime: float = 0.0
+    tool_events: list[dict] = field(default_factory=list)
+    transcript: list[dict] = field(default_factory=list)
 
     @property
     def runtime_ms(self) -> float:
