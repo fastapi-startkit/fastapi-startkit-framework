@@ -135,7 +135,7 @@ class AgentFake:
     def assert_tokens(self, predicate: Callable[[TokenQuery], Any]) -> None:
         """Assert on the tokens accumulated across every prompt()/stream() so far.
 
-            agent.assert_tokens(lambda x: x.where("input", "<=", 5000).where("output", "<=", 5000))
+        agent.assert_tokens(lambda x: x.where("input", "<=", 5000).where("output", "<=", 5000))
         """
         query = TokenQuery(dict(self._tokens))
         predicate(query)
