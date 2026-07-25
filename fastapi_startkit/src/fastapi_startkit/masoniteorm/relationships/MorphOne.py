@@ -1,6 +1,6 @@
 from fastapi_startkit.masoniteorm.models import registry
-from .BaseRelationship import BaseRelationship
 from ..collection import Collection
+from .BaseRelationship import BaseRelationship
 
 
 class MorphOne(BaseRelationship):
@@ -22,69 +22,110 @@ class MorphOne(BaseRelationship):
         self.morph_key = self.morph_key or "record_type"
         return self
 
-    def _related_model(self):
-        """Resolve the related model class from the relationship factory (``self.fn``)."""
-        return self.fn(self)
-
-    def _related_query(self):
-        return self._related_model().query()
-
     def __get__(self, instance, owner):
+        """This method is called when the decorated method is accessed.
+
+        Arguments:
+            instance {object|None} -- The instance we called.
+                If we didn't call the attribute and only accessed it then this will be None.
+
+            owner {object} -- The current model that the property was accessed on.
+
+        Returns:
+            object -- Either returns a builder or a hydrated model.
+        """
         if instance is None:
             return self
 
+        attribute = self.fn.__name__
         self._related_builder = instance.get_builder()
-        self.polymorphic_builder = self._related_query()
-        self.set_keys(owner, self.attribute)
+        self.polymorphic_builder = self.fn(self)()
+        self.set_keys(owner, self.fn)
 
         if not instance.is_loaded():
             return self
 
-        if self.attribute in instance._relationships:
-            return instance._relationships[self.attribute]
+        if attribute in instance._relationships:
+            return instance._relationships[attribute]
 
         return self.apply_query(self._related_builder, instance)
 
     def __getattr__(self, attribute):
-        if attribute.startswith("_"):
-            raise AttributeError(attribute)
-        builder = self.__dict__.get("_related_builder")
-        if builder is None:
-            raise AttributeError(attribute)
-        return getattr(builder, attribute)
+        relationship = self.fn(self)()
+        return getattr(relationship.builder, attribute)
 
     def apply_query(self, builder, instance):
+        """Apply the query and return a dictionary to be hydrated
+
+        Arguments:
+            builder {oject} -- The relationship object
+            instance {object} -- The current model oject.
+
+        Returns:
+            dict -- A dictionary of data which will be hydrated.
+        """
         polymorphic_key = self.get_record_key_lookup(instance)
+        polymorphic_builder = self.polymorphic_builder
+
         return (
-            self.polymorphic_builder.where(self.morph_key, polymorphic_key)
+            polymorphic_builder.where(self.morph_key, polymorphic_key)
             .where(self.morph_id, instance.get_attribute(instance.__primary_key__))
             .first()
         )
 
-    async def get_related(self, query, relation, eagers=None, callback=None):
+    def get_related(self, query, relation, eagers=None, callback=None):
+        """Gets the relation needed between the relation and the related builder. If the relation is a collection
+        then will need to pluck out all the keys from the collection and fetch from the related builder. If
+        relation is just a Model then we can just call the model based on the value of the related
+        builders primary key.
+
+        Args:
+            relation (Model|Collection):
+
+        Returns:
+            Model|Collection
+        """
+        self.polymorphic_builder = self.fn(self)()
+
         if isinstance(relation, Collection):
             record_type = self.get_record_key_lookup(relation.first())
-            builder = (
-                self._related_query()
-                .where(self.morph_key, record_type)
+            if callback:
+                return callback(
+                    self.polymorphic_builder.where(
+                        f"{self.polymorphic_builder.get_table_name()}.{self.morph_key}",
+                        record_type,
+                    ).where_in(
+                        self.morph_id,
+                        relation.pluck(relation.first().__primary_key__, keep_nulls=False).unique(),
+                    )
+                ).get()
+
+            return (
+                self.polymorphic_builder.where(
+                    f"{self.polymorphic_builder.get_table_name()}.{self.morph_key}",
+                    record_type,
+                )
                 .where_in(
                     self.morph_id,
                     relation.pluck(relation.first().__primary_key__, keep_nulls=False).unique(),
                 )
+                .get()
             )
-            if callback:
-                builder = callback(builder)
-            return await builder.get()
 
-        record_type = self.get_record_key_lookup(relation)
-        builder = (
-            self._related_query()
-            .where(self.morph_key, record_type)
-            .where(self.morph_id, relation.get_attribute(relation.__primary_key__))
-        )
-        if callback:
-            builder = callback(builder)
-        return await builder.first()
+        else:
+            record_type = self.get_record_key_lookup(relation)
+            if callback:
+                return callback(
+                    self.polymorphic_builder.where(self.morph_key, record_type).where(
+                        self.morph_id, relation.get_attribute(relation.__primary_key__)
+                    )
+                ).first()
+
+            return (
+                self.polymorphic_builder.where(self.morph_key, record_type)
+                .where(self.morph_id, relation.get_attribute(relation.__primary_key__))
+                .first()
+            )
 
     def register_related(self, key, model, collection):
         record_type = self.get_record_key_lookup(model)
@@ -93,6 +134,7 @@ class MorphOne(BaseRelationship):
             .where(self.morph_id, model.get_attribute(model.__primary_key__))
             .first()
         )
+
         model.add_relation({key: related})
 
     def map_related(self, related_result):
@@ -102,7 +144,7 @@ class MorphOne(BaseRelationship):
         return registry.Registry.get_morph_map()
 
     def get_record_key_lookup(self, relation):
-        morph_name = registry.Registry._reverse_map.get(relation.__class__)
-        if morph_name is None or morph_name == relation.__class__.__name__:
+        record_type = registry.Registry.get_morph_name(relation.__class__)
+        if record_type == relation.__class__.__name__:
             raise ValueError(f"Could not find the record type key for the {relation} class")
-        return morph_name
+        return record_type
