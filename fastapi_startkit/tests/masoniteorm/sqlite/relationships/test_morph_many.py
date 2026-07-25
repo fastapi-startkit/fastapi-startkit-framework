@@ -7,7 +7,7 @@ from ..test_case import TestCase
 
 class ArticleModel(Model):
     __table__ = "articles"
-    likes: list[Like] = MorphMany('Like', morph_key="likeable_type", morph_id="likeable_id")
+    likes: list[Like] = MorphMany("Like", morph_key="likeable_type", morph_id="likeable_id")
 
 
 Registry.morph_map({"article": ArticleModel, "product": Product})
@@ -25,25 +25,25 @@ class TestMorphManyRelationship(TestCase):
         )
 
     async def test_morph_many_set_keys_defaults(self):
-        rel = MorphMany('Like')
+        rel = MorphMany("Like")
         rel.set_keys(None, None)
         self.assertEqual(rel.morph_key, "record_type")
         self.assertEqual(rel.morph_id, "record_id")
 
     async def test_morph_many_set_keys_keeps_existing(self):
-        rel = MorphMany('Like', morph_key="likeable_type", morph_id="likeable_id")
+        rel = MorphMany("Like", morph_key="likeable_type", morph_id="likeable_id")
         rel.set_keys(None, None)
         self.assertEqual(rel.morph_key, "likeable_type")
         self.assertEqual(rel.morph_id, "likeable_id")
 
     async def test_morph_map_returns_registry(self):
-        rel = MorphMany('Like', morph_key="likeable_type", morph_id="likeable_id")
+        rel = MorphMany("Like", morph_key="likeable_type", morph_id="likeable_id")
         morph_map = rel.morph_map()
         self.assertIn("article", morph_map)
         self.assertIn("product", morph_map)
 
     async def test_get_record_key_lookup_returns_key(self):
-        rel = MorphMany('Like', morph_key="likeable_type", morph_id="likeable_id")
+        rel = MorphMany("Like", morph_key="likeable_type", morph_id="likeable_id")
         key = rel.get_record_key_lookup(self.article)
         self.assertEqual(key, "article")
 
