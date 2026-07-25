@@ -21,7 +21,6 @@ as ``input_token`` / ``output_token`` / ``cache_token`` / ``total_token``.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
 from typing import Any
 
 from .response import AgentResponse
@@ -60,48 +59,39 @@ def is_transcript(value: Any) -> bool:
     return isinstance(value, list) and bool(value) and isinstance(value[0], dict) and "type" in value[0]
 
 
-@dataclass
-class HumanMessage:
-    content: str
-
-    def to_dict(self) -> dict:
-        return {"type": "human", "content": self.content}
+def human(content: str) -> dict:
+    """Build a ``human`` transcript entry."""
+    return {"type": "human", "content": content}
 
 
-@dataclass
-class AIMessage:
-    content: str = ""
-    tool_calls: list[dict] = field(default_factory=list)
-    uses: dict = field(default_factory=dict)
-    response_time: float = 0.0
-    chunks: list[str] | None = None
+def ai(
+    content: str = "",
+    tool_calls: list[dict] | None = None,
+    uses: dict | None = None,
+    response_time: float = 0.0,
+    chunks: list[str] | None = None,
+) -> dict:
+    """Build an ``ai`` transcript entry (a model turn: answer and/or tool calls)."""
+    entry: dict[str, Any] = {"type": "ai"}
+    if content:
+        entry["content"] = content
+    if tool_calls:
+        entry["tool_calls"] = tool_calls
+    entry["uses"] = uses or {}
+    entry["response_time"] = response_time
+    if chunks is not None:
+        entry["chunks"] = chunks
+    return entry
 
-    def to_dict(self) -> dict:
-        entry: dict[str, Any] = {"type": "ai"}
-        if self.content:
-            entry["content"] = self.content
-        if self.tool_calls:
-            entry["tool_calls"] = self.tool_calls
-        entry["uses"] = self.uses
-        entry["response_time"] = self.response_time
-        if self.chunks is not None:
-            entry["chunks"] = self.chunks
-        return entry
 
-
-@dataclass
-class ToolCallMessage:
-    content: str
-    response_time: float = 0.0
-    content_type: str | None = None
-
-    def to_dict(self) -> dict:
-        return {
-            "type": "tool_response",
-            "content_type": self.content_type or _infer_content_type(self.content),
-            "content": self.content,
-            "response_time": self.response_time,
-        }
+def tool_response(content: str, response_time: float = 0.0, content_type: str | None = None) -> dict:
+    """Build a ``tool_response`` transcript entry (a tool's output)."""
+    return {
+        "type": "tool_response",
+        "content_type": content_type or _infer_content_type(content),
+        "content": content,
+        "response_time": response_time,
+    }
 
 
 def _usage_from_uses(uses: dict) -> dict:

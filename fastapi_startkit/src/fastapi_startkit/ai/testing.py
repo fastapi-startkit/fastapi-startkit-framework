@@ -233,18 +233,18 @@ class AgentRecordFake(AgentFake):
         to the synthesized answer so replay can re-emit them."""
         from . import recording  # noqa: PLC0415
 
-        entries: list[dict] = [recording.HumanMessage(message).to_dict()]
+        entries: list[dict] = [recording.human(message)]
         if response.transcript:
             entries.extend(response.transcript)
         else:
             entries.append(
-                recording.AIMessage(
+                recording.ai(
                     content=response.content,
                     tool_calls=list(response.tool_calls),
                     uses=recording.uses_from_agent_usage(response.usage),
                     response_time=response.runtime * 1000,
                     chunks=chunks,
-                ).to_dict()
+                )
             )
         return entries
 
