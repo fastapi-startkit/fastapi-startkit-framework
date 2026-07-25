@@ -1,4 +1,4 @@
-from fastapi_startkit.ai import ToolCallView
+from fastapi_startkit.ai import ToolCallAssert
 from langchain_core.messages import AIMessage, HumanMessage
 
 from app.agents.chat import ChatAgent
@@ -14,7 +14,7 @@ class TestRouterAgent(TestCase):
 
             agent.assert_response_time_lt(5)
 
-            def assert_tool_calls(tool: ToolCallView):
+            def assert_tool_calls(tool: ToolCallAssert):
                 return tool.name == "job_search_tool"
 
             await agent.prompt("suggest python developer jobs")

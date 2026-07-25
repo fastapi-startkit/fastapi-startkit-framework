@@ -13,7 +13,7 @@ from .ai import Ai
 from .judge import JudgeAgent
 from .providers.ai_provider import AIProvider
 from .response import AgentResponse, AgentSnapshot
-from .testing import AgentFake, AgentRecordFake, ToolCallView
+from .testing import AgentFake, AgentRecordFake, ToolCallAssert
 
 __all__ = [
     "Agent",
@@ -27,7 +27,7 @@ __all__ = [
     "AnthropicConfig",
     "JudgeAgent",
     "AgentRecordFake",
-    "ToolCallView",
+    "ToolCallAssert",
     "Audio",
     "AudioResponse",
     "AudioFactory",
