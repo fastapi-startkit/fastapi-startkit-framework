@@ -53,7 +53,9 @@ class BaseRunner(ABC):
         tool_calls = list(getattr(message, "tool_calls", None) or [])
         uses = recording.uses_from_usage_metadata(getattr(message, "usage_metadata", None))
         self._transcript.append(
-            recording.ai(content=content, tool_calls=tool_calls, uses=uses, response_time=response_time_ms, chunks=chunks)
+            recording.ai(
+                content=content, tool_calls=tool_calls, uses=uses, response_time=response_time_ms, chunks=chunks
+            )
         )
         if tool_calls:
             self._requested_tool_calls = tool_calls

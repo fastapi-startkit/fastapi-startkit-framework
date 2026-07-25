@@ -30,12 +30,15 @@ class TestNewCassetteFormat(unittest.IsolatedAsyncioTestCase):
     async def test_recording_persists_an_ordered_transcript_keyed_by_input(self):
         response = AgentResponse(
             transcript=[
-                {"type": "ai", "tool_calls": [{"name": "job_search_tool", "args": {"query": "python"}, "id": "c1"}],
-                 "uses": {"input_token": 117, "output_token": 22, "cache_token": 0, "total_token": 139},
-                 "response_time": 12.0},
-                {"type": "tool_response", "content_type": "json", "content": "[{\"id\": 2}]", "response_time": 5.0},
+                {
+                    "type": "ai",
+                    "tool_calls": [{"name": "job_search_tool", "args": {"query": "python"}, "id": "c1"}],
+                    "uses": {"input_token": 117, "output_token": 22, "cache_token": 0, "total_token": 139},
+                    "response_time": 12.0,
+                },
+                {"type": "tool_response", "content_type": "json", "content": '[{"id": 2}]', "response_time": 5.0},
             ],
-            content="[{\"id\": 2}]",
+            content='[{"id": 2}]',
             tool_calls=[{"name": "job_search_tool", "args": {"query": "python"}, "id": "c1"}],
         )
         with tempfile.TemporaryDirectory() as tmp:
@@ -57,11 +60,15 @@ class TestNewCassetteFormat(unittest.IsolatedAsyncioTestCase):
     async def test_replaying_a_new_format_cassette_reconstructs_tool_calls(self):
         response = AgentResponse(
             transcript=[
-                {"type": "ai", "tool_calls": [{"name": "job_search_tool", "args": {"query": "python"}, "id": "c1"}],
-                 "uses": {"input_token": 117, "output_token": 22}, "response_time": 12.0},
-                {"type": "tool_response", "content_type": "json", "content": "[{\"id\": 2}]", "response_time": 5.0},
+                {
+                    "type": "ai",
+                    "tool_calls": [{"name": "job_search_tool", "args": {"query": "python"}, "id": "c1"}],
+                    "uses": {"input_token": 117, "output_token": 22},
+                    "response_time": 12.0,
+                },
+                {"type": "tool_response", "content_type": "json", "content": '[{"id": 2}]', "response_time": 5.0},
             ],
-            content="[{\"id\": 2}]",
+            content='[{"id": 2}]',
             tool_calls=[{"name": "job_search_tool", "args": {"query": "python"}, "id": "c1"}],
         )
         with tempfile.TemporaryDirectory() as tmp:
