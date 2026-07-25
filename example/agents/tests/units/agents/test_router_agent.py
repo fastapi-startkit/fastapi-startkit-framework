@@ -20,6 +20,9 @@ class TestRouterAgent(TestCase):
             await agent.prompt("suggest python developer jobs")
             agent.assert_tool_called("job_search_tool", assert_tool_calls)
 
+            # Tokens accumulate across both turns of the session.
+            agent.assert_tokens(lambda x: x.where("input", "<=", 5000).where("output", "<=", 5000))
+
     async def test_the_router_with_initial_messages(self):
         with ChatAgent.record(
             "record_stream.json",
