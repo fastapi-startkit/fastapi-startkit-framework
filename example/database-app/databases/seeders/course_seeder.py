@@ -54,6 +54,4 @@ class CourseSeeder(Seeder):
         for data in courses:
             course, _ = await Course.first_or_create({"title": data["title"]}, data)
             for title in lesson_map[data["title"]]:
-                await Lesson.first_or_create(
-                    {"title": title, "course_id": course.id}
-                )
+                await Lesson.first_or_create({"title": title, "course_id": course.id})

@@ -46,5 +46,7 @@ class UserSeeder(Seeder):
 
         for data in users:
             profile_data = data.pop("profile")
-            user= await User.first_or_create({"email": data["email"]}, data)
-            await Profile.first_or_create({"user_id": user.id}, {"user_id": user.id, **profile_data})
+            user = await User.first_or_create({"email": data["email"]}, data)
+            await Profile.first_or_create(
+                {"user_id": user.id}, {"user_id": user.id, **profile_data}
+            )
