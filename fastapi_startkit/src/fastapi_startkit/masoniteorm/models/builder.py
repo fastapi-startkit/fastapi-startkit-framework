@@ -22,6 +22,42 @@ if TYPE_CHECKING:
 
 
 class QueryBuilder(EagerLoadMixin, SupportMixin):
+    operators = [
+        "=",
+        "<",
+        ">",
+        "<=",
+        ">=",
+        "<>",
+        "!=",
+        "<=>",
+        "like",
+        "like binary",
+        "not like",
+        "ilike",
+        "&",
+        "|",
+        "^",
+        "<<",
+        ">>",
+        "&~",
+        "is",
+        "is not",
+        "rlike",
+        "not rlike",
+        "regexp",
+        "not regexp",
+        "~",
+        "~*",
+        "!~",
+        "!~*",
+        "similar to",
+        "not similar to",
+        "not ilike",
+        "~~*",
+        "!~~*",
+    ]
+
     def __init__(self, connection: "Connection", grammar, processor):
         super().__init__()
         self.connection = connection
@@ -431,6 +467,20 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
 
     def new(self):
         return self.connection.query()
+
+    def invalid_operator(self, operator):
+        """Determine whether an operator is not supported by the builder or grammar."""
+        if not isinstance(operator, str):
+            return True
+
+        operator = operator.lower()
+
+        grammar_operators = []
+        get_operators = getattr(self.grammar(), "get_operators", None)
+        if callable(get_operators):
+            grammar_operators = get_operators()
+
+        return operator not in self.operators and operator not in grammar_operators
 
     def where(self, column, *args):
         """Specifies a where expression.
