@@ -469,18 +469,8 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
         return self.connection.query()
 
     def invalid_operator(self, operator):
-        """Determine whether an operator is not supported by the builder or grammar."""
-        if not isinstance(operator, str):
-            return True
-
-        operator = operator.lower()
-
-        grammar_operators = []
-        get_operators = getattr(self.grammar(), "get_operators", None)
-        if callable(get_operators):
-            grammar_operators = get_operators()
-
-        return operator not in self.operators and operator not in grammar_operators
+        """Determine whether an operator is not supported by the builder."""
+        return not isinstance(operator, str) or operator.lower() not in self.operators
 
     def where(self, column, *args):
         """Specifies a where expression.
