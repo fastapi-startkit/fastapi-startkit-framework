@@ -120,12 +120,12 @@ class AgentFake:
         response = self._require_response()
         assert response.content, "Expected a non-empty text response, but content was empty."
 
-    def assert_tool_called(self, name: str, predicate: Callable[[ToolCallAssert], bool] | None = None) -> None:
+    def assert_tool_called(self, name: str, predicate: Callable[[AssertToolCall], bool] | None = None) -> None:
         response = self._require_response()
         matches = [tc for tc in response.tool_calls if tc.get("name") == name]
         assert matches, f"Expected tool {name!r} to be called, but it wasn't. Called: {self._tool_call_names()}"
         if predicate is not None:
-            assert any(predicate(ToolCallAssert(tc)) for tc in matches), (
+            assert any(predicate(AssertToolCall(tc)) for tc in matches), (
                 f"Tool {name!r} was called, but no call satisfied the given predicate."
             )
 
@@ -174,7 +174,7 @@ class AgentFake:
         return wrapper
 
 
-class ToolCallAssert:
+class AssertToolCall:
     def __init__(self, data: dict) -> None:
         self.name = data.get("name", "")
         self.args = data.get("args") or {}
@@ -182,7 +182,7 @@ class ToolCallAssert:
         self._data = data
 
     def __repr__(self) -> str:
-        return f"ToolCallAssert(name={self.name!r}, args={self.args!r})"
+        return f"AssertToolCall(name={self.name!r}, args={self.args!r})"
 
 
 class AgentRecordFake(AgentFake):
