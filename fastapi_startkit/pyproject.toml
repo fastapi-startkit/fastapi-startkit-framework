@@ -2,6 +2,7 @@
 name = "fastapi-startkit"
 version = "0.50.0"
 description = "A modular, provider-driven framework for building async Python web applications with FastAPI — bundling a service container, configuration system, an async-first ORM, facades, and a Cleo-powered console."
+readme = "README.md"
 keywords = [
     "fastapi",
     "framework",
@@ -149,7 +150,7 @@ omit = [
 [tool.coverage.report]
 show_missing = true
 skip_covered = false
-fail_under = 68
+fail_under = 80
 exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",

@@ -1,6 +1,7 @@
 """Core of the IOC Container."""
 
 import inspect
+from typing import Any
 
 from ..exceptions import (
     ContainerError,
@@ -42,15 +43,13 @@ class Container:
             self.swaps = {}
             self._remembered = {}
 
-    def bind(self, name, class_obj):
+    def bind(self, name: str | type, class_obj: Any) -> None:
         """Bind classes into the container with a key value pair.
 
         Arguments:
-            name {string} -- Name of the key you want to bind the object to
+            name {string | type} -- Key to bind the object to; a class object is
+                accepted for class-keyed bindings (mirrors make()'s class-key support)
             class_obj {object} -- The object you want to bind
-
-        Returns:
-            self
         """
         if inspect.ismodule(class_obj):
             raise StrictContainerException(
@@ -62,8 +61,6 @@ class Container:
         if self.override or name not in self.objects:
             self.fire_hook("bind", name, class_obj)
             self.objects.update({name: class_obj})
-
-        return self
 
     def unbind(self, name):
         """Unbind classes from the container from a key.

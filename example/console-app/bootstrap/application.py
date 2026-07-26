@@ -6,8 +6,5 @@ from providers import ConsoleServiceProvider
 
 app: Application = Application(
     base_path=Path(__file__).resolve().parent.parent,
-    providers=[
-        LogProvider,
-        ConsoleServiceProvider
-    ]
+    providers=[LogProvider, ConsoleServiceProvider],
 )

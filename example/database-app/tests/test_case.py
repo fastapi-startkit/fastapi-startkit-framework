@@ -8,6 +8,7 @@ if TYPE_CHECKING:
 
 
 class TestCase(BaseTestCase, ABC):
-    def get_application(self) -> 'Application':
+    def get_application(self) -> "Application":
         from bootstrap.application import app
+
         return app

@@ -13,7 +13,9 @@ class CreateCourseUserTable(Migration):
             table.integer("user_id").unsigned()
             table.foreign("user_id").references("id").on("users").on_delete("cascade")
             table.integer("course_id").unsigned()
-            table.foreign("course_id").references("id").on("courses").on_delete("cascade")
+            table.foreign("course_id").references("id").on("courses").on_delete(
+                "cascade"
+            )
             table.integer("progress").default(0)
             table.timestamp("completed_at").nullable()
             table.timestamps()

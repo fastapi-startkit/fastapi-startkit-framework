@@ -5,6 +5,7 @@ from app.models.user import User
 from app.models.profile import Profile
 from app.http.schemas.auth import StudentRegistrationRequest, TeacherRegistrationRequest
 
+
 class AuthController:
     @staticmethod
     async def register_teacher(data: TeacherRegistrationRequest):
@@ -37,6 +38,7 @@ class AuthController:
         profile.video_url = data.video_url
         profile.hourly_rate = data.hourly_rate
         import json
+
         profile.languages_spoken = json.dumps(data.languages_spoken)
         profile.subjects = json.dumps(data.subjects)
         await profile.save()
