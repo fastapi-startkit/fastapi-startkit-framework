@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Annotated, Any, TypedDict
 
+from langchain_core.messages import ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END
 from langgraph.graph.message import add_messages
@@ -56,7 +57,7 @@ class GraphAgent(Agent, ABC):
         model: str | None = None,
         config: RunnableConfig | dict | None = None,
         provider_options: dict | None = None,
-    ) -> AsyncIterator[str]:
+    ) -> AsyncIterator[dict]:
         async for chunk in self.runner().stream(message, model=model, config=config, provider_options=provider_options):
             yield chunk
 
@@ -132,7 +133,7 @@ class GraphRunner(BaseRunner):
         started = time.perf_counter()
         self._reset_capture()
         compiled = await self._compile(model, provider_options)
-        state = {"messages": self._build_messages(message, attachments), "llm_calls": 0}
+        state = {"messages": await self._build_messages(message, attachments), "llm_calls": 0}
         result = await compiled.ainvoke(state, config=self._merge_config(config))
         response = self._apply_schema(self._to_response(result))
         response.runtime = time.perf_counter() - started
@@ -145,10 +146,10 @@ class GraphRunner(BaseRunner):
         model: str | None = None,
         config: RunnableConfig | dict | None = None,
         provider_options: dict | None = None,
-    ) -> AsyncIterator[str]:
+    ) -> AsyncIterator[dict]:
         self._reset_capture()
         compiled = await self._compile(model, provider_options)
-        state = {"messages": self._build_messages(message), "llm_calls": 0}
+        state = {"messages": await self._build_messages(message), "llm_calls": 0}
         final_state: dict = {}
         # "messages" streams tokens; "values" hands back the full state after each
         # step, whose last snapshot carries every message (and its tool_calls).
@@ -160,8 +161,12 @@ class GraphRunner(BaseRunner):
                 continue
             message_chunk, _meta = chunk
             text = message_chunk.content if isinstance(message_chunk.content, str) else str(message_chunk.content)
-            if text:
-                yield text
+            if not text:
+                continue
+            if isinstance(message_chunk, ToolMessage):
+                yield {"type": "tool_response", "name": message_chunk.name or "", "content": text}
+            else:
+                yield {"type": "delta", "text": text}
         self.last_response = self._to_response(final_state) if final_state else AgentResponse(content="")
 
     def _to_response(self, result: dict) -> AgentResponse:

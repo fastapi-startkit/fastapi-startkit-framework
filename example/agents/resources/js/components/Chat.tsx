@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react"
+import { createParser, type EventSourceMessage } from "eventsource-parser"
 
 type Message = {
     role: "user" | "assistant"
@@ -48,18 +49,29 @@ export default function Chat({
             const decoder = new TextDecoder()
             if (!reader) return
 
-            while (true) {
-                const { done, value } = await reader.read()
-                if (done) break
-                const chunk = decoder.decode(value, { stream: true })
+            const append = (text: string) =>
                 setMessages(prev => {
                     const updated = [...prev]
                     updated[updated.length - 1] = {
                         role: "assistant",
-                        content: updated[updated.length - 1].content + chunk,
+                        content: updated[updated.length - 1].content + text,
                     }
                     return updated
                 })
+
+            // SSE frames: deltas carry model tokens; tool_response frames carry tool output.
+            const parser = createParser({
+                onEvent: (event: EventSourceMessage) => {
+                    const frame = JSON.parse(event.data)
+                    if (frame.type === "delta") append(frame.text)
+                    else if (frame.type === "tool_response") append(frame.content)
+                },
+            })
+
+            while (true) {
+                const { done, value } = await reader.read()
+                if (done) break
+                parser.feed(decoder.decode(value, { stream: true }))
             }
         } finally {
             setLoading(false)

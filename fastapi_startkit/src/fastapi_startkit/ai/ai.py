@@ -82,7 +82,11 @@ class Ai:
         chat_model = init_chat_model(self._resolve_model(agent, model), **kwargs)
 
         tools = list(agent.tools())
-        chat_model = chat_model.bind_tools(tools) if tools else chat_model
+        if tools:
+            if agent.tool_choice:
+                chat_model = chat_model.bind_tools(tools, tool_choice=agent.tool_choice)
+            else:
+                chat_model = chat_model.bind_tools(tools)
 
         schema = agent.schema()
         if schema is not None:

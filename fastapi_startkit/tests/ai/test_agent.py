@@ -116,9 +116,10 @@ class TestAgent(unittest.IsolatedAsyncioTestCase):
     async def test_stream_yields_tokens_from_the_model(self):
         self.setup_agent([AIMessage(content="streamed reply")])
 
-        chunks = [chunk async for chunk in Agent().stream("hello")]
+        frames = [frame async for frame in Agent().stream("hello")]
 
-        self.assertEqual("".join(chunks), "streamed reply")
+        self.assertTrue(all(frame["type"] == "delta" for frame in frames))
+        self.assertEqual("".join(frame["text"] for frame in frames), "streamed reply")
 
     async def test_middleware_streams_token_by_token_and_runs_after_hook(self):
         events: list = []
@@ -134,7 +135,7 @@ class TestAgent(unittest.IsolatedAsyncioTestCase):
 
         self.setup_agent([AIMessage(content="one two three")], LoggedAgent)
 
-        chunks = [chunk async for chunk in LoggedAgent().stream("hi")]
+        chunks = [frame["text"] async for frame in LoggedAgent().stream("hi")]
 
         # Middleware must not buffer: the model's tokens arrive as separate chunks...
         self.assertEqual("".join(chunks), "one two three")
@@ -174,9 +175,12 @@ class TestAgent(unittest.IsolatedAsyncioTestCase):
         )
         self.addCleanup(Ai.reset_fakes)
 
-        chunks = [chunk async for chunk in JobAssistant().stream("find me a python job")]
+        frames = [frame async for frame in JobAssistant().stream("find me a python job")]
 
-        self.assertEqual(chunks, ["Python Developer at Shopify"])
+        self.assertEqual(
+            frames,
+            [{"type": "tool_response", "name": "search_jobs", "content": "Python Developer at Shopify"}],
+        )
 
     def test_resolve_model_falls_back_to_lab_default(self):
         self.assertEqual(Ai()._resolve_model(Agent()), "gemini-2.5-flash-lite")
@@ -189,40 +193,40 @@ class TestAgent(unittest.IsolatedAsyncioTestCase):
     def test_resolve_model_prefers_explicit_override(self):
         self.assertEqual(Ai()._resolve_model(Agent(), "my-model"), "my-model")
 
-    def test_instructions_lead_the_message_list(self):
-        messages = Runner(JobAssistant())._build_messages("find me a job")
+    async def test_instructions_lead_the_message_list(self):
+        messages = await Runner(JobAssistant())._build_messages("find me a job")
 
         self.assertEqual(messages[0], {"role": "system", "content": "You help users find jobs."})
         self.assertEqual(sum(m.get("role") == "system" for m in messages), 1)
 
-    def test_instructions_can_be_a_method_override(self):
+    async def test_instructions_can_be_a_method_override(self):
         class DynamicAgent(Agent):
             def instructions(self) -> str:
                 return "Computed identity."
 
-        messages = Runner(DynamicAgent())._build_messages("hi")
+        messages = await Runner(DynamicAgent())._build_messages("hi")
 
         self.assertEqual(messages[0], {"role": "system", "content": "Computed identity."})
 
-    def test_no_instructions_prepends_no_system_message(self):
-        messages = Runner(Agent())._build_messages("hi")
+    async def test_no_instructions_prepends_no_system_message(self):
+        messages = await Runner(Agent())._build_messages("hi")
 
         self.assertTrue(all(m.get("role") != "system" for m in messages))
 
-    def test_build_messages_inlines_text_attachment(self):
+    async def test_build_messages_inlines_text_attachment(self):
         doc = Document(content="Q3 revenue was $1.2M.", name="q3-report.txt")
 
-        messages = Runner(Agent())._build_messages("Summarise this report.", attachments=[doc])
+        messages = await Runner(Agent())._build_messages("Summarise this report.", attachments=[doc])
 
         user_content = messages[-1]["content"]
         self.assertEqual(user_content[0], {"type": "text", "text": "Summarise this report."})
         self.assertEqual(user_content[1]["type"], "text")
         self.assertIn("q3-report.txt", user_content[1]["text"])
 
-    def test_build_messages_encodes_binary_attachment_as_file_block(self):
+    async def test_build_messages_encodes_binary_attachment_as_file_block(self):
         doc = Document(content=b"%PDF-1.7 ...", name="q3.pdf", media_type="application/pdf")
 
-        messages = Runner(Agent())._build_messages("Summarise", attachments=[doc])
+        messages = await Runner(Agent())._build_messages("Summarise", attachments=[doc])
 
         block = messages[-1]["content"][1]
         self.assertEqual(block["type"], "file")

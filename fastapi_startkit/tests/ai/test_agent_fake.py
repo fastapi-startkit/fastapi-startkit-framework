@@ -135,7 +135,7 @@ class TestAgentFake(unittest.IsolatedAsyncioTestCase):
 
     async def test_stream_returns_fake_response(self):
         with SimpleAgent.fake(["Faked stream!"]) as agent:
-            chunks = [chunk async for chunk in agent.stream("hello world")]
+            chunks = [frame["text"] async for frame in agent.stream("hello world")]
 
             self.assertEqual("".join(chunks), "Faked stream!")
             self.assertGreater(len(chunks), 1)
@@ -143,7 +143,7 @@ class TestAgentFake(unittest.IsolatedAsyncioTestCase):
 
     async def test_stream_replays_the_registered_text_exactly(self):
         with SimpleAgent.fake(["Hello there, friend"]) as agent:
-            chunks = [chunk async for chunk in agent.stream("hi")]
+            chunks = [frame["text"] async for frame in agent.stream("hi")]
 
             self.assertEqual("".join(chunks), "Hello there, friend")
 
@@ -236,7 +236,7 @@ class TestAgentRecord(unittest.IsolatedAsyncioTestCase):
         async def fake_stream(runner_self, message, **kwargs):
             calls.append(message)
             for chunk in chunks:
-                yield chunk
+                yield {"type": "delta", "text": chunk}
 
         # The fluent fakes drive the runner's stream() directly (so they can read
         # the structured response it captures), so mock at that layer.
@@ -250,7 +250,7 @@ class TestAgentRecord(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             cassette = os.path.join(tmp, "s.json")
             with SimpleAgent.record(cassette) as agent:
-                chunks = [c async for c in agent.stream("hi")]
+                chunks = [frame["text"] async for frame in agent.stream("hi")]
 
             self.assertEqual(chunks, ["Hel", "lo!"])
             self.assertEqual(calls, ["hi"])
@@ -268,7 +268,7 @@ class TestAgentRecord(unittest.IsolatedAsyncioTestCase):
             with SimpleAgent.record(cassette) as agent:
                 [c async for c in agent.stream("hi")]
             with SimpleAgent.record(cassette) as agent:
-                replayed = [c async for c in agent.stream("hi")]
+                replayed = [frame["text"] async for frame in agent.stream("hi")]
 
             self.assertEqual(replayed, ["Hel", "lo!"])
             self.assertEqual(calls, ["hi"])  # real stream invoked only on the first run

@@ -66,7 +66,7 @@ class TestGraphAgent(unittest.IsolatedAsyncioTestCase):
 
     async def test_stream_yields_the_final_answer_token_by_token(self):
         with MathAgent.fake(["The answer is 7"]):
-            chunks = [chunk async for chunk in MathAgent().stream("What is 3 plus 4?")]
+            chunks = [frame["text"] async for frame in MathAgent().stream("What is 3 plus 4?")]
 
         self.assertEqual("".join(chunks), "The answer is 7")
         self.assertGreater(len(chunks), 1)

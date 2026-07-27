@@ -20,6 +20,9 @@ class Agent:
     max_tokens: int = 4096
     timeout: float = 30.0
     top_p: float = 1.0
+    # Forwarded to bind_tools() when set: "auto" (default), "any" (must call a tool),
+    # or a specific tool name.
+    tool_choice: str | None = None
 
     def messages(self) -> list[dict]:
         return []
@@ -55,7 +58,9 @@ class Agent:
         *,
         model: str | None = None,
         provider_options: dict | None = None,
-    ) -> AsyncIterator[str]:
+    ) -> AsyncIterator[dict]:
+        """Yields typed frames: {"type": "delta", "text": ...} for model tokens and
+        {"type": "tool_response", "name": ..., "content": ...} for tool results."""
         async for chunk in self.runner().stream(message, model=model, provider_options=provider_options):
             yield chunk
 

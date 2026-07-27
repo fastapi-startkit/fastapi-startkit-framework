@@ -213,7 +213,7 @@ class TestRecordMessagesSeed(unittest.IsolatedAsyncioTestCase):
         seed = [HumanMessage(content="Hi"), AIMessage(content="Hello, how can I help?")]
         with tempfile.TemporaryDirectory() as tmp:
             with SimpleAgent.record(os.path.join(tmp, "c.json"), messages=seed) as agent:
-                built = Runner(agent._real)._build_messages("suggest python developer jobs")
+                built = await Runner(agent._real)._build_messages("suggest python developer jobs")
 
         self.assertEqual(built[0], seed[0])
         self.assertEqual(built[1], seed[1])

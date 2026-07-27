@@ -22,6 +22,13 @@ def _joined(value: Any) -> str:
     return "".join(value) if isinstance(value, list) else value
 
 
+def _frame_text(frame: Any) -> str:
+    """Text carried by a stream frame; cassettes keep storing plain strings."""
+    if isinstance(frame, dict):
+        return frame.get("text") or frame.get("content") or ""
+    return str(frame)
+
+
 def _new_token_totals() -> dict:
     return {"input": 0, "output": 0, "cache": 0, "total": 0}
 
@@ -74,6 +81,7 @@ class AgentFake:
         self._last_response: AgentResponse | None = None
         self.last_elapsed: float | None = None
         self._tokens: dict = _new_token_totals()
+        self._response_time: float = 0.0
 
     def _history(self) -> list:
         return self._records
@@ -104,20 +112,21 @@ class AgentFake:
         self._remember(message, self._last_response)
         return self._last_response
 
-    async def stream(self, message: str, *, config: dict | None = None) -> AsyncIterator[str]:
+    async def stream(self, message: str, *, config: dict | None = None) -> AsyncIterator[dict]:
         chunks: list[str] = []
         extra = {"config": config} if config is not None else {}
         # Drive the runner directly so we can read the structured response it
         # captures while streaming (content + tool_calls), not just joined text.
         runner = self._agent.runner()
-        async for chunk in runner.stream(message, **extra):
-            chunks.append(chunk)
-            yield chunk
+        async for frame in runner.stream(message, **extra):
+            chunks.append(_frame_text(frame))
+            yield frame
         self._last_response = getattr(runner, "last_response", None) or AgentResponse(content="".join(chunks))
         self._remember(message, self._last_response)
 
     def _remember(self, message: str, response: AgentResponse) -> None:
         self._accumulate_tokens(response)
+        self._response_time += response.runtime
         self._records.append({"role": "user", "content": message})
         self._records.append({"role": "assistant", "content": response.content})
 
@@ -174,6 +183,7 @@ class AgentFake:
         self._records.clear()
         self._last_response = None
         self._tokens = _new_token_totals()
+        self._response_time = 0.0
         return self
 
     def _require_response(self) -> AgentResponse:
@@ -201,8 +211,15 @@ class AgentFake:
         assert not unexpected, f"Expected tools {sorted(names)} not to be called, but got: {sorted(unexpected)}"
 
     def assert_response_time_lt(self, seconds: float) -> None:
+        """Assert on the response time accumulated across every prompt()/stream() so far.
+
+        The time is read from the recorded transcript (each ai/tool step's
+        ``response_time``), not the wall-clock duration of the call — so it stays
+        correct on cassette replay, where the cache read is effectively instant.
+        """
         assert self.last_elapsed is not None, "No prompt() call has been made yet."
-        assert self.last_elapsed < seconds, f"Expected response time < {seconds}s, took {self.last_elapsed:.3f}s"
+        total = self._response_time
+        assert total < seconds, f"Expected total response time < {seconds}s, took {total:.3f}s"
 
     async def assert_response_judged(self, *, model: str, expectation: str, provider: str | None = None) -> None:
         response = self._require_response()
@@ -262,6 +279,7 @@ class AgentRecordFake(AgentFake):
         self._last_response: AgentResponse | None = None
         self.last_elapsed: float | None = None
         self._tokens: dict = _new_token_totals()
+        self._response_time: float = 0.0
 
     def _history(self) -> list:
         return self._seed_messages + self._records
@@ -332,6 +350,7 @@ class AgentRecordFake(AgentFake):
 
     def _remember_turn(self, message: str, response: AgentResponse) -> None:
         self._accumulate_tokens(response)
+        self._response_time += response.runtime
         self._records.append({"role": "user", "content": message})
         turn: dict[str, Any] = {"role": "assistant", "content": response.content}
         if response.tool_calls:
@@ -356,7 +375,7 @@ class AgentRecordFake(AgentFake):
         self._remember_turn(message, response)
         return response
 
-    async def stream(self, message: str, *, config: dict | None = None) -> AsyncIterator[str]:
+    async def stream(self, message: str, *, config: dict | None = None) -> AsyncIterator[dict]:
         from . import recording  # noqa: PLC0415
 
         cassette, store = self._load()
@@ -373,16 +392,16 @@ class AgentRecordFake(AgentFake):
                 chunks = value if isinstance(value, list) else [value]
                 response = AgentResponse(content=_joined(chunks))
             for chunk in chunks:
-                yield chunk
+                yield {"type": "delta", "text": chunk}
         else:
             extra = {"config": config} if config is not None else {}
             # Drive the runner directly to capture the structured response
             # (content + tool_calls + chunks) it records while streaming.
             runner = self._real.runner()
             chunks = []
-            async for chunk in runner.stream(message, **extra):
-                chunks.append(chunk)
-                yield chunk
+            async for frame in runner.stream(message, **extra):
+                chunks.append(_frame_text(frame))
+                yield frame
             response = getattr(runner, "last_response", None) or AgentResponse(content=_joined(chunks))
             self._save(cassette, store, key, self._turn(message, response, chunks=chunks))
         self._last_response = response

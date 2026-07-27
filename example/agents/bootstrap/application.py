@@ -3,10 +3,12 @@ from pathlib import Path
 from fastapi_startkit import Application
 from fastapi_startkit.inertia import InertiaProvider
 from fastapi_startkit.logging import LogProvider
+from fastapi_startkit.masoniteorm import DatabaseProvider
 from fastapi_startkit.skills import AISkillProvider
 from fastapi_startkit.vite import ViteProvider
 from fastapi_startkit.ai import AIProvider
 
+from config.database import DatabaseConfig
 from config.fastapi import FastAPIConfig
 from config.logging import LoggingConfig
 from config.vite import ViteConfig
@@ -19,6 +21,7 @@ app: Application = Application(
         AISkillProvider,
         LangChainProvider,
         (LogProvider,LoggingConfig),
+        (DatabaseProvider, DatabaseConfig),
         (FastapiProvider, FastAPIConfig),
         AIProvider,
         (ViteProvider, ViteConfig),

@@ -5,13 +5,13 @@
       "type": "human"
     },
     {
-      "response_time": 1.0,
+      "response_time": 435.28216693084687,
       "tool_calls": [
         {
           "args": {
             "query": "python developer"
           },
-          "id": "call_stream",
+          "id": "d6dfa6d2-ad11-48ad-a322-89d9dcf28fdd",
           "name": "job_search_tool",
           "type": "tool_call"
         }
@@ -19,31 +19,26 @@
       "type": "ai",
       "uses": {
         "cache_token": 0,
-        "input_token": 117,
-        "output_token": 24,
-        "total_token": 141
+        "input_token": 49,
+        "output_token": 18,
+        "total_token": 67
       }
     },
     {
-      "content": "[{\"id\": 2, \"title\": \"Frontend Developer\", \"location\": \"Remote\", \"company\": \"Startup Inc\", \"type\": \"Full-time\"}]",
+      "content": "[{\"id\": 2, \"title\": \"Python Developer\", \"location\": \"Remote\", \"company\": \"Startup Inc\", \"type\": \"Full-time\"}]",
       "content_type": "json",
-      "response_time": 0.5,
+      "response_time": 0.8195829577744007,
       "type": "tool_response"
     },
     {
-      "chunks": [
-        "I found a job for you!",
-        " It's a Full-time Frontend Developer position at Startup Inc,",
-        " located remotely."
-      ],
-      "content": "I found a job for you! It's a Full-time Frontend Developer position at Startup Inc, located remotely.",
-      "response_time": 1.0,
+      "content": "I found one Python developer job:\n\n* Company: Startup Inc\n* Title: Python Developer\n* Type: Full-time\n* Location: Remote",
+      "response_time": 476.57812503166497,
       "type": "ai",
       "uses": {
         "cache_token": 0,
-        "input_token": 140,
-        "output_token": 24,
-        "total_token": 164
+        "input_token": 117,
+        "output_token": 31,
+        "total_token": 148
       }
     }
   ]

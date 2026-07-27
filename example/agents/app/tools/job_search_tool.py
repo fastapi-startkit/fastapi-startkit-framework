@@ -2,7 +2,7 @@ from langchain_core.tools import tool
 
 jobs = [
     {"id": 1, "title": "Software Engineer", "location": "San Francisco", "company": "Acme Corp", "type": "Full-time"},
-    {"id": 2, "title": "Frontend Developer", "location": "Remote", "company": "Startup Inc", "type": "Full-time"},
+    {"id": 2, "title": "Python Developer", "location": "Remote", "company": "Startup Inc", "type": "Full-time"},
     {"id": 3, "title": "Data Scientist", "location": "New York", "company": "DataCo", "type": "Full-time"},
     {"id": 4, "title": "DevOps Engineer", "location": "Austin", "company": "CloudBase", "type": "Contract"},
     {"id": 5, "title": "Product Manager", "location": "Remote", "company": "ProductHQ", "type": "Full-time"},

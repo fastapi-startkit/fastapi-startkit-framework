@@ -40,13 +40,22 @@ class Response:
                 await result
         return final
 
+    @staticmethod
+    def _merge(accumulated: Any, chunk: Any) -> Any:
+        # Stream frames are dicts ({"type": "delta"/"tool_response", ...}); the
+        # after-hooks want the joined text, not a dict sum.
+        if isinstance(chunk, dict):
+            text = chunk.get("text") or chunk.get("content") or ""
+            return text if accumulated is None else accumulated + text
+        return chunk if accumulated is None else accumulated + chunk
+
     def __aiter__(self) -> AsyncIterator:
         async def _it() -> AsyncIterator:
             accumulated = None
             finished = False
             try:
                 async for chunk in self._source():
-                    accumulated = chunk if accumulated is None else accumulated + chunk
+                    accumulated = self._merge(accumulated, chunk)
                     yield chunk
                 finished = True
                 await self._finish(accumulated)
@@ -63,7 +72,7 @@ class Response:
         async def _run() -> Any:
             accumulated = None
             async for chunk in self._source():
-                accumulated = chunk if accumulated is None else accumulated + chunk
+                accumulated = self._merge(accumulated, chunk)
             return await self._finish(accumulated)
 
         return _run().__await__()

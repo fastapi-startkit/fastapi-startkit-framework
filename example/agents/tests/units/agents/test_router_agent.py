@@ -33,3 +33,13 @@ class TestRouterAgent(TestCase):
         ) as agent:
             await agent.prompt("suggest python developer jobs")
             agent.assert_tool_called("job_search_tool", lambda tool: tool.name == "job_search_tool")
+
+            agent.assert_response_time_lt(2)
+            agent.assert_tokens(lambda x: x.where("input", "<=", 1000).where("output", "<=", 5000))
+
+            await agent.assert_response_judged(
+                provider="google",
+                model="gemini-3.5-flash",
+                expectation="As use is asking for the python developer jobs, the agent "
+                "should suggest relevant job recommendations.",
+            )

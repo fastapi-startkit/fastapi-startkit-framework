@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import time
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
@@ -77,7 +78,7 @@ class BaseRunner(ABC):
             }
         )
 
-    def _build_messages(self, message: str, attachments: list[Document] | None = None) -> list[dict]:
+    async def _build_messages(self, message: str, attachments: list[Document] | None = None) -> list[dict]:
         agent = self.agent
         messages: list[dict] = []
 
@@ -85,7 +86,12 @@ class BaseRunner(ABC):
         if instruction:
             messages.append({"role": "system", "content": instruction})
 
-        messages.extend(agent.messages() or [])
+        # messages() may be sync (return a list) or async (agents that read
+        # their history from a database); support both.
+        history = agent.messages()
+        if inspect.isawaitable(history):
+            history = await history
+        messages.extend(history or [])
 
         if message:
             messages.append({"role": "user", "content": message})
@@ -136,7 +142,7 @@ class BaseRunner(ABC):
         *,
         model: str | None = None,
         provider_options: dict | None = None,
-    ) -> AsyncIterator[str]: ...
+    ) -> AsyncIterator[dict]: ...
 
 
 class Runner(BaseRunner):
@@ -150,7 +156,7 @@ class Runner(BaseRunner):
     ) -> AgentResponse:
         started = time.perf_counter()
         self._reset_capture()
-        messages = self._build_messages(message, attachments)
+        messages = await self._build_messages(message, attachments)
         model = self._build_model(model, provider_options)
 
         response = await self._run_pipeline(model, messages)
@@ -215,9 +221,9 @@ class Runner(BaseRunner):
         *,
         model: str | None = None,
         provider_options: dict | None = None,
-    ) -> AsyncIterator[str]:
+    ) -> AsyncIterator[dict]:
         self._reset_capture()
-        messages = self._build_messages(message)
+        messages = await self._build_messages(message)
         chat_model = self._build_model(model, provider_options)
         chain = list(self.agent.middleware())
 
@@ -245,7 +251,7 @@ class Runner(BaseRunner):
             return response
         return (await self._run_tools(response.tool_calls))[-1]
 
-    async def _invoke_stream(self, model: Runnable[Any, BaseMessage], messages: list) -> AsyncIterator[str]:
+    async def _invoke_stream(self, model: Runnable[Any, BaseMessage], messages: list) -> AsyncIterator[dict]:
         started = time.perf_counter()
         gathered: AIMessageChunk | None = None
         chunks: list[str] = []
@@ -253,7 +259,7 @@ class Runner(BaseRunner):
             if chunk.content:
                 text = _as_text(chunk.content)
                 chunks.append(text)
-                yield text
+                yield {"type": "delta", "text": text}
             gathered = chunk if gathered is None else gathered + chunk  # type: ignore[operator]
 
         latency_ms = (time.perf_counter() - started) * 1000
@@ -262,8 +268,8 @@ class Runner(BaseRunner):
         self._record_ai_message(gathered, latency_ms, chunks=chunks)
         if not gathered.tool_calls:
             return
-        for message in await self._run_tools(gathered.tool_calls):
-            yield _as_text(message.content)
+        for call, message in zip(gathered.tool_calls, await self._run_tools(gathered.tool_calls)):
+            yield {"type": "tool_response", "name": call["name"], "content": _as_text(message.content)}
 
     async def _run_tools(self, tool_calls: list[ToolCall]) -> list[BaseMessage]:
         tools: dict[str, BaseTool] = {tool.name: tool for tool in self.agent.tools()}
