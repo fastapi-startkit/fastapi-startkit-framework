@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import inflection
+import pendulum
 
 from fastapi_startkit.carbon import Carbon
 from fastapi_startkit.masoniteorm.collection import Collection
@@ -346,6 +347,29 @@ class Model(Attribute, Relationship, ObservesEvents):
             return False
 
         return await self.fill(attributes).save()
+
+    async def touch(self) -> bool:
+        """Bump ``updated_at`` to now and persist only that column.
+
+        Mirrors Laravel's instance-level ``touch()``: any other dirty
+        attributes on the model are left untouched and unsaved. A no-op for
+        models with timestamps disabled (``__timestamps__`` falsy) or that
+        haven't been persisted yet, matching how ``save()`` already treats
+        those cases.
+        """
+        if not self.__timestamps__ or not self._exists:
+            return False
+
+        value = self.caster.set("updated_at", pendulum.now("UTC"))
+
+        query = self.new_query()
+        pk_value = self.get_attribute(self.__primary_key__)
+        await query.where(self.__primary_key__, pk_value).update({"updated_at": value})
+
+        self._attributes["updated_at"] = value
+        self._original["updated_at"] = value
+
+        return True
 
     def fill(self, attributes: dict) -> "Model":
         for key, value in attributes.items():
