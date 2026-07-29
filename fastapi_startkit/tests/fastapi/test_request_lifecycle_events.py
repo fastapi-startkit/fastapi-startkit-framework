@@ -23,7 +23,11 @@ def make_client(app: Application) -> TestClient:
     def boom():
         return JSONResponse(status_code=404, content={"detail": "not found"})
 
-    return TestClient(app.fastapi)
+    @app.fastapi.get("/crash")
+    def crash():
+        raise RuntimeError("bare exception escaping the route")
+
+    return TestClient(app.fastapi, raise_server_exceptions=False)
 
 
 class RequestLifecycleEventTest(unittest.TestCase):
@@ -88,3 +92,41 @@ class RequestLifecycleEventTest(unittest.TestCase):
 
         self.assertEqual(called, [])
         fake.assert_dispatched(RequestHandled, lambda e: e.path == "/ping" and e.status_code == 200)
+
+    # -----------------------------------------------------------------
+    # Bare exception escaping the route (task #1329 regression)
+    # -----------------------------------------------------------------
+    #
+    # A bare (non-HTTPException) exception is handled by Starlette's
+    # ServerErrorMiddleware, which sits *outside* RequestLifecycleMiddleware —
+    # unlike HTTPException, which stays inside it via ExceptionMiddleware.
+    # The event must still log status_code=500, and the response the client
+    # actually receives must still carry the same X-Request-Id.
+
+    def test_event_reflects_bare_exception_as_500(self):
+        seen = []
+        Event.listen(RequestHandled, lambda e: seen.append(e))
+
+        response = self.client.get("/crash")
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(seen[0].status_code, 500)
+
+    def test_response_carries_request_id_when_bare_exception_escapes(self):
+        response = self.client.get("/crash")
+
+        self.assertIn(REQUEST_ID_HEADER, response.headers)
+        self.assertTrue(response.headers[REQUEST_ID_HEADER])
+
+    def test_response_request_id_matches_event_request_id_on_crash(self):
+        seen = []
+        Event.listen(RequestHandled, lambda e: seen.append(e))
+
+        response = self.client.get("/crash")
+
+        self.assertEqual(response.headers[REQUEST_ID_HEADER], seen[0].request_id)
+
+    def test_incoming_request_id_is_echoed_back_on_crash(self):
+        response = self.client.get("/crash", headers={REQUEST_ID_HEADER: "crash-request-id"})
+
+        self.assertEqual(response.headers[REQUEST_ID_HEADER], "crash-request-id")
