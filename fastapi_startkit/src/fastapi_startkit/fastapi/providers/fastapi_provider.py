@@ -3,6 +3,7 @@ from fastapi import FastAPI
 
 from fastapi_startkit.fastapi.commands import ServeCommand
 from fastapi_startkit.fastapi.config import FastAPIConfig
+from fastapi_startkit.fastapi.middleware import RequestLifecycleMiddleware
 from fastapi_startkit.support import Provider
 
 
@@ -26,6 +27,7 @@ class FastAPIProvider(Provider):
 
         self.commands([ServeCommand])
         self._register_exception_handlers()
+        self.app.add_middleware(RequestLifecycleMiddleware)
 
         source = os.path.abspath(os.path.join(os.path.dirname(__file__), "../config/fastapi.py"))
         self.publishes({source: "config/fastapi.py"})
