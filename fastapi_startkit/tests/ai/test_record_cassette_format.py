@@ -11,15 +11,35 @@ import tempfile
 import unittest
 from unittest import mock
 
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+
+from fastapi_startkit.ai import state as ai_state
 from fastapi_startkit.ai.agent import Agent
-from fastapi_startkit.ai.response import AgentResponse
 
 
 class RecordAgent(Agent):
     pass
 
 
-def _fake_prompt(response: AgentResponse):
+def _tool_turn_messages() -> list:
+    return [
+        HumanMessage(content="suggest me jobs"),
+        AIMessage(
+            content="",
+            tool_calls=[{"name": "job_search_tool", "args": {"query": "python"}, "id": "c1", "type": "tool_call"}],
+            additional_kwargs={"response_time": 12.0},
+            usage_metadata={
+                "input_tokens": 117,
+                "output_tokens": 22,
+                "total_tokens": 139,
+                "input_token_details": {"cache_read": 0},
+            },
+        ),
+        ToolMessage(content='[{"id": 2}]', tool_call_id="c1", additional_kwargs={"response_time": 5.0}),
+    ]
+
+
+def _fake_prompt(response: dict):
     async def prompt(agent_self, message, **kwargs):
         return response
 
@@ -28,19 +48,7 @@ def _fake_prompt(response: AgentResponse):
 
 class TestNewCassetteFormat(unittest.IsolatedAsyncioTestCase):
     async def test_recording_persists_an_ordered_transcript_keyed_by_input(self):
-        response = AgentResponse(
-            transcript=[
-                {
-                    "type": "ai",
-                    "tool_calls": [{"name": "job_search_tool", "args": {"query": "python"}, "id": "c1"}],
-                    "uses": {"input_token": 117, "output_token": 22, "cache_token": 0, "total_token": 139},
-                    "response_time": 12.0,
-                },
-                {"type": "tool_response", "content_type": "json", "content": '[{"id": 2}]', "response_time": 5.0},
-            ],
-            content='[{"id": 2}]',
-            tool_calls=[{"name": "job_search_tool", "args": {"query": "python"}, "id": "c1"}],
-        )
+        response = {"messages": _tool_turn_messages()}
         with tempfile.TemporaryDirectory() as tmp:
             cassette = os.path.join(tmp, "c.json")
             with _fake_prompt(response):
@@ -58,19 +66,7 @@ class TestNewCassetteFormat(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(turn[2]["content"], '[{"id": 2}]')
 
     async def test_replaying_a_new_format_cassette_reconstructs_tool_calls(self):
-        response = AgentResponse(
-            transcript=[
-                {
-                    "type": "ai",
-                    "tool_calls": [{"name": "job_search_tool", "args": {"query": "python"}, "id": "c1"}],
-                    "uses": {"input_token": 117, "output_token": 22},
-                    "response_time": 12.0,
-                },
-                {"type": "tool_response", "content_type": "json", "content": '[{"id": 2}]', "response_time": 5.0},
-            ],
-            content='[{"id": 2}]',
-            tool_calls=[{"name": "job_search_tool", "args": {"query": "python"}, "id": "c1"}],
-        )
+        response = {"messages": _tool_turn_messages()}
         with tempfile.TemporaryDirectory() as tmp:
             cassette = os.path.join(tmp, "c.json")
             with _fake_prompt(response):
@@ -82,11 +78,18 @@ class TestNewCassetteFormat(unittest.IsolatedAsyncioTestCase):
                 replayed = await agent.prompt("suggest me jobs")
                 agent.assert_tool_called("job_search_tool")
 
-        self.assertEqual([tc["name"] for tc in replayed.tool_calls], ["job_search_tool"])
-        self.assertEqual(replayed.content, '[{"id": 2}]')
+        self.assertEqual([tc["name"] for tc in ai_state.tool_calls(replayed)], ["job_search_tool"])
+        self.assertEqual(ai_state.text(replayed), '[{"id": 2}]')
 
     async def test_synthesizes_a_transcript_for_a_plain_response(self):
-        response = AgentResponse(content="Hi there!", usage={"input": 3, "output": 2})
+        response = {
+            "messages": [
+                AIMessage(
+                    content="Hi there!",
+                    usage_metadata={"input_tokens": 3, "output_tokens": 2, "total_tokens": 5},
+                )
+            ]
+        }
         with tempfile.TemporaryDirectory() as tmp:
             cassette = os.path.join(tmp, "c.json")
             with _fake_prompt(response):
@@ -122,5 +125,5 @@ class TestBackwardCompatibleReplay(unittest.IsolatedAsyncioTestCase):
                 replayed = await agent.prompt("suggest me jobs")
                 agent.assert_tool_called("job_search_tool")
 
-        self.assertEqual(replayed.content, "I found a job.")
-        self.assertEqual([tc["name"] for tc in replayed.tool_calls], ["job_search_tool"])
+        self.assertEqual(ai_state.text(replayed), "I found a job.")
+        self.assertEqual([tc["name"] for tc in ai_state.tool_calls(replayed)], ["job_search_tool"])

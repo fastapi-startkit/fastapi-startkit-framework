@@ -9,12 +9,22 @@ jobs = [
 ]
 
 
+# Generic words that describe "a job" rather than which job — searching them
+# would match nothing even though the user clearly wants to see openings.
+NOISE_TERMS = {"job", "jobs", "role", "roles", "position", "positions", "opening", "openings", "work", "career"}
+
+
 @tool(description="Use this tools if user wants to search for jobs")
 def job_search_tool(query: str) -> list:
     """Searches for jobs based on the given query. Supports wildcards (* and ?) in each term."""
     import fnmatch
 
-    patterns = [f"*{term}*" for term in query.lower().split()]
+    patterns = [f"*{term}*" for term in query.lower().split() if term not in NOISE_TERMS]
+
+    if not patterns:
+        # A blank or all-noise query ("jobs") means "show me the board", not
+        # "match nothing" — the model sends these when there are no usable keywords.
+        return jobs
 
     return [
         job

@@ -23,7 +23,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from .response import AgentResponse
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 
 
 def _infer_content_type(content: str) -> str:
@@ -44,14 +44,6 @@ def uses_from_usage_metadata(meta: dict | None) -> dict:
         "cache_token": details.get("cache_read", 0),
         "total_token": meta.get("total_tokens", 0),
     }
-
-
-def uses_from_agent_usage(usage: dict | None) -> dict:
-    """Map an :class:`AgentResponse` ``usage`` ({input, output}) onto ``uses``."""
-    usage = usage or {}
-    inp = usage.get("input", 0)
-    out = usage.get("output", 0)
-    return {"input_token": inp, "output_token": out, "cache_token": 0, "total_token": inp + out}
 
 
 def is_transcript(value: Any) -> bool:
@@ -94,65 +86,91 @@ def tool_response(content: str, response_time: float = 0.0, content_type: str | 
     }
 
 
-def _usage_from_uses(uses: dict) -> dict:
-    return {"input": uses.get("input_token", 0), "output": uses.get("output_token", 0)}
+def usage_metadata_from_uses(uses: dict) -> dict:
+    """Map a cassette ``uses`` dict back onto LangChain ``usage_metadata``."""
+    return {
+        "input_tokens": uses.get("input_token", 0),
+        "output_tokens": uses.get("output_token", 0),
+        "total_tokens": uses.get("total_token", 0),
+        "input_token_details": {"cache_read": uses.get("cache_token", 0)},
+    }
 
 
-def to_response(transcript: list[dict]) -> AgentResponse:
-    """Reconstruct an :class:`AgentResponse` from a recorded turn transcript.
+def _as_text(content: Any) -> str:
+    return content if isinstance(content, str) else str(content)
 
-    The final ``ai`` answer supplies the response content; if the turn stopped at
-    a tool call (no follow-up answer), the tool result stands in as the content.
-    """
-    content = ""
-    tool_calls: list[dict] = []
-    usage: dict = {}
-    tool_events: list[dict] = []
-    runtime = 0.0
 
+def entries_from_messages(messages: list[BaseMessage]) -> list[dict]:
+    """Convert a turn's AI/tool LangChain messages into cassette entries.
+
+    Human (and system) messages are skipped — the cassette turn opens with its
+    own ``human`` entry. ``response_time`` is read from ``additional_kwargs``,
+    where the runner stamps it on every AI and tool message."""
+    entries: list[dict] = []
+    for message in messages or []:
+        kind = getattr(message, "type", "")
+        response_time = (getattr(message, "additional_kwargs", None) or {}).get("response_time", 0.0)
+        if kind == "ai":
+            entries.append(
+                ai(
+                    content=_as_text(message.content),
+                    tool_calls=list(getattr(message, "tool_calls", None) or []),
+                    uses=uses_from_usage_metadata(getattr(message, "usage_metadata", None)),
+                    response_time=response_time,
+                )
+            )
+        elif kind == "tool":
+            entries.append(tool_response(content=_as_text(message.content), response_time=response_time))
+    return entries
+
+
+def messages_from_transcript(transcript: list[dict]) -> list[BaseMessage]:
+    """Rebuild the turn's LangChain messages from cassette entries, so a replayed
+    response carries the same ``messages`` a live run produces. Cassette entries
+    don't store the tool's name/call id, so those stay empty on replay."""
+    messages: list[BaseMessage] = []
     for entry in transcript:
         kind = entry.get("type")
-        if kind == "ai":
-            if entry.get("tool_calls"):
-                tool_calls.extend(entry["tool_calls"])
-            if entry.get("content"):
-                content = entry["content"]
-            if entry.get("uses"):
-                usage = _usage_from_uses(entry["uses"])
-            runtime += (entry.get("response_time") or 0) / 1000
-        elif kind == "tool_response":
-            tool_events.append(
-                {
-                    "content": entry.get("content", ""),
-                    "content_type": entry.get("content_type"),
-                    "response_time": entry.get("response_time", 0),
-                }
+        if kind == "human":
+            messages.append(HumanMessage(content=entry.get("content", "")))
+        elif kind == "ai":
+            uses = entry.get("uses") or {}
+            messages.append(
+                AIMessage(
+                    content=entry.get("content", ""),
+                    tool_calls=entry.get("tool_calls") or [],
+                    additional_kwargs={"response_time": entry.get("response_time", 0.0)},
+                    usage_metadata=usage_metadata_from_uses(uses) if uses else None,
+                )
             )
-            if not content:
-                content = entry.get("content", "")
-            runtime += (entry.get("response_time") or 0) / 1000
-
-    return AgentResponse(
-        content=content,
-        tool_calls=tool_calls,
-        usage=usage,
-        tool_events=tool_events,
-        runtime=runtime,
-        transcript=list(transcript),
-    )
+        elif kind == "tool_response":
+            messages.append(
+                ToolMessage(
+                    content=entry.get("content", ""),
+                    tool_call_id="",
+                    additional_kwargs={"response_time": entry.get("response_time", 0.0)},
+                )
+            )
+    return messages
 
 
-def accumulate_uses(transcript: list[dict], totals: dict) -> None:
-    """Add every ``ai`` entry's token ``uses`` in ``transcript`` into ``totals``
+def to_state(transcript: list[dict]) -> dict:
+    """Reconstruct a turn's ``{"messages": [...]}`` state from cassette entries,
+    so a replayed turn has the same shape a live run returns."""
+    return {"messages": messages_from_transcript(transcript)}
+
+
+def accumulate_uses(messages: list, totals: dict) -> None:
+    """Add every AI message's token usage in a turn's ``messages`` into ``totals``
     (keys: input, output, cache, total)."""
-    for entry in transcript or []:
-        if entry.get("type") != "ai":
+    for message in messages or []:
+        if getattr(message, "type", "") != "ai":
             continue
-        uses = entry.get("uses") or {}
-        totals["input"] += uses.get("input_token", 0)
-        totals["output"] += uses.get("output_token", 0)
-        totals["cache"] += uses.get("cache_token", 0)
-        totals["total"] += uses.get("total_token", 0)
+        uses = uses_from_usage_metadata(getattr(message, "usage_metadata", None))
+        totals["input"] += uses["input_token"]
+        totals["output"] += uses["output_token"]
+        totals["cache"] += uses["cache_token"]
+        totals["total"] += uses["total_token"]
 
 
 def chunks_from_transcript(transcript: list[dict]) -> list[str]:

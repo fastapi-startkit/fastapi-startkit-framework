@@ -10,6 +10,7 @@ import unittest
 from langchain_core.messages import AIMessage as LCAIMessage
 from langchain_core.tools import tool
 
+from fastapi_startkit.ai import state as ai_state
 from fastapi_startkit.ai.agent import Agent
 from fastapi_startkit.ai.runner import Runner
 
@@ -53,15 +54,16 @@ class TestRunnerCapturesToolTurn(unittest.IsolatedAsyncioTestCase):
 
         response = await runner.run("hi")
 
-        self.assertEqual([tc["name"] for tc in response.tool_calls], ["echo_tool"])
+        self.assertEqual([tc["name"] for tc in ai_state.tool_calls(response)], ["echo_tool"])
 
     async def test_tool_response_and_latency_are_captured(self):
         runner = _runner_with_model(self._tool_ai_message())
 
         response = await runner.run("hi")
 
-        self.assertEqual(len(response.tool_events), 1)
-        event = response.tool_events[0]
+        events = ai_state.tool_events(response)
+        self.assertEqual(len(events), 1)
+        event = events[0]
         self.assertEqual(event["name"], "echo_tool")
         self.assertEqual(event["content"], "echoed:hi")
         self.assertGreaterEqual(event["response_time"], 0)
@@ -71,17 +73,18 @@ class TestRunnerCapturesToolTurn(unittest.IsolatedAsyncioTestCase):
 
         response = await runner.run("hi")
 
-        self.assertEqual(response.usage, {"input": 10, "output": 5})
+        self.assertEqual(ai_state.usage(response), {"input": 10, "output": 5})
 
-    async def test_transcript_is_an_ordered_ai_then_tool_response(self):
+    async def test_messages_are_an_ordered_human_ai_then_tool(self):
         runner = _runner_with_model(self._tool_ai_message())
 
         response = await runner.run("hi")
 
-        kinds = [entry["type"] for entry in response.transcript]
-        self.assertEqual(kinds, ["ai", "tool_response"])
-        self.assertEqual(response.transcript[0]["tool_calls"][0]["name"], "echo_tool")
-        self.assertEqual(response.transcript[1]["content"], "echoed:hi")
+        kinds = [m.type for m in response["messages"]]
+        self.assertEqual(kinds, ["human", "ai", "tool"])
+        self.assertEqual(response["messages"][1].tool_calls[0]["name"], "echo_tool")
+        self.assertEqual(response["messages"][2].content, "echoed:hi")
+        self.assertGreaterEqual(response["messages"][1].additional_kwargs["response_time"], 0)
 
 
 class TestRunnerPlainTurn(unittest.IsolatedAsyncioTestCase):
@@ -93,7 +96,7 @@ class TestRunnerPlainTurn(unittest.IsolatedAsyncioTestCase):
 
         response = await runner.run("hello")
 
-        self.assertEqual(response.content, "Hi there!")
-        self.assertEqual(response.tool_calls, [])
-        self.assertEqual([e["type"] for e in response.transcript], ["ai"])
-        self.assertEqual(response.transcript[0]["content"], "Hi there!")
+        self.assertEqual(ai_state.text(response), "Hi there!")
+        self.assertEqual(ai_state.tool_calls(response), [])
+        self.assertEqual([m.type for m in response["messages"]], ["human", "ai"])
+        self.assertEqual(response["messages"][1].content, "Hi there!")

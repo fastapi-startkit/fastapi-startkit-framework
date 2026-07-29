@@ -4,9 +4,11 @@ import tempfile
 import unittest
 from unittest import mock
 
+from langchain_core.messages import AIMessage
+
+from fastapi_startkit.ai import state as ai_state
 from fastapi_startkit.ai.agent import Agent
 from fastapi_startkit.ai.ai import Ai
-from fastapi_startkit.ai.response import AgentResponse
 
 
 class SimpleAgent(Agent):
@@ -22,7 +24,7 @@ class TestAgentFake(unittest.IsolatedAsyncioTestCase):
         with SimpleAgent.fake(["Hello world!"]):
             result = await agent.prompt("anything")
 
-        self.assertEqual(result.content, "Hello world!")
+        self.assertEqual(ai_state.text(result), "Hello world!")
 
     async def test_fake_does_not_call_provider_build(self):
         import langchain.chat_models as chat_models
@@ -44,8 +46,8 @@ class TestAgentFake(unittest.IsolatedAsyncioTestCase):
             first = await agent.prompt("call one")
             second = await agent.prompt("call two")
 
-        self.assertEqual(first.content, "first reply")
-        self.assertEqual(second.content, "second reply")
+        self.assertEqual(ai_state.text(first), "first reply")
+        self.assertEqual(ai_state.text(second), "second reply")
 
     async def test_fake_raises_once_responses_are_exhausted(self):
         agent = SimpleAgent()
@@ -68,7 +70,7 @@ class TestAgentFake(unittest.IsolatedAsyncioTestCase):
 
         result = await run()
 
-        self.assertEqual(result.content, "decorated reply")
+        self.assertEqual(ai_state.text(result), "decorated reply")
 
     async def test_assert_prompted_passes_after_one_call(self):
         with SimpleAgent.fake(["ok"]) as agent:
@@ -128,23 +130,25 @@ class TestAgentFake(unittest.IsolatedAsyncioTestCase):
 
     async def test_fake_rebinding_overrides_previous(self):
         with SimpleAgent.fake(["first fake"]) as agent:
-            self.assertEqual((await agent.prompt("call")).content, "first fake")
+            self.assertEqual(ai_state.text(await agent.prompt("call")), "first fake")
 
         with SimpleAgent.fake(["second fake"]) as agent:
-            self.assertEqual((await agent.prompt("call again")).content, "second fake")
+            self.assertEqual(ai_state.text(await agent.prompt("call again")), "second fake")
 
     async def test_stream_returns_fake_response(self):
         with SimpleAgent.fake(["Faked stream!"]) as agent:
-            chunks = [frame["text"] async for frame in agent.stream("hello world")]
+            events = [e async for e in agent.stream("hello world")]
 
+            chunks = [e["data"]["chunk"].text for e in events if e["event"] == "on_chat_model_stream"]
             self.assertEqual("".join(chunks), "Faked stream!")
             self.assertGreater(len(chunks), 1)
             agent.assert_prompted(times=1)
 
     async def test_stream_replays_the_registered_text_exactly(self):
         with SimpleAgent.fake(["Hello there, friend"]) as agent:
-            chunks = [frame["text"] async for frame in agent.stream("hi")]
+            events = [e async for e in agent.stream("hi")]
 
+            chunks = [e["data"]["chunk"].text for e in events if e["event"] == "on_chat_model_stream"]
             self.assertEqual("".join(chunks), "Hello there, friend")
 
     async def test_stream_records_one_call_not_two(self):
@@ -161,7 +165,7 @@ class TestAgentRecord(unittest.IsolatedAsyncioTestCase):
 
         async def fake_run(agent_self, message, **kwargs):
             calls.append(message)
-            return AgentResponse(content=content)
+            return {"messages": [AIMessage(content=content)]}
 
         patcher = mock.patch.object(SimpleAgent, "prompt", fake_run)
         patcher.start()
@@ -175,7 +179,7 @@ class TestAgentRecord(unittest.IsolatedAsyncioTestCase):
             with SimpleAgent.record(cassette) as agent:
                 result = await agent.prompt("hello")
 
-            self.assertEqual(result.content, "recorded reply")
+            self.assertEqual(ai_state.text(result), "recorded reply")
             self.assertEqual(calls, ["hello"])
             self.assertTrue(os.path.exists(cassette))
             with open(cassette) as f:
@@ -195,15 +199,15 @@ class TestAgentRecord(unittest.IsolatedAsyncioTestCase):
             with SimpleAgent.record(cassette) as agent:
                 replayed = await agent.prompt("hello")
 
-            self.assertEqual(replayed.content, "recorded reply")
+            self.assertEqual(ai_state.text(replayed), "recorded reply")
             self.assertEqual(calls, ["hello"])
 
     async def test_replay_prefers_cassette_over_live_response(self):
         async def first_run(s, m, **k):
-            return AgentResponse(content="from first record")
+            return {"messages": [AIMessage(content="from first record")]}
 
         async def changed_run(s, m, **k):
-            return AgentResponse(content="changed live value")
+            return {"messages": [AIMessage(content="changed live value")]}
 
         with tempfile.TemporaryDirectory() as tmp:
             cassette = os.path.join(tmp, "c.json")
@@ -214,7 +218,7 @@ class TestAgentRecord(unittest.IsolatedAsyncioTestCase):
                 with SimpleAgent.record(cassette) as agent:
                     result = await agent.prompt("hello")
 
-            self.assertEqual(result.content, "from first record")
+            self.assertEqual(ai_state.text(result), "from first record")
 
     async def test_distinct_messages_are_recorded_separately(self):
         calls = self.setup_agent("reply")
@@ -268,7 +272,7 @@ class TestAgentRecord(unittest.IsolatedAsyncioTestCase):
             with SimpleAgent.record(cassette) as agent:
                 [c async for c in agent.stream("hi")]
             with SimpleAgent.record(cassette) as agent:
-                replayed = [frame["text"] async for frame in agent.stream("hi")]
+                replayed = [e["data"]["chunk"].text async for e in agent.stream("hi")]
 
             self.assertEqual(replayed, ["Hel", "lo!"])
             self.assertEqual(calls, ["hi"])  # real stream invoked only on the first run
@@ -282,4 +286,4 @@ class TestAgentRecord(unittest.IsolatedAsyncioTestCase):
             with SimpleAgent.record(cassette) as agent:
                 response = await agent.prompt("hi")
 
-            self.assertEqual(response.content, "Hello!")
+            self.assertEqual(ai_state.text(response), "Hello!")

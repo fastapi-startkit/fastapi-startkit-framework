@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, AsyncIterator, Optional, Type
 
 from .document import Document
-from .response import AgentResponse
 from .runner import BaseRunner, Runner
 
 if TYPE_CHECKING:
@@ -49,7 +48,10 @@ class Agent:
         model: str | None = None,
         attachments: list[Document] | None = None,
         provider_options: dict | None = None,
-    ) -> AgentResponse:
+    ) -> dict:
+        """Returns the turn as ``{"messages": [HumanMessage, AIMessage, ToolMessage,
+        ...]}`` — the same state langchain's ``create_agent().invoke()`` yields —
+        plus ``"structured_response"`` when the agent defines a schema()."""
         return await self.runner().run(message, model=model, attachments=attachments, provider_options=provider_options)
 
     async def stream(
@@ -59,8 +61,10 @@ class Agent:
         model: str | None = None,
         provider_options: dict | None = None,
     ) -> AsyncIterator[dict]:
-        """Yields typed frames: {"type": "delta", "text": ...} for model tokens and
-        {"type": "tool_response", "name": ..., "content": ...} for tool results."""
+        """Yields StandardStreamEvent dicts — the same shape LangChain's
+        astream_events produces: on_chat_model_(start|stream|end) for the model
+        turn (data.chunk carries each AIMessageChunk) and on_tool_(start|end)
+        around each tool execution."""
         async for chunk in self.runner().stream(message, model=model, provider_options=provider_options):
             yield chunk
 

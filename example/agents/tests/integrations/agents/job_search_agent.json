@@ -1,0 +1,66 @@
+{
+  "5ef8e6a4df0f363d14e6d4ccd9bbb79693bc9440fc00aa3946ccc32d895b3e1a": [
+    {
+      "content": "suggest me jobs",
+      "type": "human"
+    },
+    {
+      "response_time": 596.5392499929294,
+      "tool_calls": [
+        {
+          "args": {
+            "query": " "
+          },
+          "id": "4b9174a8-c418-49b4-b6e8-01709d36725b",
+          "name": "job_search_tool",
+          "type": "tool_call"
+        }
+      ],
+      "type": "ai",
+      "uses": {
+        "cache_token": 0,
+        "input_token": 155,
+        "output_token": 16,
+        "total_token": 171
+      }
+    },
+    {
+      "content": "[{\"id\": 1, \"title\": \"Software Engineer\", \"location\": \"San Francisco\", \"company\": \"Acme Corp\", \"type\": \"Full-time\"}, {\"id\": 2, \"title\": \"Python Developer\", \"location\": \"Remote\", \"company\": \"Startup Inc\", \"type\": \"Full-time\"}, {\"id\": 3, \"title\": \"Data Scientist\", \"location\": \"New York\", \"company\": \"DataCo\", \"type\": \"Full-time\"}, {\"id\": 4, \"title\": \"DevOps Engineer\", \"location\": \"Austin\", \"company\": \"CloudBase\", \"type\": \"Contract\"}, {\"id\": 5, \"title\": \"Product Manager\", \"location\": \"Remote\", \"company\": \"ProductHQ\", \"type\": \"Full-time\"}]",
+      "content_type": "json",
+      "response_time": 1.1912910267710686,
+      "type": "tool_response"
+    }
+  ],
+  "8f9e73965490770e00b6bde6b5ceed9ce44ca9a9e5ca6f45d1460b4b6278dc84": [
+    {
+      "content": "find roles that fit me",
+      "type": "human"
+    },
+    {
+      "response_time": 562.1582079911605,
+      "tool_calls": [
+        {
+          "args": {
+            "query": "software developer"
+          },
+          "id": "ad782a7d-bc5c-43f0-991d-14e4564cd58a",
+          "name": "job_search_tool",
+          "type": "tool_call"
+        }
+      ],
+      "type": "ai",
+      "uses": {
+        "cache_token": 0,
+        "input_token": 157,
+        "output_token": 18,
+        "total_token": 175
+      }
+    },
+    {
+      "content": "[{\"id\": 1, \"title\": \"Software Engineer\", \"location\": \"San Francisco\", \"company\": \"Acme Corp\", \"type\": \"Full-time\"}, {\"id\": 2, \"title\": \"Python Developer\", \"location\": \"Remote\", \"company\": \"Startup Inc\", \"type\": \"Full-time\"}]",
+      "content_type": "json",
+      "response_time": 1.2913750251755118,
+      "type": "tool_response"
+    }
+  ]
+}

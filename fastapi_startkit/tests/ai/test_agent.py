@@ -11,10 +11,10 @@ from langchain_core.outputs import ChatGenerationChunk
 from langchain_core.tools import tool
 
 from fastapi_startkit.ai import AIConfig, Document
+from fastapi_startkit.ai import state as ai_state
 from fastapi_startkit.ai.agent import Agent
 from fastapi_startkit.ai.runner import Runner
 from fastapi_startkit.ai.ai import Ai
-from fastapi_startkit.ai.response import AgentResponse
 from fastapi_startkit.application import app
 
 
@@ -59,14 +59,15 @@ class TestAgent(unittest.IsolatedAsyncioTestCase):
         Ai.fake(agent_cls.__name__, turns)
         self.addCleanup(Ai.reset_fakes)
 
-    async def test_prompt_returns_agent_response(self):
+    async def test_prompt_returns_a_messages_state(self):
         self.setup_agent([AIMessage(content="hello back")])
 
         agent = Agent()
         result = await agent.prompt("hi there")
 
-        self.assertIsInstance(result, AgentResponse)
-        self.assertEqual(result.content, "hello back")
+        self.assertIsInstance(result, dict)
+        self.assertEqual([m.type for m in result["messages"]], ["human", "ai"])
+        self.assertEqual(ai_state.text(result), "hello back")
 
     async def test_search_jobs_tool_returns_listing(self):
         self.setup_agent(
@@ -81,8 +82,8 @@ class TestAgent(unittest.IsolatedAsyncioTestCase):
 
         result = await JobAssistant().prompt("find me a python job")
 
-        self.assertEqual(result.content, "Python Developer at Shopify")
-        self.assertEqual([tc["name"] for tc in result.tool_calls], ["search_jobs"])
+        self.assertEqual(ai_state.text(result), "Python Developer at Shopify")
+        self.assertEqual([tc["name"] for tc in ai_state.tool_calls(result)], ["search_jobs"])
 
     async def test_prompt_maps_usage_metadata(self):
         self.setup_agent(
@@ -91,7 +92,7 @@ class TestAgent(unittest.IsolatedAsyncioTestCase):
 
         result = await Agent().prompt("anything")
 
-        self.assertEqual(result.usage, {"input": 11, "output": 7})
+        self.assertEqual(ai_state.usage(result), {"input": 11, "output": 7})
 
     async def test_build_model_passes_langchain_provider_key(self):
         captured = {}
@@ -113,13 +114,17 @@ class TestAgent(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(captured["provider"], "google_genai")
         self.assertEqual(captured["model"], "gemini-2.5-flash-lite")
 
-    async def test_stream_yields_tokens_from_the_model(self):
+    async def test_stream_yields_astream_events_shaped_events(self):
         self.setup_agent([AIMessage(content="streamed reply")])
 
-        frames = [frame async for frame in Agent().stream("hello")]
+        events = [event async for event in Agent().stream("hello")]
 
-        self.assertTrue(all(frame["type"] == "delta" for frame in frames))
-        self.assertEqual("".join(frame["text"] for frame in frames), "streamed reply")
+        kinds = [event["event"] for event in events]
+        self.assertEqual(kinds[0], "on_chat_model_start")
+        self.assertEqual(kinds[-1], "on_chat_model_end")
+        self.assertTrue(all({"event", "name", "run_id", "data", "parent_ids"} <= set(e) for e in events))
+        text = "".join(e["data"]["chunk"].text for e in events if e["event"] == "on_chat_model_stream")
+        self.assertEqual(text, "streamed reply")
 
     async def test_middleware_streams_token_by_token_and_runs_after_hook(self):
         events: list = []
@@ -135,7 +140,8 @@ class TestAgent(unittest.IsolatedAsyncioTestCase):
 
         self.setup_agent([AIMessage(content="one two three")], LoggedAgent)
 
-        chunks = [frame["text"] async for frame in LoggedAgent().stream("hi")]
+        stream = [event async for event in LoggedAgent().stream("hi")]
+        chunks = [e["data"]["chunk"].text for e in stream if e["event"] == "on_chat_model_stream" and e["data"]["chunk"].text]
 
         # Middleware must not buffer: the model's tokens arrive as separate chunks...
         self.assertEqual("".join(chunks), "one two three")
@@ -159,7 +165,7 @@ class TestAgent(unittest.IsolatedAsyncioTestCase):
 
         result = await LoggedAgent().prompt("hi")
 
-        self.assertEqual(result.content, "done")
+        self.assertEqual(ai_state.text(result), "done")
         self.assertEqual(events, ["before", "after"])
 
     async def test_stream_yields_tool_result_without_calling_model_again(self):
@@ -175,12 +181,15 @@ class TestAgent(unittest.IsolatedAsyncioTestCase):
         )
         self.addCleanup(Ai.reset_fakes)
 
-        frames = [frame async for frame in JobAssistant().stream("find me a python job")]
+        events = [event async for event in JobAssistant().stream("find me a python job")]
 
-        self.assertEqual(
-            frames,
-            [{"type": "tool_response", "name": "search_jobs", "content": "Python Developer at Shopify"}],
-        )
+        kinds = [event["event"] for event in events]
+        # One model turn only — the tool result is not fed back for a second call.
+        self.assertEqual(kinds.count("on_chat_model_start"), 1)
+        self.assertEqual(kinds[-2:], ["on_tool_start", "on_tool_end"])
+        tool_end = events[-1]
+        self.assertEqual(tool_end["name"], "search_jobs")
+        self.assertEqual(tool_end["data"]["output"].content, "Python Developer at Shopify")
 
     def test_resolve_model_falls_back_to_lab_default(self):
         self.assertEqual(Ai()._resolve_model(Agent()), "gemini-2.5-flash-lite")

@@ -3,8 +3,8 @@
 When an Agent declares a schema(), the built model is wrapped with
 model.with_structured_output(schema, include_raw=True) so the provider returns
 the parsed object. Tools are bound as usual and left untouched. The wrapped
-model yields {"raw", "parsed", "parsing_error"}; the Runner passes that through
-and _to_agent_response unwraps it into response.parsed.
+model yields {"raw", "parsed", "parsing_error"}; the Runner unwraps it into the
+state's "structured_response" and records the raw model turn on "messages".
 
 The fake/record paths bypass build(), so they keep parsing the JSON-string
 content via schema() for deterministic replay.
@@ -148,16 +148,17 @@ class TestRunner(unittest.IsolatedAsyncioTestCase):
 
 
 class TestResponseMapping(unittest.TestCase):
-    def test_unwraps_include_raw_into_parsed_and_content(self):
+    def test_unwraps_include_raw_into_parsed(self):
         parsed = Movie(title="Inception", year=2010)
 
-        response = Runner(MovieAgent())._to_agent_response(
+        result = Runner(MovieAgent())._parsed_of(
             {"raw": AIMessage(content=""), "parsed": parsed, "parsing_error": None}
         )
 
-        self.assertIs(response.parsed, parsed)
-        self.assertEqual(response.content, parsed.model_dump_json())
-        self.assertEqual(response.tool_calls, [])
+        self.assertIs(result, parsed)
+
+    def test_a_plain_message_has_no_parsed(self):
+        self.assertIsNone(Runner(MovieAgent())._parsed_of(AIMessage(content="hi")))
 
 
 class TestPromptEndToEnd(unittest.IsolatedAsyncioTestCase):
@@ -186,5 +187,6 @@ class TestPromptEndToEnd(unittest.IsolatedAsyncioTestCase):
 
         response = await MovieAgent().prompt("best nolan movie")
 
-        self.assertEqual(response.parsed, parsed)
-        self.assertEqual(response.content, parsed.model_dump_json())
+        self.assertEqual(response["structured_response"], parsed)
+        # The raw model turn is recorded on the state's messages.
+        self.assertEqual([m.type for m in response["messages"]], ["human", "ai"])

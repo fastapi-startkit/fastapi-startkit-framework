@@ -42,11 +42,22 @@ class Response:
 
     @staticmethod
     def _merge(accumulated: Any, chunk: Any) -> Any:
-        # Stream frames are dicts ({"type": "delta"/"tool_response", ...}); the
-        # after-hooks want the joined text, not a dict sum.
-        if isinstance(chunk, dict):
-            text = chunk.get("text") or chunk.get("content") or ""
-            return text if accumulated is None else accumulated + text
+        # Stream events (astream_events shape) merge into joined text for the
+        # after-hooks: model chunks and tool outputs contribute their text, the
+        # start/end envelopes add nothing. Any other dict (e.g. a
+        # structured-output result carrying "raw"/"parsed") passes through whole.
+        if isinstance(chunk, dict) and "event" in chunk:
+            data = chunk.get("data") or {}
+            if chunk["event"] == "on_chat_model_stream":
+                text = getattr(data.get("chunk"), "content", "") or ""
+            elif chunk["event"] == "on_tool_end":
+                text = getattr(data.get("output"), "content", "") or ""
+            else:
+                text = ""
+            text = text if isinstance(text, str) else str(text)
+            if accumulated is None:
+                return text or None
+            return accumulated + text
         return chunk if accumulated is None else accumulated + chunk
 
     def __aiter__(self) -> AsyncIterator:

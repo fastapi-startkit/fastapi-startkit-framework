@@ -11,7 +11,8 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
-from .response import AgentResponse
+from . import recording
+from . import state as agent_state
 
 if TYPE_CHECKING:
     from .agent import Agent
@@ -23,14 +24,42 @@ def _joined(value: Any) -> str:
 
 
 def _frame_text(frame: Any) -> str:
-    """Text carried by a stream frame; cassettes keep storing plain strings."""
+    """Text carried by a stream event; cassettes keep storing plain strings."""
     if isinstance(frame, dict):
-        return frame.get("text") or frame.get("content") or ""
+        if frame.get("event") == "on_chat_model_stream":
+            chunk = (frame.get("data") or {}).get("chunk")
+            text = getattr(chunk, "content", "") or ""
+            return text if isinstance(text, str) else str(text)
+        if "event" in frame:  # start/end events carry no streamable text
+            return ""
+        return frame.get("text") or frame.get("content") or ""  # legacy frames
     return str(frame)
+
+
+def _chunk_event(text: str) -> dict:
+    """A replayed on_chat_model_stream event, shaped like astream_events yields."""
+    from langchain_core.messages import AIMessageChunk  # noqa: PLC0415
+
+    return {
+        "event": "on_chat_model_stream",
+        "name": "replay",
+        "run_id": "",
+        "tags": [],
+        "metadata": {},
+        "parent_ids": [],
+        "data": {"chunk": AIMessageChunk(content=text)},
+    }
 
 
 def _new_token_totals() -> dict:
     return {"input": 0, "output": 0, "cache": 0, "total": 0}
+
+
+def _text_state(content: str, tool_calls: list | None = None) -> dict:
+    """A minimal one-message state for legacy/fallback shapes."""
+    from langchain_core.messages import AIMessage  # noqa: PLC0415
+
+    return {"messages": [AIMessage(content=content, tool_calls=tool_calls or [])]}
 
 
 class TokenQuery:
@@ -78,7 +107,7 @@ class AgentFake:
         self._agent = agent_cls()
         self._agent.messages = self._history  # type: ignore[method-assign]
         self._records: list[dict] = []
-        self._last_response: AgentResponse | None = None
+        self._last_response: dict | None = None
         self.last_elapsed: float | None = None
         self._tokens: dict = _new_token_totals()
         self._response_time: float = 0.0
@@ -104,7 +133,7 @@ class AgentFake:
 
     async def prompt(
         self, message: str, *, attachments: list[Document] | None = None, config: dict | None = None
-    ) -> AgentResponse:
+    ) -> dict:
         start = time.monotonic()
         extra = {"config": config} if config is not None else {}
         self._last_response = await self._agent.prompt(message, attachments=attachments, **extra)
@@ -119,27 +148,22 @@ class AgentFake:
         # captures while streaming (content + tool_calls), not just joined text.
         runner = self._agent.runner()
         async for frame in runner.stream(message, **extra):
-            chunks.append(_frame_text(frame))
+            if text := _frame_text(frame):
+                chunks.append(text)
             yield frame
-        self._last_response = getattr(runner, "last_response", None) or AgentResponse(content="".join(chunks))
+        self._last_response = getattr(runner, "last_response", None) or _text_state("".join(chunks))
         self._remember(message, self._last_response)
 
-    def _remember(self, message: str, response: AgentResponse) -> None:
-        self._accumulate_tokens(response)
-        self._response_time += response.runtime
+    def _remember(self, message: str, state: dict) -> None:
+        self._accumulate_tokens(state)
+        self._response_time += agent_state.runtime(state)
         self._records.append({"role": "user", "content": message})
-        self._records.append({"role": "assistant", "content": response.content})
+        self._records.append({"role": "assistant", "content": agent_state.text(state)})
 
-    def _accumulate_tokens(self, response: AgentResponse) -> None:
-        """Add a turn's token usage to the running totals. Prefer the per-message
-        ``uses`` on the transcript; fall back to the response's summary usage."""
-        from . import recording  # noqa: PLC0415
-
-        if response.transcript:
-            recording.accumulate_uses(response.transcript, self._tokens)
-        else:
-            self._tokens["input"] += response.usage.get("input", 0)
-            self._tokens["output"] += response.usage.get("output", 0)
+    def _accumulate_tokens(self, state: dict) -> None:
+        """Add a turn's token usage — read from each AI message's usage_metadata —
+        to the running totals."""
+        recording.accumulate_uses(agent_state.messages(state), self._tokens)
 
     def assert_tokens(self, predicate: Callable[[TokenQuery], Any]) -> None:
         """Assert on the tokens accumulated across every prompt()/stream() so far.
@@ -162,12 +186,11 @@ class AgentFake:
             )
 
     def assert_response(self, expected: str) -> None:
-        response = self._require_response()
-        assert expected in response.content, f"Expected response to contain {expected!r}, got {response.content!r}"
+        content = agent_state.text(self._require_response())
+        assert expected in content, f"Expected response to contain {expected!r}, got {content!r}"
 
     def assert_tool_call(self, name: str) -> None:
-        response = self._require_response()
-        called = [tc.get("name") for tc in response.tool_calls]
+        called = [tc.get("name") for tc in agent_state.tool_calls(self._require_response())]
         assert name in called, f"Expected tool {name!r} to be called, but got: {called}"
 
     def assert_prompted(self, times: int | None = None) -> None:
@@ -186,20 +209,20 @@ class AgentFake:
         self._response_time = 0.0
         return self
 
-    def _require_response(self) -> AgentResponse:
+    def _require_response(self) -> dict:
         assert self._last_response is not None, "No prompt() call has been made yet."
         return self._last_response
 
     def _tool_call_names(self) -> list[str]:
-        return [tc.get("name", "") for tc in self._require_response().tool_calls]
+        return [tc.get("name", "") for tc in agent_state.tool_calls(self._require_response())]
 
     def assert_text_response(self) -> None:
-        response = self._require_response()
-        assert response.content, "Expected a non-empty text response, but content was empty."
+        assert agent_state.text(self._require_response()), (
+            "Expected a non-empty text response, but content was empty."
+        )
 
     def assert_tool_called(self, name: str, predicate: Callable[[AssertToolCall], bool] | None = None) -> None:
-        response = self._require_response()
-        matches = [tc for tc in response.tool_calls if tc.get("name") == name]
+        matches = [tc for tc in agent_state.tool_calls(self._require_response()) if tc.get("name") == name]
         assert matches, f"Expected tool {name!r} to be called, but it wasn't. Called: {self._tool_call_names()}"
         if predicate is not None:
             assert any(predicate(AssertToolCall(tc)) for tc in matches), (
@@ -222,11 +245,11 @@ class AgentFake:
         assert total < seconds, f"Expected total response time < {seconds}s, took {total:.3f}s"
 
     async def assert_response_judged(self, *, model: str, expectation: str, provider: str | None = None) -> None:
-        response = self._require_response()
-        verdict = await self._judge(model, expectation, response.content, provider)
+        content = agent_state.text(self._require_response())
+        verdict = await self._judge(model, expectation, content, provider)
         assert verdict.get("passed"), (
             f"Judge ({model}) rejected the response for expectation {expectation!r}: "
-            f"{verdict.get('reasoning', '')!r} — response was {response.content!r}"
+            f"{verdict.get('reasoning', '')!r} — response was {content!r}"
         )
 
     async def _judge(self, model: str, expectation: str, content: str, provider: str | None = None) -> dict:
@@ -276,7 +299,7 @@ class AgentRecordFake(AgentFake):
         self._seed_messages: list = list(messages or [])
         self._records: list[dict] = []
         self._real.messages = self._history  # type: ignore[method-assign]
-        self._last_response: AgentResponse | None = None
+        self._last_response: dict | None = None
         self.last_elapsed: float | None = None
         self._tokens: dict = _new_token_totals()
         self._response_time: float = 0.0
@@ -312,100 +335,85 @@ class AgentRecordFake(AgentFake):
         cassette.parent.mkdir(parents=True, exist_ok=True)
         cassette.write_text(json.dumps(store, indent=2, sort_keys=True))
 
-    def _turn(self, message: str, response: AgentResponse, chunks: list[str] | None = None) -> list[dict]:
+    def _turn(self, message: str, state: dict, chunks: list[str] | None = None) -> list[dict]:
         """Build the ordered per-turn transcript persisted to the cassette:
-        the human input followed by the interaction the runner captured. When a
-        stream did not capture a structured transcript, ``chunks`` are attached
-        to the synthesized answer so replay can re-emit them."""
-        from . import recording  # noqa: PLC0415
-
+        the human input followed by the turn's AI/tool messages. Streamed
+        ``chunks`` are attached to the last model entry so replay can re-emit
+        them."""
         entries: list[dict] = [recording.human(message)]
-        if response.transcript:
-            entries.extend(response.transcript)
-        else:
-            entries.append(
-                recording.ai(
-                    content=response.content,
-                    tool_calls=list(response.tool_calls),
-                    uses=recording.uses_from_agent_usage(response.usage),
-                    response_time=response.runtime * 1000,
-                    chunks=chunks,
-                )
-            )
+        entries.extend(recording.entries_from_messages(agent_state.messages(state)))
+        if chunks:
+            for entry in reversed(entries):
+                if entry["type"] == "ai":
+                    entry["chunks"] = chunks
+                    break
         return entries
 
     @staticmethod
-    def _response_from_cache(value: Any) -> AgentResponse:
-        from . import recording  # noqa: PLC0415
-
+    def _state_from_cache(value: Any) -> dict:
         if recording.is_transcript(value):
-            return recording.to_response(value)
+            return recording.to_state(value)
         if isinstance(value, dict) and "content" in value:  # legacy flat shape
-            return AgentResponse(
-                content=_joined(value.get("content", "")),
-                tool_calls=value.get("tool_calls") or [],
-                usage=value.get("usage") or {},
-            )
-        return AgentResponse(content=_joined(value))
+            return _text_state(_joined(value.get("content", "")), value.get("tool_calls") or [])
+        return _text_state(_joined(value))
 
-    def _remember_turn(self, message: str, response: AgentResponse) -> None:
-        self._accumulate_tokens(response)
-        self._response_time += response.runtime
+    def _remember_turn(self, message: str, state: dict) -> None:
+        self._accumulate_tokens(state)
+        self._response_time += agent_state.runtime(state)
         self._records.append({"role": "user", "content": message})
-        turn: dict[str, Any] = {"role": "assistant", "content": response.content}
-        if response.tool_calls:
-            turn["tool_calls"] = response.tool_calls
+        turn: dict[str, Any] = {"role": "assistant", "content": agent_state.text(state)}
+        if agent_state.tool_calls(state):
+            turn["tool_calls"] = agent_state.tool_calls(state)
         self._records.append(turn)
 
     async def prompt(
         self, message: str, *, attachments: list[Document] | None = None, config: dict | None = None
-    ) -> AgentResponse:
+    ) -> dict:
         cassette, store = self._load()
         key = self._key(message, attachments)
         start = time.monotonic()
         if key in store:
-            response = self._response_from_cache(store[key])
+            state = self._state_from_cache(store[key])
         else:
             extra = {"config": config} if config is not None else {}
-            response = await self._real.prompt(message, attachments=attachments, **extra)
-            self._save(cassette, store, key, self._turn(message, response))
-        response = self._real.runner()._apply_schema(response)
+            state = await self._real.prompt(message, attachments=attachments, **extra)
+            self._save(cassette, store, key, self._turn(message, state))
+        state = self._real.runner()._apply_schema(state)
         self.last_elapsed = time.monotonic() - start
-        self._last_response = response
-        self._remember_turn(message, response)
-        return response
+        self._last_response = state
+        self._remember_turn(message, state)
+        return state
 
     async def stream(self, message: str, *, config: dict | None = None) -> AsyncIterator[dict]:
-        from . import recording  # noqa: PLC0415
-
         cassette, store = self._load()
         key = self._key(message, None)
         if key in store:
             value = store[key]
             if recording.is_transcript(value):
                 chunks = recording.chunks_from_transcript(value)
-                response = self._response_from_cache(value)
+                state = self._state_from_cache(value)
             elif isinstance(value, dict):  # legacy flat shape with buffered chunks
                 chunks = value.get("chunks", [])
-                response = self._response_from_cache(value)
+                state = self._state_from_cache(value)
             else:  # legacy cassette: a bare list of text chunks
                 chunks = value if isinstance(value, list) else [value]
-                response = AgentResponse(content=_joined(chunks))
+                state = _text_state(_joined(chunks))
             for chunk in chunks:
-                yield {"type": "delta", "text": chunk}
+                yield _chunk_event(chunk)
         else:
             extra = {"config": config} if config is not None else {}
-            # Drive the runner directly to capture the structured response
-            # (content + tool_calls + chunks) it records while streaming.
+            # Drive the runner directly to capture the structured state
+            # (messages + chunks) it records while streaming.
             runner = self._real.runner()
             chunks = []
             async for frame in runner.stream(message, **extra):
-                chunks.append(_frame_text(frame))
+                if text := _frame_text(frame):
+                    chunks.append(text)
                 yield frame
-            response = getattr(runner, "last_response", None) or AgentResponse(content=_joined(chunks))
-            self._save(cassette, store, key, self._turn(message, response, chunks=chunks))
-        self._last_response = response
-        self._remember_turn(message, response)
+            state = getattr(runner, "last_response", None) or _text_state(_joined(chunks))
+            self._save(cassette, store, key, self._turn(message, state, chunks=chunks))
+        self._last_response = state
+        self._remember_turn(message, state)
 
     async def _judge(self, model: str, expectation: str, content: str, provider: str | None = None) -> dict:
         cassette, store = self._load()

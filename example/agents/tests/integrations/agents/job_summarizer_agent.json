@@ -1,0 +1,40 @@
+{
+  "60b56ef7d9e8a2e0bea169dd8df0fe6da53ecdc08e1ace9d01c030494acda01d": [
+    {
+      "content": "[]",
+      "type": "human"
+    },
+    {
+      "content": "[{'type': 'text', 'text': 'There are currently no job listings to summarize.', 'extras': {'signature': 'EjQKMgERTTIP53WUt3GgvqNEeWshZKHUf0EVT+L2i2D6BGcdUgYP73hZpIqpY+whbgiJMfro'}}]",
+      "response_time": 764.6852920297533,
+      "type": "ai",
+      "uses": {
+        "cache_token": 0,
+        "input_token": 49,
+        "output_token": 9,
+        "total_token": 58
+      }
+    }
+  ],
+  "e201c72a97325bb8d3d885bfd735e5442e4fddbd48a5675b734860bf17ab362a": [
+    {
+      "content": "[{\"id\": 2, \"title\": \"Python Developer\", \"location\": \"Remote\", \"company\": \"Startup Inc\", \"type\": \"Full-time\"}, {\"id\": 5, \"title\": \"Product Manager\", \"location\": \"Remote\", \"company\": \"ProductHQ\", \"type\": \"Full-time\"}]",
+      "type": "human"
+    },
+    {
+      "content": "[{'type': 'text', 'text': 'Here is a summary of the current job listings:\\n\\n**Development**\\n*   **Python Developer** at Startup Inc (Remote)\\n\\n**Product Management**\\n*   **Product Manager** at ProductHQ (Remote)', 'extras': {'signature': 'EjQKMgERTTIPhq3ltEUqORsD7yOhUgrr7N5bXv423tiAdkFrogUgx1imoHYIgAQsJG8tYY5y'}}]",
+      "response_time": 797.7974159875885,
+      "type": "ai",
+      "uses": {
+        "cache_token": 0,
+        "input_token": 118,
+        "output_token": 45,
+        "total_token": 163
+      }
+    }
+  ],
+  "judge:bf29ceac94d0cae9617aafb3d708ada88d7e2f4f67bec3a379117e051cfe7917": {
+    "passed": true,
+    "reasoning": "The response accurately and friendly summarizes exactly the two specified roles with their respective companies and remote locations without inventing any other jobs."
+  }
+}

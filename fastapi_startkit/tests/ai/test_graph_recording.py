@@ -11,6 +11,7 @@ from langchain_core.messages import AIMessage
 from langchain_core.tools import tool
 from langgraph.graph import END, START, StateGraph
 
+from fastapi_startkit.ai import state as ai_state
 from fastapi_startkit.ai.ai import Ai
 from fastapi_startkit.ai.graph import AgentState, GraphAgent, GraphRunner
 
@@ -45,21 +46,22 @@ class TestGraphRunnerCapture(unittest.IsolatedAsyncioTestCase):
     def tearDown(self):
         Ai.reset_fakes()
 
-    async def test_transcript_records_the_full_tool_loop(self):
+    async def test_messages_record_the_full_tool_loop(self):
         with MathAgent.fake(list(SCRIPT)):
             response = await MathAgent().prompt("Add 3 and 4.")
 
-        kinds = [entry["type"] for entry in response.transcript]
-        self.assertEqual(kinds, ["ai", "tool_response", "ai"])
+        kinds = [m.type for m in response["messages"]]
+        self.assertEqual(kinds, ["human", "ai", "tool", "ai"])
 
     async def test_tool_response_and_final_answer_are_captured(self):
         with MathAgent.fake(list(SCRIPT)):
             response = await MathAgent().prompt("Add 3 and 4.")
 
-        tool_entry = next(e for e in response.transcript if e["type"] == "tool_response")
-        self.assertEqual(tool_entry["content"], "7")
-        self.assertGreaterEqual(tool_entry["response_time"], 0)
+        tool_message = next(m for m in response["messages"] if m.type == "tool")
+        self.assertEqual(tool_message.content, "7")
+        self.assertGreaterEqual(tool_message.additional_kwargs["response_time"], 0)
 
-        self.assertEqual(response.transcript[-1].get("content"), "The answer is 7")
-        self.assertEqual(len(response.tool_events), 1)
-        self.assertEqual(response.tool_events[0]["name"], "add")
+        self.assertEqual(response["messages"][-1].content, "The answer is 7")
+        events = ai_state.tool_events(response)
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["name"], "add")

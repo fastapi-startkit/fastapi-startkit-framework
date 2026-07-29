@@ -1,22 +1,12 @@
 import json
-from functools import cache
 from typing import cast
 
-from langchain.chat_models import init_chat_model
-from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import HumanMessage, SystemMessage
+from fastapi_startkit.ai import state as ai_state
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
 from app.agents.state import InputState, OutputState, OverallState, RouterOutput
-
-
-@cache
-def llm() -> BaseChatModel:
-    """Built lazily so importing this module doesn't require the API key at import time."""
-    return init_chat_model("google_genai:gemini-3.1-flash-lite")
-
 
 # Stand-in for a real profile lookup; the router decides when it's needed.
 USER_PROFILE = {
@@ -27,26 +17,18 @@ USER_PROFILE = {
 }
 
 
-ROUTER_PROMPT = """You route a career assistant's queries.
-
-- job_search: the user wants job listings / openings / roles.
-- company_research: the user asks about a specific company.
-- chat: greetings (hi / hello), thanks, small talk, or anything conversational.
-
-Also decide which extra context the next node needs:
-- include_user_profile: the query is vague about role, skills or location, so the user's own profile helps.
-- include_last_job_search_response: the user is refining an earlier search.
-"""
-
-
-async def router_node(state: InputState) -> dict:
+async def router_node(state: InputState, config: RunnableConfig) -> dict:
     """Context: only the user input. No history, no profile, no tool output.
 
     Handles greetings itself: for the 'chat' intent it answers inline via
     RouterOutput.reply, so no extra node/LLM call is needed.
     """
-    model = llm().with_structured_output(RouterOutput)
-    decision = cast(RouterOutput, await model.ainvoke([SystemMessage(ROUTER_PROMPT), HumanMessage(state["query"])]))
+    from app.agents.agent import JobSearchRouterAgent
+
+    response = await JobSearchRouterAgent(state, config).prompt(state["query"])
+    decision = cast(
+        RouterOutput, ai_state.structured(response) or RouterOutput.model_validate_json(ai_state.text(response))
+    )
 
     out: dict = {"intent": decision.intent, "contexts": decision.contexts}
     if decision.intent == "chat":
@@ -75,7 +57,7 @@ async def job_search_node(state: OverallState, config: RunnableConfig) -> dict:
 
     jobs: list[dict] = []
     calls: list[dict] = []
-    for event in response.tool_events:
+    for event in ai_state.tool_events(response):
         if event["name"] == "job_search_tool":
             jobs.extend(json.loads(event["content"]))
             calls.append({"name": event["name"], "args": event["args"]})
@@ -112,20 +94,18 @@ def after_ask(state: OverallState) -> str:
 
 # --- job summarizer --------------------------------------------------------
 
-SUMMARIZER_PROMPT = """Write a short, friendly summary of these job listings for the user.
-Group by role type, mention company and location. If the list is empty, say so plainly.
-Use only what is given - do not invent jobs."""
 
-
-async def job_summarizer_node(state: OverallState) -> dict:
+async def job_summarizer_node(state: OverallState, config: RunnableConfig) -> dict:
     """Context: only the tool response. Never sees the query or the profile."""
     if not state["data"] and state["query"]:
         # ask_user still wants a refined query; don't spend a call summarizing nothing
         return {}
 
-    response = await llm().ainvoke([SystemMessage(SUMMARIZER_PROMPT), HumanMessage(json.dumps(state["data"] or []))])
+    from app.agents.agent import JobSummarizerAgent
 
-    return {"type": "text", "data": str(response.text), "data_type": "string"}
+    response = await JobSummarizerAgent(state, config).prompt(json.dumps(state["data"] or []))
+
+    return {"type": "text", "data": ai_state.text(response), "data_type": "string"}
 
 
 def ask_or_finish(state: OverallState) -> str:

@@ -12,6 +12,7 @@ interaction, keyed by the hash of the user input:
 """
 
 from fastapi_startkit.ai import recording
+from fastapi_startkit.ai import state as ai_state
 
 
 class TestEntryBuilders:
@@ -75,7 +76,7 @@ class TestUsesFromUsageMetadata:
         }
 
 
-class TestReconstructResponse:
+class TestReconstructState:
     def test_final_ai_answer_wins_over_the_tool_result_for_content(self):
         transcript = [
             recording.human("suggest me jobs"),
@@ -88,13 +89,14 @@ class TestReconstructResponse:
             recording.ai(content="Here is a job.", uses={"input_token": 5, "output_token": 9}, response_time=8.0),
         ]
 
-        response = recording.to_response(transcript)
+        state = recording.to_state(transcript)
 
-        assert response.content == "Here is a job."
-        assert [tc["name"] for tc in response.tool_calls] == ["job_search_tool"]
-        assert response.usage == {"input": 5, "output": 9}
-        assert len(response.tool_events) == 1
-        assert response.tool_events[0]["content"] == '[{"id": 2}]'
+        assert ai_state.text(state) == "Here is a job."
+        assert [tc["name"] for tc in ai_state.tool_calls(state)] == ["job_search_tool"]
+        # usage sums every model call on the turn (117+5 in, 22+9 out)
+        assert ai_state.usage(state) == {"input": 122, "output": 31}
+        assert len(ai_state.tool_events(state)) == 1
+        assert ai_state.tool_events(state)[0]["content"] == '[{"id": 2}]'
 
     def test_falls_back_to_tool_result_when_there_is_no_final_ai_answer(self):
         transcript = [
@@ -107,10 +109,10 @@ class TestReconstructResponse:
             recording.tool_response(content='[{"id": 2}]', response_time=5.0),
         ]
 
-        response = recording.to_response(transcript)
+        state = recording.to_state(transcript)
 
-        assert response.content == '[{"id": 2}]'
-        assert [tc["name"] for tc in response.tool_calls] == ["job_search_tool"]
+        assert ai_state.text(state) == '[{"id": 2}]'
+        assert [tc["name"] for tc in ai_state.tool_calls(state)] == ["job_search_tool"]
 
     def test_plain_text_turn_reconstructs_content_and_no_tool_calls(self):
         transcript = [
@@ -118,10 +120,10 @@ class TestReconstructResponse:
             recording.ai(content="Hi there!", uses={"input_token": 3, "output_token": 2}, response_time=4.0),
         ]
 
-        response = recording.to_response(transcript)
+        state = recording.to_state(transcript)
 
-        assert response.content == "Hi there!"
-        assert response.tool_calls == []
+        assert ai_state.text(state) == "Hi there!"
+        assert ai_state.tool_calls(state) == []
 
 
 class TestChunksRoundTrip:

@@ -12,7 +12,7 @@ from .image_factory import ImageFactory
 from .ai import Ai
 from .judge import JudgeAgent
 from .providers.ai_provider import AIProvider
-from .response import AgentResponse, AgentSnapshot
+from . import state
 from .testing import AgentFake, AgentRecordFake, AssertToolCall
 
 __all__ = [
@@ -20,8 +20,7 @@ __all__ = [
     "Ai",
     "Middleware",
     "AgentFake",
-    "AgentResponse",
-    "AgentSnapshot",
+    "state",
     "AIConfig",
     "AIProvider",
     "AnthropicConfig",

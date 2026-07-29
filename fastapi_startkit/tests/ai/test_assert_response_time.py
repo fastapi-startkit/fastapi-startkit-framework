@@ -16,7 +16,6 @@ from unittest import mock
 
 from fastapi_startkit.ai import recording
 from fastapi_startkit.ai.agent import Agent
-from fastapi_startkit.ai.response import AgentResponse
 
 
 class TimingAgent(Agent):
@@ -62,8 +61,8 @@ def _record(cassette: str, responses: list, prompts: list[str]) -> None:
     return _drive()
 
 
-def _slow_response() -> AgentResponse:
-    return recording.to_response(_slow_turn_transcript())
+def _slow_response() -> dict:
+    return recording.to_state(_slow_turn_transcript())
 
 
 class TestAssertResponseTime(unittest.IsolatedAsyncioTestCase):

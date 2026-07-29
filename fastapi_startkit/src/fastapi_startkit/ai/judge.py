@@ -30,5 +30,5 @@ class JudgeAgent(Agent):
         return Verdict
 
     async def judge(self, expectation: str, content: str) -> dict:
-        response = await self.prompt(f"Expectation: {expectation}\n\nResponse to grade:\n{content}")
-        return response.parsed.model_dump()
+        state = await self.prompt(f"Expectation: {expectation}\n\nResponse to grade:\n{content}")
+        return state["structured_response"].model_dump()

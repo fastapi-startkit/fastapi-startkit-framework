@@ -5,14 +5,12 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Annotated, Any, TypedDict
 
-from langchain_core.messages import ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END
 from langgraph.graph.message import add_messages
 
 from .agent import Agent
 from .pipeline import Response, build_pipeline
-from .response import AgentResponse
 from .runner import BaseRunner
 
 if TYPE_CHECKING:
@@ -41,7 +39,7 @@ class GraphAgent(Agent, ABC):
         attachments: list[Document] | None = None,
         config: RunnableConfig | dict | None = None,
         provider_options: dict | None = None,
-    ) -> AgentResponse:
+    ) -> dict:
         return await self.runner().run(
             message,
             model=model,
@@ -129,15 +127,13 @@ class GraphRunner(BaseRunner):
         attachments: list[Document] | None = None,
         config: RunnableConfig | dict | None = None,
         provider_options: dict | None = None,
-    ) -> AgentResponse:
-        started = time.perf_counter()
+    ) -> dict:
         self._reset_capture()
         compiled = await self._compile(model, provider_options)
         state = {"messages": await self._build_messages(message, attachments), "llm_calls": 0}
         result = await compiled.ainvoke(state, config=self._merge_config(config))
-        response = self._apply_schema(self._to_response(result))
-        response.runtime = time.perf_counter() - started
-        return response
+        result["messages"] = self._with_response_times(result.get("messages", []))
+        return self._apply_schema(result)
 
     async def stream(
         self,
@@ -147,47 +143,28 @@ class GraphRunner(BaseRunner):
         config: RunnableConfig | dict | None = None,
         provider_options: dict | None = None,
     ) -> AsyncIterator[dict]:
+        """Yields the graph's astream_events verbatim — StandardStreamEvent dicts
+        (on_chain_*, on_chat_model_*, on_tool_*). The root chain's end event
+        carries the final state, exposed as ``last_response``."""
         self._reset_capture()
         compiled = await self._compile(model, provider_options)
         state = {"messages": await self._build_messages(message), "llm_calls": 0}
         final_state: dict = {}
-        # "messages" streams tokens; "values" hands back the full state after each
-        # step, whose last snapshot carries every message (and its tool_calls).
-        async for mode, chunk in compiled.astream(
-            state, stream_mode=["messages", "values"], config=self._merge_config(config)
-        ):
-            if mode == "values":
-                final_state = chunk
-                continue
-            message_chunk, _meta = chunk
-            text = message_chunk.content if isinstance(message_chunk.content, str) else str(message_chunk.content)
-            if not text:
-                continue
-            if isinstance(message_chunk, ToolMessage):
-                yield {"type": "tool_response", "name": message_chunk.name or "", "content": text}
-            else:
-                yield {"type": "delta", "text": text}
-        self.last_response = self._to_response(final_state) if final_state else AgentResponse(content="")
+        async for event in compiled.astream_events(state, config=self._merge_config(config)):
+            if event["event"] == "on_chain_end" and not event.get("parent_ids"):
+                output = event["data"].get("output")
+                final_state = output if isinstance(output, dict) else {}
+            yield event
+        if final_state:
+            final_state["messages"] = self._with_response_times(final_state.get("messages", []))
+        self.last_response = final_state or {"messages": []}
 
-    def _to_response(self, result: dict) -> AgentResponse:
-        messages = result.get("messages", [])
-        final = messages[-1] if messages else None
-        content = getattr(final, "content", "") or ""
-        if not isinstance(content, str):
-            content = str(content)
-
-        tool_calls = [call for m in messages for call in (getattr(m, "tool_calls", None) or [])]
-
-        usage: dict[str, Any] = {}
-        meta = getattr(final, "usage_metadata", None)
-        if meta:
-            usage = {"input": meta.get("input_tokens", 0), "output": meta.get("output_tokens", 0)}
-
-        return AgentResponse(
-            content=content,
-            tool_calls=tool_calls,
-            usage=usage,
-            raw=result,
-            tool_events=list(self._tool_events),
-            transcript=list(self._transcript),
-        )
+    def _with_response_times(self, messages: list) -> list:
+        """Stamp each recorded model/tool call's ``response_time`` (ms) onto the
+        turn's trailing AI/tool messages — the graph state also holds history, so
+        the recorded entries align with the last N ai/tool messages."""
+        entries = [e for e in self._transcript if e["type"] in ("ai", "tool_response")]
+        targets = [m for m in messages if getattr(m, "type", "") in ("ai", "tool")]
+        for entry, message in zip(entries, targets[max(0, len(targets) - len(entries)) :]):
+            message.additional_kwargs["response_time"] = entry.get("response_time", 0.0)
+        return list(messages)

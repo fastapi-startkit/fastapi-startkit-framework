@@ -11,25 +11,25 @@ import tempfile
 import unittest
 from unittest import mock
 
-from fastapi_startkit.ai import recording
+from langchain_core.messages import AIMessage
+
 from fastapi_startkit.ai.agent import Agent
-from fastapi_startkit.ai.response import AgentResponse
 
 
 class TokenAgent(Agent):
     pass
 
 
-def _ai(input_tokens: int, output_tokens: int) -> dict:
-    return recording.ai(
+def _ai(input_tokens: int, output_tokens: int, cache_tokens: int = 0) -> AIMessage:
+    return AIMessage(
         content="reply",
-        uses={
-            "input_token": input_tokens,
-            "output_token": output_tokens,
-            "cache_token": 0,
-            "total_token": input_tokens + output_tokens,
+        additional_kwargs={"response_time": 1.0},
+        usage_metadata={
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": input_tokens + output_tokens + cache_tokens,
+            "input_token_details": {"cache_read": cache_tokens},
         },
-        response_time=1.0,
     )
 
 
@@ -45,8 +45,8 @@ def _fake_prompt(responses: list):
 class TestAssertTokens(unittest.IsolatedAsyncioTestCase):
     async def test_passes_when_accumulated_tokens_are_within_limits(self):
         responses = [
-            AgentResponse(content="a", usage={"input": 100, "output": 20}, transcript=[_ai(100, 20)]),
-            AgentResponse(content="b", usage={"input": 200, "output": 30}, transcript=[_ai(200, 30)]),
+            {"messages": [_ai(100, 20)]},
+            {"messages": [_ai(200, 30)]},
         ]
         with tempfile.TemporaryDirectory() as tmp:
             with _fake_prompt(responses):
@@ -57,7 +57,7 @@ class TestAssertTokens(unittest.IsolatedAsyncioTestCase):
                     agent.assert_tokens(lambda x: x.where("input", "<=", 5000).where("output", "<=", 5000))
 
     async def test_fails_when_a_limit_is_exceeded(self):
-        responses = [AgentResponse(content="a", usage={"input": 400, "output": 20}, transcript=[_ai(400, 20)])]
+        responses = [{"messages": [_ai(400, 20)]}]
         with tempfile.TemporaryDirectory() as tmp:
             with _fake_prompt(responses):
                 with TokenAgent.record(os.path.join(tmp, "c.json")) as agent:
@@ -66,21 +66,15 @@ class TestAssertTokens(unittest.IsolatedAsyncioTestCase):
                         agent.assert_tokens(lambda x: x.where("input", "<=", 300))
 
     async def test_supports_cache_and_total_fields(self):
-        transcript = [
-            recording.ai(
-                content="a",
-                uses={"input_token": 100, "output_token": 20, "cache_token": 40, "total_token": 160},
-                response_time=1.0,
-            )
-        ]
+        messages = [_ai(100, 20, cache_tokens=40)]
         with tempfile.TemporaryDirectory() as tmp:
-            with _fake_prompt([AgentResponse(content="a", usage={"input": 100, "output": 20}, transcript=transcript)]):
+            with _fake_prompt([{"messages": messages}]):
                 with TokenAgent.record(os.path.join(tmp, "c.json")) as agent:
                     await agent.prompt("a")
                     agent.assert_tokens(lambda x: x.where("cache", "<=", 40).where("total", ">=", 160))
 
     async def test_accumulates_from_the_cassette_on_replay(self):
-        responses = [AgentResponse(content="a", usage={"input": 100, "output": 20}, transcript=[_ai(100, 20)])]
+        responses = [{"messages": [_ai(100, 20)]}]
         with tempfile.TemporaryDirectory() as tmp:
             cassette = os.path.join(tmp, "c.json")
             with _fake_prompt(responses):
