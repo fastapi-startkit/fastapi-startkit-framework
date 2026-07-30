@@ -179,6 +179,24 @@ class TestJudgedEvals(unittest.IsolatedAsyncioTestCase):
                 judge_store = json.load(f)
             self.assertTrue(any(k.startswith("judge:") for k in judge_store))
 
+    async def test_legacy_inline_verdicts_still_replay(self):
+        """Verdicts recorded inline (pre-sidecar) or against the plain text (pre
+        whole-response grading) must still replay without calling the judge."""
+        judge = mock.AsyncMock(side_effect=AssertionError("must not judge live on replay"))
+        with tempfile.TemporaryDirectory() as tmp, _fake_prompt([_state("", [_tool_call("job_search_tool")])]):
+            with EvalAgent.record(os.path.join(tmp, "c.json")) as agent:
+                # Record the turn, then hand-write a legacy inline verdict keyed on the
+                # plain text (what pre-whole-response grading would have hashed).
+                await agent.prompt("find jobs")
+                cassette = json.load(open(os.path.join(tmp, "c.json")))
+                key = agent._judge_key("gpt-4o-mini", "It searches for jobs.", "", "openai")
+                cassette[key] = {"passed": True, "reasoning": "legacy"}
+                with open(os.path.join(tmp, "c.json"), "w") as f:
+                    json.dump(cassette, f)
+
+                with mock.patch.object(AgentRecordFake, "_judge_live", judge):
+                    await agent.assert_response_judged(expectation="It searches for jobs.")
+
 
 if __name__ == "__main__":
     unittest.main()
