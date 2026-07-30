@@ -69,7 +69,9 @@ class TestGraphAgent(unittest.IsolatedAsyncioTestCase):
         with MathAgent.fake(["The answer is 7"]):
             events = [e async for e in MathAgent().stream("What is 3 plus 4?")]
 
-        chunks = [e["data"]["chunk"].text for e in events if e["event"] == "on_chat_model_stream" and e["data"]["chunk"].text]
+        chunks = [
+            e["data"]["chunk"].text for e in events if e["event"] == "on_chat_model_stream" and e["data"]["chunk"].text
+        ]
         self.assertEqual("".join(chunks), "The answer is 7")
         self.assertGreater(len(chunks), 1)
         # The graph emits real astream_events: a root chain wraps the model turn.

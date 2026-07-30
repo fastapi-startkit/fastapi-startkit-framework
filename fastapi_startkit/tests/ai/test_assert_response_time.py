@@ -34,9 +34,7 @@ def _slow_turn_transcript() -> list[dict]:
             uses={"input_token": 68, "output_token": 18, "cache_token": 0, "total_token": 86},
             response_time=660.0997089408338,
         ),
-        recording.tool_response(
-            content='[{"id": 2, "title": "Frontend Developer"}]', response_time=1.4820829965174198
-        ),
+        recording.tool_response(content='[{"id": 2, "title": "Frontend Developer"}]', response_time=1.4820829965174198),
     ]
 
 

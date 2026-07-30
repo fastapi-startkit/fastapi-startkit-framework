@@ -229,9 +229,7 @@ class AgentFake:
         return [tc.get("name", "") for tc in agent_state.tool_calls(self._require_response())]
 
     def assert_text_response(self) -> None:
-        assert agent_state.text(self._require_response()), (
-            "Expected a non-empty text response, but content was empty."
-        )
+        assert agent_state.text(self._require_response()), "Expected a non-empty text response, but content was empty."
 
     def assert_tool_called(self, name: str, predicate: Callable[[AssertToolCall], bool] | None = None) -> None:
         matches = [tc for tc in agent_state.tool_calls(self._require_response()) if tc.get("name") == name]
@@ -257,7 +255,9 @@ class AgentFake:
         """Assert the tools called across the whole session match ``expected``, in
         order (Pest ``toFollowTrajectory``)."""
         actual = list(self._trajectory)
-        assert actual == expected, f"Expected the agent to follow the tool trajectory {expected}, but it called {actual}"
+        assert actual == expected, (
+            f"Expected the agent to follow the tool trajectory {expected}, but it called {actual}"
+        )
 
     def assert_response_time_lt(self, seconds: float) -> None:
         """Assert on the response time accumulated across every prompt()/stream() so far.
