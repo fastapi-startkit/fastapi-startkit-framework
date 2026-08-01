@@ -141,7 +141,9 @@ class TestAgent(unittest.IsolatedAsyncioTestCase):
         self.setup_agent([AIMessage(content="one two three")], LoggedAgent)
 
         stream = [event async for event in LoggedAgent().stream("hi")]
-        chunks = [e["data"]["chunk"].text for e in stream if e["event"] == "on_chat_model_stream" and e["data"]["chunk"].text]
+        chunks = [
+            e["data"]["chunk"].text for e in stream if e["event"] == "on_chat_model_stream" and e["data"]["chunk"].text
+        ]
 
         # Middleware must not buffer: the model's tokens arrive as separate chunks...
         self.assertEqual("".join(chunks), "one two three")
