@@ -73,13 +73,6 @@ class JobSummarizerAgent(RememberMixin, ThreadAgent):
 
 
 class JobSearchAgent(RememberMixin, ThreadAgent):
-    """Plain single-LLM agent (like ChatAgent) that owns its own context: the thread's
-    past user messages plus the user profile, injected only when the router asked for
-    it via `contexts`. messages() is async — the runner awaits it.
-    """
-
-    # The model must search, never chat: text-only replies here would be discarded
-    # by job_search_node (it only reads tool_events).
     tool_choice = "any"
 
     @property

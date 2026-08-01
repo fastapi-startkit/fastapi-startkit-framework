@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, AsyncIterator, Optional, Type
+import functools
+from typing import TYPE_CHECKING, AsyncIterator, Callable, Generic, Optional, Type, TypeVar
 
 from .document import Document
 from .runner import BaseRunner, Runner
@@ -11,6 +12,21 @@ if TYPE_CHECKING:
     from .testing import AgentFake, AgentRecordFake
     from .types import Middleware
 
+_R = TypeVar("_R")
+
+
+class _hybridmethod(Generic[_R]):
+    """A method callable on the class (bound to a freshly built instance) or on an
+    existing instance (bound to that instance). Lets ``Agent.record()`` and
+    ``Agent(state, config).record()`` both work, the latter keeping its state."""
+
+    def __init__(self, func: Callable[..., _R]) -> None:
+        self._func = func
+
+    def __get__(self, instance: object, owner: type) -> Callable[..., _R]:
+        target = instance if instance is not None else owner()
+        return functools.partial(self._func, target)
+
 
 class Agent:
     provider: str | None = None
@@ -19,8 +35,7 @@ class Agent:
     max_tokens: int = 4096
     timeout: float = 30.0
     top_p: float = 1.0
-    # Forwarded to bind_tools() when set: "auto" (default), "any" (must call a tool),
-    # or a specific tool name.
+    temperature: float | None = None
     tool_choice: str | None = None
 
     def messages(self) -> list[dict]:
@@ -77,8 +92,8 @@ class Agent:
 
         return AgentFake(cls, responses)
 
-    @classmethod
-    def record(cls, cassette: str | None = None, messages: list | None = None) -> "AgentRecordFake":
+    @_hybridmethod
+    def record(self, cassette: str | None = None, messages: list | None = None) -> "AgentRecordFake":
         from .testing import AgentRecordFake
 
-        return AgentRecordFake(cls(), cassette, messages)
+        return AgentRecordFake(self, cassette, messages)

@@ -1,19 +1,14 @@
-"""Integration tests: real prompt assembly, real tool execution, and real model
-behaviour captured with the record/replay harness. The first run hits the live
-API and writes the cassettes next to this file; every run after replays them.
-"""
-
 import json
 
-from fastapi_startkit.ai import AssertToolCall
 from fastapi_startkit.ai import state as ai_state
-from fastapi_startkit.ai.testing import AgentRecordFake
+from langchain_core.runnables import RunnableConfig
+from tests.test_case import TestCase
 
 from app.agents.agent import JobSearchAgent, JobSummarizerAgent
-from app.agents.state import Context
+from app.agents.state import Context, OverallState
+from app.constants.work_mode import WorkMode
 from app.models.message import Message
 from app.models.thread import Thread
-from tests.test_case import TestCase
 
 THREAD_ID = "integration-job-search"
 
@@ -46,24 +41,38 @@ class TestJobSearchAgentIntegration(TestCase):
         await Thread.where("id", THREAD_ID).delete()
         await super().asyncTearDown()
 
-    def recorded_agent(self, contexts: list[Context]) -> AgentRecordFake:
-        real = JobSearchAgent({"contexts": contexts}, {"configurable": {"thread_id": THREAD_ID}})
-        return AgentRecordFake(real, "job_search_agent.json")
-
     async def test_searches_and_finds_roles_for_a_natural_query(self):
-        with self.recorded_agent([Context.INCLUDE_USER_PROFILE]) as agent:
-            response = await agent.prompt("find roles that fit me")
+        with JobSearchAgent(
+            state=OverallState(**{"contexts": []}),
+            config=RunnableConfig(**{"configurable": {"thread_id": "1"}}),
+        ).record("job_search_agent.json") as agent:
+            await agent.prompt("find roles that fit me")
+            agent.assert_json()
 
-            def called_with_a_real_query(tool: AssertToolCall) -> bool:
-                return tool.args.get("query", "").strip() != ""
+            await agent.assert_relevant(
+                model="gemini-3.5-flash",
+                provider="google",
+            )
 
-            agent.assert_tool_called("job_search_tool", called_with_a_real_query)
-            assert json.loads(ai_state.text(response)) != []
+            agent.assert_tool_called("job_search_tool", lambda tool: tool.args.get("query", "").strip() != "")
             agent.assert_tokens(lambda x: x.where("input", "<=", 20_000).where("output", "<=", 2_000))
             agent.assert_response_time_lt(30)
 
+            await agent.prompt("can you suggest me remote only role please")
+            agent.assert_json()
+
+            agent.assert_tool_called(
+                "job_search_tool",
+                lambda too: (
+                    too.args.get("work_mode", "") == WorkMode.REMOTE and too.args.get("query", "").strip() != ""
+                ),
+            )
+
     async def test_always_searches_even_for_a_vague_query(self):
-        with self.recorded_agent([Context.INCLUDE_USER_PROFILE]) as agent:
+        with JobSearchAgent(
+            state=OverallState(**{"contexts": [Context.INCLUDE_USER_PROFILE]}),
+            config=RunnableConfig(**{"configurable": {"thread_id": THREAD_ID}}),
+        ).record("job_search_agent.json") as agent:
             response = await agent.prompt("suggest me jobs")
 
             # tool_choice="any": a text-only reply here would be a regression. The

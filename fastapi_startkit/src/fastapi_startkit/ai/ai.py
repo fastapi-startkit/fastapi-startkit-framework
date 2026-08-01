@@ -74,6 +74,8 @@ class Ai:
             kwargs["max_tokens"] = agent.max_tokens
         if agent.top_p != 1.0:
             kwargs["top_p"] = agent.top_p
+        if agent.temperature is not None:
+            kwargs["temperature"] = agent.temperature
         if agent.timeout:
             kwargs["timeout"] = agent.timeout
 

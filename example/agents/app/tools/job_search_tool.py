@@ -1,11 +1,48 @@
 from langchain_core.tools import tool
 
+from app.constants.work_mode import WorkMode
+
 jobs = [
-    {"id": 1, "title": "Software Engineer", "location": "San Francisco", "company": "Acme Corp", "type": "Full-time"},
-    {"id": 2, "title": "Python Developer", "location": "Remote", "company": "Startup Inc", "type": "Full-time"},
-    {"id": 3, "title": "Data Scientist", "location": "New York", "company": "DataCo", "type": "Full-time"},
-    {"id": 4, "title": "DevOps Engineer", "location": "Austin", "company": "CloudBase", "type": "Contract"},
-    {"id": 5, "title": "Product Manager", "location": "Remote", "company": "ProductHQ", "type": "Full-time"},
+    {
+        "id": 1,
+        "title": "Software Engineer",
+        "work_mode": WorkMode.REMOTE,
+        "location": "San Francisco",
+        "company": "Acme Corp",
+        "type": "Full-time",
+    },
+    {
+        "id": 2,
+        "title": "Python Developer",
+        "work_mode": WorkMode.REMOTE,
+        "location": "Remote",
+        "company": "Startup Inc",
+        "type": "Full-time",
+    },
+    {
+        "id": 3,
+        "title": "Data Scientist",
+        "work_mode": WorkMode.ON_SITE,
+        "location": "New York",
+        "company": "DataCo",
+        "type": "Full-time",
+    },
+    {
+        "id": 4,
+        "title": "DevOps Engineer",
+        "work_mode": WorkMode.ON_SITE,
+        "location": "Austin",
+        "company": "CloudBase",
+        "type": "Contract",
+    },
+    {
+        "id": 5,
+        "title": "Product Manager",
+        "work_mode": WorkMode.REMOTE,
+        "location": "Remote",
+        "company": "ProductHQ",
+        "type": "Full-time",
+    },
 ]
 
 
@@ -15,7 +52,7 @@ NOISE_TERMS = {"job", "jobs", "role", "roles", "position", "positions", "opening
 
 
 @tool(description="Use this tools if user wants to search for jobs")
-def job_search_tool(query: str) -> list:
+def job_search_tool(query: str, work_mode: WorkMode) -> list:
     """Searches for jobs based on the given query. Supports wildcards (* and ?) in each term."""
     import fnmatch
 
