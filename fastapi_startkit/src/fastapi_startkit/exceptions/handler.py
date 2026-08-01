@@ -71,10 +71,10 @@ class ExceptionHandler:
     def _build_context(self, exception: Exception) -> str:
         import traceback
 
-        context = f"{type(exception).__name__}: {exception}"
-        if self.app and self.app.is_debug():
-            context += "\n" + "".join(traceback.format_exception(type(exception), exception, exception.__traceback__))
-        return context
+        # Always log the full stack trace — a bare "ExcType: message" is not
+        # actionable. Whether the trace is exposed to the client is a separate,
+        # debug-gated decision handled in the FastAPI render layer.
+        return "".join(traceback.format_exception(type(exception), exception, exception.__traceback__))
 
     async def handle(self, exception: Exception, context: Optional[Dict] = None) -> Any:
         """Main entry point called from the FastAPI exception_handler hook."""
