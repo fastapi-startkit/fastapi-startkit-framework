@@ -5,12 +5,20 @@ from fastapi_startkit.ai import state as ai_state
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.tools import BaseTool
 
-from app.agents.job_search_graph import USER_PROFILE
 from app.agents.remember import RememberMixin, ThreadAgent
 from app.agents.state import Context, RouterOutput
 from app.middleware.agent_logger import AgentLogger
 from app.models.message import Message
 from app.tools.job_search_tool import job_search_tool
+
+# Stand-in for a real profile lookup; JobSearchAgent injects it when the router
+# asked for it via `contexts`.
+USER_PROFILE = {
+    "name": "Alice",
+    "title": "Python Developer",
+    "location": "Remote",
+    "skills": ["Python", "FastAPI", "PostgreSQL"],
+}
 
 JOB_SEARCH_PROMPT = """You find jobs for a user. ALWAYS call job_search_tool exactly once —
 never reply with text only, and never ask clarifying questions.
@@ -24,11 +32,17 @@ SUMMARIZER_PROMPT = """Write a short, friendly summary of these job listings for
 Group by role type, mention company and location. If the list is empty, say so plainly.
 Use only what is given - do not invent jobs."""
 
-ROUTER_PROMPT = """You route a career assistant's queries.
+ROUTER_PROMPT = """You route a career assistant's queries. Pick exactly one intent.
 
-- job_search: the user wants job listings / openings / roles.
+- job_search: the user wants job listings / openings / roles — in ANY form, however
+  vague. "any jobs", "suggest me jobs", "show openings", "jobs remote", or a bare
+  "jobs" all count. A vague ask is STILL job_search: never ask the user to narrow it
+  down — set include_user_profile and let the search use their profile.
 - company_research: the user asks about a specific company.
-- chat: greetings (hi / hello), thanks, small talk, or anything conversational.
+- chat: ONLY greetings (hi / hello), thanks, or small talk with no job intent.
+
+Fill `reply` only for chat. For job_search leave `reply` empty and do NOT ask a
+clarifying question — the search node handles vague queries.
 
 Also decide which extra context the next node needs:
 - include_user_profile: the query is vague about role, skills or location, so the user's own profile helps.

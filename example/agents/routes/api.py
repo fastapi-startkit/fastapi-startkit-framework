@@ -1,15 +1,12 @@
 import json
 import uuid
 
-from fastapi import APIRouter, Request
+from app.agents.job_search_graph import job_graph
+from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
-from fastapi_startkit.ai import state as ai_state
 from fastapi_startkit.inertia import Inertia
 from langgraph.types import Command
 
-from app.agents.chat import ChatAgent
-from app.agents.graph_agent import SalesAgent
-from app.agents.job_search_graph import job_graph
 from app.models.message import Message
 from app.models.thread import Thread
 from app.requests.chat import ChatRequest
@@ -18,19 +15,9 @@ api = APIRouter()
 
 
 @api.get("/")
-async def index(request: Request):
-    return Inertia.render(
-        "chat/Index",
-        {
-            "user": {"name": "Alice"},
-        },
-    )
-
-
-@api.post("/chat")
-async def chat(request: ChatRequest):
-    response = await ChatAgent().prompt(request.message)
-    return {"content": ai_state.text(response)}
+async def index():
+    # Job search is the default agent — land straight on its chat.
+    return Inertia.render("chat/jobs/Index")
 
 
 def _frames(event: dict) -> dict | None:
@@ -41,35 +28,6 @@ def _frames(event: dict) -> dict | None:
         output = event["data"].get("output")
         return {"type": "tool_response", "name": event["name"], "content": str(getattr(output, "content", output))}
     return None
-
-
-@api.post("/chat/stream")
-async def chat_stream(request: ChatRequest):
-    async def generate():
-        async for event in ChatAgent().stream(request.message):
-            if frame := _frames(event):
-                yield f"data: {json.dumps(frame)}\n\n"
-
-    return StreamingResponse(generate(), media_type="text/event-stream")
-
-
-@api.post("/sales/stream")
-async def sales_stream(request: ChatRequest):
-    config = {"configurable": {"thread_id": request.thread_id}}
-
-    async def generate():
-        async for event in SalesAgent().stream(request.message, config=config):
-            if frame := _frames(event):
-                yield f"data: {json.dumps(frame)}\n\n"
-
-    return StreamingResponse(generate(), media_type="text/event-stream")
-
-
-@api.get("/sales")
-async def sales_page():
-    return Inertia.render(
-        "chat/sales/Index",
-    )
 
 
 @api.get("/jobs")
@@ -110,6 +68,18 @@ async def jobs_stream(request: ChatRequest):
         streamed = False
         async for event in graph.astream_events(payload, config):
             node = (event.get("metadata") or {}).get("langgraph_node", "")
+
+            # Surface each tool call as it's made — name + args — so the UI can show
+            # "calling job_search_tool(...)" live, before its result envelope lands.
+            if event["event"] == "on_tool_start":
+                yield sse(
+                    {
+                        "kind": "tool_call",
+                        "node": node,
+                        "name": event["name"],
+                        "args": event["data"].get("input") or {},
+                    }
+                )
 
             # Forward every tool_response envelope a node commits (job_search today,
             # company_research tomorrow) so the UI can render before the prose lands.
