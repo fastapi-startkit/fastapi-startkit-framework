@@ -204,8 +204,7 @@ class HasOneThrough(BaseRelationship):
         if not current_builder._columns:
             current_builder.select("*")
 
-        return_query = current_builder.add_select(
-            f"{self.attribute}_count",
+        return_query = current_builder.select_sub(
             lambda q: (
                 q.count("*")
                 .join(
@@ -227,6 +226,7 @@ class HasOneThrough(BaseRelationship):
                     ),
                 )
             ),
+            f"{self.attribute}_count",
         )
 
         return return_query

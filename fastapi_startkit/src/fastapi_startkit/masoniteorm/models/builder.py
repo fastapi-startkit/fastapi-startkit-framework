@@ -120,6 +120,63 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
                     self._columns += (SelectExpression(column),)
         return self
 
+    @staticmethod
+    def _is_queryable(value) -> bool:
+        """A subquery source: a builder or a callable that returns one."""
+        return isinstance(value, QueryBuilder) or (callable(value) and not isinstance(value, str))
+
+    def select_sub(self, subquery, alias: str) -> "QueryBuilder":
+        """Add a subquery as an aliased column: ``(subquery) AS alias``.
+
+        ``subquery`` is a ``QueryBuilder`` or a callable that receives a fresh
+        builder and returns one. Mirrors Laravel's ``selectSub($query, $as)``.
+        """
+        if callable(subquery) and not isinstance(subquery, QueryBuilder):
+            subquery = subquery(QueryBuilder(self.connection, self.grammar, self.processor))
+        if not isinstance(subquery, QueryBuilder):
+            raise TypeError("select_sub() expects a QueryBuilder subquery or a callable returning one.")
+        self._columns += (SubGroupExpression(subquery, alias),)
+        return self
+
+    def add_select(self, *columns) -> "QueryBuilder":
+        """Append columns to the current selection — Laravel's ``addSelect``.
+
+        Accepts plain string columns (variadic, or a single list) appended with
+        a dedup guard. An associative ``{alias: subquery}`` entry — a string key
+        with a *queryable* value — adds a correlated column via
+        :meth:`select_sub`, seeding the selection with ``{table}.*`` first when
+        nothing is selected yet (so the base columns are not lost). A string
+        value under a string key is still treated as a plain column.
+        """
+        if len(columns) == 1 and isinstance(columns[0], (list, tuple)):
+            columns = tuple(columns[0])
+
+        for column in columns:
+            pairs = column.items() if isinstance(column, dict) else ((None, column),)
+            for alias, value in pairs:
+                if self._is_queryable(value):
+                    if not isinstance(alias, str):
+                        raise TypeError(
+                            "add_select() received a subquery without a string alias; "
+                            "pass {alias: subquery} or use select_sub(subquery, alias)."
+                        )
+                    if not self._columns:
+                        self.select(f"{self._table}.*")
+                    self.select_sub(value, alias)
+                    continue
+
+                already_selected = any(
+                    isinstance(existing, SelectExpression) and existing.alias is None and existing.column == value
+                    for existing in self._columns
+                )
+                if not already_selected:
+                    self._columns += (SelectExpression(value),)
+        return self
+
+    def table(self, name: str) -> "QueryBuilder":
+        self._table = name
+        return self
+
     def limit(self, limit: int) -> "QueryBuilder":
         self._limit = limit
         return self
