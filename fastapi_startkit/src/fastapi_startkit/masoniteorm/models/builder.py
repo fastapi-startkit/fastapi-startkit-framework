@@ -517,8 +517,33 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
         self._joins += (join_clause,)
         return self
 
-    def where_column(self, column1: str, column2: str) -> "QueryBuilder":
-        self._wheres += (QueryExpression(column1, "=", column2, "value_equals"),)
+    _WHERE_COLUMN_OPERATORS = ("=", "!=", "<>", ">", ">=", "<", "<=")
+
+    def _normalize_where_column(self, operator: str, column2: str | None):
+        """Resolve the where_column arity.
+
+        Two-arg ``(col1, col2)`` defaults the operator to ``=``; three-arg
+        ``(col1, operator, col2)`` validates the operator.
+        """
+        if column2 is None:
+            return "=", operator
+        if operator not in self._WHERE_COLUMN_OPERATORS:
+            raise ValueError(
+                f"Invalid where_column operator {operator!r}. "
+                f"Expected one of: {', '.join(self._WHERE_COLUMN_OPERATORS)}"
+            )
+        return operator, column2
+
+    def where_column(self, column1: str, operator: str, column2: str | None = None) -> "QueryBuilder":
+        """Compare two columns (identifiers, never bound values), joined with AND."""
+        operator, column2 = self._normalize_where_column(operator, column2)
+        self._wheres += (QueryExpression(column1, operator, column2, "value_equals"),)
+        return self
+
+    def or_where_column(self, column1: str, operator: str, column2: str | None = None) -> "QueryBuilder":
+        """Compare two columns (identifiers, never bound values), joined with OR."""
+        operator, column2 = self._normalize_where_column(operator, column2)
+        self._wheres += (QueryExpression(column1, operator, column2, "value_equals", keyword="or"),)
         return self
 
     def when(self, condition, callback) -> "QueryBuilder":
