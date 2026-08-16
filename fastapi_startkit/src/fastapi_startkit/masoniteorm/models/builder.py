@@ -466,7 +466,11 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
             yield results
 
     def new(self):
-        return self.connection.query()
+        # Carry the current table so a nested builder (e.g. a where(lambda ...)
+        # subgroup) prefixes its columns correctly instead of rendering a
+        # table-less ."column". Callers that want a different table override it
+        # with .table(...) as usual.
+        return self.connection.query().table(self._table)
 
     def invalid_operator(self, operator):
         """Determine whether an operator is not supported by the builder."""
