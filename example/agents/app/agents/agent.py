@@ -2,13 +2,13 @@ import json
 
 from fastapi_startkit.ai import Middleware
 from fastapi_startkit.ai import state as ai_state
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import BaseMessage, SystemMessage
 from langchain_core.tools import BaseTool
 
 from app.agents.remember import RememberMixin, ThreadAgent
 from app.agents.state import Context, RouterOutput
 from app.middleware.agent_logger import AgentLogger
-from app.models.message import Message
+from app.repositories.conversation import ChatConversationBuilder
 from app.tools.job_search_tool import job_search_tool
 
 # Stand-in for a real profile lookup; JobSearchAgent injects it when the router
@@ -96,29 +96,22 @@ class JobSearchAgent(RememberMixin, ThreadAgent):
     async def messages(self) -> list[BaseMessage]:
         messages: list[BaseMessage] = []
 
+        # The builder can't emit SystemMessages, so the profile stays out here.
         if Context.INCLUDE_USER_PROFILE in self.contexts:
             messages.append(SystemMessage(content=f"User profile: {json.dumps(USER_PROFILE)}"))
 
-        rows = list(await Message.where("thread_id", self.thread_id).where("role", "user").order_by("id").get())
-        # The current turn's user row is persisted before the run; the runner appends
-        # the live query itself, so drop it from history to avoid sending it twice.
-        if rows and rows[-1].data.get("text") == self.state.get("query"):
-            rows = rows[:-1]
-        messages.extend(HumanMessage(content=row.data.get("text", "")) for row in rows)
-
-        if Context.INCLUDE_LAST_JOB_SEARCH_RESPONSE in self.contexts and (last := await self._last_job_search()):
-            messages.append(AIMessage(content=f"Previous job search results: {json.dumps(last.data)}"))
-
-        return messages
-
-    async def _last_job_search(self) -> Message | None:
-        return (
-            await Message.where("thread_id", self.thread_id)
-            .where("role", "ai")
-            .where("type", "tool_response")
-            .order_by("id", "desc")
-            .first()
+        builder = (
+            ChatConversationBuilder(self.thread_id)
+            .only_user_messages()
+            # The runner appends the live query itself; with_query drops the row
+            # the route persisted before the run, so it isn't sent twice.
+            .with_query(self.state.get("query"))
         )
+        if Context.INCLUDE_LAST_JOB_SEARCH_RESPONSE in self.contexts:
+            builder.with_last_job_search()
+
+        messages.extend(await builder.get())
+        return messages
 
     def instructions(self) -> str:
         return JOB_SEARCH_PROMPT

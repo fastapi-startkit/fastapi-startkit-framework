@@ -37,7 +37,7 @@ class TestRouterAgent(TestCase):
             agent.assert_response_time_lt(2)
             agent.assert_tokens(lambda x: x.where("input", "<=", 1000).where("output", "<=", 5000))
 
-            await agent.assert_response_judged(
+            await agent.assert_satisfy(
                 provider="google",
                 model="gemini-3.5-flash",
                 expectation="As use is asking for the python developer jobs, the agent "

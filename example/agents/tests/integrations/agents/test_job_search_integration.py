@@ -2,13 +2,13 @@ import json
 
 from fastapi_startkit.ai import state as ai_state
 from langchain_core.runnables import RunnableConfig
-from tests.test_case import TestCase
 
 from app.agents.agent import JobSearchAgent, JobSummarizerAgent
 from app.agents.state import Context, OverallState
 from app.constants.work_mode import WorkMode
 from app.models.message import Message
 from app.models.thread import Thread
+from tests.test_case import TestCase
 
 THREAD_ID = "integration-job-search"
 
@@ -90,7 +90,7 @@ class TestJobSummarizerAgentIntegration(TestCase):
             agent.assert_text_response()
             assert "Python Developer" in ai_state.text(response)
             assert "Product Manager" in ai_state.text(response)
-            await agent.assert_response_judged(
+            await agent.assert_satisfy(
                 provider="google",
                 model="gemini-3.5-flash",
                 expectation="A friendly summary of exactly two roles - Python Developer at Startup Inc and "
