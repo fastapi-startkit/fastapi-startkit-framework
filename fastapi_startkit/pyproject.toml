@@ -87,6 +87,7 @@ inertia = [
 ai = [
     "langchain>=1.0.0",
     "langchain-core>=1.0.0",
+    "langgraph>=1.0.0",
 ]
 
 [dependency-groups]
@@ -130,7 +131,7 @@ exclude = [
     "**/__pycache__",
     "**/.venv",
 ]
-typeCheckingMode = "basic"
+typeCheckingMode = "standard"
 pythonVersion = "3.12"
 
 [tool.pytest.ini_options]

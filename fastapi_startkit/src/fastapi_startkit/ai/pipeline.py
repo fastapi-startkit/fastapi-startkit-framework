@@ -40,13 +40,33 @@ class Response:
                 await result
         return final
 
+    @staticmethod
+    def _merge(accumulated: Any, chunk: Any) -> Any:
+        # Stream events (astream_events shape) merge into joined text for the
+        # after-hooks: model chunks and tool outputs contribute their text, the
+        # start/end envelopes add nothing. Any other dict (e.g. a
+        # structured-output result carrying "raw"/"parsed") passes through whole.
+        if isinstance(chunk, dict) and "event" in chunk:
+            data = chunk.get("data") or {}
+            if chunk["event"] == "on_chat_model_stream":
+                text = getattr(data.get("chunk"), "content", "") or ""
+            elif chunk["event"] == "on_tool_end":
+                text = getattr(data.get("output"), "content", "") or ""
+            else:
+                text = ""
+            text = text if isinstance(text, str) else str(text)
+            if accumulated is None:
+                return text or None
+            return accumulated + text
+        return chunk if accumulated is None else accumulated + chunk
+
     def __aiter__(self) -> AsyncIterator:
         async def _it() -> AsyncIterator:
             accumulated = None
             finished = False
             try:
                 async for chunk in self._source():
-                    accumulated = chunk if accumulated is None else accumulated + chunk
+                    accumulated = self._merge(accumulated, chunk)
                     yield chunk
                 finished = True
                 await self._finish(accumulated)
@@ -63,7 +83,7 @@ class Response:
         async def _run() -> Any:
             accumulated = None
             async for chunk in self._source():
-                accumulated = chunk if accumulated is None else accumulated + chunk
+                accumulated = self._merge(accumulated, chunk)
             return await self._finish(accumulated)
 
         return _run().__await__()

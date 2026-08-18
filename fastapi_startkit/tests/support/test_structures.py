@@ -1,10 +1,10 @@
-"""Unit tests for the data-structure helpers in utils/structures.py (task #1214)."""
+"""Unit tests for the data-structure helpers in support/structures.py (task #1214)."""
 
 import pytest
 from dotty_dict import Dotty
 
 from fastapi_startkit.exceptions.exceptions import LoaderNotFound
-from fastapi_startkit.utils.structures import data, data_get, data_set, load
+from fastapi_startkit.support.structures import data, data_get, data_set, load
 
 
 class TestData:

@@ -6,31 +6,31 @@ from .config.config import AnthropicConfig, ElevenLabsConfig, GoogleConfig, Open
 from .config.ai import AIConfig
 from .decorators import max_steps, max_tokens, model, provider, timeout, top_p
 from .document import Document
-from .fakes import fake_chat_model
 from .image import Image, ImageResponse
 from .image_factory import ImageFactory
+from .ai import Ai
+from .judge import JudgeAgent
 from .providers.ai_provider import AIProvider
-from .response import AgentResponse, AgentSnapshot
-from .testing import AgentBinding, FakeAgent, NoFakeResponse, RecordingAgent
+from . import state
+from .testing import AgentFake, AgentRecordFake, AssertToolCall
 
 __all__ = [
     "Agent",
+    "Ai",
     "Middleware",
-    "AgentBinding",
-    "AgentResponse",
-    "AgentSnapshot",
+    "AgentFake",
+    "state",
     "AIConfig",
     "AIProvider",
     "AnthropicConfig",
-    "FakeAgent",
-    "NoFakeResponse",
-    "RecordingAgent",
+    "JudgeAgent",
+    "AgentRecordFake",
+    "AssertToolCall",
     "Audio",
     "AudioResponse",
     "AudioFactory",
     "Document",
     "ElevenLabsConfig",
-    "fake_chat_model",
     "GoogleConfig",
     "Image",
     "ImageFactory",
