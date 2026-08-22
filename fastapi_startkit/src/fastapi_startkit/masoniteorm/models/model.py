@@ -290,7 +290,7 @@ class Model(Attribute, Relationship, ObservesEvents):
 
         return model
 
-    def new_query(self):
+    def new_query(self) -> "QueryBuilder":
         return self.db_manager.connection(self.connection).query().set_model(self)
 
     def hydrate(self, items):
@@ -320,7 +320,7 @@ class Model(Attribute, Relationship, ObservesEvents):
         return self.get_attribute(attribute)
 
     @classmethod
-    def query(cls):
+    def query(cls) -> "QueryBuilder":
         return cls().new_query()
 
     @classmethod
@@ -434,14 +434,6 @@ class Model(Attribute, Relationship, ObservesEvents):
 
     def serialize(self) -> dict:
         return self.get_attributes()
-
-    @classmethod
-    def where(cls, column, *args):
-        return cls().query().where(column, *args)
-
-    @classmethod
-    def where_in(cls, column, values):
-        return cls().query().where_in(column, values)
 
     def get_table_name(self):
         return self.__table__ or inflection.tableize(self.__class__.__name__)
