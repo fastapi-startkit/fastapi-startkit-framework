@@ -1,7 +1,7 @@
 from __future__ import annotations
 import inflection
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
 from fastapi_startkit.carbon import Carbon
 from fastapi_startkit.masoniteorm.collection import Collection
@@ -92,7 +92,7 @@ class Model(Attribute, Relationship, ObservesEvents):
         return cls.query().with_(*eagers)
 
     @classmethod
-    def where(cls, column, *args) -> "QueryBuilder":
+    def where(cls, column, *args) -> "QueryBuilder[Self]":
         return cls.query().where(column, *args)
 
     @classmethod
@@ -224,7 +224,12 @@ class Model(Attribute, Relationship, ObservesEvents):
         return await cls.query().find(primary_key, columns)
 
     @classmethod
-    async def find_or_fail(cls, primary_key: str | int, columns=None):
+    async def find_or_fail(cls, primary_key: str | int, columns=None) -> Self:
+        """Fetch the record matching ``primary_key``.
+
+        Raises:
+            ModelNotFoundException: If no record matches ``primary_key``.
+        """
         return await cls.query().find_or_fail(primary_key, columns)
 
     @classmethod
@@ -280,7 +285,7 @@ class Model(Attribute, Relationship, ObservesEvents):
 
         return model
 
-    def new_query(self) -> "QueryBuilder":
+    def new_query(self) -> "QueryBuilder[Self]":
         return self.db_manager.connection(self.connection).query().set_model(self)
 
     def hydrate(self, items):
@@ -310,7 +315,7 @@ class Model(Attribute, Relationship, ObservesEvents):
         return self.get_attribute(attribute)
 
     @classmethod
-    def query(cls) -> "QueryBuilder":
+    def query(cls) -> "QueryBuilder[Self]":
         return cls().new_query()
 
     @classmethod
