@@ -86,9 +86,10 @@ class TestDatabaseManager:
         assert conn1 is conn2
 
     def test_connection_raises_for_missing_driver(self):
-        # make() now validates the driver before any engine is built, so an
-        # unsupported driver fails fast with a friendly framework error rather
-        # than a raw KeyError/ValueError from deep inside SQLAlchemy.
+        # DatabaseManager now validates every configured connection's driver at
+        # construction (app-boot) time, so an unsupported driver fails fast with
+        # a friendly framework error before any engine is ever built, rather than
+        # lazily on first use.
         factory = ConnectionFactory()
         bad_config = {
             "default": "mssql",
@@ -96,9 +97,8 @@ class TestDatabaseManager:
                 "mssql": {"driver": "mssql", "host": "localhost", "database": "db"},
             },
         }
-        dm = DatabaseManager(factory, bad_config)
         with pytest.raises(DriverNotFound, match="mssql"):
-            dm.connection("mssql")
+            DatabaseManager(factory, bad_config)
 
 
 # ---------------------------------------------------------------------------

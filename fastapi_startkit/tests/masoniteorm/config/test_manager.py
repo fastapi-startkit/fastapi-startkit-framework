@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 from fastapi_startkit.application import Application
+from fastapi_startkit.exceptions.exceptions import DriverNotFound
 from fastapi_startkit.masoniteorm import SQLiteConfig
 from fastapi_startkit.masoniteorm.connections.factory import ConnectionFactory
 from fastapi_startkit.masoniteorm.connections.manager import DatabaseManager
@@ -50,6 +51,104 @@ class TestDatabaseManagerConnectionLookup(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             manager.connection("sqlite")
+
+
+class TestDatabaseManagerBootTimeValidation(unittest.TestCase):
+    """Task #1232: a misconfigured connection must fail loudly at
+    construction (app-boot/provider-registration) time, not lazily on first
+    use — building on top of PR #194's DriverNotFound exception.
+    """
+
+    def test_valid_configs_still_construct_without_error(self):
+        """No behavior change for well-formed configs (sqlite/mysql/postgres)."""
+        config = {
+            "default": "sqlite",
+            "connections": {
+                "sqlite": {"driver": "sqlite", "database": "app.sqlite3"},
+                "mysql": {"driver": "mysql", "host": "localhost", "database": "db"},
+                "postgres": {"driver": "postgres", "host": "localhost", "port": 5432, "database": "db"},
+            },
+        }
+
+        manager = DatabaseManager(ConnectionFactory(), config)
+
+        self.assertIsInstance(manager, DatabaseManager)
+
+    def test_missing_driver_key_raises_at_construction(self):
+        config = {
+            "default": "sqlite",
+            "connections": {"sqlite": {"database": "app.sqlite3"}},
+        }
+
+        with self.assertRaises(DriverNotFound) as ctx:
+            DatabaseManager(ConnectionFactory(), config)
+        self.assertIn("sqlite", str(ctx.exception))
+
+    def test_unsupported_driver_raises_at_construction(self):
+        config = {
+            "default": "mssql",
+            "connections": {"mssql": {"driver": "mssql", "host": "localhost", "database": "db"}},
+        }
+
+        with self.assertRaises(DriverNotFound) as ctx:
+            DatabaseManager(ConnectionFactory(), config)
+        self.assertIn("mssql", str(ctx.exception))
+
+    def test_non_numeric_port_raises_at_construction(self):
+        config = {
+            "default": "postgres",
+            "connections": {
+                "postgres": {"driver": "postgres", "host": "localhost", "port": "not-a-port", "database": "db"}
+            },
+        }
+
+        with self.assertRaises(ValueError) as ctx:
+            DatabaseManager(ConnectionFactory(), config)
+        self.assertIn("port", str(ctx.exception))
+
+    def test_missing_port_is_not_an_error(self):
+        """Missing/empty port is not a misconfiguration -- ConnectionFactory
+        fills in a per-driver default, so it must not fail validation."""
+        config = {
+            "default": "mysql",
+            "connections": {"mysql": {"driver": "mysql", "host": "localhost", "database": "db"}},
+        }
+
+        manager = DatabaseManager(ConnectionFactory(), config)
+
+        self.assertIsInstance(manager, DatabaseManager)
+
+    def test_explicit_url_bypasses_driver_and_port_checks(self):
+        """A connection configured entirely via `url` skips field validation,
+        mirroring ConnectionFactory.build_url()'s own url passthrough."""
+        config = {
+            "default": "oracle",
+            "connections": {"oracle": {"driver": "oracle", "url": "sqlite+aiosqlite:///:memory:"}},
+        }
+
+        manager = DatabaseManager(ConnectionFactory(), config)
+
+        self.assertIsInstance(manager, DatabaseManager)
+
+    def test_bad_connection_fails_at_provider_registration_not_first_query(self):
+        """End-to-end: DatabaseProvider.register() runs during Application
+        construction, so a bad config must raise while booting the app --
+        before `db.connection()` is ever called."""
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(DriverNotFound):
+                Application(
+                    base_path=Path(tmp),
+                    env="testing",
+                    providers=[
+                        (
+                            DatabaseProvider,
+                            {
+                                "default": "mssql",
+                                "connections": {"mssql": {"driver": "mssql", "host": "localhost", "database": "db"}},
+                            },
+                        )
+                    ],
+                )
 
 
 class TestDatabaseProviderWiring(unittest.TestCase):
