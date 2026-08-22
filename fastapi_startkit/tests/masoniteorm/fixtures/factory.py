@@ -1,4 +1,4 @@
-from fastapi_startkit.orm.factory.factory import Factory
+from fastapi_startkit.masoniteorm import Factory
 from .model import User
 
 
