@@ -75,9 +75,9 @@ class TestBind:
         container.bind("service_a", svc)
         assert container.make("service_a") is svc
 
-    def test_bind_returns_self_for_chaining(self, container):
+    def test_bind_returns_none(self, container):
         result = container.bind("x", 42)
-        assert result is container
+        assert result is None
 
     def test_bind_overrides_existing_key_by_default(self, container):
         container.bind("key", "first")

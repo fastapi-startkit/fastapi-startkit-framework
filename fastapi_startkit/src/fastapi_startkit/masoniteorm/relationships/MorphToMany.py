@@ -1,3 +1,4 @@
+from fastapi_startkit.masoniteorm.models import registry
 from ..collection import Collection
 from .BaseRelationship import BaseRelationship
 
@@ -33,8 +34,11 @@ class MorphToMany(BaseRelationship):
         Returns:
             object -- Either returns a builder or a hydrated model.
         """
+        if instance is None:
+            return self
+
         attribute = self.fn.__name__
-        self._related_builder = instance.builder
+        self._related_builder = instance.get_builder()
         self.set_keys(owner, self.fn)
 
         if not instance.is_loaded():
@@ -62,9 +66,9 @@ class MorphToMany(BaseRelationship):
         model = self.morph_map().get(instance.__attributes__[self.morph_key])
         record = instance.__attributes__[self.morph_id]
 
-        return model.where(model.get_primary_key(), record).first()
+        return model.where(model.__primary_key__, record).first()
 
-    def get_related(self, query, relation, eagers=None, callback=None):
+    async def get_related(self, query, relation, eagers=None, callback=None):
         """Gets the relation needed between the relation and the related builder. If the relation is a collection
         then will need to pluck out all the keys from the collection and fetch from the related builder. If
         relation is just a Model then we can just call the model based on the value of the related
@@ -81,8 +85,8 @@ class MorphToMany(BaseRelationship):
             for group, items in relation.group_by(self.morph_key).items():
                 morphed_model = self.morph_map().get(group)
                 relations.merge(
-                    morphed_model.where_in(
-                        f"{morphed_model.get_table_name()}.{morphed_model.get_primary_key()}",
+                    await morphed_model.where_in(
+                        f"{morphed_model.__table__}.{morphed_model.__primary_key__}",
                         Collection(items).pluck(self.morph_id, keep_nulls=False).unique(),
                     ).get()
                 )
@@ -90,14 +94,14 @@ class MorphToMany(BaseRelationship):
         else:
             model = self.morph_map().get(getattr(relation, self.morph_key))
             if model:
-                return model.find([getattr(relation, self.morph_id)])
+                return await model.find(getattr(relation, self.morph_id))
 
     def register_related(self, key, model, collection):
         morphed_model = self.morph_map().get(getattr(model, self.morph_key))
 
-        related = collection.where(morphed_model.get_primary_key(), getattr(model, self.morph_id))
+        related = collection.where(morphed_model.__primary_key__, getattr(model, self.morph_id))
 
         model.add_relation({key: related})
 
     def morph_map(self):
-        return load_config().DB._morph_map
+        return registry.Registry.get_morph_map()

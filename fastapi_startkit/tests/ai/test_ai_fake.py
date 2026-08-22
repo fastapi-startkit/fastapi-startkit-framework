@@ -15,6 +15,7 @@ import langchain.chat_models as chat_models
 from langchain_core.messages import AIMessage, ToolCall
 from langchain_core.tools import tool
 
+from fastapi_startkit.ai import state as ai_state
 from fastapi_startkit.ai.agent import Agent
 from fastapi_startkit.ai.ai import Ai
 from fastapi_startkit.application import app
@@ -119,7 +120,7 @@ class TestAgentPromptUsesFakeModelEndToEnd(TestAiFakeBase):
 
         result = await SimpleAgent().prompt("hi there")
 
-        self.assertEqual(result.content, "faked via ai")
+        self.assertEqual(ai_state.text(result), "faked via ai")
 
     async def test_prompt_runs_a_faked_tool_call_end_to_end(self):
         Ai.fake(
@@ -134,7 +135,7 @@ class TestAgentPromptUsesFakeModelEndToEnd(TestAiFakeBase):
 
         result = await JobAssistant().prompt("find me a python job")
 
-        self.assertEqual(result.content, "Python Developer at Shopify")
+        self.assertEqual(ai_state.text(result), "Python Developer at Shopify")
 
     async def test_registering_a_fake_does_not_affect_other_agent_classes(self):
         Ai.fake("SimpleAgent", [AIMessage(content="only for SimpleAgent")])

@@ -1,10 +1,10 @@
 import pendulum
 from inflection import singularize
 
+from fastapi_startkit.masoniteorm.models import registry
+from .BaseRelationship import BaseRelationship
 from ..collection import Collection
 from ..models.pivot import Pivot
-from .BaseRelationship import BaseRelationship
-from fastapi_startkit.masoniteorm.models import registry
 
 
 class BelongsToMany(BaseRelationship):
@@ -12,7 +12,7 @@ class BelongsToMany(BaseRelationship):
 
     def __init__(
         self,
-        fn=None,
+        fn: str,
         local_foreign_key=None,
         other_foreign_key=None,
         local_owner_key=None,
@@ -23,8 +23,7 @@ class BelongsToMany(BaseRelationship):
         attribute="pivot",
         with_fields=[],
     ):
-        if isinstance(fn, str):
-            self.fn = self.fn = lambda x: registry.Registry.resolve(fn)
+        self.fn = lambda: registry.Registry.resolve(fn)
 
         self.local_key = local_foreign_key
         self.foreign_key = other_foreign_key
@@ -134,15 +133,15 @@ class BelongsToMany(BaseRelationship):
                     pivot_data.update({field: getattr(model, field)})
                     model.delete_attribute(field)
 
-            model.__original_attributes__.update(
-                {
-                    self._as: (
-                        Pivot.on(query.connection)
-                        .table(self._table)
-                        .hydrate(pivot_data)
-                        .activate_timestamps(self.with_timestamps)
-                    )
-                }
+            model.set_attribute(
+                self._as,
+                (
+                    Pivot()
+                    .on(query.connection)
+                    .table(self._table)
+                    .set_raw_attributes(pivot_data, True)
+                    .timestamps(self.with_timestamps)
+                ),
             )
 
         return result
@@ -150,11 +149,6 @@ class BelongsToMany(BaseRelationship):
     def table(self, table):
         self._table = table
         return self
-
-    def make_builder(self, eagers=None):
-        builder = self.get_builder().with_(eagers)
-
-        return builder
 
     async def make_query(self, query, relation, eagers=None, callback=None):
         """Used during eager loading a relationship
@@ -239,7 +233,6 @@ class BelongsToMany(BaseRelationship):
 
     async def get_related(self, query, relation, eagers=None, callback=None):
         final_result = await self.make_query(query, relation, eagers=eagers, callback=callback)
-        builder = self.make_builder(eagers)
 
         for model in final_result:
             pivot_data = {
@@ -266,15 +259,15 @@ class BelongsToMany(BaseRelationship):
                     pivot_data.update({field: getattr(model, field)})
                     model.delete_attribute(field)
 
-            model.__original_attributes__.update(
-                {
-                    self._as: (
-                        Pivot.on(builder.connection_name)
-                        .table(self._table)
-                        .hydrate(pivot_data)
-                        .activate_timestamps(self.with_timestamps)
-                    )
-                }
+            model.set_attribute(
+                self._as,
+                (
+                    Pivot()
+                    .on(query.connection)
+                    .table(self._table)
+                    .set_raw_attributes(pivot_data, True)
+                    .timestamps(self.with_timestamps)
+                ),
             )
 
         return final_result
@@ -497,7 +490,7 @@ class BelongsToMany(BaseRelationship):
                 }
             )
 
-        return Pivot.on(current_model.get_builder().connection).table(self._table).without_global_scopes().create(data)
+        return current_model.get_builder().connection.query().table(self._table).insert(data)
 
     def detach(self, current_model, related_record):
         data = {
@@ -508,9 +501,10 @@ class BelongsToMany(BaseRelationship):
         self._table = self._table or self.get_pivot_table_name(current_model, related_record)
 
         return (
-            Pivot.on(current_model.get_builder().connection)
-            .table(self._table)
+            current_model.get_builder()
+            .connection.query()
             .without_global_scopes()
+            .table(self._table)
             .where(data)
             .delete()
         )
@@ -531,12 +525,7 @@ class BelongsToMany(BaseRelationship):
                 }
             )
 
-        return (
-            Pivot.table(self._table)
-            .on(current_model.get_builder().connection_name)
-            .without_global_scopes()
-            .create(data)
-        )
+        return current_model.get_builder().connection.query().table(self._table).insert(data)
 
     def detach_related(self, current_model, related_record):
         data = {
@@ -554,10 +543,4 @@ class BelongsToMany(BaseRelationship):
                 }
             )
 
-        return (
-            Pivot.on(current_model.get_builder().connection_name)
-            .table(self._table)
-            .without_global_scopes()
-            .where(data)
-            .delete()
-        )
+        return current_model.get_builder().connection.query().table(self._table).where(data).delete()

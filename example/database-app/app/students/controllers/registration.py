@@ -10,12 +10,14 @@ async def register(request: StudentRegistrationRequest):
     existing_user = await User.where("email", request.email).first()
     if existing_user:
         raise RequestValidationError(
-            errors=[{
-                "loc": ("body", "email"),
-                "msg": "Email already registered",
-                "type": "value_error",
-                "input": request.email,
-            }]
+            errors=[
+                {
+                    "loc": ("body", "email"),
+                    "msg": "Email already registered",
+                    "type": "value_error",
+                    "input": request.email,
+                }
+            ]
         )
 
     password = hashlib.md5(request.password.encode()).hexdigest()

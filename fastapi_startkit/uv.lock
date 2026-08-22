@@ -527,7 +527,7 @@ wheels = [
 
 [[package]]
 name = "fastapi-startkit"
-version = "0.50.0"
+version = "0.51.0"
 source = { editable = "." }
 dependencies = [
     { name = "cleo" },
@@ -543,6 +543,7 @@ dependencies = [
 ai = [
     { name = "langchain" },
     { name = "langchain-core" },
+    { name = "langgraph" },
 ]
 database = [
     { name = "faker" },
@@ -605,6 +606,7 @@ requires-dist = [
     { name = "jinja2", marker = "extra == 'vite'", specifier = ">=3.1" },
     { name = "langchain", marker = "extra == 'ai'", specifier = ">=1.0.0" },
     { name = "langchain-core", marker = "extra == 'ai'", specifier = ">=1.0.0" },
+    { name = "langgraph", marker = "extra == 'ai'", specifier = ">=1.0.0" },
     { name = "markupsafe", marker = "extra == 'inertia'", specifier = ">=2.0" },
     { name = "pendulum", specifier = ">=3.1.0,<4.0.0" },
     { name = "pydantic", specifier = ">=2.12.5" },

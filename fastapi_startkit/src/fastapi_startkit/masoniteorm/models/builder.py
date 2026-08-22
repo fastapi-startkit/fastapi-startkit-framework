@@ -25,6 +25,42 @@ TModel = TypeVar("TModel", bound="Model")
 
 
 class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
+    operators = [
+        "=",
+        "<",
+        ">",
+        "<=",
+        ">=",
+        "<>",
+        "!=",
+        "<=>",
+        "like",
+        "like binary",
+        "not like",
+        "ilike",
+        "&",
+        "|",
+        "^",
+        "<<",
+        ">>",
+        "&~",
+        "is",
+        "is not",
+        "rlike",
+        "not rlike",
+        "regexp",
+        "not regexp",
+        "~",
+        "~*",
+        "!~",
+        "!~*",
+        "similar to",
+        "not similar to",
+        "not ilike",
+        "~~*",
+        "!~~*",
+    ]
+
     def __init__(self, connection: "Connection", grammar, processor):
         super().__init__()
         self.connection = connection
@@ -65,6 +101,10 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
 
     def get_table_name(self) -> str:
         return self._table
+
+    def table(self, table: str) -> "QueryBuilder":
+        self._table = table
+        return self
 
     def where_in(self, column: str, values) -> "QueryBuilder":
         if hasattr(values, "_items"):
@@ -140,6 +180,10 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
     def run_scopes(self) -> "QueryBuilder":
         for name, scope in self._global_scopes.get(self._action, {}).items():
             scope(self)
+        return self
+
+    def without_global_scopes(self) -> "QueryBuilder":
+        self._global_scopes = {}
         return self
 
     def get_grammar(self):
@@ -430,7 +474,15 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
             yield results
 
     def new(self):
-        return self.connection.query()
+        # Carry the current table so a nested builder (e.g. a where(lambda ...)
+        # subgroup) prefixes its columns correctly instead of rendering a
+        # table-less ."column". Callers that want a different table override it
+        # with .table(...) as usual.
+        return self.connection.query().table(self._table)
+
+    def invalid_operator(self, operator):
+        """Determine whether an operator is not supported by the builder."""
+        return not isinstance(operator, str) or operator.lower() not in self.operators
 
     def where(self, column, *args):
         """Specifies a where expression.

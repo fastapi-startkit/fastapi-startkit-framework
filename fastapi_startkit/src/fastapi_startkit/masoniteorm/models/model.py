@@ -1,16 +1,18 @@
 from __future__ import annotations
-import inflection
 
 from typing import TYPE_CHECKING, Self
 
+import inflection
+import pendulum
+
 from fastapi_startkit.carbon import Carbon
 from fastapi_startkit.masoniteorm.collection import Collection
-from fastapi_startkit.masoniteorm.models.fields import CreatedAtField, UpdatedAtField
-from fastapi_startkit.masoniteorm.models.registry import Registry
-from fastapi_startkit.masoniteorm.observers import ObservesEvents
 from fastapi_startkit.masoniteorm.connections.manager import DatabaseManager
 from fastapi_startkit.masoniteorm.models.attribute import Attribute
+from fastapi_startkit.masoniteorm.models.fields import CreatedAtField, UpdatedAtField
+from fastapi_startkit.masoniteorm.models.registry import Registry
 from fastapi_startkit.masoniteorm.models.relationship import Relationship
+from fastapi_startkit.masoniteorm.observers import ObservesEvents
 
 if TYPE_CHECKING:
     from fastapi_startkit.masoniteorm.models.builder import QueryBuilder
@@ -256,6 +258,14 @@ class Model(Attribute, Relationship, ObservesEvents):
     async def count(cls, column: str = "*"):
         return await cls.query().count(column)
 
+    def table(self, table: str):
+        self.__table__ = table
+        return self
+
+    def timestamps(self, timestamps: bool = True):
+        self.__timestamps__ = timestamps
+        return self
+
     @classmethod
     def chunk(cls, count: int):
         return cls.query().chunk(count)
@@ -342,6 +352,29 @@ class Model(Attribute, Relationship, ObservesEvents):
             return False
 
         return await self.fill(attributes).save()
+
+    async def touch(self) -> bool:
+        """Bump ``updated_at`` to now and persist only that column.
+
+        Mirrors Laravel's instance-level ``touch()``: any other dirty
+        attributes on the model are left untouched and unsaved. A no-op for
+        models with timestamps disabled (``__timestamps__`` falsy) or that
+        haven't been persisted yet, matching how ``save()`` already treats
+        those cases.
+        """
+        if not self.__timestamps__ or not self._exists:
+            return False
+
+        value = self.caster.set("updated_at", pendulum.now("UTC"))
+
+        query = self.new_query()
+        pk_value = self.get_attribute(self.__primary_key__)
+        await query.where(self.__primary_key__, pk_value).update({"updated_at": value})
+
+        self._attributes["updated_at"] = value
+        self._original["updated_at"] = value
+
+        return True
 
     def fill(self, attributes: dict) -> "Model":
         for key, value in attributes.items():

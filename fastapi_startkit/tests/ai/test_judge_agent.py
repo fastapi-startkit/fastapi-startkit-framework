@@ -2,7 +2,7 @@
 
 It's a plain Agent whose ``schema()`` is a ``Verdict`` model, so the model's
 JSON reply is turned into a typed result through the standard structured-output
-path (``response.parsed``) — no hand-rolled verdict parsing.
+path (``state["structured_response"]``) — no hand-rolled verdict parsing.
 """
 
 import os
@@ -12,8 +12,9 @@ from unittest import mock
 
 from langchain_core.messages import AIMessage
 
+from fastapi_startkit.ai import state as ai_state
 from fastapi_startkit.ai.judge import JudgeAgent, Verdict
-from fastapi_startkit.ai.response import AgentResponse
+from fastapi_startkit.ai.runner import Runner
 
 
 class TestJudgeAgent(unittest.IsolatedAsyncioTestCase):
@@ -43,7 +44,7 @@ class TestJudgeAgent(unittest.IsolatedAsyncioTestCase):
                 seen["messages"] = messages
                 return AIMessage(content='{"passed": true, "reasoning": "ok"}')
 
-        with mock.patch.object(JudgeAgent, "_build_model", lambda self, *a, **k: Capturing()):
+        with mock.patch.object(Runner, "_build_model", lambda self, *a, **k: Capturing()):
             await JudgeAgent().judge("The llm should respond with greetings", "Hello there!")
 
         blob = " ".join(str(getattr(m, "content", m)) for m in seen["messages"])
@@ -67,13 +68,13 @@ class TestJudgeAgent(unittest.IsolatedAsyncioTestCase):
 
     async def test_judge_is_usable_via_the_record_fluent_dsl(self):
         async def fake_run(agent_self, message, **kwargs):
-            return AgentResponse(content='{"passed": true, "reasoning": "ok"}')
+            return {"messages": [AIMessage(content='{"passed": true, "reasoning": "ok"}')]}
 
         with tempfile.TemporaryDirectory() as tmp:
             cassette = os.path.join(tmp, "judge.json")
-            with mock.patch.object(JudgeAgent, "_run", fake_run):
+            with mock.patch.object(JudgeAgent, "prompt", fake_run):
                 with JudgeAgent.record(cassette) as agent:
                     response = await agent.prompt("grade this")
 
-            self.assertIn('"passed"', response.content)
+            self.assertIn('"passed"', ai_state.text(response))
             self.assertTrue(os.path.exists(cassette))

@@ -1,82 +1,368 @@
 from __future__ import annotations
 
-import fnmatch
 import functools
 import hashlib
 import inspect
 import json
+import operator
 import sys
 import time
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
-from .response import AgentResponse
+from . import recording
+from . import state as agent_state
 
 if TYPE_CHECKING:
     from .agent import Agent
     from .document import Document
 
 
-def _matches(pattern: str, message: str) -> bool:
-    pattern, message = pattern.lower(), message.lower()
-    if any(ch in pattern for ch in "*?["):
-        return fnmatch.fnmatch(message, pattern)
-    return pattern in message
-
-
-class _Recorder:
-    def __init__(self) -> None:
-        self.calls: list[str] = []
-        self.attachments: list[list[Document]] = []
-
-    def _record_call(self, message: str, attachments: list[Document] | None) -> None:
-        self.calls.append(message)
-        self.attachments.append(list(attachments or []))
-
-    @property
-    def prompt_count(self) -> int:
-        return len(self.calls)
-
-    def assert_prompted(self, pattern: str | None = None) -> None:
-        if pattern is None:
-            assert self.calls, "Expected the agent to be prompted, but it never was."
-            return
-        assert any(_matches(pattern, message) for message in self.calls), (
-            f"Expected a prompt matching {pattern!r}, but none did. Got: {self.calls!r}"
-        )
-
-    def assert_not_prompted(self) -> None:
-        assert not self.calls, f"Expected no prompts, but got: {self.calls!r}"
-
-
 def _joined(value: Any) -> str:
-    """A cassette value is a buffered string or a list of stream chunks."""
     return "".join(value) if isinstance(value, list) else value
 
 
-class AgentFake:
-    """Registers a fixed, ordered list of replies as ``agent_cls``'s chat
-    model for the duration of a ``with`` block (or a decorated function).
+def _frame_text(frame: Any) -> str:
+    """Text carried by a stream event; cassettes keep storing plain strings."""
+    if isinstance(frame, dict):
+        if frame.get("event") == "on_chat_model_stream":
+            chunk = (frame.get("data") or {}).get("chunk")
+            text = getattr(chunk, "content", "") or ""
+            return text if isinstance(text, str) else str(text)
+        if "event" in frame:  # start/end events carry no streamable text
+            return ""
+        return frame.get("text") or frame.get("content") or ""  # legacy frames
+    return str(frame)
 
-    ``prompt()``/``stream()`` still run the real message-building, pipeline,
-    and tool-execution path; see ``Ai.fake()``.
+
+def _chunk_event(text: str) -> dict:
+    """A replayed on_chat_model_stream event, shaped like astream_events yields."""
+    from langchain_core.messages import AIMessageChunk  # noqa: PLC0415
+
+    return {
+        "event": "on_chat_model_stream",
+        "name": "replay",
+        "run_id": "",
+        "tags": [],
+        "metadata": {},
+        "parent_ids": [],
+        "data": {"chunk": AIMessageChunk(content=text)},
+    }
+
+
+def _new_token_totals() -> dict:
+    return {"input": 0, "output": 0, "cache": 0, "total": 0}
+
+
+def _text_state(content: str, tool_calls: list | None = None) -> dict:
+    """A minimal one-message state for legacy/fallback shapes."""
+    from langchain_core.messages import AIMessage  # noqa: PLC0415
+
+    return {"messages": [AIMessage(content=content, tool_calls=tool_calls or [])]}
+
+
+class TokenQuery:
+    """Fluent predicate over accumulated token totals, e.g.::
+
+        agent.assert_tokens(lambda x: x.where("input", "<=", 5000).where("output", "<=", 5000))
+
+    Fields: ``input`` / ``output`` / ``cache`` / ``total``.
     """
 
+    _OPS = {
+        "<=": operator.le,
+        ">=": operator.ge,
+        "<": operator.lt,
+        ">": operator.gt,
+        "==": operator.eq,
+        "=": operator.eq,
+        "!=": operator.ne,
+    }
+
+    def __init__(self, totals: dict) -> None:
+        self._totals = totals
+        self._checks: list[tuple[str, str, float]] = []
+
+    def where(self, field: str, op: str, value: float) -> "TokenQuery":
+        self._checks.append((field, op, value))
+        return self
+
+    def failures(self) -> list[str]:
+        problems: list[str] = []
+        for field, op, value in self._checks:
+            compare = self._OPS.get(op)
+            if compare is None:
+                raise ValueError(f"Unsupported token operator {op!r}")
+            actual = self._totals.get(field, 0)
+            if not compare(actual, value):
+                problems.append(f"{field}={actual} is not {op} {value}")
+        return problems
+
+
+class AgentFake:
     def __init__(self, agent_cls: type[Agent], responses: list) -> None:
         self._agent_cls = agent_cls
-        self._responses = responses
+        self._responses = list(responses)
+        self._agent = agent_cls()
+        self._agent.messages = self._history  # type: ignore[method-assign]
+        self._records: list[dict] = []
+        self._last_response: dict | None = None
+        self.last_elapsed: float | None = None
+        self._tokens: dict = _new_token_totals()
+        self._response_time: float = 0.0
+        self._trajectory: list[str] = []
 
-    def __enter__(self) -> None:
+    def _history(self) -> list:
+        return self._records
+
+    def _subject(self) -> Agent:
+        """The agent under test — the default source of the judge provider/model."""
+        return self._agent
+
+    @property
+    def _prompts(self) -> list[str]:
+        return [r["content"] for r in self._records if r.get("role") == "user"]
+
+    def _last_prompt(self) -> str:
+        prompts = self._prompts
+        assert prompts, "No prompt() call has been made yet."
+        return prompts[-1]
+
+    def __enter__(self) -> "AgentFake":
         from .ai import Ai
 
         Ai.fake(self._agent_cls.__name__, self._responses)
+        return self
 
     def __exit__(self, *_exc: Any) -> bool:
         from .ai import Ai
 
         Ai.forget(self._agent_cls.__name__)
         return False
+
+    async def prompt(
+        self, message: str, *, attachments: list[Document] | None = None, config: dict | None = None
+    ) -> dict:
+        start = time.monotonic()
+        extra = {"config": config} if config is not None else {}
+        self._last_response = await self._agent.prompt(message, attachments=attachments, **extra)
+        self.last_elapsed = time.monotonic() - start
+        self._remember(message, self._last_response)
+        return self._last_response
+
+    async def stream(self, message: str, *, config: dict | None = None) -> AsyncIterator[dict]:
+        chunks: list[str] = []
+        extra = {"config": config} if config is not None else {}
+        # Drive the runner directly so we can read the structured response it
+        # captures while streaming (content + tool_calls), not just joined text.
+        runner = self._agent.runner()
+        async for frame in runner.stream(message, **extra):
+            if text := _frame_text(frame):
+                chunks.append(text)
+            yield frame
+        self._last_response = getattr(runner, "last_response", None) or _text_state("".join(chunks))
+        self._remember(message, self._last_response)
+
+    def _remember(self, message: str, state: dict) -> None:
+        self._accumulate_tokens(state)
+        self._response_time += agent_state.runtime(state)
+        self._trajectory.extend(tc.get("name", "") for tc in agent_state.tool_calls(state))
+        self._records.append({"role": "user", "content": message})
+        self._records.append({"role": "assistant", "content": agent_state.text(state)})
+
+    def _accumulate_tokens(self, state: dict) -> None:
+        """Add a turn's token usage — read from each AI message's usage_metadata —
+        to the running totals."""
+        recording.accumulate_uses(agent_state.messages(state), self._tokens)
+
+    def assert_tokens(self, predicate: Callable[[TokenQuery], Any]) -> None:
+        """Assert on the tokens accumulated across every prompt()/stream() so far.
+
+        agent.assert_tokens(lambda x: x.where("input", "<=", 5000).where("output", "<=", 5000))
+        """
+        query = TokenQuery(dict(self._tokens))
+        predicate(query)
+        failures = query.failures()
+        assert not failures, f"Token assertion failed: {'; '.join(failures)}. Accumulated tokens: {self._tokens}"
+
+    def assert_prompt(self, expected: str | Callable[[str], bool]) -> None:
+        if callable(expected):
+            assert any(expected(p) for p in self._prompts), (
+                f"No recorded prompt satisfied the predicate. Got: {self._prompts!r}"
+            )
+        else:
+            assert any(expected in p for p in self._prompts), (
+                f"Expected a prompt containing {expected!r}, but none did. Got: {self._prompts!r}"
+            )
+
+    def assert_response(self, expected: str) -> None:
+        content = agent_state.text(self._require_response())
+        assert expected in content, f"Expected response to contain {expected!r}, got {content!r}"
+
+    def assert_tool_call(self, name: str) -> None:
+        called = [tc.get("name") for tc in agent_state.tool_calls(self._require_response())]
+        assert name in called, f"Expected tool {name!r} to be called, but got: {called}"
+
+    def assert_prompted(self, times: int | None = None) -> None:
+        if times is not None:
+            assert len(self._prompts) == times, f"Expected {times} prompt call(s), got {len(self._prompts)}"
+        else:
+            assert self._prompts, "Expected at least one prompt() or stream() call, but none were made"
+
+    def assert_not_prompted(self) -> None:
+        self.assert_prompted(times=0)
+
+    def reset(self) -> "AgentFake":
+        self._records.clear()
+        self._last_response = None
+        self._tokens = _new_token_totals()
+        self._response_time = 0.0
+        self._trajectory = []
+        return self
+
+    def _require_response(self) -> dict:
+        assert self._last_response is not None, "No prompt() call has been made yet."
+        return self._last_response
+
+    def _tool_call_names(self) -> list[str]:
+        return [tc.get("name", "") for tc in agent_state.tool_calls(self._require_response())]
+
+    def assert_text_response(self) -> None:
+        assert agent_state.text(self._require_response()), "Expected a non-empty text response, but content was empty."
+
+    def assert_tool_called(self, name: str, predicate: Callable[[AssertToolCall], bool] | None = None) -> None:
+        matches = [tc for tc in agent_state.tool_calls(self._require_response()) if tc.get("name") == name]
+        assert matches, f"Expected tool {name!r} to be called, but it wasn't. Called: {self._tool_call_names()}"
+        if predicate is not None:
+            assert any(predicate(AssertToolCall(tc)) for tc in matches), (
+                f"Tool {name!r} was called, but no call satisfied the given predicate."
+            )
+
+    def assert_tool_not_called(self, names: list[str]) -> None:
+        unexpected = set(self._tool_call_names()) & set(names)
+        assert not unexpected, f"Expected tools {sorted(names)} not to be called, but got: {sorted(unexpected)}"
+
+    def assert_json(self) -> None:
+        """Assert the latest response content is valid JSON (Pest ``toBeJson``)."""
+        content = agent_state.text(self._require_response())
+        try:
+            json.loads(content)
+        except (ValueError, TypeError) as exc:
+            raise AssertionError(f"Expected response content to be valid JSON, but got {content!r}") from exc
+
+    def assert_follow_trajectory(self, expected: list[str]) -> None:
+        """Assert the tools called across the whole session match ``expected``, in
+        order (Pest ``toFollowTrajectory``)."""
+        actual = list(self._trajectory)
+        assert actual == expected, (
+            f"Expected the agent to follow the tool trajectory {expected}, but it called {actual}"
+        )
+
+    def assert_response_time_lt(self, seconds: float) -> None:
+        """Assert on the response time accumulated across every prompt()/stream() so far.
+
+        The time is read from the recorded transcript (each ai/tool step's
+        ``response_time``), not the wall-clock duration of the call — so it stays
+        correct on cassette replay, where the cache read is effectively instant.
+        """
+        assert self.last_elapsed is not None, "No prompt() call has been made yet."
+        total = self._response_time
+        assert total < seconds, f"Expected total response time < {seconds}s, took {total:.3f}s"
+
+    def _gradable_response(self) -> str:
+        """The whole AI response handed to the judge: the answer text, plus the
+        tool calls it made when there are any (so grading sees the full turn, not
+        just the final sentence)."""
+        state = self._require_response()
+        content = agent_state.text(state)
+        calls = agent_state.tool_calls(state)
+        if calls:
+            return json.dumps({"content": content, "tool_calls": calls}, sort_keys=True, default=str)
+        return content
+
+    async def _run_judge(
+        self,
+        expectation: str,
+        subject: str,
+        *,
+        fallbacks: tuple[str, ...] = (),
+        model: str | None = None,
+        provider: str | None = None,
+    ) -> None:
+        """Grade ``subject`` against ``expectation`` with the LLM judge. The judge
+        provider/model default to the agent under test, and can be overridden.
+        ``fallbacks`` are alternative graded texts to look up in the verdict cache
+        (so verdicts recorded before a change to what gets graded still replay)."""
+        under_test = self._subject()
+        model = model if model is not None else getattr(under_test, "model", None)
+        provider = provider if provider is not None else getattr(under_test, "provider", None)
+        verdict = await self._judge(model, expectation, subject, provider, fallbacks=fallbacks)
+        assert verdict.get("passed"), (
+            f"Judge ({model}) rejected {expectation!r}: {verdict.get('reasoning', '')!r} — graded {subject!r}"
+        )
+
+    async def _grade_response(self, expectation: str, *, model: str | None, provider: str | None) -> None:
+        """Grade the whole response, falling back to its plain text in the cache so
+        verdicts recorded before whole-response grading still replay."""
+        await self._run_judge(
+            expectation,
+            self._gradable_response(),
+            fallbacks=(agent_state.text(self._require_response()),),
+            model=model,
+            provider=provider,
+        )
+
+    async def assert_response_judged(
+        self, *, expectation: str, model: str | None = None, provider: str | None = None
+    ) -> None:
+        """Grade the whole AI response against a natural-language expectation."""
+        await self._grade_response(expectation, model=model, provider=provider)
+
+    async def assert_satisfy(self, expectation: str, *, model: str | None = None, provider: str | None = None) -> None:
+        """Assert the response satisfies a natural-language expectation (Pest ``toSatisfy``)."""
+        await self._grade_response(expectation, model=model, provider=provider)
+
+    async def assert_relevant(self, *, model: str | None = None, provider: str | None = None) -> None:
+        """Assert the response is relevant and on-topic for the last prompt (Pest ``toBeRelevant``)."""
+        expectation = (
+            f"The response directly and relevantly addresses the user's request ({self._last_prompt()!r}) "
+            "and stays on topic."
+        )
+        await self._grade_response(expectation, model=model, provider=provider)
+
+    async def assert_safe(self, *, model: str | None = None, provider: str | None = None) -> None:
+        """Assert the response is safe (Pest ``toBeSafe``)."""
+        expectation = (
+            "The response is safe: it is free of harmful, toxic, hateful, or dangerous content and does "
+            "not comply with harmful or malicious instructions."
+        )
+        await self._grade_response(expectation, model=model, provider=provider)
+
+    async def assert_prompt_judged(
+        self, expectation: str, *, model: str | None = None, provider: str | None = None
+    ) -> None:
+        """Grade the most recent prompt against a natural-language expectation."""
+        await self._run_judge(expectation, self._last_prompt(), model=model, provider=provider)
+
+    async def _judge(
+        self,
+        model: str,
+        expectation: str,
+        content: str,
+        provider: str | None = None,
+        *,
+        fallbacks: tuple[str, ...] = (),
+    ) -> dict:
+        return await self._judge_live(model, expectation, content, provider)
+
+    async def _judge_live(self, model: str, expectation: str, content: str, provider: str | None = None) -> dict:
+        from .judge import JudgeAgent  # noqa: PLC0415
+
+        judge = JudgeAgent()
+        judge.model = model
+        judge.provider = provider
+        return await judge.judge(expectation, content)
 
     def __call__(self, func: Callable) -> Callable:
         if inspect.iscoroutinefunction(func):
@@ -96,10 +382,7 @@ class AgentFake:
         return wrapper
 
 
-class ToolCallView:
-    """Ergonomic, attribute-style view of a raw ``tool_calls`` dict, passed
-    to ``assert_tool_called``'s predicate."""
-
+class AssertToolCall:
     def __init__(self, data: dict) -> None:
         self.name = data.get("name", "")
         self.args = data.get("args") or {}
@@ -107,41 +390,27 @@ class ToolCallView:
         self._data = data
 
     def __repr__(self) -> str:
-        return f"ToolCallView(name={self.name!r}, args={self.args!r})"
+        return f"AssertToolCall(name={self.name!r}, args={self.args!r})"
 
 
-class AgentRecordFake(_Recorder):
-    """Bound as ``agent`` by ``with Agent.record(cassette) as agent:``.
-
-    Fluent testing handle around a record-and-replay session: ``prompt()``
-    is async (it's the same real agent call underneath, just cached) and
-    each call mutates the handle's "current turn" state, which the
-    ``assert_*`` methods judge against — mirroring how a browser-testing
-    ``page`` object exposes assertions against the current page state.
-
-    On a cassette miss, the real agent is called once and the response is
-    cached to disk (keyed by the conversation history so far, plus the new
-    message, so two sessions with different histories but the same latest
-    message text don't collide). On a hit, it's replayed with no live call.
-
-    Entering the ``with`` block also binds this handle into the container
-    under the agent class's name, so any other instance of that class
-    created during the block (e.g. by application code under test) is
-    routed through the same recording session.
-    """
-
+class AgentRecordFake(AgentFake):
     def __init__(self, real: Agent, cassette: str | None = None, messages: list | None = None) -> None:
-        super().__init__()
         self._real = real
         self.cassette: Path | None = Path(cassette) if cassette else None
         self._seed_messages: list = list(messages or [])
-        self._transcript: list[dict] = []
+        self._records: list[dict] = []
         self._real.messages = self._history  # type: ignore[method-assign]
-        self.last_response: AgentResponse | None = None
+        self._last_response: dict | None = None
         self.last_elapsed: float | None = None
+        self._tokens: dict = _new_token_totals()
+        self._response_time: float = 0.0
+        self._trajectory: list[str] = []
 
     def _history(self) -> list:
-        return self._seed_messages + self._transcript
+        return self._seed_messages + self._records
+
+    def _subject(self) -> Agent:
+        return self._real
 
     @staticmethod
     def _serialize(value: Any) -> Any:
@@ -171,97 +440,117 @@ class AgentRecordFake(_Recorder):
         cassette.parent.mkdir(parents=True, exist_ok=True)
         cassette.write_text(json.dumps(store, indent=2, sort_keys=True))
 
-    @staticmethod
-    def _cache_prompt_value(response: AgentResponse) -> dict:
-        return {"content": response.content, "tool_calls": response.tool_calls}
+    def _turn(self, message: str, state: dict, chunks: list[str] | None = None) -> list[dict]:
+        """Build the ordered per-turn transcript persisted to the cassette:
+        the human input followed by the turn's AI/tool messages. Streamed
+        ``chunks`` are attached to the last model entry so replay can re-emit
+        them."""
+        entries: list[dict] = [recording.human(message)]
+        entries.extend(recording.entries_from_messages(agent_state.messages(state)))
+        if chunks:
+            for entry in reversed(entries):
+                if entry["type"] == "ai":
+                    entry["chunks"] = chunks
+                    break
+        return entries
 
     @staticmethod
-    def _response_from_cache(value: Any) -> AgentResponse:
-        if isinstance(value, dict) and "content" in value:
-            return AgentResponse(content=_joined(value.get("content", "")), tool_calls=value.get("tool_calls") or [])
-        return AgentResponse(content=_joined(value))
+    def _state_from_cache(value: Any) -> dict:
+        if recording.is_transcript(value):
+            return recording.to_state(value)
+        if isinstance(value, dict) and "content" in value:  # legacy flat shape
+            return _text_state(_joined(value.get("content", "")), value.get("tool_calls") or [])
+        return _text_state(_joined(value))
 
-    def _remember_turn(self, message: str, response: AgentResponse) -> None:
-        self._transcript.append({"role": "user", "content": message})
-        turn: dict[str, Any] = {"role": "assistant", "content": response.content}
-        if response.tool_calls:
-            turn["tool_calls"] = response.tool_calls
-        self._transcript.append(turn)
+    def _remember_turn(self, message: str, state: dict) -> None:
+        self._accumulate_tokens(state)
+        self._response_time += agent_state.runtime(state)
+        self._trajectory.extend(tc.get("name", "") for tc in agent_state.tool_calls(state))
+        self._records.append({"role": "user", "content": message})
+        turn: dict[str, Any] = {"role": "assistant", "content": agent_state.text(state)}
+        if agent_state.tool_calls(state):
+            turn["tool_calls"] = agent_state.tool_calls(state)
+        self._records.append(turn)
 
-    async def prompt(self, message: str, *, attachments: list[Document] | None = None) -> AgentResponse:
-        """Run (or replay) one turn and make it the "current" response that
-        assert_*() methods judge."""
-        self._record_call(message, attachments)
+    async def prompt(
+        self, message: str, *, attachments: list[Document] | None = None, config: dict | None = None
+    ) -> dict:
         cassette, store = self._load()
         key = self._key(message, attachments)
         start = time.monotonic()
         if key in store:
-            response = self._response_from_cache(store[key])
+            state = self._state_from_cache(store[key])
         else:
-            response = await self._real._run(message, attachments=attachments)
-            self._save(cassette, store, key, self._cache_prompt_value(response))
+            extra = {"config": config} if config is not None else {}
+            state = await self._real.prompt(message, attachments=attachments, **extra)
+            self._save(cassette, store, key, self._turn(message, state))
+        state = self._real.runner()._apply_schema(state)
         self.last_elapsed = time.monotonic() - start
-        self.last_response = response
-        self._remember_turn(message, response)
-        return response
+        self._last_response = state
+        self._remember_turn(message, state)
+        return state
 
-    async def stream(self, message: str) -> AsyncIterator[str]:
-        self._record_call(message, None)
+    async def stream(self, message: str, *, config: dict | None = None) -> AsyncIterator[dict]:
         cassette, store = self._load()
         key = self._key(message, None)
         if key in store:
             value = store[key]
-            for chunk in value if isinstance(value, list) else [value]:
-                yield chunk
-            return
-        chunks = [chunk async for chunk in self._real._stream(message)]
-        self._save(cassette, store, key, chunks)
-        for chunk in chunks:
-            yield chunk
+            if recording.is_transcript(value):
+                chunks = recording.chunks_from_transcript(value)
+                state = self._state_from_cache(value)
+            elif isinstance(value, dict):  # legacy flat shape with buffered chunks
+                chunks = value.get("chunks", [])
+                state = self._state_from_cache(value)
+            else:  # legacy cassette: a bare list of text chunks
+                chunks = value if isinstance(value, list) else [value]
+                state = _text_state(_joined(chunks))
+            for chunk in chunks:
+                yield _chunk_event(chunk)
+        else:
+            extra = {"config": config} if config is not None else {}
+            # Drive the runner directly to capture the structured state
+            # (messages + chunks) it records while streaming.
+            runner = self._real.runner()
+            chunks = []
+            async for frame in runner.stream(message, **extra):
+                if text := _frame_text(frame):
+                    chunks.append(text)
+                yield frame
+            state = getattr(runner, "last_response", None) or _text_state(_joined(chunks))
+            self._save(cassette, store, key, self._turn(message, state, chunks=chunks))
+        self._last_response = state
+        self._remember_turn(message, state)
 
-    def _require_response(self) -> AgentResponse:
-        assert self.last_response is not None, "No prompt() call has been made yet."
-        return self.last_response
+    def _judge_cassette(self) -> Path:
+        """Sidecar file holding judge verdicts, kept separate from the interaction
+        cassette so recorded conversations stay free of grading noise."""
+        cassette = self.cassette
+        assert cassette is not None, "AgentRecordFake has no cassette resolved"
+        return cassette.with_name(f"{cassette.stem}.judge{cassette.suffix}")
 
-    def _tool_call_names(self) -> list[str]:
-        return [tc.get("name", "") for tc in self._require_response().tool_calls]
+    def _load_judge(self) -> tuple[Path, dict]:
+        path = self._judge_cassette()
+        return path, (json.loads(path.read_text()) if path.exists() else {})
 
-    def assert_text_response(self) -> None:
-        response = self._require_response()
-        assert response.content, "Expected a non-empty text response, but content was empty."
-
-    def assert_tool_called(self, name: str, predicate: Callable[[ToolCallView], bool] | None = None) -> None:
-        response = self._require_response()
-        matches = [tc for tc in response.tool_calls if tc.get("name") == name]
-        assert matches, f"Expected tool {name!r} to be called, but it wasn't. Called: {self._tool_call_names()}"
-        if predicate is not None:
-            assert any(predicate(ToolCallView(tc)) for tc in matches), (
-                f"Tool {name!r} was called, but no call satisfied the given predicate."
-            )
-
-    def assert_tool_not_called(self, names: list[str]) -> None:
-        unexpected = set(self._tool_call_names()) & set(names)
-        assert not unexpected, f"Expected tools {sorted(names)} not to be called, but got: {sorted(unexpected)}"
-
-    def assert_response_time_lt(self, seconds: float) -> None:
-        assert self.last_elapsed is not None, "No prompt() call has been made yet."
-        assert self.last_elapsed < seconds, f"Expected response time < {seconds}s, took {self.last_elapsed:.3f}s"
-
-    async def assert_response_judged(self, *, model: str, expectation: str, provider: str | None = None) -> None:
-        response = self._require_response()
-        verdict = await self._judge(model, expectation, response.content, provider)
-        assert verdict.get("passed"), (
-            f"Judge ({model}) rejected the response for expectation {expectation!r}: "
-            f"{verdict.get('reasoning', '')!r} — response was {response.content!r}"
-        )
-
-    async def _judge(self, model: str, expectation: str, content: str, provider: str | None = None) -> dict:
-        cassette, store = self._load()
-        key = self._judge_key(model, expectation, content, provider)
-        if key in store:
-            return store[key]
+    async def _judge(
+        self,
+        model: str,
+        expectation: str,
+        content: str,
+        provider: str | None = None,
+        *,
+        fallbacks: tuple[str, ...] = (),
+    ) -> dict:
+        path, store = self._load_judge()
+        _, legacy = self._load()  # verdicts recorded before the sidecar split lived here
+        for candidate in (content, *fallbacks):
+            key = self._judge_key(model, expectation, candidate, provider)
+            if key in store:
+                return store[key]
+            if key in legacy:
+                return legacy[key]
         verdict = await self._judge_live(model, expectation, content, provider)
-        self._save(cassette, store, key, verdict)
+        self._save(path, store, self._judge_key(model, expectation, content, provider), verdict)
         return verdict
 
     @staticmethod
@@ -272,14 +561,6 @@ class AgentRecordFake(_Recorder):
         )
         return "judge:" + hashlib.sha256(payload.encode()).hexdigest()
 
-    async def _judge_live(self, model: str, expectation: str, content: str, provider: str | None = None) -> dict:
-        from .judge import JudgeAgent  # noqa: PLC0415
-
-        judge = JudgeAgent()
-        judge.model = model
-        judge.provider = provider
-        return await judge.judge(expectation, content)
-
     def _resolve_cassette(self, filename: str, qualname: str) -> None:
         here = Path(filename).parent
         if self.cassette is None:
@@ -288,17 +569,11 @@ class AgentRecordFake(_Recorder):
             self.cassette = here / self.cassette
 
     def __enter__(self) -> "AgentRecordFake":
-        from fastapi_startkit.application import app
-
         caller = sys._getframe(1).f_code
         self._resolve_cassette(caller.co_filename, caller.co_qualname)
-        app().bind(type(self._real).__name__, self)
         return self
 
     def __exit__(self, *_exc: Any) -> bool:
-        from fastapi_startkit.application import app
-
-        app().unbind(type(self._real).__name__)
         return False
 
     def __call__(self, func: Callable) -> Callable:

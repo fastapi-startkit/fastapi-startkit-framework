@@ -8,6 +8,7 @@ from typing import Type, Callable, Any, List, TypeVar, Generic
 from .config import AppConfig
 from .configuration.providers import ConfigurationProvider
 from .container import Container
+from .events import EventServiceProvider
 from .environment.environment import Environment
 
 if TYPE_CHECKING:
@@ -27,6 +28,7 @@ TConfig = TypeVar("TConfig", bound=AppConfig)
 class Application(Container, Generic[TConfig]):
     DEFAULT_PROVIDERS = [
         ConfigurationProvider,
+        EventServiceProvider,
         AppProvider,
     ]
 

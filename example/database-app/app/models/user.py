@@ -17,10 +17,10 @@ class User(Model):
 
     profile = HasOne("Profile")
     courses = BelongsToMany(
-        "Course", 
-        local_foreign_key="user_id", 
-        other_foreign_key="course_id", 
+        "Course",
+        local_foreign_key="user_id",
+        other_foreign_key="course_id",
         table="course_user",
         with_timestamps=True,
-        with_fields=["progress", "completed_at"]
+        with_fields=["progress", "completed_at"],
     )

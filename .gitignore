@@ -21,3 +21,4 @@ application
 .agents
 .uv_cache
 .claude/
+**/.vscode/settings.json

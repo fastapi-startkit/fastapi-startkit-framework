@@ -12,9 +12,13 @@ class CreateCoursesTable(Migration):
             table.increments("id")
             table.string("title")
             table.integer("instructor_id").unsigned()
-            table.foreign("instructor_id").references("id").on("users").on_delete("cascade")
+            table.foreign("instructor_id").references("id").on("users").on_delete(
+                "cascade"
+            )
             table.integer("category_id").unsigned().nullable()
-            table.foreign("category_id").references("id").on("categories").on_delete("set null")
+            table.foreign("category_id").references("id").on("categories").on_delete(
+                "set null"
+            )
             table.timestamps()
 
     async def down(self):
