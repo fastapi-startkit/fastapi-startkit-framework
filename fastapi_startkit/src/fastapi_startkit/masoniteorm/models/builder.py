@@ -1,5 +1,5 @@
 import inspect
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from fastapi_startkit.masoniteorm.expressions.expressions import (
     JoinClause,
@@ -19,9 +19,12 @@ from fastapi_startkit.masoniteorm.query.support import SupportMixin
 
 if TYPE_CHECKING:
     from fastapi_startkit.masoniteorm.connections.connection import Connection
+    from fastapi_startkit.masoniteorm.models.model import Model
+
+TModel = TypeVar("TModel", bound="Model")
 
 
-class QueryBuilder(EagerLoadMixin, SupportMixin):
+class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
     operators = [
         "=",
         "<",
@@ -124,10 +127,15 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
         self._limit = limit
         return self
 
-    async def find(self, primary_key: str | int, columns=None):
+    async def find(self, primary_key: str | int, columns=None) -> "TModel | None":
         return await self.where(self._model.__primary_key__, primary_key).first(columns)
 
-    async def find_or_fail(self, primary_key: str | int, columns=None):
+    async def find_or_fail(self, primary_key: str | int, columns=None) -> "TModel":
+        """Return the record matching ``primary_key``.
+
+        Raises:
+            ModelNotFoundException: If no record matches ``primary_key``.
+        """
         from fastapi_startkit.masoniteorm.exceptions import ModelNotFoundException
 
         result = await self.find(primary_key, columns)
@@ -135,7 +143,7 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
             raise ModelNotFoundException(f"{type(self._model).__name__} with primary key {primary_key!r} not found.")
         return result
 
-    async def first_or_fail(self, columns=None):
+    async def first_or_fail(self, columns=None) -> "TModel":
         from fastapi_startkit.masoniteorm.exceptions import ModelNotFoundException
 
         result = await self.first(columns)
@@ -143,7 +151,7 @@ class QueryBuilder(EagerLoadMixin, SupportMixin):
             raise ModelNotFoundException(f"{type(self._model).__name__} not found.")
         return result
 
-    async def first(self, columns=None):
+    async def first(self, columns=None) -> "TModel | None":
         if not columns:
             columns = []
 
