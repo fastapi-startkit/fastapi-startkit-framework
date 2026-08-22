@@ -81,11 +81,7 @@ class TestOrWhere(QueryTestCase):
 
     async def test_or_where_like(self):
         # Match names starting with 'A' OR ending with 'e'.
-        results = (
-            await User.where("name", "like", "A%")
-            .or_where("name", "like", "%e")
-            .get()
-        )
+        results = await User.where("name", "like", "A%").or_where("name", "like", "%e").get()
         names = {u.name for u in results}
         # "Alice" starts with A; "Joe", "Jane", "Alice" all end with 'e'.
         self.assertEqual(names, {"Joe", "Jane", "Alice"})
@@ -279,12 +275,7 @@ class TestCombinedQueries(QueryTestCase):
         self.assertEqual(names, {"Joe", "Alice"})
 
     async def test_or_where_and_limit(self):
-        results = (
-            await User.where("name", "Alice")
-            .or_where("name", "Jane")
-            .limit(1)
-            .get()
-        )
+        results = await User.where("name", "Alice").or_where("name", "Jane").limit(1).get()
         self.assertEqual(len(results), 1)
 
 
@@ -298,11 +289,7 @@ class TestCombinedQueries(QueryTestCase):
 class TestOrWhereNull(QueryTestCase):
     async def test_or_where_null_returns_combined_rows(self):
         # where(name=Alice) OR email_verified_at IS NULL → Alice + Jane.
-        results = (
-            await User.where("name", "Alice")
-            .or_where_null("email_verified_at")
-            .get()
-        )
+        results = await User.where("name", "Alice").or_where_null("email_verified_at").get()
         names = {u.name for u in results}
         self.assertEqual(names, {"Alice", "Jane"})
 
@@ -316,22 +303,14 @@ class TestOrWhereNull(QueryTestCase):
         base = await User.where("name", "Alice").get()
         self.assertEqual(len(base), 1)
 
-        combined = (
-            await User.where("name", "Alice")
-            .or_where_null("email_verified_at")
-            .get()
-        )
+        combined = await User.where("name", "Alice").or_where_null("email_verified_at").get()
         self.assertEqual(len(combined), 2)  # Alice + Jane
 
 
 class TestOrWhereNotNull(QueryTestCase):
     async def test_or_where_not_null_returns_combined_rows(self):
         # where(name=Jane) OR email_verified_at IS NOT NULL → Jane + Joe + Alice.
-        results = (
-            await User.where("name", "Jane")
-            .or_where_not_null("email_verified_at")
-            .get()
-        )
+        results = await User.where("name", "Jane").or_where_not_null("email_verified_at").get()
         names = {u.name for u in results}
         self.assertEqual(names, {"Joe", "Jane", "Alice"})
 
@@ -342,11 +321,7 @@ class TestOrWhereNotNull(QueryTestCase):
 
     async def test_or_where_not_null_excludes_null_only_rows(self):
         # where(name=Nobody) OR email_verified_at IS NOT NULL → Joe + Alice.
-        results = (
-            await User.where("name", "Nobody")
-            .or_where_not_null("email_verified_at")
-            .get()
-        )
+        results = await User.where("name", "Nobody").or_where_not_null("email_verified_at").get()
         names = {u.name for u in results}
         self.assertEqual(names, {"Joe", "Alice"})
 
@@ -370,11 +345,7 @@ class TestWhereRaw(QueryTestCase):
 
     async def test_where_raw_chained_with_where(self):
         # Normal where then raw — AND logic applies.
-        results = (
-            await User.where("is_admin", False)
-            .where_raw("name = ?", bindings=("Jane",))
-            .get()
-        )
+        results = await User.where("is_admin", False).where_raw("name = ?", bindings=("Jane",)).get()
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0].name, "Jane")
 
@@ -390,21 +361,13 @@ class TestWhereRaw(QueryTestCase):
 
 class TestOrWhereRaw(QueryTestCase):
     async def test_or_where_raw_with_binding(self):
-        results = (
-            await User.where("name", "Alice")
-            .or_where_raw("name = ?", bindings=("Jane",))
-            .get()
-        )
+        results = await User.where("name", "Alice").or_where_raw("name = ?", bindings=("Jane",)).get()
         names = {r.name for r in results}
         self.assertEqual(names, {"Alice", "Jane"})
 
     async def test_or_where_raw_no_bindings(self):
         # No bindings arg provided — must not raise on tuple vs list.
-        results = (
-            await User.where("name", "Alice")
-            .or_where_raw("name IS NOT NULL")
-            .get()
-        )
+        results = await User.where("name", "Alice").or_where_raw("name IS NOT NULL").get()
         self.assertGreater(len(results), 0)
 
     async def test_or_where_raw_three_way_union(self):
@@ -418,10 +381,6 @@ class TestOrWhereRaw(QueryTestCase):
         self.assertEqual(names, {"Joe", "Jane", "Alice"})
 
     async def test_or_where_raw_no_match_returns_only_base(self):
-        results = (
-            await User.where("name", "Alice")
-            .or_where_raw("name = ?", bindings=("Nobody",))
-            .get()
-        )
+        results = await User.where("name", "Alice").or_where_raw("name = ?", bindings=("Nobody",)).get()
         names = {r.name for r in results}
         self.assertEqual(names, {"Alice"})
