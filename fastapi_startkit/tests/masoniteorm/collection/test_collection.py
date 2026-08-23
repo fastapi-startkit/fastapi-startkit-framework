@@ -79,9 +79,7 @@ class TestCollection(TestCase):
                 return related_result
 
             def register_related(self, key, model, collection):
-                raise AssertionError(
-                    "register_related must not run for a non-Collection result"
-                )
+                raise AssertionError("register_related must not run for a non-Collection result")
 
         class Widget(Model):
             gadget = StubRelationship()
