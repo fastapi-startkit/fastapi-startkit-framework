@@ -1,7 +1,19 @@
+from typing import TYPE_CHECKING, Any, Generator, Generic, TypeVar
+
 from fastapi_startkit.support.collection import Collection as BaseCollection
 
+T = TypeVar("T")
 
-class Collection(BaseCollection):
+
+class Collection(BaseCollection, Generic[T]):
+    if TYPE_CHECKING:
+        # Typing-only element-access overrides so a Collection[User] yields
+        # User (not Any) on iteration, indexing, and first(). Runtime behaviour
+        # is supplied unchanged by the base class.
+        def first(self, callback=None) -> "T | None": ...
+        def __iter__(self) -> "Generator[T, Any, None]": ...
+        def __getitem__(self, item) -> "T": ...
+
     def with_relationship_autoloading(self):
         pass
 
@@ -27,6 +39,7 @@ class Collection(BaseCollection):
                     if isinstance(result_set, Collection):
                         relationship.register_related(relation, model, map_related)
                     else:
-                        model.add_relation({relation: map_related or None})
+                        # load() only runs on model collections; T is generic.
+                        model.add_relation({relation: map_related or None})  # type: ignore
 
         return self
