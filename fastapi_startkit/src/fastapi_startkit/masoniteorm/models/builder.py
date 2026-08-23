@@ -18,6 +18,7 @@ from fastapi_startkit.masoniteorm.query.EagerLoadMixin import EagerLoadMixin
 from fastapi_startkit.masoniteorm.query.support import SupportMixin
 
 if TYPE_CHECKING:
+    from fastapi_startkit.masoniteorm.collection import Collection
     from fastapi_startkit.masoniteorm.connections.connection import Connection
     from fastapi_startkit.masoniteorm.models.model import Model
 
@@ -158,7 +159,7 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         results = await self.select(columns).limit(1).get()
         return results.first()
 
-    async def get(self, columns=None):
+    async def get(self, columns=None) -> "Collection[TModel]":
         # TODO: apply scopes
         if not columns:
             columns = []
@@ -458,7 +459,8 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
 
             yield results
 
-            last_id = results.last().get_attributes().get(alias)
+            # count_results != 0 above guarantees a last row.
+            last_id = results[-1].get_attributes().get(alias)
             if last_id is None:
                 raise RuntimeError(
                     f"The chunk_by_id operation was aborted because the [{alias}] "
