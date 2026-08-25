@@ -85,10 +85,60 @@ class TestServeCommandDefaults:
         tester, _ = run()
         assert str(_DEFAULT_PORT) in tester.io.fetch_output()
 
-    def test_uvicorn_kwargs_contain_ws(self):
+    def test_uvicorn_kwargs_default_ws_is_auto(self):
+        """The default WebSocket backend must be the safe 'auto', never
+        'websockets-sansio' — otherwise serve crashes when the optional
+        'websockets' package is not installed.
+        """
         _, mock_uvicorn = run()
         _, kwargs = mock_uvicorn.call_args
+        assert kwargs.get("ws") == "auto"
+
+
+# ---------------------------------------------------------------------------
+# 6. --ws option — WebSocket backend selection
+# ---------------------------------------------------------------------------
+
+
+class TestWsOption:
+    def test_ws_flag_passed_to_uvicorn(self):
+        _, mock_uvicorn = run("--ws websockets")
+        _, kwargs = mock_uvicorn.call_args
+        assert kwargs.get("ws") == "websockets"
+
+    def test_ws_websockets_sansio_opt_in(self):
+        _, mock_uvicorn = run("--ws websockets-sansio")
+        _, kwargs = mock_uvicorn.call_args
         assert kwargs.get("ws") == "websockets-sansio"
+
+    def test_ws_none_backend(self):
+        _, mock_uvicorn = run("--ws none")
+        _, kwargs = mock_uvicorn.call_args
+        assert kwargs.get("ws") == "none"
+
+    def test_ws_config_used_when_no_cli_flag(self):
+        _, mock_uvicorn = run(config={"fastapi.ws": "wsproto"})
+        _, kwargs = mock_uvicorn.call_args
+        assert kwargs.get("ws") == "wsproto"
+
+    def test_cli_flag_overrides_config(self):
+        _, mock_uvicorn = run("--ws auto", config={"fastapi.ws": "wsproto"})
+        _, kwargs = mock_uvicorn.call_args
+        assert kwargs.get("ws") == "auto"
+
+    def test_invalid_ws_exits_nonzero(self):
+        tester, _ = run("--ws bogus")
+        assert tester.status_code == 1
+
+    def test_invalid_ws_does_not_call_uvicorn(self):
+        _, mock_uvicorn = run("--ws bogus")
+        mock_uvicorn.assert_not_called()
+
+    def test_invalid_ws_reports_allowed_values(self):
+        tester, _ = run("--ws bogus")
+        output = tester.io.fetch_output() + tester.io.fetch_error()
+        assert "bogus" in output
+        assert "websockets-sansio" in output
 
 
 # ---------------------------------------------------------------------------

@@ -10,6 +10,13 @@ class ServeCommand(Command):
     name = "serve"
     description = "Start the FastAPI server."
 
+    # WebSocket backends accepted by uvicorn's ``--ws`` option. ``auto`` is the
+    # safe default: uvicorn only imports a concrete backend when a WebSocket
+    # connection is actually opened, so serving never requires the optional
+    # ``websockets`` package for apps that don't use WebSockets.
+    WS_BACKENDS = ("auto", "none", "websockets", "websockets-sansio", "wsproto")
+    DEFAULT_WS_BACKEND = "auto"
+
     options = [
         option(
             "port",
@@ -39,6 +46,17 @@ class ServeCommand(Command):
             default="bootstrap.application:app",
             description="The application to serve",
         ),
+        option(
+            "ws",
+            None,
+            flag=False,
+            default=None,
+            description=(
+                "WebSocket backend passed to uvicorn: "
+                "auto, none, websockets, websockets-sansio, wsproto. "
+                "Defaults to 'auto' (overrides fastapi config)"
+            ),
+        ),
     ]
 
     def resolve_option(self, key: str, default: str | int | None = None):
@@ -57,11 +75,20 @@ class ServeCommand(Command):
 
         return uri.with_port(port) if port else uri
 
+    def resolve_ws(self) -> str:
+        """Select the uvicorn WebSocket backend: CLI flag > config > safe default."""
+        return self.option("ws") or Config.get("fastapi.ws") or self.DEFAULT_WS_BACKEND
+
     def handle(self):
         import uvicorn
 
         from fastapi_startkit import Config
         from fastapi_startkit.container import Container
+
+        ws = self.resolve_ws()
+        if ws not in self.WS_BACKENDS:
+            self.line(f"<error>Invalid --ws backend '{ws}'. Allowed values: {', '.join(self.WS_BACKENDS)}.</error>")
+            return 1
 
         # Resolve server settings: CLI flag > fastapi config > uvicorn default (None)
         cfg_reload_dirs = Config.get("fastapi.reload_dirs") or None
@@ -74,7 +101,7 @@ class ServeCommand(Command):
             "host": url.host(),
             "port": url.port(),
             "reload": reload,
-            "ws": "websockets-sansio",
+            "ws": ws,
         }
 
         if self.is_app_exist():
