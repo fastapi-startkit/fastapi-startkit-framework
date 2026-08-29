@@ -45,22 +45,17 @@ class ServeCommand(Command):
     ]
 
     def config_value(self, key: str) -> Any:
-        """Read ``fastapi.<key>``, falling back to the default FastAPIConfig declares for it.
-
-        FastAPIConfig stays the single source of truth for defaults, so the command keeps
-        working for applications that never registered a ``fastapi`` config of their own.
-        It is instantiated per call so env-backed fields are read at command time.
-
-        A configured ``None`` also falls back: Configuration.get() only substitutes its
-        default on a missing key, so a key present but unset would otherwise leak through.
-        """
+        """Resolve `fastapi.<key>`, falling back to the FastAPIConfig default."""
+        # Instantiated per call so env-backed fields are read at command time.
         default = getattr(FastAPIConfig(), key, None)
+        # Configuration.get() only substitutes its default on a missing key, so a
+        # key that is present but None would otherwise leak through.
         value = Config.get(f"fastapi.{key}", default)
 
         return default if value is None else value
 
     def resolve_option(self, key: str) -> Any:
-        """Resolve a server setting: CLI flag > fastapi config > FastAPIConfig default."""
+        """CLI flag > fastapi config > FastAPIConfig default."""
         return cast_value(self.option(key) or self.config_value(key))
 
     def resolve_url(self) -> Uriable:

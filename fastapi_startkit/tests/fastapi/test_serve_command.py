@@ -269,10 +269,6 @@ class TestCliOverridesConfig:
 
 # ---------------------------------------------------------------------------
 # 7. A configured None falls back to the FastAPIConfig default
-#
-# Configuration.get() only substitutes its default on a *missing* key, so a key
-# that exists but holds None reaches the command. Left unhandled, a None app
-# crashed is_app_exist() with AttributeError on None.split().
 # ---------------------------------------------------------------------------
 
 
@@ -309,8 +305,6 @@ class TestNoneConfigValue:
 
 
 class TestEnvReadAtCommandTime:
-    """FastAPIConfig is instantiated per call, so env set after import still applies."""
-
     def test_app_url_env_applied_after_import(self):
         with patch.dict(os.environ, {"APP_URL": "http://198.51.100.7:9999"}):
             tester, _ = run()
@@ -327,7 +321,7 @@ class TestEnvReadAtCommandTime:
         assert kwargs.get("reload") is False
 
     def test_reload_defaults_true_without_env(self):
-        """Guards the test above: without APP_RELOAD the default is True, so it proves the env read."""
+        """Baseline for the test above: without APP_RELOAD the default is True."""
         _, mock_uvicorn = run(app_found=True)
         _, kwargs = mock_uvicorn.call_args
         assert kwargs.get("reload") is True
