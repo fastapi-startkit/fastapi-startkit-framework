@@ -8,10 +8,12 @@ so the tests are self-contained with no live app or network required.
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
+from urllib.parse import urlsplit
 
 from cleo.testers.command_tester import CommandTester
 
 from fastapi_startkit.fastapi.commands.serve_command import ServeCommand
+from fastapi_startkit.fastapi.config import FastAPIConfig
 
 _DEFAULT_HOST = "127.0.0.1"
 _DEFAULT_PORT = 8000
@@ -185,3 +187,80 @@ class TestAppNotFound:
         _, mock_uvicorn = run(app_found=False)
         _, kwargs = mock_uvicorn.call_args
         assert kwargs.get("reload") is False
+
+
+# ---------------------------------------------------------------------------
+# 6. FastAPIConfig is the single source of truth for defaults
+# ---------------------------------------------------------------------------
+
+
+class TestConfigBackedDefaults:
+    """With no CLI flag and no registered config, values come from FastAPIConfig."""
+
+    def test_default_app_url_matches_config_dataclass(self):
+        tester, _ = run()
+        assert urlsplit(FastAPIConfig().app_url).hostname in tester.io.fetch_output()
+
+    def test_default_app_matches_config_dataclass(self):
+        _, mock_uvicorn = run(app_found=True)
+        _, kwargs = mock_uvicorn.call_args
+        assert kwargs.get("app") == FastAPIConfig().app
+
+    def test_default_reload_matches_config_dataclass(self):
+        _, mock_uvicorn = run(app_found=True)
+        _, kwargs = mock_uvicorn.call_args
+        assert kwargs.get("reload") == FastAPIConfig().reload
+
+    def test_default_reload_excludes_matches_config_dataclass(self):
+        _, mock_uvicorn = run(app_found=True)
+        _, kwargs = mock_uvicorn.call_args
+        assert kwargs.get("reload_excludes") == FastAPIConfig().reload_excludes
+
+
+class TestConfigOverridesDefault:
+    """A registered `fastapi` config wins over the FastAPIConfig default."""
+
+    def test_config_app_used_when_no_cli_flag(self):
+        _, mock_uvicorn = run(config={"fastapi.app": "custom.boot:app"}, app_found=True)
+        _, kwargs = mock_uvicorn.call_args
+        assert kwargs.get("app") == "custom.boot:app"
+
+    def test_config_reload_disables_reload(self):
+        _, mock_uvicorn = run(config={"fastapi.reload": False}, app_found=True)
+        _, kwargs = mock_uvicorn.call_args
+        assert kwargs.get("reload") is False
+
+    def test_config_reload_dirs_passed_to_uvicorn(self):
+        _, mock_uvicorn = run(config={"fastapi.reload_dirs": ["src"]}, app_found=True)
+        _, kwargs = mock_uvicorn.call_args
+        assert kwargs.get("reload_dirs") == ["src"]
+
+    def test_reload_dirs_omitted_when_reload_disabled(self):
+        _, mock_uvicorn = run(
+            config={"fastapi.reload_dirs": ["src"], "fastapi.reload": False},
+            app_found=True,
+        )
+        _, kwargs = mock_uvicorn.call_args
+        assert "reload_dirs" not in kwargs
+
+
+class TestCliOverridesConfig:
+    """An explicit CLI flag still wins over the config-provided default."""
+
+    def test_cli_app_beats_config_app(self):
+        _, mock_uvicorn = run(
+            "--app cli.boot:app",
+            config={"fastapi.app": "config.boot:app"},
+            app_found=True,
+        )
+        _, kwargs = mock_uvicorn.call_args
+        assert kwargs.get("app") == "cli.boot:app"
+
+    def test_cli_reload_beats_config_reload(self):
+        _, mock_uvicorn = run("--reload true", config={"fastapi.reload": False}, app_found=True)
+        _, kwargs = mock_uvicorn.call_args
+        assert kwargs.get("reload") is True
+
+    def test_cli_host_beats_config_app_url(self):
+        tester, _ = run("--host 0.0.0.0", config={"fastapi.app_url": "http://10.0.0.1:8000"})
+        assert "0.0.0.0" in tester.io.fetch_output()

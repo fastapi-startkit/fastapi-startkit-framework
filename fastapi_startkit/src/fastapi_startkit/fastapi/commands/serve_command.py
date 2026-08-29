@@ -1,9 +1,27 @@
+import dataclasses
+
 from cleo.helpers import option
 
 from fastapi_startkit import Config
 from fastapi_startkit.console.command import Command
 from fastapi_startkit.environment import value as cast_value
+from fastapi_startkit.fastapi.config import FastAPIConfig
 from fastapi_startkit.support import Uri, Uriable
+
+_CONFIG_FIELDS = {field.name: field for field in dataclasses.fields(FastAPIConfig)}
+
+
+def _config_default(key: str):
+    """Default declared by FastAPIConfig for *key*, or None when it declares no such field."""
+    field = _CONFIG_FIELDS.get(key)
+
+    if field is None:
+        return None
+
+    if field.default_factory is not dataclasses.MISSING:
+        return field.default_factory()
+
+    return None if field.default is dataclasses.MISSING else field.default
 
 
 class ServeCommand(Command):
@@ -36,18 +54,25 @@ class ServeCommand(Command):
             "app",
             "a",
             flag=False,
-            default="bootstrap.application:app",
-            description="The application to serve",
+            default=None,
+            description="The application to serve (overrides fastapi config)",
         ),
     ]
 
-    def resolve_option(self, key: str, default: str | int | None = None):
-        value = self.option(key) or Config.get(f"fastapi.{key}", default)
+    def config_value(self, key: str):
+        """Read ``fastapi.<key>``, falling back to the default FastAPIConfig declares for it.
 
-        return cast_value(value)
+        FastAPIConfig stays the single source of truth for defaults, so the command keeps
+        working for applications that never registered a ``fastapi`` config of their own.
+        """
+        return Config.get(f"fastapi.{key}", _config_default(key))
+
+    def resolve_option(self, key: str):
+        """Resolve a server setting: CLI flag > fastapi config > FastAPIConfig default."""
+        return cast_value(self.option(key) or self.config_value(key))
 
     def resolve_url(self) -> Uriable:
-        host = self.option("host") or Config.get("fastapi.app_url", "http://127.0.0.1:8000")
+        host = self.option("host") or self.config_value("app_url")
         port = self.option("port")
 
         if host and not host.startswith("http"):
@@ -60,15 +85,11 @@ class ServeCommand(Command):
     def handle(self):
         import uvicorn
 
-        from fastapi_startkit import Config
         from fastapi_startkit.container import Container
 
-        # Resolve server settings: CLI flag > fastapi config > uvicorn default (None)
-        cfg_reload_dirs = Config.get("fastapi.reload_dirs") or None
-        cfg_reload_excludes = Config.get("fastapi.reload_excludes") or None
-
         url = self.resolve_url()
-        reload = self.resolve_option("reload", True)
+        reload = self.resolve_option("reload")
+        app = self.resolve_option("app")
 
         kwargs = {
             "host": url.host(),
@@ -77,19 +98,24 @@ class ServeCommand(Command):
             "ws": "websockets-sansio",
         }
 
-        if self.is_app_exist():
+        if self.is_app_exist(app):
             kwargs.update(
                 {
-                    "app": self.option("app"),
+                    "app": app,
                     "factory": True,
                 }
             )
-            if cfg_reload_dirs is not None and reload:
-                kwargs["reload_dirs"] = cfg_reload_dirs
-            if cfg_reload_excludes is not None and reload:
-                kwargs["reload_excludes"] = cfg_reload_excludes
 
-            self.line(f"<info>Starting Uvicorn server on {url.host()}:{url.port()} [{self.option('app')}]...</info>")
+            if reload:
+                reload_dirs = self.config_value("reload_dirs")
+                reload_excludes = self.config_value("reload_excludes")
+
+                if reload_dirs:
+                    kwargs["reload_dirs"] = reload_dirs
+                if reload_excludes:
+                    kwargs["reload_excludes"] = reload_excludes
+
+            self.line(f"<info>Starting Uvicorn server on {url.host()}:{url.port()} [{app}]...</info>")
 
         else:
             self.line(f"<info>Starting Uvicorn server on {url.host()}:{url.port()}...</info>")
@@ -100,10 +126,8 @@ class ServeCommand(Command):
         except KeyboardInterrupt:
             self.line("<comment>Server stopped manually.</comment>")
 
-    def is_app_exist(self) -> "bool":
+    def is_app_exist(self, app: str) -> "bool":
         import importlib.util
-
-        app = self.option("app")
 
         module_name = app.split(":")[0]
         try:
