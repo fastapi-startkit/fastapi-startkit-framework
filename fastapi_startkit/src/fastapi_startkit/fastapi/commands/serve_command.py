@@ -1,4 +1,4 @@
-import dataclasses
+from typing import Any
 
 from cleo.helpers import option
 
@@ -7,21 +7,6 @@ from fastapi_startkit.console.command import Command
 from fastapi_startkit.environment import value as cast_value
 from fastapi_startkit.fastapi.config import FastAPIConfig
 from fastapi_startkit.support import Uri, Uriable
-
-_CONFIG_FIELDS = {field.name: field for field in dataclasses.fields(FastAPIConfig)}
-
-
-def _config_default(key: str):
-    """Default declared by FastAPIConfig for *key*, or None when it declares no such field."""
-    field = _CONFIG_FIELDS.get(key)
-
-    if field is None:
-        return None
-
-    if field.default_factory is not dataclasses.MISSING:
-        return field.default_factory()
-
-    return None if field.default is dataclasses.MISSING else field.default
 
 
 class ServeCommand(Command):
@@ -59,15 +44,22 @@ class ServeCommand(Command):
         ),
     ]
 
-    def config_value(self, key: str):
+    def config_value(self, key: str) -> Any:
         """Read ``fastapi.<key>``, falling back to the default FastAPIConfig declares for it.
 
         FastAPIConfig stays the single source of truth for defaults, so the command keeps
         working for applications that never registered a ``fastapi`` config of their own.
-        """
-        return Config.get(f"fastapi.{key}", _config_default(key))
+        It is instantiated per call so env-backed fields are read at command time.
 
-    def resolve_option(self, key: str):
+        A configured ``None`` also falls back: Configuration.get() only substitutes its
+        default on a missing key, so a key present but unset would otherwise leak through.
+        """
+        default = getattr(FastAPIConfig(), key, None)
+        value = Config.get(f"fastapi.{key}", default)
+
+        return default if value is None else value
+
+    def resolve_option(self, key: str) -> Any:
         """Resolve a server setting: CLI flag > fastapi config > FastAPIConfig default."""
         return cast_value(self.option(key) or self.config_value(key))
 
@@ -137,6 +129,6 @@ class ServeCommand(Command):
         except (ImportError, ValueError):
             pass
 
-        self.line("<fg=yellow>Unable to detect the application, run the command with --app={app}</>")
+        self.line(f"<fg=yellow>Unable to detect the application '{app}', run the command with --app=your_module:app</>")
 
         return False

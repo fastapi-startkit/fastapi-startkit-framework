@@ -7,6 +7,7 @@ so the tests are self-contained with no live app or network required.
 
 from __future__ import annotations
 
+import os
 from unittest.mock import MagicMock, patch
 from urllib.parse import urlsplit
 
@@ -264,3 +265,69 @@ class TestCliOverridesConfig:
     def test_cli_host_beats_config_app_url(self):
         tester, _ = run("--host 0.0.0.0", config={"fastapi.app_url": "http://10.0.0.1:8000"})
         assert "0.0.0.0" in tester.io.fetch_output()
+
+
+# ---------------------------------------------------------------------------
+# 7. A configured None falls back to the FastAPIConfig default
+#
+# Configuration.get() only substitutes its default on a *missing* key, so a key
+# that exists but holds None reaches the command. Left unhandled, a None app
+# crashed is_app_exist() with AttributeError on None.split().
+# ---------------------------------------------------------------------------
+
+
+class TestNoneConfigValue:
+    def test_none_app_does_not_crash_when_app_found(self):
+        tester, _ = run(config={"fastapi.app": None}, app_found=True)
+        assert tester.status_code == 0
+
+    def test_none_app_does_not_crash_when_app_not_found(self):
+        tester, _ = run(config={"fastapi.app": None}, app_found=False)
+        assert tester.status_code == 0
+
+    def test_none_app_falls_back_to_config_default(self):
+        _, mock_uvicorn = run(config={"fastapi.app": None}, app_found=True)
+        _, kwargs = mock_uvicorn.call_args
+        assert kwargs.get("app") == FastAPIConfig().app
+
+    def test_none_reload_falls_back_to_config_default(self):
+        _, mock_uvicorn = run(config={"fastapi.reload": None}, app_found=True)
+        _, kwargs = mock_uvicorn.call_args
+        assert kwargs.get("reload") == FastAPIConfig().reload
+
+    def test_unknown_key_resolves_to_none(self):
+        with patch(
+            "fastapi_startkit.fastapi.commands.serve_command.Config.get",
+            side_effect=lambda key, default=None: default,
+        ):
+            assert ServeCommand().config_value("no_such_setting") is None
+
+
+# ---------------------------------------------------------------------------
+# 8. Env-backed defaults are read at command time, not frozen at import
+# ---------------------------------------------------------------------------
+
+
+class TestEnvReadAtCommandTime:
+    """FastAPIConfig is instantiated per call, so env set after import still applies."""
+
+    def test_app_url_env_applied_after_import(self):
+        with patch.dict(os.environ, {"APP_URL": "http://198.51.100.7:9999"}):
+            tester, _ = run()
+
+        output = tester.io.fetch_output()
+        assert "198.51.100.7" in output
+        assert "9999" in output
+
+    def test_reload_env_applied_after_import(self):
+        with patch.dict(os.environ, {"APP_RELOAD": "false"}):
+            _, mock_uvicorn = run(app_found=True)
+
+        _, kwargs = mock_uvicorn.call_args
+        assert kwargs.get("reload") is False
+
+    def test_reload_defaults_true_without_env(self):
+        """Guards the test above: without APP_RELOAD the default is True, so it proves the env read."""
+        _, mock_uvicorn = run(app_found=True)
+        _, kwargs = mock_uvicorn.call_args
+        assert kwargs.get("reload") is True
