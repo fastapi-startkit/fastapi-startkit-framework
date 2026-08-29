@@ -93,7 +93,7 @@ class BaseGrammar:
                     limit=self.process_limit(),
                     offset=self.process_offset(),
                     aggregates=self.process_aggregates(),
-                    order_by=self.process_order_by(),
+                    order_by=self.process_order_by(qmark=qmark),
                     group_by=self.process_group_by(),
                     having=self.process_having(),
                     lock=self.process_locks(),
@@ -112,7 +112,7 @@ class BaseGrammar:
                     limit=self.process_limit(),
                     offset=self.process_offset(),
                     aggregates=self.process_aggregates(),
-                    order_by=self.process_order_by(),
+                    order_by=self.process_order_by(qmark=qmark),
                     group_by=self.process_group_by(),
                     having=self.process_having(),
                     lock=self.process_locks(),
@@ -388,7 +388,7 @@ class BaseGrammar:
 
         return sql
 
-    def process_order_by(self):
+    def process_order_by(self, qmark=False):
         """Compiles an order by for a query expression.
 
         Returns:
@@ -406,6 +406,21 @@ class BaseGrammar:
                     if order_bys.bindings:
                         self.add_binding(*order_bys.bindings)
 
+                    continue
+
+                if getattr(order_bys, "builder", None) is not None:
+                    if len(order_crit):
+                        order_crit += ", "
+                    if qmark:
+                        subquery_sql = order_bys.builder.to_qmark()
+                        if order_bys.builder._bindings:
+                            self.add_binding(*order_bys.builder._bindings)
+                    else:
+                        subquery_sql = order_bys.builder.to_sql()
+                    column_string = self.subquery_string().format(query=subquery_sql)
+                    order_crit += self.order_by_format().format(
+                        column=column_string, direction=order_bys.direction.upper()
+                    )
                     continue
 
                 if len(order_crit):
