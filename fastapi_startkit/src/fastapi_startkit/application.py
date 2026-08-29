@@ -3,7 +3,7 @@ import shlex
 from fastapi_startkit.foundation.app_provider import AppProvider
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
-from typing import Type, Callable, Any, List, TypeVar, Generic
+from typing import Type, Callable, Any, List, TypeVar, Generic, cast
 
 from .config import AppConfig
 from .configuration.providers import ConfigurationProvider
@@ -47,7 +47,7 @@ class Application(Container, Generic[TConfig]):
         self.providers = self.DEFAULT_PROVIDERS + (providers or [])
         self.published_resources = {}
         self.commands = []
-        self._config = config
+        self._config: Type[TConfig] = config or cast(Type[TConfig], AppConfig)
         self._config_instance: Optional[TConfig] = None
         self._exception_handler_class = exception_handler or ExceptionHandler
         self.exception_manager: ExceptionHandler
@@ -199,13 +199,12 @@ class Application(Container, Generic[TConfig]):
         return self.env == "testing"
 
     def configure_config(self):
-        if self._config is not None:
-            self._config_instance = self._config()
+        self._config_instance = self._config()
 
     @property
     def config(self) -> TConfig:
-        if self._config_instance is None:
-            raise RuntimeError("Config is not set")
+        # configure_config() runs during __init__, so this is always populated.
+        assert self._config_instance is not None
         return self._config_instance
 
     def configure_paths(self):
