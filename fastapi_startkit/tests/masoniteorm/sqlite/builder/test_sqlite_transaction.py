@@ -1,8 +1,9 @@
 import asyncio
 from contextvars import Context
 from tempfile import NamedTemporaryFile
+from unittest import mock
 
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
 from fastapi_startkit.masoniteorm.connections.sqlite_connection import SQliteConnection
 from ...fixtures.model import User
@@ -89,6 +90,94 @@ class TestQueryBuilderTransaction(TestCase):
         await conn.commit_transaction()
         user = await User.where("email", "commit_test@example.com").first()
         assert user is not None
+
+    async def test_transaction_context_nested_savepoint_rolls_back_only_inner(self):
+        conn = DB.connection("sqlite")
+        async with conn.transaction():
+            await User.create({"email": "ctx_outer@example.com", "name": "Outer", "is_admin": False})
+            try:
+                async with conn.transaction():
+                    await User.create({"email": "ctx_inner@example.com", "name": "Inner", "is_admin": False})
+                    raise ValueError("abort inner")
+            except ValueError:
+                pass
+            assert await User.where("email", "ctx_outer@example.com").first() is not None
+            assert await User.where("email", "ctx_inner@example.com").first() is None
+
+    async def test_transaction_object_commit_persists_insert(self):
+        conn = DB.connection("sqlite")
+        transaction = conn.transaction()
+        async with transaction:
+            await User.create({"email": "obj_commit@example.com", "name": "Obj Commit", "is_admin": False})
+            await transaction.commit()
+        assert await User.where("email", "obj_commit@example.com").first() is not None
+
+    async def test_transaction_object_rollback_discards_insert(self):
+        conn = DB.connection("sqlite")
+        transaction = conn.transaction()
+        async with transaction:
+            await User.create({"email": "obj_rollback@example.com", "name": "Obj Rollback", "is_admin": False})
+            await transaction.rollback()
+        assert await User.where("email", "obj_rollback@example.com").first() is None
+
+    async def test_transaction_enter_failure_releases_owned_connection(self):
+        with NamedTemporaryFile(suffix=".sqlite3") as database:
+            engine = create_async_engine(f"sqlite+aiosqlite:///{database.name}", pool_size=1, max_overflow=0)
+            connection = SQliteConnection(engine, {"driver": "sqlite"})
+            with mock.patch.object(AsyncConnection, "begin", side_effect=RuntimeError("begin failed")):
+                with self.assertRaises(RuntimeError):
+                    async with connection.transaction():
+                        pass
+            self.assertIsNone(connection.connection)
+            self.assertEqual(engine.pool.checkedout(), 0)  # type: ignore[attr-defined]
+            await engine.dispose()
+
+    async def test_transactions_property_tracks_root_and_nested(self):
+        conn = DB.connection("sqlite")
+        self.assertEqual(conn.transactions, [])
+        await conn.begin_transaction()
+        self.assertEqual(len(conn.transactions), 1)
+        await conn.begin_transaction()
+        self.assertEqual(len(conn.transactions), 2)
+        await conn.commit_transaction()
+        self.assertEqual(len(conn.transactions), 1)
+        await conn.rollback()
+        self.assertEqual(conn.transactions, [])
+
+    async def test_nested_commit_is_discarded_by_outer_rollback(self):
+        conn = DB.connection("sqlite")
+        await conn.begin_transaction()
+        # outer DML first: sqlite drivers only issue a real BEGIN before DML,
+        # so a savepoint opened on a pristine transaction would commit on release
+        await User.create({"email": "outer_pending@example.com", "name": "Outer Pending", "is_admin": False})
+        await conn.begin_transaction()
+        await User.create({"email": "nested_commit@example.com", "name": "Nested Commit", "is_admin": False})
+        await conn.commit_transaction()
+        await conn.rollback()
+
+        assert await User.where("email", "outer_pending@example.com").first() is None
+        assert await User.where("email", "nested_commit@example.com").first() is None
+
+    async def test_commit_without_transaction_raises(self):
+        conn = DB.connection("sqlite")
+        with self.assertRaises(RuntimeError):
+            await conn.commit_transaction()
+
+    async def test_rollback_without_transaction_raises(self):
+        conn = DB.connection("sqlite")
+        with self.assertRaises(RuntimeError):
+            await conn.rollback()
+
+    async def test_reconnect_releases_context_connection(self):
+        with NamedTemporaryFile(suffix=".sqlite3") as database:
+            engine = create_async_engine(f"sqlite+aiosqlite:///{database.name}", pool_size=1, max_overflow=0)
+            connection = SQliteConnection(engine, {"driver": "sqlite"})
+            await connection.begin_transaction()
+            self.assertIsNotNone(connection.connection)
+            await connection.reconnect()
+            self.assertIsNone(connection.connection)
+            self.assertEqual(engine.pool.checkedout(), 0)  # type: ignore[attr-defined]
+            await engine.dispose()
 
     async def test_nested_rollback_preserves_outer_transaction(self):
         conn = DB.connection("sqlite")
