@@ -736,14 +736,9 @@ class Blueprint:
 
         sql = await self.to_sql()
         if isinstance(sql, list):
-            await self.connection.begin_transaction()
-            try:
+            async with self.connection.transaction():
                 for q in sql:
                     await self.connection.statement(q, ())
-                await self.connection.commit_transaction()
-            except BaseException:
-                await self.connection.rollback()
-                raise
             return
         return await self.connection.statement(sql, ())
 
