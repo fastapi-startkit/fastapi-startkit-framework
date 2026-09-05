@@ -18,16 +18,12 @@ class TestPostgresConnection(IsolatedAsyncioTestCase):
 
     async def test_insert_get_id_returns_first_column_of_returning_row(self):
         connection = self._connection_with_result((42,))
-        inserted_id = await connection.insert_get_id(
-            "INSERT INTO users (name) VALUES (?) RETURNING id", ["Joe"]
-        )
+        inserted_id = await connection.insert_get_id("INSERT INTO users (name) VALUES (?) RETURNING id", ["Joe"])
         self.assertEqual(inserted_id, 42)
 
     async def test_insert_get_id_returns_none_when_no_row(self):
         connection = self._connection_with_result(None)
-        inserted_id = await connection.insert_get_id(
-            "INSERT INTO users (name) VALUES (?) RETURNING id", ["Joe"]
-        )
+        inserted_id = await connection.insert_get_id("INSERT INTO users (name) VALUES (?) RETURNING id", ["Joe"])
         self.assertIsNone(inserted_id)
 
     def test_grammar_platform_and_processor_classes(self):
