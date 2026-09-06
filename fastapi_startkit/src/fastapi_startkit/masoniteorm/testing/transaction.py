@@ -3,10 +3,12 @@ class DatabaseTransaction:
         from fastapi_startkit.masoniteorm.models import Model
 
         self.connection = Model.db_manager.connection(None)
-        await self.connection.begin_transaction()
+        self.transaction = self.connection.transaction()
+        await self.transaction.__aenter__()
 
     async def asyncStopTestRun(self):
-        await self.connection.rollback()
+        await self.transaction.rollback()
+        await self.transaction.__aexit__(None, None, None)
 
 
 class RefreshDatabase(DatabaseTransaction):

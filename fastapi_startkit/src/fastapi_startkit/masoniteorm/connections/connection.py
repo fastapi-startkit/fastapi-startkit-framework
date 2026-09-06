@@ -1,19 +1,96 @@
-from typing import List
+from __future__ import annotations
+
+from contextvars import ContextVar, Token
+from types import TracebackType
+from typing import TYPE_CHECKING
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncTransaction
 
 from fastapi_startkit.masoniteorm.models.builder import QueryBuilder
 
+if TYPE_CHECKING:
+    from typing import Self
+
+
+class Transaction:
+    def __init__(self, owner: Connection):
+        self.owner = owner
+        self.connection: AsyncConnection | None = None
+        self.transaction: AsyncTransaction | None = None
+        self._token: Token[AsyncConnection | None] | None = None
+        self._owns_connection = False
+
+    async def __aenter__(self) -> Self:
+        connection = self.owner.connection
+        if connection is None:
+            connection = await self.owner.engine.connect()
+            self._owns_connection = True
+        self.connection = connection
+        self._token = self.owner._connection_context.set(connection)
+
+        try:
+            if connection.in_transaction():
+                self.transaction = await connection.begin_nested()
+            else:
+                self.transaction = await connection.begin()
+        except BaseException:
+            self.owner._connection_context.reset(self._token)
+            if self._owns_connection:
+                await connection.close()
+            raise
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        assert self.connection is not None
+        assert self.transaction is not None
+        assert self._token is not None
+        try:
+            await self.transaction.__aexit__(exc_type, exc_value, traceback)
+        finally:
+            self.owner._connection_context.reset(self._token)
+            if self._owns_connection:
+                await self.connection.close()
+
+    async def commit(self) -> None:
+        assert self.transaction is not None
+        await self.transaction.commit()
+
+    async def rollback(self) -> None:
+        assert self.transaction is not None
+        await self.transaction.rollback()
+
 
 class Connection:
     def __init__(self, engine: AsyncEngine, config: dict):
         self.config = config
         self.engine: AsyncEngine = engine
-        self.connection: AsyncConnection | None = None
-        self.transactions: List[AsyncTransaction] = []
+        self._connection_context: ContextVar[AsyncConnection | None] = ContextVar(
+            f"masoniteorm_connection_{id(self)}", default=None
+        )
 
-    def query(self) -> "QueryBuilder":
+    @property
+    def connection(self) -> AsyncConnection | None:
+        return self._connection_context.get()
+
+    @property
+    def transactions(self) -> list[AsyncTransaction]:
+        connection = self.connection
+        if connection is None:
+            return []
+        nested = connection.get_nested_transaction()
+        root = connection.get_transaction()
+        return [transaction for transaction in (root, nested) if transaction is not None]
+
+    def transaction(self) -> Transaction:
+        return Transaction(self)
+
+    def query(self) -> QueryBuilder:
         return QueryBuilder(
             connection=self,
             grammar=self.get_query_grammar(),
@@ -21,11 +98,7 @@ class Connection:
         )
 
     async def get_connection(self) -> AsyncConnection:
-        if self.connection is None:
-            self.connection = await self.engine.connect()
-
-        assert self.connection is not None
-        return self.connection
+        return self.connection or await self.engine.connect()
 
     def get_query_grammar(cls):
         pass
@@ -34,38 +107,51 @@ class Connection:
         pass
 
     async def begin_transaction(self) -> None:
-        connection = await self.get_connection()
-
-        if not self.transactions:
-            transaction = await connection.begin()
+        connection = self.connection
+        if connection is None:
+            connection = await self.engine.connect()
+            self._connection_context.set(connection)
+        if connection.in_transaction():
+            await connection.begin_nested()
         else:
-            transaction = await connection.begin_nested()
-
-        self.transactions.append(transaction)
+            await connection.begin()
 
     async def commit_transaction(self) -> None:
-        if not self.transactions:
+        connection = self.connection
+        if connection is None or not connection.in_transaction():
             raise RuntimeError("No active transaction to commit")
-
-        transaction = self.transactions.pop()
-        await transaction.commit()
-
-        await self._maybe_cleanup()
+        nested = connection.get_nested_transaction()
+        if nested is not None:
+            await nested.commit()
+        else:
+            transaction = connection.get_transaction()
+            assert transaction is not None
+            await transaction.commit()
+            await self._release_connection(connection)
 
     async def rollback(self) -> None:
-        if not self.transactions:
+        connection = self.connection
+        if connection is None or not connection.in_transaction():
             raise RuntimeError("No active transaction to rollback")
+        nested = connection.get_nested_transaction()
+        if nested is not None:
+            await nested.rollback()
+        else:
+            transaction = connection.get_transaction()
+            assert transaction is not None
+            await transaction.rollback()
+            await self._release_connection(connection)
 
-        transaction = self.transactions.pop()
-        await transaction.rollback()
-
-        await self._maybe_cleanup()
+    async def _release_connection(self, connection: AsyncConnection) -> None:
+        await connection.close()
+        if self.connection is connection:
+            self._connection_context.set(None)
 
     async def close(self) -> None:
-        if self.connection is not None:
-            await self.connection.close()
-            self.connection = None
-        self.transactions = []
+        connection = self.connection
+        if connection is not None:
+            await connection.close()
+            self._connection_context.set(None)
 
     async def reconnect(self) -> None:
         await self.close()
@@ -81,30 +167,22 @@ class Connection:
         return (query, params)
 
     async def run(self, query: str, bindings: list | None = None):
-        query, bindings = self.sql_alchemy_bindings(query, bindings)
-
-        conn = await self.get_connection()
-        result = await conn.execute(text(query), bindings or {})
-
-        if not self.transactions:
-            await conn.commit()
-
-        return result
+        query, params = self.sql_alchemy_bindings(query, bindings)
+        return await self._execute(query, params)
 
     async def execute(self, query: str, bindings: list | None = None):
-        query, bindings = self.sql_alchemy_bindings(query, bindings)
+        query, params = self.sql_alchemy_bindings(query, bindings)
+        return await self._execute(query, params)
 
-        conn = await self.get_connection()
-        result = await conn.execute(text(query), bindings or {})
-
-        if not self.transactions:
-            await conn.commit()
-
-        return result
+    async def _execute(self, query: str, bindings: dict):
+        connection = self.connection
+        if connection is not None:
+            return await connection.execute(text(query), bindings or {})
+        async with self.engine.begin() as operation_connection:
+            return await operation_connection.execute(text(query), bindings or {})
 
     async def insert(self, query: str, bindings: list | None = None) -> int | None:
         result = await self.execute(query, bindings)
-
         return getattr(result, "lastrowid", None)
 
     async def insert_get_id(self, query: str, bindings: list | None = None) -> int | None:
@@ -113,7 +191,6 @@ class Connection:
 
     async def update(self, query: str, bindings: list | None = None) -> int:
         result = await self.execute(query, bindings)
-
         return result.rowcount  # type: ignore[return-value]
 
     async def delete(self, query: str, bindings: list | None = None) -> int:
@@ -122,30 +199,14 @@ class Connection:
 
     async def select(self, query: str, bindings: list | None = None) -> list[dict]:
         result = await self.run(query, bindings)
-
         return result.mappings().all()
 
     async def select_one(self, query: str, bindings: list | None = None) -> dict | None:
         result = await self.run(query, bindings)
         row = result.fetchone()
-        result_dict = dict(zip(result.keys(), row)) if row else None
-        if not self.transactions and self.connection is not None:
-            await self.connection.commit()
-        return result_dict
+        return dict(zip(result.keys(), row)) if row else None
 
     async def statement(self, query: str, bindings: list | None = None) -> bool:
-        query, bindings = self.sql_alchemy_bindings(query, bindings)
-
-        conn = await self.get_connection()
-        await conn.execute(text(query), bindings or {})
-
-        # Only commit if NOT inside a transaction
-        if not self.transactions:
-            await conn.commit()
-
+        query, params = self.sql_alchemy_bindings(query, bindings)
+        await self._execute(query, params)
         return True
-
-    async def _maybe_cleanup(self):
-        if not self.transactions and self.connection:
-            await self.connection.close()
-            self.connection = None

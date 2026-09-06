@@ -736,8 +736,9 @@ class Blueprint:
 
         sql = await self.to_sql()
         if isinstance(sql, list):
-            for q in sql:
-                await self.connection.statement(q, ())
+            async with self.connection.transaction():
+                for q in sql:
+                    await self.connection.statement(q, ())
             return
         return await self.connection.statement(sql, ())
 
