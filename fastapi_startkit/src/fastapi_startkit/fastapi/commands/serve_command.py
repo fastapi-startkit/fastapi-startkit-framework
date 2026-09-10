@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Any
 
 from cleo.helpers import option
@@ -7,6 +8,39 @@ from fastapi_startkit.console.command import Command
 from fastapi_startkit.environment import value as cast_value
 from fastapi_startkit.fastapi.config import FastAPIConfig
 from fastapi_startkit.support import Uri, Uriable
+
+_GLOB_MAGIC = ("*", "?", "[")
+
+
+def resolve_reload_excludes(patterns: list[str], base_path: Path | None = None) -> list[str]:
+    """Rewrite directory patterns as absolute paths so uvicorn excludes them recursively.
+
+    Uvicorn filters changed files with ``Path.match``, which is tail anchored and
+    never spans more than one segment per ``*`` — so ``.claude/worktrees/*`` only
+    ever matches direct children, and files nested deeper still trigger a reload.
+    Uvicorn does exclude whole directory trees, but only for entries that name an
+    existing directory, and the check (``exclude_dir in path.parents``) is made
+    against the absolute path of the changed file, so relative entries never hit.
+    """
+    base = Path(base_path) if base_path else Path.cwd()
+
+    return [str(directory) if (directory := _as_directory(pattern, base)) else pattern for pattern in patterns]
+
+
+def _as_directory(pattern: str, base: Path) -> Path | None:
+    """The directory a pattern points at, or None when it is a real glob."""
+    candidate = pattern.rstrip("/")
+
+    while candidate.endswith(("/*", "/**")):
+        candidate = candidate.rsplit("/", 1)[0]
+
+    if not candidate or any(magic in candidate for magic in _GLOB_MAGIC):
+        return None
+
+    path = Path(candidate)
+    path = path if path.is_absolute() else base / path
+
+    return path if path.is_dir() else None
 
 
 class ServeCommand(Command):
@@ -100,7 +134,7 @@ class ServeCommand(Command):
                 if reload_dirs:
                     kwargs["reload_dirs"] = reload_dirs
                 if reload_excludes:
-                    kwargs["reload_excludes"] = reload_excludes
+                    kwargs["reload_excludes"] = resolve_reload_excludes(reload_excludes)
 
             self.line(f"<info>Starting Uvicorn server on {url.host()}:{url.port()} [{app}]...</info>")
 

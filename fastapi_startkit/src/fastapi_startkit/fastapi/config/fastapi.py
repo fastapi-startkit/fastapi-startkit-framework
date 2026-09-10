@@ -14,5 +14,7 @@ class FastAPIConfig:
             "*.log",
             "tests/*",
             "node_modules/*",
+            ".worktrees/*",
+            ".claude/worktrees/*",
         ]
     )

@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 
 from cleo.testers.command_tester import CommandTester
 
-from fastapi_startkit.fastapi.commands.serve_command import ServeCommand
+from fastapi_startkit.fastapi.commands.serve_command import ServeCommand, resolve_reload_excludes
 from fastapi_startkit.fastapi.config import FastAPIConfig
 
 _DEFAULT_HOST = "127.0.0.1"
@@ -215,7 +215,7 @@ class TestConfigBackedDefaults:
     def test_default_reload_excludes_matches_config_dataclass(self):
         _, mock_uvicorn = run(app_found=True)
         _, kwargs = mock_uvicorn.call_args
-        assert kwargs.get("reload_excludes") == FastAPIConfig().reload_excludes
+        assert kwargs.get("reload_excludes") == resolve_reload_excludes(FastAPIConfig().reload_excludes)
 
 
 class TestConfigOverridesDefault:
@@ -325,3 +325,51 @@ class TestEnvReadAtCommandTime:
         _, mock_uvicorn = run(app_found=True)
         _, kwargs = mock_uvicorn.call_args
         assert kwargs.get("reload") is True
+
+
+# ---------------------------------------------------------------------------
+# 9. reload_excludes reach uvicorn in a form its reload filter honours
+# ---------------------------------------------------------------------------
+
+
+class TestReloadExcludes:
+    def test_directory_pattern_is_passed_as_absolute_path(self, tmp_path):
+        (tmp_path / ".claude" / "worktrees").mkdir(parents=True)
+
+        with patch("pathlib.Path.cwd", return_value=tmp_path):
+            _, mock_uvicorn = run(config={"fastapi.reload_excludes": [".claude/worktrees/*"]}, app_found=True)
+
+        _, kwargs = mock_uvicorn.call_args
+        assert kwargs["reload_excludes"] == [str(tmp_path / ".claude" / "worktrees")]
+
+    def test_non_directory_pattern_is_left_untouched(self, tmp_path):
+        with patch("pathlib.Path.cwd", return_value=tmp_path):
+            _, mock_uvicorn = run(config={"fastapi.reload_excludes": ["*.log"]}, app_found=True)
+
+        _, kwargs = mock_uvicorn.call_args
+        assert kwargs["reload_excludes"] == ["*.log"]
+
+    def test_nested_worktree_file_is_filtered_out_by_uvicorn(self, tmp_path):
+        """The end-to-end guarantee: a change deep inside a worktree is ignored."""
+        nested = tmp_path / ".claude" / "worktrees" / "agent-1" / "src"
+        nested.mkdir(parents=True)
+
+        with patch("pathlib.Path.cwd", return_value=tmp_path):
+            _, mock_uvicorn = run(config={"fastapi.reload_excludes": [".claude/worktrees/*"]}, app_found=True)
+
+        _, kwargs = mock_uvicorn.call_args
+        file_filter = _file_filter(kwargs["reload_excludes"])
+
+        assert file_filter(nested / "module.py") is False
+        assert file_filter(tmp_path / "app" / "module.py") is True
+
+    def test_default_excludes_cover_agent_worktrees(self):
+        assert ".claude/worktrees/*" in FastAPIConfig().reload_excludes
+        assert ".worktrees/*" in FastAPIConfig().reload_excludes
+
+
+def _file_filter(reload_excludes: list[str]):
+    from uvicorn.config import Config
+    from uvicorn.supervisors.watchfilesreload import FileFilter
+
+    return FileFilter(Config(app="app:app", reload=True, reload_excludes=reload_excludes))
