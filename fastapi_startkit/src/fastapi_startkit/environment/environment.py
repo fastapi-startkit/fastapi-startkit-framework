@@ -74,6 +74,10 @@ def env(val: str, default: T, cast: Literal[False]) -> str | T: ...
 
 
 @overload
+def env(val: str, default: Literal[""], cast: Literal[True] = True) -> EnvValue: ...
+
+
+@overload
 def env(val: str, default: None, cast: Literal[True] = True) -> EnvValue | None: ...
 
 
@@ -89,7 +93,19 @@ def env(val: str, default: None, cast: bool) -> EnvValue | None: ...
 def env(val: str, default: T, cast: bool) -> EnvValue | T: ...
 
 
-def env(val: str, default: Any, cast: bool = True) -> Any:
+@overload
+def env(val: str) -> EnvValue: ...
+
+
+@overload
+def env(val: str, *, cast: Literal[False]) -> str: ...
+
+
+@overload
+def env(val: str, *, cast: bool) -> EnvValue: ...
+
+
+def env(val: str, default: Any = "", cast: bool = True) -> Any:
     """Return an environment value, casting it to the supplied default's type when possible."""
     env_var = os.getenv(val, default)
 
@@ -99,7 +115,7 @@ def env(val: str, default: Any, cast: bool = True) -> Any:
     if env_var == "":
         env_var = default
 
-    if default is None:
+    if default in ("", None):
         return value(env_var)
 
     default_type = type(default)

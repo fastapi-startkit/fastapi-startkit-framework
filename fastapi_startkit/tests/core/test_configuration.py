@@ -40,35 +40,35 @@ def configuration(app):
 class TestEnvHelper:
     def test_returns_string_value(self, monkeypatch):
         monkeypatch.setenv("TEST_STR", "hello")
-        assert env("TEST_STR", "") == "hello"
+        assert env("TEST_STR") == "hello"
 
     def test_returns_default_when_missing(self):
         assert env("DOES_NOT_EXIST_XYZ", "fallback") == "fallback"
 
     def test_casts_integer(self, monkeypatch):
         monkeypatch.setenv("TEST_INT", "42")
-        assert env("TEST_INT", 0) == 42
-        assert isinstance(env("TEST_INT", 0), int)
+        assert env("TEST_INT") == 42
+        assert isinstance(env("TEST_INT"), int)
 
     def test_casts_true_string(self, monkeypatch):
         monkeypatch.setenv("TEST_BOOL_T", "true")
-        assert env("TEST_BOOL_T", False) is True
+        assert env("TEST_BOOL_T") is True
 
     def test_casts_false_string(self, monkeypatch):
         monkeypatch.setenv("TEST_BOOL_F", "false")
-        assert env("TEST_BOOL_F", True) is False
+        assert env("TEST_BOOL_F") is False
 
     def test_casts_True_capitalised(self, monkeypatch):
         monkeypatch.setenv("TEST_BOOL_TC", "True")
-        assert env("TEST_BOOL_TC", False) is True
+        assert env("TEST_BOOL_TC") is True
 
     def test_casts_False_capitalised(self, monkeypatch):
         monkeypatch.setenv("TEST_BOOL_FC", "False")
-        assert env("TEST_BOOL_FC", True) is False
+        assert env("TEST_BOOL_FC") is False
 
     def test_no_cast_returns_raw_string(self, monkeypatch):
         monkeypatch.setenv("TEST_RAW", "42")
-        assert env("TEST_RAW", None, cast=False) == "42"
+        assert env("TEST_RAW", cast=False) == "42"
 
     def test_returns_none_when_value_is_none_default(self, monkeypatch):
         monkeypatch.delenv("NONEXISTENT_VAR", raising=False)
