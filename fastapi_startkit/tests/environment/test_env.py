@@ -1,5 +1,7 @@
 import os
 import unittest
+from dataclasses import dataclass, field
+from typing import assert_type
 
 from fastapi_startkit.environment import env
 
@@ -55,6 +57,20 @@ class EnvTest(unittest.TestCase):
 
     def test_missing_key_returns_string_default(self):
         self.assertEqual(env("TEST_STR", "fallback"), "fallback")
+
+    def test_typed_defaults_are_preserved_in_dataclass_factories(self):
+        @dataclass
+        class StorageConfig:
+            default: str = field(default_factory=lambda: env("FILESYSTEM_DISK", "local"))
+
+        assert_type(env("TEST_STR", "fallback"), str)
+        assert_type(env("TEST_INT", 6379), int)
+        assert_type(env("TEST_BOOL", False), bool)
+        assert_type(env("TEST_NONE", None), None)
+        assert_type(env("TEST_CAST", cast=False), str)
+        assert_type(env("TEST_BOOL", False, cast=False), str | bool)
+
+        self.assertIsInstance(StorageConfig().default, str)
 
     def test_cast_false_keeps_numeric_as_str(self):
         os.environ["TEST_CAST"] = "6379"

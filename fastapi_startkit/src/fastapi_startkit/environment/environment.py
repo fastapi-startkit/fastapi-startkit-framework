@@ -2,7 +2,12 @@
 
 import os
 import sys
+from typing import Any, Literal, TypeVar, overload
+
 from dotenv import load_dotenv
+
+
+T = TypeVar("T")
 
 
 class Environment:
@@ -63,7 +68,23 @@ class Environment:
                 break
 
 
-def env(value, default="", cast=True):
+@overload
+def env(value: str, default: T, cast: Literal[False]) -> str | T: ...
+
+
+@overload
+def env(value: str, default: T, cast: Literal[True] = True) -> T: ...
+
+
+@overload
+def env(value: str, default: T, cast: bool) -> str | T: ...
+
+
+@overload
+def env(value: str, default: str = "", cast: bool = True) -> str: ...
+
+
+def env(value: str, default: Any = "", cast: bool = True) -> Any:
     """Helper to retrieve the value of an environment variable or returns
     a default value. In addition, if type can be inferred then the value can be casted to the
     inferred type."""
