@@ -61,50 +61,72 @@ class EnvTest(unittest.TestCase):
     def test_missing_key_returns_string_default(self):
         self.assertEqual(env("TEST_STR", "fallback"), "fallback")
 
-    def test_auto_cast_return_types_include_present_environment_value_types(self):
+    def test_typed_defaults_fix_the_return_type(self):
         @dataclass
         class StorageConfig:
-            default: str | int | bool = field(default_factory=lambda: env("FILESYSTEM_DISK", "local"))
+            default: str = field(default_factory=lambda: env("FILESYSTEM_DISK", "local"))
 
-        assert_type(env("TEST_STR", "fallback"), str | int | bool)
-        assert_type(env("TEST_INT", 6379), str | int | bool)
-        assert_type(env("TEST_BOOL", False), str | int | bool)
+        assert_type(env("TEST_STR", "fallback"), str)
+        assert_type(env("TEST_INT", 6379), int)
+        assert_type(env("TEST_INT", 1.5), float)
+        assert_type(env("TEST_BOOL", False), bool)
         assert_type(env("TEST_NONE", None), str | int | bool | None)
+        assert_type(env("TEST_NONE", None, cast=False), str | None)
+        assert_type(env("TEST_NONE", None, False), str | None)
+        assert_type(env("TEST_CAST"), str | int | bool)
         assert_type(env("TEST_CAST", cast=False), str)
         assert_type(env("TEST_BOOL", False, cast=False), str | bool)
         assert_type(env("TEST_BOOL", False, False), str | bool)
-        assert_type(env("TEST_BOOL", False, cast=True), str | int | bool)
-        assert_type(env("TEST_BOOL", False, True), str | int | bool)
+        assert_type(env("TEST_BOOL", False, cast=True), bool)
+        assert_type(env("TEST_BOOL", False, True), bool)
 
         self.assertIsInstance(StorageConfig().default, str)
 
-    def test_present_false_casts_to_bool_with_int_default(self):
-        os.environ["TEST_BOOL"] = "false"
+    def test_present_values_cast_to_supplied_default_type(self):
+        cases = (
+            ("TEST_STR", "6379", "fallback", "6379", str),
+            ("TEST_INT", "6379", 1, 6379, int),
+            ("TEST_INT", "1.25", 1.0, 1.25, float),
+            ("TEST_BOOL", "false", True, False, bool),
+        )
+        for key, raw, default, expected, expected_type in cases:
+            with self.subTest(default=default):
+                os.environ[key] = raw
+                result = env(key, default)
+                self.assertEqual(result, expected)
+                self.assertIs(type(result), expected_type)
 
-        self.assertIs(env("TEST_BOOL", 6379), False)
-
-    def test_present_number_casts_to_int_with_bool_default(self):
-        os.environ["TEST_INT"] = "6379"
-
-        result = env("TEST_INT", False)
-
-        self.assertEqual(result, 6379)
-        self.assertIsInstance(result, int)
-        self.assertIsNot(result, False)
+    def test_invalid_typed_conversions_raise_value_error(self):
+        cases = (("TEST_INT", "nope", 1), ("TEST_INT", "1.2", 1), ("TEST_BOOL", "yes", False))
+        for key, raw, default in cases:
+            with self.subTest(default=default):
+                os.environ[key] = raw
+                with self.assertRaises(ValueError):
+                    env(key, default)
 
     def test_present_string_stays_string_with_none_default(self):
         os.environ["TEST_NONE"] = "local"
 
         self.assertEqual(env("TEST_NONE", None), "local")
 
-    def test_present_number_can_be_int_with_string_default(self):
+    def test_none_default_preserves_legacy_auto_casting(self):
+        os.environ["TEST_NONE"] = "6379"
+
+        result = env("TEST_NONE", None)
+
+        self.assertEqual(result, 6379)
+        self.assertIs(type(result), int)
+
+    def test_dataclass_string_default_stays_string(self):
         os.environ["FILESYSTEM_DISK"] = "6379"
 
         @dataclass
         class StorageConfig:
-            default: str | int | bool = field(default_factory=lambda: env("FILESYSTEM_DISK", "local"))
+            default: str = field(default_factory=lambda: env("FILESYSTEM_DISK", "local"))
 
-        self.assertEqual(StorageConfig().default, 6379)
+        config = StorageConfig()
+        self.assertEqual(config.default, "6379")
+        self.assertIs(type(config.default), str)
 
     def test_cast_false_keyword_returns_present_string_with_bool_default(self):
         os.environ["TEST_CAST"] = "6379"
@@ -122,15 +144,15 @@ class EnvTest(unittest.TestCase):
         self.assertEqual(result, "6379")
         self.assertIsInstance(result, str)
 
-    def test_cast_true_keyword_preserves_auto_casting(self):
+    def test_cast_true_keyword_uses_default_type(self):
         os.environ["TEST_CAST"] = "6379"
 
-        self.assertEqual(env("TEST_CAST", False, cast=True), 6379)
+        self.assertEqual(env("TEST_CAST", 1, cast=True), 6379)
 
-    def test_cast_true_third_positional_preserves_auto_casting(self):
+    def test_cast_true_third_positional_uses_default_type(self):
         os.environ["TEST_CAST"] = "false"
 
-        self.assertIs(env("TEST_CAST", 6379, True), False)
+        self.assertIs(env("TEST_CAST", True, True), False)
 
     def test_cast_false_keeps_numeric_as_str(self):
         os.environ["TEST_CAST"] = "6379"

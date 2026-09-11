@@ -11,6 +11,9 @@ T = TypeVar("T")
 EnvValue = str | int | bool
 
 
+_UNSET = object()
+
+
 class Environment:
     @staticmethod
     def resolve_environment(base_path=None, env: str | None = None):
@@ -74,7 +77,15 @@ def env(value: str, default: T, cast: Literal[False]) -> str | T: ...
 
 
 @overload
-def env(value: str, default: T, cast: Literal[True] = True) -> EnvValue | T: ...
+def env(value: str, default: None, cast: Literal[True] = True) -> EnvValue | None: ...
+
+
+@overload
+def env(value: str, default: T, cast: Literal[True] = True) -> T: ...
+
+
+@overload
+def env(value: str, default: None, cast: bool) -> EnvValue | None: ...
 
 
 @overload
@@ -82,36 +93,49 @@ def env(value: str, default: T, cast: bool) -> EnvValue | T: ...
 
 
 @overload
-def env(value: str, default: str = "", cast: bool = True) -> EnvValue: ...
+def env(value: str) -> EnvValue: ...
 
 
-def env(value: str, default: Any = "", cast: bool = True) -> Any:
-    """Helper to retrieve the value of an environment variable or returns
-    a default value. In addition, if type can be inferred then the value can be casted to the
-    inferred type."""
-    env_var = os.getenv(value, default)
+@overload
+def env(value: str, *, cast: Literal[False]) -> str: ...
+
+
+@overload
+def env(value: str, *, cast: bool) -> EnvValue: ...
+
+
+def env(value: str, default: Any = _UNSET, cast: bool = True) -> Any:
+    """Return an environment value, casting it to the supplied default's type when possible."""
+    default_was_supplied = default is not _UNSET
+    resolved_default = "" if not default_was_supplied else default
+    env_var = os.getenv(value, resolved_default)
 
     if not cast:
         return env_var
 
     if env_var == "":
-        env_var = default
+        env_var = resolved_default
 
-    if isinstance(env_var, bool):
-        return env_var
-    elif env_var is None:
-        return None
-    elif isinstance(env_var, int) or env_var.isnumeric():
-        return int(env_var)
-    elif env_var in ("false", "False"):
-        return False
-    elif env_var in ("true", "True"):
-        return True
-    else:
-        return env_var
+    if not default_was_supplied or resolved_default is None:
+        return _cast_value(env_var)
+
+    default_type = type(resolved_default)
+    if default_type is bool:
+        if isinstance(env_var, bool):
+            return env_var
+        if env_var in ("true", "True"):
+            return True
+        if env_var in ("false", "False"):
+            return False
+        raise ValueError(f"Cannot cast environment variable {value!r} to bool")
+
+    try:
+        return default_type(env_var)
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"Cannot cast environment variable {value!r} to {default_type.__name__}") from error
 
 
-def value(env_var, default=""):
+def _cast_value(env_var, default=""):
     if env_var == "":
         env_var = default
 
@@ -127,3 +151,7 @@ def value(env_var, default=""):
         return True
     else:
         return env_var
+
+
+def value(env_var, default=""):
+    return _cast_value(env_var, default)
