@@ -72,6 +72,9 @@ class EnvTest(unittest.TestCase):
         assert_type(env("TEST_NONE", None), str | int | bool | None)
         assert_type(env("TEST_CAST", cast=False), str)
         assert_type(env("TEST_BOOL", False, cast=False), str | bool)
+        assert_type(env("TEST_BOOL", False, False), str | bool)
+        assert_type(env("TEST_BOOL", False, cast=True), str | int | bool)
+        assert_type(env("TEST_BOOL", False, True), str | int | bool)
 
         self.assertIsInstance(StorageConfig().default, str)
 
@@ -103,13 +106,31 @@ class EnvTest(unittest.TestCase):
 
         self.assertEqual(StorageConfig().default, 6379)
 
-    def test_cast_false_returns_present_string_with_bool_default(self):
+    def test_cast_false_keyword_returns_present_string_with_bool_default(self):
         os.environ["TEST_CAST"] = "6379"
 
         result = env("TEST_CAST", False, cast=False)
 
         self.assertEqual(result, "6379")
         self.assertIsInstance(result, str)
+
+    def test_cast_false_third_positional_returns_raw_string(self):
+        os.environ["TEST_CAST"] = "6379"
+
+        result = env("TEST_CAST", False, False)
+
+        self.assertEqual(result, "6379")
+        self.assertIsInstance(result, str)
+
+    def test_cast_true_keyword_preserves_auto_casting(self):
+        os.environ["TEST_CAST"] = "6379"
+
+        self.assertEqual(env("TEST_CAST", False, cast=True), 6379)
+
+    def test_cast_true_third_positional_preserves_auto_casting(self):
+        os.environ["TEST_CAST"] = "false"
+
+        self.assertIs(env("TEST_CAST", 6379, True), False)
 
     def test_cast_false_keeps_numeric_as_str(self):
         os.environ["TEST_CAST"] = "6379"
