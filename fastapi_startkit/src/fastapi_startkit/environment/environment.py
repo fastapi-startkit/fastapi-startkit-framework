@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 
 
 T = TypeVar("T")
+EnvValue = str | int | bool
 
 
 class Environment:
@@ -73,15 +74,15 @@ def env(value: str, default: T, cast: Literal[False]) -> str | T: ...
 
 
 @overload
-def env(value: str, default: T, cast: Literal[True] = True) -> T: ...
+def env(value: str, default: T, cast: Literal[True] = True) -> EnvValue | T: ...
 
 
 @overload
-def env(value: str, default: T, cast: bool) -> str | T: ...
+def env(value: str, default: T, cast: bool) -> EnvValue | T: ...
 
 
 @overload
-def env(value: str, default: str = "", cast: bool = True) -> str: ...
+def env(value: str, default: str = "", cast: bool = True) -> EnvValue: ...
 
 
 def env(value: str, default: Any = "", cast: bool = True) -> Any:
