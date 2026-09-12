@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Any, Self, overload
 
 import inflection
 import pendulum
@@ -15,7 +15,7 @@ from fastapi_startkit.masoniteorm.models.relationship import Relationship
 from fastapi_startkit.masoniteorm.observers import ObservesEvents
 
 if TYPE_CHECKING:
-    from fastapi_startkit.masoniteorm.models.builder import QueryBuilder
+    from fastapi_startkit.masoniteorm.models.builder import QueryBuilder, WhereGroup
 
 
 class Model(Attribute, Relationship, ObservesEvents):
@@ -93,8 +93,28 @@ class Model(Attribute, Relationship, ObservesEvents):
     def with_(cls, *eagers) -> "QueryBuilder":
         return cls.query().with_(*eagers)
 
+    @overload
     @classmethod
-    def where(cls, column, *args) -> "QueryBuilder[Self]":
+    def where(cls, column: str, /) -> QueryBuilder[Self]: ...
+
+    @overload
+    @classmethod
+    def where(cls, column: str, value: Any, /) -> QueryBuilder[Self]: ...
+
+    @overload
+    @classmethod
+    def where(cls, column: str, operator: str, value: Any, /) -> QueryBuilder[Self]: ...
+
+    @overload
+    @classmethod
+    def where(cls, column: dict[str, Any], /) -> QueryBuilder[Self]: ...
+
+    @overload
+    @classmethod
+    def where(cls, column: WhereGroup[Self], /) -> QueryBuilder[Self]: ...
+
+    @classmethod
+    def where(cls, column: str | dict[str, Any] | WhereGroup[Self], *args: Any) -> QueryBuilder[Self]:
         return cls.query().where(column, *args)
 
     @classmethod
@@ -243,7 +263,7 @@ class Model(Attribute, Relationship, ObservesEvents):
         return await cls.query().first(columns)
 
     @classmethod
-    async def get(cls):
+    async def get(cls) -> Collection[Self]:
         return await cls.query().get()
 
     @classmethod
