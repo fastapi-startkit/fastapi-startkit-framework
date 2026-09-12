@@ -1,13 +1,15 @@
 """Core of the IOC Container."""
 
 import inspect
-from typing import Any
+from typing import Any, TypeVar, overload
 
 from ..exceptions import (
     ContainerError,
     MissingContainerBindingNotFound,
     StrictContainerException,
 )
+
+T = TypeVar("T")
 
 
 class Container:
@@ -103,11 +105,21 @@ class Container:
         obj = self.resolve(class_obj)
         self.bind(name, obj)
 
-    def make(self, name, *arguments):
+    @overload
+    def make(self, name: type[T], *arguments: Any) -> T: ...
+
+    @overload
+    def make(self, name: str, *arguments: Any) -> Any: ...
+
+    def make(self, name: str | type[T], *arguments: Any) -> Any:
         """Retrieve a class from the container by key.
 
+        Class keys resolve to an instance of that class (make(SomeClass) -> SomeClass);
+        string keys resolve to whatever was bound (Any). A missing key raises rather
+        than returning None, so the return type is deliberately non-Optional.
+
         Arguments:
-            name {string} -- Key in the container that you want to get.
+            name {string | type} -- Key in the container that you want to get.
 
         Raises:
             MissingContainerBindingNotFound -- Raised if the key is not in the container.

@@ -1,5 +1,7 @@
 """Tests for the IoC service container."""
 
+from typing import Any, assert_type
+
 import pytest
 
 from fastapi_startkit.container.container import Container
@@ -515,3 +517,34 @@ class TestFindParameter:
 
         with pytest.raises(ContainerError):
             container.resolve(fn)
+
+
+# ---------------------------------------------------------------------------
+# make() — static typing assertions (checked by basedpyright/pyright,
+# executed at runtime as ordinary asserts)
+# ---------------------------------------------------------------------------
+
+
+class TestMakeTyping:
+    def test_make_with_class_key_is_typed_as_that_class(self, container):
+        container.bind("service_a", ServiceA)
+
+        instance = container.make(ServiceA)
+        assert_type(instance, ServiceA)
+        assert isinstance(instance, ServiceA)
+
+    def test_make_with_string_key_is_typed_as_any(self, container):
+        container.bind("service_a", ServiceA)
+
+        instance = container.make("service_a")
+        assert_type(instance, Any)
+        assert isinstance(instance, ServiceA)
+
+    def test_application_make_inherits_typing(self, tmp_path):
+        from fastapi_startkit.application import Application
+
+        app = Application(base_path=tmp_path, env="testing")
+        app.bind("service_a", ServiceA)
+
+        assert_type(app.make(ServiceA), ServiceA)
+        assert_type(app.make("service_a"), Any)
