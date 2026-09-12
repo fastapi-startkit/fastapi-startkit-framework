@@ -112,6 +112,50 @@ class TestLocalDriverPutGet:
         files = driver.get_files("")
         assert [f.name() for f in files] == ["file.txt"]
 
+    def test_get_files_root_returns_real_content(self, driver, tmp_path):
+        storage = tmp_path / "storage"
+        storage.mkdir(parents=True, exist_ok=True)
+        (storage / "root.txt").write_text("root content")
+        files = driver.get_files("")
+        assert [f.stream() for f in files] == ["root content"]
+
+    def test_get_files_in_subdirectory_returns_real_content(self, driver, tmp_path):
+        audio = tmp_path / "storage" / "audio"
+        audio.mkdir(parents=True)
+        (audio / "tts-1.txt").write_text("speech one")
+        (audio / "tts-2.txt").write_text("speech two")
+
+        files = driver.get_files("audio")
+
+        by_name = {f.name(): f.stream() for f in files}
+        assert by_name == {"tts-1.txt": "speech one", "tts-2.txt": "speech two"}
+
+    def test_get_files_directory_with_trailing_slash(self, driver, tmp_path):
+        audio = tmp_path / "storage" / "audio"
+        audio.mkdir(parents=True)
+        (audio / "a.txt").write_text("a")
+
+        files = driver.get_files("audio/")
+
+        assert [(f.name(), f.stream()) for f in files] == [("a.txt", "a")]
+
+    def test_get_files_nonexistent_directory_returns_empty_list(self, driver):
+        assert driver.get_files("does-not-exist") == []
+
+    def test_get_files_empty_directory_returns_empty_list(self, driver, tmp_path):
+        (tmp_path / "storage" / "empty").mkdir(parents=True)
+        assert driver.get_files("empty") == []
+
+    def test_get_files_in_subdirectory_skips_nested_directories(self, driver, tmp_path):
+        audio = tmp_path / "storage" / "audio"
+        (audio / "nested").mkdir(parents=True)
+        (audio / "keep.txt").write_text("kept")
+        (audio / "nested" / "skip.txt").write_text("skipped")
+
+        files = driver.get_files("audio")
+
+        assert [f.name() for f in files] == ["keep.txt"]
+
 
 class TestLocalDriverPathResolution:
     def test_get_path_joins_relative_root_to_base_path(self, tmp_path):
@@ -253,6 +297,31 @@ class TestFakeDriver:
             fake.assert_exists("file.txt")
             root = fake._root
         assert not os.path.exists(root)
+
+    def test_fake_driver_get_files_in_subdirectory(self, fake):
+        fake.put("audio/one.txt", "first")
+        fake.put("audio/two.txt", "second")
+
+        files = fake.get_files("audio")
+
+        by_name = {f.name(): f.stream() for f in files}
+        assert by_name == {"one.txt": "first", "two.txt": "second"}
+
+    def test_fake_driver_get_files_nonexistent_directory(self, fake):
+        assert fake.get_files("missing") == []
+
+    def test_fake_driver_get_files_skips_nested_directories(self, fake):
+        fake.put("docs/keep.txt", "kept")
+        fake.put("docs/nested/skip.txt", "skipped")
+
+        files = fake.get_files("docs")
+
+        assert [f.name() for f in files] == ["keep.txt"]
+
+    def test_fake_driver_assert_count_in_subdirectory(self, fake):
+        fake.put("uploads/a.txt", "a")
+        fake.put("uploads/b.txt", "b")
+        fake.assert_count(2, "uploads")
 
     def test_fake_driver_isolated_between_instances(self):
         app = MagicMock()
