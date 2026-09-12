@@ -148,19 +148,29 @@ class S3Driver:
         return False
 
     def get_files(self, directory=None):
-        bucket = self.get_resource().Bucket(self.get_bucket())
+        """List the files directly under ``directory``, non-recursively.
 
-        if directory:
-            objects = bucket.objects.all().filter(Prefix=directory)
-        else:
-            objects = bucket.objects.all()
+        Keys nested in a deeper prefix and the placeholder object for the
+        directory itself are excluded. An empty or omitted ``directory``
+        lists the root of the bucket.
+        """
+        prefix = self.normalize_directory(directory)
+        objects = self.get_resource().Bucket(self.get_bucket()).objects.filter(Prefix=prefix)
 
         files = []
-        for my_bucket_object in objects.all():
-            if "/" not in my_bucket_object.key:
-                files.append(File(my_bucket_object, my_bucket_object.key))
+        for summary in objects:
+            name = summary.key[len(prefix) :]
+            if not name or "/" in name:
+                continue
+
+            files.append(File(summary, name))
 
         return files
+
+    def normalize_directory(self, directory):
+        """Turn a directory name into a key prefix ("backups/", or "" for the root)."""
+        directory = (directory or "").strip("/")
+        return f"{directory}/" if directory else ""
 
     def download(self, file_path, name=None, force=False):
         url = self.get_client().generate_presigned_url(

@@ -115,13 +115,24 @@ class LocalDriver:
         return False
 
     def get_files(self, directory=""):
-        file_path = self.get_path(directory)
+        """List the files directly under ``directory``, non-recursively.
+
+        Sub-directories are skipped and a missing directory yields an empty
+        list. An empty or omitted ``directory`` lists the root of the disk.
+        """
+        directory = (directory or "").strip("/")
+        directory_path = self.get_path(directory)
+
+        if not os.path.isdir(directory_path):
+            return []
+
         files = []
-        for f in os.listdir(file_path):
-            if not isfile(join(file_path, f)):
+        # Sorted so listings match the lexicographic order S3 returns.
+        for name in sorted(os.listdir(directory_path)):
+            if not isfile(join(directory_path, name)):
                 continue
 
-            files.append(File(self.get(f), f))
+            files.append(File(self.get(join(directory, name)), name))
 
         return files
 

@@ -278,3 +278,83 @@ class TestS3DriverConnectionCaching:
             c2 = d.get_connection()
             assert c1 is c2
             mock_boto3.Session.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# get_files — non-recursive listing under a prefix (issue #218)
+# ---------------------------------------------------------------------------
+
+
+def _summaries(*keys):
+    objects = []
+    for key in keys:
+        summary = MagicMock()
+        summary.key = key
+        objects.append(summary)
+    return objects
+
+
+@pytest.fixture
+def bucket_with_keys(driver, mock_resource):
+    """Make the mocked bucket serve a fixed key list, filtered by Prefix."""
+    keys = [
+        "root.txt",
+        "backups/a.sql",
+        "backups/b.sql",
+        "backups/2024/deep.sql",
+        "audio/x/y.mp3",
+    ]
+
+    def filter_(Prefix=""):
+        return _summaries(*[k for k in keys if k.startswith(Prefix)])
+
+    mock_resource.Bucket().objects.filter.side_effect = filter_
+    return mock_resource
+
+
+class TestS3DriverGetFiles:
+    def test_lists_files_directly_under_the_prefix(self, driver, bucket_with_keys):
+        assert [f.name() for f in driver.get_files("backups")] == ["a.sql", "b.sql"]
+
+    def test_excludes_nested_keys(self, driver, bucket_with_keys):
+        assert driver.get_files("audio") == []
+
+    def test_root_level_keys_do_not_leak_into_a_prefixed_listing(self, driver, bucket_with_keys):
+        assert "root.txt" not in [f.name() for f in driver.get_files("backups")]
+
+    def test_trailing_slash_is_tolerated(self, driver, bucket_with_keys):
+        assert [f.name() for f in driver.get_files("backups/")] == [f.name() for f in driver.get_files("backups")]
+
+    def test_no_directory_lists_the_root_only(self, driver, bucket_with_keys):
+        assert [f.name() for f in driver.get_files()] == ["root.txt"]
+
+    def test_empty_directory_is_treated_as_the_root(self, driver, bucket_with_keys):
+        assert [f.name() for f in driver.get_files("")] == ["root.txt"]
+
+    def test_unknown_directory_returns_empty_list(self, driver, bucket_with_keys):
+        assert driver.get_files("nope") == []
+
+    def test_directory_placeholder_object_is_skipped(self, driver, mock_resource):
+        mock_resource.Bucket().objects.filter.return_value = _summaries("backups/", "backups/a.sql")
+        assert [f.name() for f in driver.get_files("backups")] == ["a.sql"]
+
+    def test_file_content_is_the_object_summary(self, driver, bucket_with_keys):
+        file = driver.get_files("backups")[0]
+        assert file.stream().key == "backups/a.sql"
+
+
+class TestS3DriverNormalizeDirectory:
+    @pytest.mark.parametrize(
+        "directory,expected",
+        [
+            (None, ""),
+            ("", ""),
+            ("/", ""),
+            ("backups", "backups/"),
+            ("backups/", "backups/"),
+            ("/backups/", "backups/"),
+            ("a/b", "a/b/"),
+        ],
+    )
+    def test_normalizes_to_a_key_prefix(self, driver, directory, expected):
+        assert driver.normalize_directory(directory) == expected
