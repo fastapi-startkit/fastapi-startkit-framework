@@ -57,7 +57,7 @@ class FakeDriver(LocalDriver):
         assert len(files) == count, (
             f"Storage::fake({self._disk_name!r}): "
             f"expected {count} file(s) in [{directory or '/'}], "
-            f"found {len(files)}: {[f.name for f in files]}"
+            f"found {len(files)}: {[f.name() for f in files]}"
         )
         return self
 

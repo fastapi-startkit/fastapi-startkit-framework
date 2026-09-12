@@ -102,6 +102,9 @@ class StorageManager:
     def store(self, *args, **kwargs):
         return self.disk().store(*args, **kwargs)
 
+    def get_files(self, *args, **kwargs):
+        return self.disk().get_files(*args, **kwargs)
+
     def download(self, *args, **kwargs):
         return self.disk().download(*args, **kwargs)
 
@@ -176,6 +179,10 @@ class Storage:
     @classmethod
     def store(cls, *args, **kwargs):
         return cls.init().store(*args, **kwargs)
+
+    @classmethod
+    def get_files(cls, *args, **kwargs):
+        return cls.init().get_files(*args, **kwargs)
 
     @classmethod
     def download(cls, *args, **kwargs):

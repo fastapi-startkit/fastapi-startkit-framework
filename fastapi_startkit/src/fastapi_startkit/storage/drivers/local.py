@@ -17,11 +17,15 @@ class LocalDriver:
         self.options = options
         return self
 
-    def get_path(self, path):
+    def resolve_path(self, path):
+        """Resolve ``path`` against the disk root without touching the filesystem."""
         root = self.options.get("root") or self.options.get("path")
         if not os.path.isabs(root):
             root = os.path.join(str(self.application.base_path), root)
-        file_path = os.path.join(root, path)
+        return os.path.join(root, path)
+
+    def get_path(self, path):
+        file_path = self.resolve_path(path)
         self.make_file_path_if_not_exists(file_path)
         return file_path
 
@@ -115,13 +119,30 @@ class LocalDriver:
         return False
 
     def get_files(self, directory=""):
-        file_path = self.get_path(directory)
+        """List the files directly under ``directory``, non-recursively.
+
+        Sub-directories are skipped and a missing directory yields an empty
+        list. An empty or omitted ``directory`` lists the root of the disk.
+
+        Listing never reads a file body — content would have to be decoded as
+        text, so a single binary file would blow up the whole listing. Fetch
+        content on demand with ``get(join(directory, file.name()))``.
+        """
+        directory = (directory or "").strip("/")
+        # resolve_path, not get_path: listing is read-only and must not create
+        # the directory it was asked about.
+        directory_path = self.resolve_path(directory)
+
+        if not os.path.isdir(directory_path):
+            return []
+
         files = []
-        for f in os.listdir(file_path):
-            if not isfile(join(file_path, f)):
+        # Sorted so listings match the lexicographic order S3 returns.
+        for name in sorted(os.listdir(directory_path)):
+            if not isfile(join(directory_path, name)):
                 continue
 
-            files.append(File(self.get(f), f))
+            files.append(File(None, name))
 
         return files
 

@@ -1,6 +1,7 @@
 """Tests for the LocalDriver, FakeDriver, and FileStream (task #14)."""
 
 import os
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -305,3 +306,163 @@ class TestFileStream:
         with open(f) as fh:
             stream = FileStream(fh, name="renamed.csv")
             assert stream.extension() == ".csv"
+
+
+# ---------------------------------------------------------------------------
+# get_files in a sub-directory (issue #218)
+# ---------------------------------------------------------------------------
+
+
+def _layout(root):
+    """The shared layout every driver's get_files is asserted against."""
+    (root / "audio").mkdir(parents=True, exist_ok=True)
+    (root / "audio" / "one.txt").write_text("one content")
+    (root / "audio" / "two.txt").write_text("two content")
+    (root / "audio" / "nested").mkdir(exist_ok=True)
+    (root / "audio" / "nested" / "deep.txt").write_text("deep content")
+    (root / "root.txt").write_text("root content")
+
+
+class TestLocalDriverGetFilesInDirectory:
+    @pytest.fixture
+    def driver(self, tmp_path):
+        app = MagicMock()
+        app.base_path = str(tmp_path)
+        d = LocalDriver(app)
+        d.set_options({"root": str(tmp_path / "storage")})
+        _layout(tmp_path / "storage")
+        return d
+
+    def test_lists_files_directly_under_the_directory(self, driver):
+        assert [f.name() for f in driver.get_files("audio")] == ["one.txt", "two.txt"]
+
+    def test_listed_names_resolve_back_to_their_content(self, driver):
+        contents = {f.name(): driver.get(os.path.join("audio", f.name())) for f in driver.get_files("audio")}
+        assert contents == {"one.txt": "one content", "two.txt": "two content"}
+
+    def test_subdirectories_are_skipped(self, driver):
+        assert "nested" not in [f.name() for f in driver.get_files("audio")]
+
+    def test_listing_is_non_recursive(self, driver):
+        assert "deep.txt" not in [f.name() for f in driver.get_files("audio")]
+
+    def test_root_listing_excludes_directory_contents(self, driver):
+        assert [f.name() for f in driver.get_files()] == ["root.txt"]
+
+    def test_trailing_slash_is_tolerated(self, driver):
+        assert [f.name() for f in driver.get_files("audio/")] == [f.name() for f in driver.get_files("audio")]
+
+    def test_missing_directory_returns_empty_list(self, driver):
+        assert driver.get_files("nope") == []
+
+    def test_empty_directory_returns_empty_list(self, driver, tmp_path):
+        (tmp_path / "storage" / "empty").mkdir()
+        assert driver.get_files("empty") == []
+
+
+class TestFakeDriverGetFilesParity:
+    def test_matches_the_local_driver_for_the_same_layout(self, tmp_path):
+        app = MagicMock()
+        app.base_path = str(tmp_path)
+
+        local = LocalDriver(app)
+        local.set_options({"root": str(tmp_path / "storage")})
+        _layout(tmp_path / "storage")
+
+        with FakeDriver(app) as fake:
+            _layout(Path(fake._root))
+
+            for directory in ("audio", "audio/", "", "nope"):
+                names = [f.name() for f in fake.get_files(directory)]
+                assert names == [f.name() for f in local.get_files(directory)]
+
+                # Listings carry no body on either driver; the names must still
+                # resolve to identical content through each driver's own get().
+                assert [f.stream() for f in fake.get_files(directory)] == [None] * len(names)
+                assert [fake.get(os.path.join(directory, n)) for n in names] == [
+                    local.get(os.path.join(directory, n)) for n in names
+                ]
+
+    def test_assert_count_scopes_to_a_directory(self, tmp_path):
+        app = MagicMock()
+        app.base_path = str(tmp_path)
+
+        with FakeDriver(app) as fake:
+            _layout(Path(fake._root))
+            fake.assert_count(2, "audio")
+            fake.assert_count(1)
+            fake.assert_directory_empty("nope")
+
+
+class TestLocalDriverGetFilesDoesNotReadContent:
+    """A listing is a listing: it must not open file bodies (PR #220 review)."""
+
+    @pytest.fixture
+    def driver(self, tmp_path):
+        app = MagicMock()
+        app.base_path = str(tmp_path)
+        d = LocalDriver(app)
+        d.set_options({"root": str(tmp_path / "storage")})
+        return d
+
+    def test_binary_file_does_not_break_the_listing(self, driver, tmp_path):
+        audio = tmp_path / "storage" / "audio"
+        audio.mkdir(parents=True)
+        (audio / "clip.mp3").write_bytes(b"\xff\xfb\x90\x00\x00\x00\x00\x00")
+        (audio / "notes.txt").write_text("fine")
+
+        assert [f.name() for f in driver.get_files("audio")] == ["clip.mp3", "notes.txt"]
+
+    def test_binary_file_at_the_root_does_not_break_the_listing(self, driver, tmp_path):
+        storage = tmp_path / "storage"
+        storage.mkdir(parents=True)
+        (storage / "track.mp3").write_bytes(b"\xff\xfb\x90\x00")
+
+        assert [f.name() for f in driver.get_files()] == ["track.mp3"]
+
+    def test_content_is_fetched_on_demand_not_during_the_listing(self, driver, tmp_path):
+        audio = tmp_path / "storage" / "audio"
+        audio.mkdir(parents=True)
+        (audio / "one.txt").write_text("one content")
+
+        listed = driver.get_files("audio")[0]
+        assert listed.stream() is None
+        assert driver.get(os.path.join("audio", listed.name())) == "one content"
+
+
+class TestLocalDriverGetFilesDoesNotMutateDisk:
+    """Listing is read-only: it must never create directories (PR #220 review)."""
+
+    @pytest.fixture
+    def driver(self, tmp_path):
+        app = MagicMock()
+        app.base_path = str(tmp_path)
+        d = LocalDriver(app)
+        d.set_options({"root": str(tmp_path / "storage")})
+        (tmp_path / "storage").mkdir(parents=True)
+        return d
+
+    def test_missing_nested_directory_returns_empty_and_creates_nothing(self, driver, tmp_path):
+        assert driver.get_files("reports/2024") == []
+
+        assert not (tmp_path / "storage" / "reports").exists()
+        assert not (tmp_path / "storage" / "reports" / "2024").exists()
+
+    def test_missing_single_segment_directory_creates_nothing(self, driver, tmp_path):
+        assert driver.get_files("nope") == []
+        assert not (tmp_path / "storage" / "nope").exists()
+
+    def test_listing_a_disk_whose_root_is_absent_creates_nothing(self, tmp_path):
+        app = MagicMock()
+        app.base_path = str(tmp_path)
+        d = LocalDriver(app)
+        d.set_options({"root": str(tmp_path / "absent_root")})
+
+        assert d.get_files("anything") == []
+        assert not (tmp_path / "absent_root").exists()
+
+    def test_resolve_path_does_not_touch_the_filesystem(self, driver, tmp_path):
+        resolved = driver.resolve_path(os.path.join("reports", "2024", "q1.csv"))
+
+        assert resolved == str(tmp_path / "storage" / "reports" / "2024" / "q1.csv")
+        assert not (tmp_path / "storage" / "reports").exists()
