@@ -262,6 +262,69 @@ class TestS3DriverMoveAtomicity:
 
 
 # ---------------------------------------------------------------------------
+# get_files
+# ---------------------------------------------------------------------------
+
+
+class _Obj:
+    def __init__(self, key):
+        self.key = key
+
+
+BUCKET_KEYS = ["backups/a.dump", "backups/b.dump", "backups/nested/deep.dump", "root.txt", "audio/x/y.mp3"]
+
+
+def _stub_listing(mock_resource):
+    """Make the mocked bucket answer .objects.all() / .filter(Prefix=...) like S3 would."""
+    objects = [_Obj(key) for key in BUCKET_KEYS]
+    bucket = mock_resource.Bucket.return_value
+    bucket.objects.all.return_value = objects
+    bucket.objects.filter.side_effect = lambda Prefix: [o for o in objects if o.key.startswith(Prefix)]
+    return bucket
+
+
+class TestS3DriverGetFiles:
+    def test_root_listing_keeps_only_root_level_keys(self, driver, mock_resource):
+        _stub_listing(mock_resource)
+        files = driver.get_files()
+        assert [f.name() for f in files] == ["root.txt"]
+
+    def test_directory_listing_returns_files_directly_under_prefix(self, driver, mock_resource):
+        _stub_listing(mock_resource)
+        files = driver.get_files("backups")
+        assert sorted(f.name() for f in files) == ["a.dump", "b.dump"]
+
+    def test_directory_listing_filters_with_slash_terminated_prefix(self, driver, mock_resource):
+        bucket = _stub_listing(mock_resource)
+        driver.get_files("backups")
+        bucket.objects.filter.assert_called_once_with(Prefix="backups/")
+
+    def test_trailing_slash_directory_is_equivalent(self, driver, mock_resource):
+        _stub_listing(mock_resource)
+        files = driver.get_files("backups/")
+        assert sorted(f.name() for f in files) == ["a.dump", "b.dump"]
+
+    def test_partial_name_prefix_is_not_a_directory_match(self, driver, mock_resource):
+        _stub_listing(mock_resource)
+        assert driver.get_files("back") == []
+
+    def test_directory_with_only_nested_subdirectories_is_empty(self, driver, mock_resource):
+        _stub_listing(mock_resource)
+        assert driver.get_files("audio") == []
+
+    def test_nonexistent_directory_returns_empty_list(self, driver, mock_resource):
+        _stub_listing(mock_resource)
+        assert driver.get_files("nope") == []
+
+    def test_directory_marker_key_is_skipped(self, driver, mock_resource):
+        objects = [_Obj("backups/"), _Obj("backups/a.dump")]
+        bucket = mock_resource.Bucket.return_value
+        bucket.objects.filter.side_effect = lambda Prefix: [o for o in objects if o.key.startswith(Prefix)]
+        files = driver.get_files("backups")
+        assert [f.name() for f in files] == ["a.dump"]
+
+
+# ---------------------------------------------------------------------------
 # Connection caching
 # ---------------------------------------------------------------------------
 

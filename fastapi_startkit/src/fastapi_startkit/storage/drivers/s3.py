@@ -148,17 +148,25 @@ class S3Driver:
         return False
 
     def get_files(self, directory=None):
+        """List the files directly under ``directory`` (non-recursive).
+
+        Directory entries are excluded and an empty or nonexistent directory
+        yields ``[]``. Each ``File`` is named by its bare filename, matching
+        the local driver's contract.
+        """
         bucket = self.get_resource().Bucket(self.get_bucket())
 
-        if directory:
-            objects = bucket.objects.all().filter(Prefix=directory)
+        prefix = f"{directory.rstrip('/')}/" if directory else ""
+        if prefix:
+            objects = bucket.objects.filter(Prefix=prefix)
         else:
             objects = bucket.objects.all()
 
         files = []
-        for my_bucket_object in objects.all():
-            if "/" not in my_bucket_object.key:
-                files.append(File(my_bucket_object, my_bucket_object.key))
+        for my_bucket_object in objects:
+            relative = my_bucket_object.key[len(prefix):]
+            if relative and "/" not in relative:
+                files.append(File(my_bucket_object, relative))
 
         return files
 

@@ -115,13 +115,22 @@ class LocalDriver:
         return False
 
     def get_files(self, directory=""):
+        """List the files directly under ``directory`` (non-recursive).
+
+        Directory entries are excluded and an empty or nonexistent directory
+        yields ``[]``. Each ``File`` is named by its bare filename and carries
+        the file's content.
+        """
         file_path = self.get_path(directory)
+        if not os.path.isdir(file_path):
+            return []
+
         files = []
         for f in os.listdir(file_path):
             if not isfile(join(file_path, f)):
                 continue
 
-            files.append(File(self.get(f), f))
+            files.append(File(self.get(join(directory, f)), f))
 
         return files
 
