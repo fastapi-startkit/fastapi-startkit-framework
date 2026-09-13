@@ -191,7 +191,7 @@ class MySQLGrammar(BaseGrammar):
         return "WHERE IN ({values})"
 
     def value_equal_string(self):
-        return "{keyword} {value1} = {value2}"
+        return "{keyword} {value1} {equality} {value2}"
 
     def where_string(self):
         return " {keyword} {column} {equality} {value}"

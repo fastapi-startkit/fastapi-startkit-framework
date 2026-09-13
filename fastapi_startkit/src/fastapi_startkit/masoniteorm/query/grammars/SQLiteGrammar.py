@@ -184,7 +184,7 @@ class SQLiteGrammar(BaseGrammar):
         return "{keyword} DATE({column}) {equality} {value}"
 
     def value_equal_string(self):
-        return "{keyword} {value1} = {value2}"
+        return "{keyword} {value1} {equality} {value2}"
 
     def where_not_null_string(self):
         return " {keyword} {column} IS NOT NULL"

@@ -1,5 +1,6 @@
 import inspect
-from typing import TYPE_CHECKING, Any, Generic, TypeVar
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, Generic, Self, TypeVar, overload
 
 from fastapi_startkit.masoniteorm.expressions.expressions import (
     JoinClause,
@@ -23,6 +24,10 @@ if TYPE_CHECKING:
     from fastapi_startkit.masoniteorm.models.model import Model
 
 TModel = TypeVar("TModel", bound="Model")
+
+# where(lambda q: q.where(...)) — the callable receives a nested builder and
+# returns it, which the parent renders as a parenthesised subgroup.
+type WhereGroup[M: "Model"] = Callable[["QueryBuilder[M]"], "QueryBuilder[M]"]
 
 
 class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
@@ -159,7 +164,7 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         results = await self.select(columns).limit(1).get()
         return results.first()
 
-    async def get(self, columns=None) -> "Collection[TModel]":
+    async def get(self, columns: "list[str] | str | None" = None) -> "Collection[TModel]":
         # TODO: apply scopes
         if not columns:
             columns = []
@@ -217,8 +222,11 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         self._offset = offset
         return self
 
-    def order_by(self, column: str, direction: str = "asc") -> "QueryBuilder":
+    def order_by(self, column, direction: str = "asc") -> "QueryBuilder":
         direction = direction.upper()
+        if isinstance(column, QueryBuilder):
+            self._order_by += (OrderByExpression(None, direction, builder=column),)
+            return self
         for col in column.split(","):
             col = col.strip()
             self._order_by += (OrderByExpression(col, direction),)
@@ -486,11 +494,27 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         """Determine whether an operator is not supported by the builder."""
         return not isinstance(operator, str) or operator.lower() not in self.operators
 
-    def where(self, column, *args):
+    @overload
+    def where(self, column: str, /) -> "Self": ...
+
+    @overload
+    def where(self, column: str, value: Any, /) -> "Self": ...
+
+    @overload
+    def where(self, column: str, operator: str, value: Any, /) -> "Self": ...
+
+    @overload
+    def where(self, column: dict[str, Any], /) -> "Self": ...
+
+    @overload
+    def where(self, column: "WhereGroup[TModel]", /) -> "Self": ...
+
+    def where(self, column: "str | dict[str, Any] | WhereGroup[TModel]", *args: Any) -> "Self":
         """Specifies a where expression.
 
         Arguments:
-            column {string} -- The name of the column to search
+            column {string | dict | callable} -- The column to search, a dict of
+                column/value pairs, or a callable receiving a nested builder.
 
         Keyword Arguments:
             args {List} -- The operator and the value of the column to search. (default: {None})
@@ -531,8 +555,33 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         self._joins += (join_clause,)
         return self
 
-    def where_column(self, column1: str, column2: str) -> "QueryBuilder":
-        self._wheres += (QueryExpression(column1, "=", column2, "value_equals"),)
+    _WHERE_COLUMN_OPERATORS = ("=", "!=", "<>", ">", ">=", "<", "<=")
+
+    def _normalize_where_column(self, operator: str, column2: str | None):
+        """Resolve the where_column arity.
+
+        Two-arg ``(col1, col2)`` defaults the operator to ``=``; three-arg
+        ``(col1, operator, col2)`` validates the operator.
+        """
+        if column2 is None:
+            return "=", operator
+        if operator not in self._WHERE_COLUMN_OPERATORS:
+            raise ValueError(
+                f"Invalid where_column operator {operator!r}. "
+                f"Expected one of: {', '.join(self._WHERE_COLUMN_OPERATORS)}"
+            )
+        return operator, column2
+
+    def where_column(self, column1: str, operator: str, column2: str | None = None) -> "QueryBuilder":
+        """Compare two columns (identifiers, never bound values), joined with AND."""
+        operator, column2 = self._normalize_where_column(operator, column2)
+        self._wheres += (QueryExpression(column1, operator, column2, "value_equals"),)
+        return self
+
+    def or_where_column(self, column1: str, operator: str, column2: str | None = None) -> "QueryBuilder":
+        """Compare two columns (identifiers, never bound values), joined with OR."""
+        operator, column2 = self._normalize_where_column(operator, column2)
+        self._wheres += (QueryExpression(column1, operator, column2, "value_equals", keyword="or"),)
         return self
 
     def when(self, condition, callback) -> "QueryBuilder":
