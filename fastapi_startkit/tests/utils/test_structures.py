@@ -9,7 +9,7 @@ import pytest
 from dotty_dict import Dotty
 
 from fastapi_startkit.exceptions.exceptions import LoaderNotFound
-from fastapi_startkit.utils.structures import data, data_get, data_set, load
+from fastapi_startkit.support.structures import data, data_get, data_set, load
 
 MODULE_SOURCE = "VALUE = 42\n\n\ndef greet():\n    return 'hi'\n"
 
