@@ -107,7 +107,7 @@ dev = [
     "faker>=40.13.0",
     "langchain>=1.0.0",
     "langchain-core>=1.0.0",
-    "pyright>=1.1.411",
+    "basedpyright>=1.31.4",
 ]
 
 
@@ -121,7 +121,7 @@ fixable = ["F401"]
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 
-[tool.pyright]
+[tool.basedpyright]
 include = ["src/fastapi_startkit"]
 exclude = [
     "**/tests",

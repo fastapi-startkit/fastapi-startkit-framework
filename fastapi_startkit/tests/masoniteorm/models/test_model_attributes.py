@@ -24,6 +24,24 @@ SQLITE_CONFIG = {
 }
 
 
+def test_deprecated_model_field_remains_compatible():
+    from fastapi_startkit.masoniteorm import ModelField
+    from tests.masoniteorm.fixtures.casts import Address
+
+    with pytest.warns(DeprecationWarning, match="use Field"):
+        class LegacyUser(Model):
+            address: Address = ModelField()
+
+    user = LegacyUser(address={"city": "Sydney"})
+    assert isinstance(user.address, Address)
+    assert user.address.city == "Sydney"
+    assert isinstance(LegacyUser.address, ModelField)
+    user.address = Address(city="Melbourne")
+    assert user.address.city == "Melbourne"
+    restored = LegacyUser(user.get_attributes())
+    assert restored.address.city == "Melbourne"
+
+
 @pytest.fixture
 async def db():
     manager = DatabaseManager(ConnectionFactory(), SQLITE_CONFIG)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Self, dataclass_transform
 
 import inflection
 import pendulum
@@ -9,7 +9,7 @@ from fastapi_startkit.carbon import Carbon
 from fastapi_startkit.masoniteorm.collection import Collection
 from fastapi_startkit.masoniteorm.connections.manager import DatabaseManager
 from fastapi_startkit.masoniteorm.models.attribute import Attribute
-from fastapi_startkit.masoniteorm.models.fields import CreatedAtField, UpdatedAtField
+from fastapi_startkit.masoniteorm.models.fields import CreatedAtField, Field, FieldDescriptor, ModelField, UpdatedAtField
 from fastapi_startkit.masoniteorm.models.registry import Registry
 from fastapi_startkit.masoniteorm.models.relationship import Relationship
 from fastapi_startkit.masoniteorm.observers import ObservesEvents
@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from fastapi_startkit.masoniteorm.models.builder import QueryBuilder
 
 
+@dataclass_transform(field_specifiers=(Field, ModelField))
 class Model(Attribute, Relationship, ObservesEvents):
     db_manager: "DatabaseManager" = None
     __table__ = None
@@ -34,9 +35,16 @@ class Model(Attribute, Relationship, ObservesEvents):
         super().__init_subclass__(**kwargs)
         Registry.register(cls)
 
+        declared_fields = dict.fromkeys(
+            [
+                *cls.__annotations__,
+                *(name for name, value in vars(cls).items() if isinstance(value, FieldDescriptor)),
+            ]
+        )
+
         fillable = []
-        for name, _typ in cls.__annotations__.items():
-            attr = getattr(cls, name, None)
+        for name in declared_fields:
+            attr = vars(cls).get(name)
             from fastapi_startkit.masoniteorm.relationships.BaseRelationship import (
                 BaseRelationship,
             )
