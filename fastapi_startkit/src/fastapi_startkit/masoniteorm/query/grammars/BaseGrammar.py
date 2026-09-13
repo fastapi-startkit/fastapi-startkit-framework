@@ -634,7 +634,9 @@ class BaseGrammar:
                     keyword=keyword,
                 )
             elif value_type == "value_equals":
-                sql_string = self.value_equal_string().format(value1=where.column, value2=where.value, keyword=keyword)
+                sql_string = self.value_equal_string().format(
+                    value1=where.column, value2=where.value, keyword=keyword, equality=where.equality
+                )
             elif value_type == "NULL":
                 sql_string = self.where_null_string()
             elif value_type == "DATE":
