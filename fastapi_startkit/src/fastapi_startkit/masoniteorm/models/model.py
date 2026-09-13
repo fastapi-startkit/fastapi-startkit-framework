@@ -9,7 +9,13 @@ from fastapi_startkit.carbon import Carbon
 from fastapi_startkit.masoniteorm.collection import Collection
 from fastapi_startkit.masoniteorm.connections.manager import DatabaseManager
 from fastapi_startkit.masoniteorm.models.attribute import Attribute
-from fastapi_startkit.masoniteorm.models.fields import CreatedAtField, Field, FieldDescriptor, ModelField, UpdatedAtField
+from fastapi_startkit.masoniteorm.models.fields import (
+    CreatedAtField,
+    Field,
+    FieldDescriptor,
+    ModelField,
+    UpdatedAtField,
+)
 from fastapi_startkit.masoniteorm.models.registry import Registry
 from fastapi_startkit.masoniteorm.models.relationship import Relationship
 from fastapi_startkit.masoniteorm.observers import ObservesEvents

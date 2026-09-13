@@ -29,6 +29,7 @@ def test_deprecated_model_field_remains_compatible():
     from tests.masoniteorm.fixtures.casts import Address
 
     with pytest.warns(DeprecationWarning, match="use Field"):
+
         class LegacyUser(Model):
             address: Address = ModelField()
 
