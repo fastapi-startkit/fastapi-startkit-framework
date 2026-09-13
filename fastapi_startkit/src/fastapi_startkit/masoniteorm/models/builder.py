@@ -1,5 +1,6 @@
 import inspect
-from typing import TYPE_CHECKING, Any, Generic, TypeVar
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, Generic, Self, TypeVar, overload
 
 from fastapi_startkit.masoniteorm.expressions.expressions import (
     JoinClause,
@@ -23,6 +24,10 @@ if TYPE_CHECKING:
     from fastapi_startkit.masoniteorm.models.model import Model
 
 TModel = TypeVar("TModel", bound="Model")
+
+# where(lambda q: q.where(...)) — the callable receives a nested builder and
+# returns it, which the parent renders as a parenthesised subgroup.
+type WhereGroup[M: "Model"] = Callable[["QueryBuilder[M]"], "QueryBuilder[M]"]
 
 
 class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
@@ -159,7 +164,7 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         results = await self.select(columns).limit(1).get()
         return results.first()
 
-    async def get(self, columns=None) -> "Collection[TModel]":
+    async def get(self, columns: "list[str] | str | None" = None) -> "Collection[TModel]":
         # TODO: apply scopes
         if not columns:
             columns = []
@@ -486,11 +491,27 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         """Determine whether an operator is not supported by the builder."""
         return not isinstance(operator, str) or operator.lower() not in self.operators
 
-    def where(self, column, *args):
+    @overload
+    def where(self, column: str, /) -> "Self": ...
+
+    @overload
+    def where(self, column: str, value: Any, /) -> "Self": ...
+
+    @overload
+    def where(self, column: str, operator: str, value: Any, /) -> "Self": ...
+
+    @overload
+    def where(self, column: dict[str, Any], /) -> "Self": ...
+
+    @overload
+    def where(self, column: "WhereGroup[TModel]", /) -> "Self": ...
+
+    def where(self, column: "str | dict[str, Any] | WhereGroup[TModel]", *args: Any) -> "Self":
         """Specifies a where expression.
 
         Arguments:
-            column {string} -- The name of the column to search
+            column {string | dict | callable} -- The column to search, a dict of
+                column/value pairs, or a callable receiving a nested builder.
 
         Keyword Arguments:
             args {List} -- The operator and the value of the column to search. (default: {None})
