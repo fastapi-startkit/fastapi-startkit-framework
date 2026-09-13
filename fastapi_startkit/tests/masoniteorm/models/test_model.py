@@ -1,4 +1,5 @@
 from fastapi_startkit.masoniteorm.models.model import Model
+from fastapi_startkit.masoniteorm.models.fields import Field
 from tests.masoniteorm.fixtures.model import User
 from tests.masoniteorm.sqlite.test_case import TestCase
 
@@ -113,6 +114,15 @@ class TestFillable(TestCase):
 
         assert "title" in Post.__fillable__
         assert "body" in Post.__fillable__
+
+    async def test_typed_fields_are_in_fillable(self):
+        class Post(Model):
+            __table__ = "posts"
+            title = Field[str]()
+            published = Field(default=False)
+
+        assert "title" in Post.__fillable__
+        assert "published" in Post.__fillable__
 
     async def test_framework_fields_excluded_from_fillable(self):
         class Post(Model):
