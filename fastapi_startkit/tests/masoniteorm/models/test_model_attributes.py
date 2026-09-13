@@ -43,6 +43,48 @@ def test_deprecated_model_field_remains_compatible():
     assert restored.address.city == "Melbourne"
 
 
+@pytest.mark.parametrize("mixed_fields", [False, True], ids=["annotation-only", "mixed-fields"])
+def test_annotation_only_columns_remain_supported(mixed_fields):
+    from fastapi_startkit.masoniteorm import Field
+
+    if mixed_fields:
+
+        class CompatibleUser(Model):
+            id: int
+            name: str
+            email: str
+            score = Field[int]()
+            is_admin = Field(default=False)
+
+    else:
+
+        class CompatibleUser(Model):
+            id: int
+            name: str
+            email: str
+
+    # Hydration from raw storage still uses plain annotations for casting.
+    user = CompatibleUser({"id": "42", "name": "Alex", "email": "alex@example.com", "score": "7"})
+    assert user.id == 42
+    assert isinstance(user.id, int)
+    assert user.name == "Alex"
+    assert user.email == "alex@example.com"
+
+    user.name = "Jane"
+    user.fill({"email": "jane@example.com"})
+    assert user.name == "Jane"
+    assert user.email == "jane@example.com"
+    assert {"id", "name", "email"} <= set(CompatibleUser.__fillable__)
+
+    if mixed_fields:
+        assert user.score == 7
+        assert isinstance(user.score, int)
+        assert user.is_admin is False
+        user.fill({"score": 9, "is_admin": True})
+        assert user.score == 9
+        assert user.is_admin is True
+
+
 @pytest.fixture
 async def db():
     manager = DatabaseManager(ConnectionFactory(), SQLITE_CONFIG)
