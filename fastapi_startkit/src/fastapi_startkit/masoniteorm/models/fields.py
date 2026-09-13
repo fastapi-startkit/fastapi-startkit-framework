@@ -157,4 +157,4 @@ class UpdatedAtField:
         return instance.get_attribute(self.name)
 
     def __set__(self, instance, value):
-        instance.set_value(self.name, value)
+        instance.set_attribute(self.name, value)

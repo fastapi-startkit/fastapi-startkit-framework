@@ -85,6 +85,50 @@ def test_annotation_only_columns_remain_supported(mixed_fields):
         assert user.is_admin is True
 
 
+def test_field_descriptor_assignment_casts_and_tracks_dirty_values():
+    from fastapi_startkit.masoniteorm import Field
+
+    class DescriptorUser(Model):
+        id = Field[int]()
+
+    user = DescriptorUser({"id": 1})
+    user.sync_original()
+    # Bypass Model.__setattr__ to exercise Python's descriptor protocol.
+    object.__setattr__(user, "id", "42")
+    assert user.id == 42
+    assert user.get_dirty() == {"id": 42}
+    assert user._original["id"] == 1
+
+
+def test_legacy_model_field_descriptor_assignment_serializes_pydantic_values():
+    import json
+
+    from fastapi_startkit.masoniteorm import ModelField
+    from tests.masoniteorm.fixtures.casts import Address
+
+    with pytest.warns(DeprecationWarning, match="removed in 2.x"):
+
+        class DescriptorLegacyUser(Model):
+            address: Address = ModelField()
+
+    user = DescriptorLegacyUser()
+    object.__setattr__(user, "address", Address(city="Sydney"))
+    assert isinstance(user.address, Address)
+    assert user.address.city == "Sydney"
+    assert json.loads(user.get_dirty()["address"])["city"] == "Sydney"
+
+
+def test_updated_at_descriptor_assignment_uses_attribute_storage():
+    class TimestampUser(Model):
+        pass
+
+    user = TimestampUser()
+    timestamp = pendulum.datetime(2026, 1, 2, 3, 4, 5, tz="UTC")
+    object.__setattr__(user, "updated_at", timestamp)
+    assert user.updated_at == timestamp
+    assert user.get_dirty()["updated_at"] == "2026-01-02 03:04:05"
+
+
 @pytest.fixture
 async def db():
     manager = DatabaseManager(ConnectionFactory(), SQLITE_CONFIG)
