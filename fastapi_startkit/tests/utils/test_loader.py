@@ -1,3 +1,5 @@
+import zipfile
+
 import pytest
 
 from fastapi_startkit.exceptions.exceptions import LoaderNotFound
@@ -47,6 +49,13 @@ class TestGetModules:
     def test_accepts_single_path_or_list(self, module_dir):
         loader = Loader()
         assert loader.get_modules([module_dir]).keys() == loader.get_modules(module_dir).keys()
+
+    def test_skips_modules_not_found_on_the_filesystem(self, tmp_path):
+        archive = tmp_path / "archive"
+        with zipfile.ZipFile(archive, "w") as zf:
+            zf.writestr("zipped.py", MODULE_SOURCE)
+
+        assert Loader().get_modules(str(archive)) == {}
 
 
 class TestFind:
@@ -120,6 +129,9 @@ class TestGetParameters:
         assert "SPEED" in params
         assert "Dog" in params
         assert not any(name.startswith("__") for name in params)
+
+    def test_missing_module_returns_empty(self, tmp_path):
+        assert Loader().get_parameters(f"{tmp_path}/does_not_exist.py") == {}
 
 
 class TestParametersFilter:
