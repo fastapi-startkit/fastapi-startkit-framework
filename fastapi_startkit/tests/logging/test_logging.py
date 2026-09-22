@@ -9,7 +9,9 @@ from fastapi_startkit.logging.ChannelFactory import ChannelFactory
 from fastapi_startkit.logging.channels import (
     DailyChannel,
     SingleChannel,
+    SlackChannel,
     StackChannel,
+    SyslogChannel,
     TerminalChannel,
 )
 from fastapi_startkit.logging.channels.BaseChannel import BaseChannel
@@ -173,6 +175,14 @@ class BaseChannelTest(unittest.TestCase):
     def test_channel_builds_a_new_channel_instance(self):
         channel = self._channel()
         self.assertIsInstance(channel.channel("terminal"), TerminalChannel)
+
+    def test_channel_raises_for_unknown_channel(self):
+        with self.assertRaisesRegex(ValueError, "Unknown log channel"):
+            self._channel().channel("does-not-exist")
+
+    def test_driver_class_raises_for_unknown_driver(self):
+        with self.assertRaisesRegex(ValueError, "Unknown log driver"):
+            BaseChannel.driver_class("does-not-exist")
 
 
 class MultiBaseChannelTest(unittest.TestCase):
@@ -433,6 +443,24 @@ class ChannelConstructionTest(unittest.TestCase):
                 if isinstance(handler, logging.FileHandler):
                     channel.driver.log.removeHandler(handler)
                     handler.close()
+
+    def test_slack_channel_builds_slack_driver(self):
+        channel = SlackChannel(driver="slack")
+        self.assertIsInstance(channel.driver, LogSlackDriver)
+
+    def test_syslog_channel_builds_syslog_driver(self):
+        import os
+        import tempfile
+
+        path = os.path.join(tempfile.mkdtemp(), "syslog")
+        root = logging.getLogger("root")
+        with patch("fastapi_startkit.logging.drivers.LogSyslogDriver.logging.handlers.SysLogHandler") as handler_cls:
+            channel = SyslogChannel(driver="syslog", path=path)
+        try:
+            self.assertIsInstance(channel.driver, LogSyslogDriver)
+            handler_cls.assert_called_once_with(address=path)
+        finally:
+            root.removeHandler(handler_cls.return_value)
 
     def test_stack_channel_collects_known_channels(self):
         channel = StackChannel(channels=["terminal"])
