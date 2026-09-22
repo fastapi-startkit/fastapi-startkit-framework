@@ -1,8 +1,12 @@
 import pendulum
 from fastapi_startkit.facades import Config
 
+from .BaseChannel import BaseChannel
+
 
 class MultiBaseChannel:
+    channels: list[BaseChannel]
+
     def get_time(self):
         return pendulum.now().in_tz(Config.get("logging.channels.timezone", "UTC"))
 
