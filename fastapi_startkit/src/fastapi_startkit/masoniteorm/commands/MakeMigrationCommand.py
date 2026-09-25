@@ -25,7 +25,7 @@ class MakeMigrationCommand(Command):
         ),
     ]
 
-    def handle(self):
+    def handle(self) -> int:
         name = self.argument("name").replace("-", "_")
         now = datetime.datetime.today()
 
@@ -60,3 +60,4 @@ class MakeMigrationCommand(Command):
             fp.write(output)
 
         self.info(f"Migration file created: {os.path.join(migration_directory, file_name)}")
+        return 0
