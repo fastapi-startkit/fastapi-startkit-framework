@@ -149,7 +149,7 @@ class SQLitePlatform(Platform):
                     column_constraint=column_constraint,
                     length=length,
                     signed=(
-                        " " + self.signed.get(column._signed)
+                        " " + self.signed[column._signed]
                         if column.column_type not in self.types_without_signs and column._signed
                         else ""
                     ),
@@ -203,7 +203,7 @@ class SQLitePlatform(Platform):
                         nullable="NULL" if column.is_null else "NOT NULL",
                         default=default,
                         signed=(
-                            " " + self.signed.get(column._signed)
+                            " " + self.signed[column._signed]
                             if column.column_type not in self.types_without_signs and column._signed
                             else ""
                         ),
@@ -320,7 +320,7 @@ class SQLitePlatform(Platform):
     def get_primary_key_constraint_string(self):
         return "CONSTRAINT {constraint_name} PRIMARY KEY ({columns})"
 
-    def constraintize(self, constraints):
+    def constraintize(self, constraints, table=None):
         sql = []
         for name, constraint in constraints.items():
             sql.append(
@@ -377,7 +377,7 @@ class SQLitePlatform(Platform):
             table.add_column(
                 column["name"],
                 column_type,
-                column_python_type=Schema._type_hints_map.get(column_type, str),
+                column_python_type=str if column_type is None else Schema._type_hints_map.get(column_type, str),
                 default=default,
                 length=length,
                 nullable=int(column.get("notnull")) == 0,
