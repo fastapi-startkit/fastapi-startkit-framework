@@ -485,7 +485,7 @@ class PostgresPlatform(Platform):
                 column["column_name"],
                 column_type,
                 default=default,
-                column_python_type=Schema._type_hints_map.get(column_type, str),
+                column_python_type=str if column_type is None else Schema._type_hints_map.get(column_type, str),
                 length=length,
             )
 
