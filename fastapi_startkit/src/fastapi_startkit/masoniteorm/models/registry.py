@@ -28,6 +28,12 @@ class Registry:
         return cls._morph_map
 
     @classmethod
+    def get_morph_model(cls, name: str) -> type:
+        if name not in cls._morph_map:
+            raise ValueError(f"No model registered in the morph map for '{name}'.")
+        return cls._morph_map[name]
+
+    @classmethod
     def resolve(cls, name: str) -> type:
         # priority: class registry > morph_map
         # _models is always updated with the latest registration, so it wins over
