@@ -95,3 +95,8 @@ class TestAIConfiguration(unittest.TestCase):
     def test_google_config_key_defaults_to_empty_when_neither_set(self):
         self._patch_env(unset=["GEMINI_API_KEY", "GOOGLE_API_KEY"])
         self.assertEqual(GoogleConfig().key, "")
+
+    def test_api_keys_are_kept_as_strings_even_when_numeric_or_boolean_like(self):
+        self._patch_env({"ANTHROPIC_API_KEY": "12345", "OPENAI_API_KEY": "true"})
+        self.assertEqual(AnthropicConfig().key, "12345")
+        self.assertEqual(OpenAIConfig().key, "true")
