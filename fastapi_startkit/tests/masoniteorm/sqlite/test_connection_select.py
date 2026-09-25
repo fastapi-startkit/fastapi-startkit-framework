@@ -1,3 +1,4 @@
+from fastapi_startkit.masoniteorm.connections.connection import Connection
 from fastapi_startkit.masoniteorm.models import Model
 
 from ..fixtures.model import User
@@ -14,3 +15,7 @@ class TestConnectionSelect(TestCase):
 
         assert rows == [{"email": "select@example.com", "name": "Select"}]
         assert all(type(row) is dict for row in rows)
+
+    def test_base_connection_has_no_grammar_or_processor(self):
+        assert Connection.get_query_grammar() is None
+        assert Connection.get_post_processor() is None
