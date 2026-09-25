@@ -1,3 +1,9 @@
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from fastapi_startkit.application import Application
+
+
 class HTTPExceptionHandler:
     """
     The base exception handler for FastAPI applications.
@@ -8,7 +14,7 @@ class HTTPExceptionHandler:
         from fastapi.responses import JSONResponse
         from fastapi_startkit.container import Container
 
-        app = Container.instance()
+        app = cast("Application", Container.instance())
         if app.is_debug():
             tb = exc.__traceback__
             frames = traceback.extract_tb(tb)

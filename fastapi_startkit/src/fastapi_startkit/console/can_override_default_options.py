@@ -1,7 +1,8 @@
+from cleo.commands.command import Command
 from inflection import underscore
 
 
-class CanOverrideOptionsDefault:
+class CanOverrideOptionsDefault(Command):
     """Command mixin to allow to override optional argument default values when instantiating the
     command.
     Example: SomeCommand(app, option1="other/default").

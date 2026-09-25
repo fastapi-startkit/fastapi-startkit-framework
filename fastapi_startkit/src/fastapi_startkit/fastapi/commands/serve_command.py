@@ -1,4 +1,4 @@
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from cleo.helpers import option
 
@@ -7,6 +7,9 @@ from fastapi_startkit.console.command import Command
 from fastapi_startkit.environment import value as cast_value
 from fastapi_startkit.fastapi.config import FastAPIConfig
 from fastapi_startkit.support import Uri, Uriable
+
+if TYPE_CHECKING:
+    from fastapi_startkit.application import Application
 
 
 class ServeCommand(Command):
@@ -69,7 +72,7 @@ class ServeCommand(Command):
 
         return uri.with_port(port) if port else uri
 
-    def handle(self):
+    def handle(self) -> int:
         import uvicorn
 
         from fastapi_startkit.container import Container
@@ -106,12 +109,14 @@ class ServeCommand(Command):
 
         else:
             self.line(f"<info>Starting Uvicorn server on {url.host()}:{url.port()}...</info>")
-            kwargs.update({"app": Container.instance().fastapi, "reload": False})
+            kwargs.update({"app": cast("Application", Container.instance()).fastapi, "reload": False})
 
         try:
             uvicorn.run(**kwargs)
         except KeyboardInterrupt:
             self.line("<comment>Server stopped manually.</comment>")
+
+        return 0
 
     def is_app_exist(self, app: str) -> "bool":
         import importlib.util
