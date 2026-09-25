@@ -169,41 +169,5 @@ class HasManyThrough(BaseRelationship):
             .when(callback, lambda q: callback(q))
         )
 
-    def get_with_count_query(self, builder, callback):
-        distant_builder = self.get_distance_builder()
-        intermediary_builder = self.get_intermediary_builder()
-        distant_table = distant_builder.get_table_name()
-        intermediate_table = intermediary_builder.get_table_name()
-
-        if not builder._columns:
-            builder.select("*")
-
-        return_query = builder.add_select(
-            f"{self.attribute}_count",
-            lambda q: (
-                q.count("*")
-                .join(
-                    f"{intermediate_table}",
-                    f"{intermediate_table}.{self.foreign_key}",
-                    "=",
-                    f"{distant_table}.{self.other_owner_key}",
-                )
-                .where_column(
-                    f"{intermediate_table}.{self.local_key}",
-                    f"{builder.get_table_name()}.{self.local_owner_key}",
-                )
-                .table(distant_table)
-                .when(
-                    callback,
-                    lambda q: q.where_in(
-                        self.foreign_key,
-                        callback(distant_builder.select(self.other_owner_key)),
-                    ),
-                )
-            ),
-        )
-
-        return return_query
-
     def map_related(self, related_result):
         return related_result.group_by(self.local_key)

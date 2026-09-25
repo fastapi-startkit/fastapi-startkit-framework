@@ -1,3 +1,5 @@
+import pytest
+
 from ...fixtures.model import Country, IncomingShipment
 from ..test_case import TestCase
 
@@ -57,3 +59,7 @@ class TestHasOneThroughRelationship(TestCase):
         shipments = await IncomingShipment.where("name", "Bread").with_({"from_country": seen.append}).get()
         assert len(seen) == 1
         assert shipments.first().from_country.country_id == 20
+
+    def test_has_one_through_with_count_is_not_implemented(self):
+        with pytest.raises(NotImplementedError):
+            IncomingShipment.from_country.get_with_count_query(IncomingShipment.where("id", 1), None)

@@ -1,3 +1,5 @@
+import pytest
+
 from fastapi_startkit.masoniteorm.collection import Collection
 
 from ...fixtures.model import Logo, User
@@ -53,3 +55,7 @@ class TestHasManyThroughRelationship(TestCase):
         users = await User.where("email", "admin@admin.com").with_({"logos": seen.append}).get()
         assert len(seen) == 1
         assert users.first().logos.count() == 1
+
+    def test_has_many_through_with_count_is_not_implemented(self):
+        with pytest.raises(NotImplementedError):
+            User.logos.get_with_count_query(User.where("id", 1), None)
