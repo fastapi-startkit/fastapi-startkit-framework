@@ -117,3 +117,16 @@ class TestMorphToManyRelationship(TestCase):
         rel.register_related("record", like_article, all_articles)
 
         self.assertIn("record", like_article._relationships)
+
+    async def test_proxied_attribute_without_callable_raises_attribute_error(self):
+        rel = MorphToMany("likeable_type", "likeable_id")
+        with self.assertRaises(AttributeError):
+            rel.resolver()
+        self.assertFalse(hasattr(rel, "where"))
+
+    async def test_instance_access_resolves_morphed_record(self):
+        like = await LikeModelMorphToMany.create({"likeable_type": "article_m2m", "likeable_id": self.article.id})
+        like_loaded = await LikeModelMorphToMany.where("id", like.id).first()
+
+        resolved = await like_loaded.record
+        self.assertIsInstance(resolved, Articles)
