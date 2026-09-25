@@ -70,13 +70,8 @@ class Router:
         methods: List[str],
         **kwargs: Unpack[RouteOptions],
     ) -> None:
-        self.router.add_api_route(
-            path,
-            action,
-            methods=methods,
-            responses=kwargs.pop("responses", None) or {},  # type: ignore[misc]
-            **kwargs,
-        )
+        kwargs["responses"] = kwargs.get("responses") or {}
+        self.router.add_api_route(path, action, methods=methods, **kwargs)
 
     def get(self, path: str, action: Callable[..., Any], **kwargs: Unpack[RouteOptions]) -> None:
         self._add_route(path, action, ["GET"], **kwargs)
