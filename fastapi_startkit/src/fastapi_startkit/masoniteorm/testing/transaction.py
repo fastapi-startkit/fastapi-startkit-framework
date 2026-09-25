@@ -1,3 +1,9 @@
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from fastapi_startkit.application import Application
+
+
 class DatabaseTransaction:
     async def asyncStartTestRun(self):
         from fastapi_startkit.masoniteorm.models import Model
@@ -24,7 +30,7 @@ class RefreshDatabase(DatabaseTransaction):
             from fastapi_startkit.masoniteorm.migrations import Migrator
             from fastapi_startkit.application import app as get_app
 
-            migration_dir = get_app().use_base_path("databases/migrations")
+            migration_dir = str(cast("Application", get_app()).use_base_path("databases/migrations"))
             migrator = Migrator(migration_directory=migration_dir)
             await migrator.fresh(ignore_fk=True)
             RefreshDatabase.migrated = True

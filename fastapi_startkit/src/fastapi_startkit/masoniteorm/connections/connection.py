@@ -12,6 +12,8 @@ from fastapi_startkit.masoniteorm.models.builder import QueryBuilder
 if TYPE_CHECKING:
     from typing import Self
 
+    from fastapi_startkit.masoniteorm.query.grammars.BaseGrammar import BaseGrammar
+
 
 class Transaction:
     def __init__(self, owner: Connection):
@@ -100,11 +102,13 @@ class Connection:
     async def get_connection(self) -> AsyncConnection:
         return self.connection or await self.engine.connect()
 
-    def get_query_grammar(cls):
-        pass
+    @classmethod
+    def get_query_grammar(cls) -> type[BaseGrammar] | None:
+        return None
 
-    def get_post_processor(self):
-        pass
+    @classmethod
+    def get_post_processor(cls) -> type | None:
+        return None
 
     async def begin_transaction(self) -> None:
         connection = self.connection
@@ -199,7 +203,7 @@ class Connection:
 
     async def select(self, query: str, bindings: list | None = None) -> list[dict]:
         result = await self.run(query, bindings)
-        return result.mappings().all()
+        return [dict(row) for row in result.mappings().all()]
 
     async def select_one(self, query: str, bindings: list | None = None) -> dict | None:
         result = await self.run(query, bindings)

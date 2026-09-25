@@ -6,7 +6,7 @@ from .connection import Connection
 
 class SQliteConnection(Connection):
     @classmethod
-    def get_query_grammar(cls):
+    def get_query_grammar(cls) -> type[SQLiteGrammar]:
         return SQLiteGrammar
 
     @classmethod
@@ -14,5 +14,5 @@ class SQliteConnection(Connection):
         return SQLitePlatform
 
     @classmethod
-    def get_post_processor(cls):
+    def get_post_processor(cls) -> type[SQLitePostProcessor]:
         return SQLitePostProcessor
