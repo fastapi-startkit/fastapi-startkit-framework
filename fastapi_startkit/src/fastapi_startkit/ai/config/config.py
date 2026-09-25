@@ -10,8 +10,8 @@ class AnthropicConfig:
     """Configuration for the Anthropic provider."""
 
     driver: str = "anthropic"
-    key: str = field(default_factory=lambda: env("ANTHROPIC_API_KEY", ""))
-    url: str = field(default_factory=lambda: env("ANTHROPIC_BASE_URL", "https://api.anthropic.com"))
+    key: str = field(default_factory=lambda: env("ANTHROPIC_API_KEY", "", cast=False))
+    url: str = field(default_factory=lambda: env("ANTHROPIC_BASE_URL", "https://api.anthropic.com", cast=False))
 
     models: dict = field(
         default_factory=lambda: {
@@ -25,8 +25,8 @@ class OpenAIConfig:
     """Configuration for the OpenAI provider."""
 
     driver: str = "openai"
-    key: str = field(default_factory=lambda: env("OPENAI_API_KEY", ""))
-    url: str = field(default_factory=lambda: env("OPENAI_BASE_URL", "https://api.openai.com/v1"))
+    key: str = field(default_factory=lambda: env("OPENAI_API_KEY", "", cast=False))
+    url: str = field(default_factory=lambda: env("OPENAI_BASE_URL", "https://api.openai.com/v1", cast=False))
 
     models: dict = field(
         default_factory=lambda: {
@@ -41,7 +41,10 @@ class GoogleConfig:
     """Configuration for the Google / Gemini provider."""
 
     driver: str = "google"
-    key: str = field(default_factory=lambda: env("GEMINI_API_KEY", "") or env("GOOGLE_API_KEY", ""))
+    key: str = field(
+        default_factory=lambda: env("GEMINI_API_KEY", "", cast=False)
+        or env("GOOGLE_API_KEY", "", cast=False)
+    )
 
     models: dict = field(
         default_factory=lambda: {
@@ -56,7 +59,7 @@ class ElevenLabsConfig:
     """Configuration for the ElevenLabs provider."""
 
     driver: str = "elevenlabs"
-    key: str = field(default_factory=lambda: env("ELEVENLABS_API_KEY", ""))
+    key: str = field(default_factory=lambda: env("ELEVENLABS_API_KEY", "", cast=False))
 
     models: dict = field(
         default_factory=lambda: {
