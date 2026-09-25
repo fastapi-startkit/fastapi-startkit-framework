@@ -1,3 +1,5 @@
+import pytest
+
 from fastapi_startkit.masoniteorm.collection import Collection
 
 from ...fixtures.model import Logo, User
@@ -37,3 +39,23 @@ class TestHasManyThroughRelationship(TestCase):
     async def test_has_many_through_has_query(self):
         users = await User.where_has("logos", lambda query: query).get()
         assert users.count() == 1
+
+    async def test_has_many_through_has_query_without_callback(self):
+        users = await User.where_has("logos").get()
+        assert users.count() == 1
+
+    async def test_has_many_through_relate(self):
+        user = await User.where("email", "admin@admin.com").first()
+        logos = await User.logos.relate(user).get()
+        assert logos.count() == 1
+        assert isinstance(logos.first(), Logo)
+
+    async def test_has_many_through_eager_load_with_callback(self):
+        seen = []
+        users = await User.where("email", "admin@admin.com").with_({"logos": seen.append}).get()
+        assert len(seen) == 1
+        assert users.first().logos.count() == 1
+
+    def test_has_many_through_with_count_is_not_implemented(self):
+        with pytest.raises(NotImplementedError):
+            User.logos.get_with_count_query(User.where("id", 1), None)
