@@ -2,6 +2,7 @@
 
 import os
 import sys
+from pathlib import Path
 from typing import Any, Literal, TypeVar, overload
 
 from dotenv import load_dotenv
@@ -13,7 +14,7 @@ EnvValue = str | int | bool
 
 class Environment:
     @staticmethod
-    def resolve_environment(base_path=None, env: str | None = None):
+    def resolve_environment(base_path: Path | None = None, env: str | None = None):
         Environment.resolve_environment_from_argument()
 
         if "PYTEST_CURRENT_TEST" in os.environ:
@@ -26,7 +27,7 @@ class Environment:
         if os.environ.get("APP_ENV"):
             return os.environ["APP_ENV"]
 
-        path = base_path / ".env"
+        path = Environment._require_base_path(base_path) / ".env"
         if not path.exists():
             raise ValueError("Unable to determine environment.")
 
@@ -39,15 +40,22 @@ class Environment:
         return env
 
     @staticmethod
-    def load_base(base_path=None):
+    def _require_base_path(base_path: Path | None) -> Path:
+        # Keeps the TypeError the old unguarded `None / ".env"` raised, with a clearer message.
+        if base_path is None:
+            raise TypeError("base_path is required to locate .env files")
+        return base_path
+
+    @staticmethod
+    def load_base(base_path: Path | None = None):
         """Load the base .env file, resetting vars to their default values."""
-        path = base_path / ".env"
+        path = Environment._require_base_path(base_path) / ".env"
         if path.exists():
             load_dotenv(path, override=True)
 
     @staticmethod
-    def load(env: str, override=True, only=None, base_path=None):
-        path = base_path / f".env.{env}"
+    def load(env: str, override=True, only=None, base_path: Path | None = None):
+        path = Environment._require_base_path(base_path) / f".env.{env}"
         if not path.exists():
             return
         load_dotenv(path, override=override)

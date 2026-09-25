@@ -1,9 +1,14 @@
 import os
+import sys
+import tempfile
 import unittest
+from unittest import mock
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import assert_type
 
 from fastapi_startkit.environment import env
+from fastapi_startkit.environment.environment import Environment
 
 
 class EnvTest(unittest.TestCase):
@@ -180,3 +185,23 @@ class EnvTest(unittest.TestCase):
         os.environ["TEST_CAST"] = "false"
         self.assertEqual(env("TEST_CAST", cast=False), "false")
         self.assertIsInstance(env("TEST_CAST", cast=False), str)
+
+
+class EnvironmentBasePathTest(unittest.TestCase):
+    def test_load_base_without_base_path_raises_type_error(self):
+        with self.assertRaisesRegex(TypeError, "base_path is required"):
+            Environment.load_base()
+
+    def test_load_without_base_path_raises_type_error(self):
+        with self.assertRaisesRegex(TypeError, "base_path is required"):
+            Environment.load("testing")
+
+    def test_load_with_missing_env_file_is_a_no_op(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertIsNone(Environment.load("nope", base_path=Path(tmp)))
+
+    def test_resolve_environment_without_base_path_raises_type_error(self):
+        cleared = {k: v for k, v in os.environ.items() if k not in ("PYTEST_CURRENT_TEST", "APP_ENV")}
+        with mock.patch.dict(os.environ, cleared, clear=True), mock.patch.object(sys, "argv", ["artisan"]):
+            with self.assertRaisesRegex(TypeError, "base_path is required"):
+                Environment.resolve_environment()

@@ -3,7 +3,7 @@ import json
 import os
 import re
 import secrets
-from typing import Callable, Optional
+from typing import Callable, Literal, Optional
 
 
 from .exceptions import ViteException, ViteManifestNotFoundException
@@ -361,7 +361,7 @@ class Vite:
             attrs.update(resolver(src, url, chunk, manifest))
         return attrs
 
-    def _resolve_preload_tag_attributes(self, src, url, chunk, manifest) -> dict | bool:
+    def _resolve_preload_tag_attributes(self, src, url, chunk, manifest) -> dict | Literal[False]:
         if self._is_css_path(url):
             attrs = {
                 "rel": "preload",
