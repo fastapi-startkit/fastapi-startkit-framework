@@ -13,7 +13,7 @@ class PostgresConnection(Connection):
         return row[0] if row is not None else None
 
     @classmethod
-    def get_query_grammar(cls):
+    def get_query_grammar(cls) -> type[PostgresGrammar]:
         return PostgresGrammar
 
     @classmethod
@@ -21,5 +21,5 @@ class PostgresConnection(Connection):
         return PostgresPlatform
 
     @classmethod
-    def get_post_processor(cls):
+    def get_post_processor(cls) -> type[PostgresPostProcessor]:
         return PostgresPostProcessor
