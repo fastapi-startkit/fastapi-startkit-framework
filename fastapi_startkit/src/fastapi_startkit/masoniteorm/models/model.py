@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
 @dataclass_transform(field_specifiers=(Field, ModelField))
 class Model(Attribute, Relationship, ObservesEvents):
-    db_manager: "DatabaseManager" = None
+    db_manager: DatabaseManager | None = None
     __table__ = None
     __primary_key__ = "id"
     __timestamps__ = True
@@ -67,7 +67,7 @@ class Model(Attribute, Relationship, ObservesEvents):
     created_at: Carbon = CreatedAtField(fmt="%Y-%m-%d %H:%M:%S", tz="UTC")  # pyright: ignore[reportAssignmentType]
     updated_at: Carbon = UpdatedAtField(fmt="%Y-%m-%d %H:%M:%S", tz="UTC")  # pyright: ignore[reportAssignmentType]
 
-    def __init__(self, attributes: dict = None, **kwargs):
+    def __init__(self, attributes: dict | None = None, **kwargs):
         super().__init__(attributes, **kwargs)
         self.connection = getattr(self.__class__, "__connection__", "default")
         self._global_scopes = {}
@@ -331,8 +331,14 @@ class Model(Attribute, Relationship, ObservesEvents):
 
         return model
 
+    @classmethod
+    def resolve_db_manager(cls) -> DatabaseManager:
+        if cls.db_manager is None:
+            raise RuntimeError("Model.db_manager is not set; register the DatabaseProvider first.")
+        return cls.db_manager
+
     def new_query(self) -> "QueryBuilder[Self]":
-        return self.db_manager.connection(self.connection).query().set_model(self)
+        return self.resolve_db_manager().connection(self.connection).query().set_model(self)
 
     def hydrate(self, items):
         instance = self.new_model_instance()
