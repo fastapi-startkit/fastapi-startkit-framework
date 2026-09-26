@@ -361,12 +361,19 @@ class SQLitePlatform(Platform):
     async def get_current_schema(self, connection, table_name, schema=None):
         sql = f"PRAGMA table_info({table_name})"
 
-        reversed_type_map = {v: k for k, v in self.type_map.items()}
+        # Several blueprint types share a database type (e.g. integer/increments -> INTEGER);
+        # keep the first, canonical one instead of letting the last entry win.
+        reversed_type_map = {}
+        for blueprint_type, db_type in self.type_map.items():
+            reversed_type_map.setdefault(db_type, blueprint_type)
         table = Table(table_name)
 
         result = await connection.select(sql, ())
+        autoincrement = await self._has_autoincrement(connection, table_name)
         for column in result:
             column_type = self.get_column_type(reversed_type_map, column["type"].upper())
+            if autoincrement and column_type == "integer" and column.get("pk") == 1:
+                column_type = "increments"
             length = self.get_column_length(column["type"])
 
             # find default
@@ -386,6 +393,15 @@ class SQLitePlatform(Platform):
                 table.set_primary_key(column["name"])
 
         return table
+
+    @staticmethod
+    async def _has_autoincrement(connection, table_name) -> bool:
+        # SQLite only allows AUTOINCREMENT on the INTEGER PRIMARY KEY column.
+        result = await connection.select(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name = ?",
+            (table_name,),
+        )
+        return any("AUTOINCREMENT" in (row.get("sql") or "").upper() for row in result)
 
     def get_column_length(self, column_type):
         if "(" in column_type:
