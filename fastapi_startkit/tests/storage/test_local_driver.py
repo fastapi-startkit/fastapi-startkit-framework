@@ -305,3 +305,25 @@ class TestFileStream:
         with open(f) as fh:
             stream = FileStream(fh, name="renamed.csv")
             assert stream.extension() == ".csv"
+
+
+# ---------------------------------------------------------------------------
+# Missing configuration / metadata
+# ---------------------------------------------------------------------------
+
+
+class TestMissingConfiguration:
+    def test_local_driver_without_root_or_path_raises(self, tmp_path):
+        app = MagicMock()
+        app.base_path = str(tmp_path)
+        driver = LocalDriver(app).set_options({})
+        with pytest.raises(ValueError, match="'root' or 'path'"):
+            driver.get_path("file.txt")
+
+    def test_file_without_filename_raises_on_extension(self):
+        with pytest.raises(ValueError, match="no filename"):
+            File(b"x").extension()
+
+    def test_file_without_filename_raises_on_hash_name(self):
+        with pytest.raises(ValueError, match="no filename"):
+            File(b"x").hash_name()
