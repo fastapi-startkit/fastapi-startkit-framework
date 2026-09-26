@@ -47,4 +47,31 @@ class TestSQLiteCurrentSchema(TestCase):
 
         self.assertEqual(sql.count("AUTOINCREMENT"), 1)
         self.assertIn('"id" INTEGER PRIMARY KEY AUTOINCREMENT', sql)
-        self.assertIn('"views" INTEGER NOT NULL', sql)
+        self.assertIn('"views" INTEGER NOT NULL DEFAULT 0', sql)
+
+    async def test_defaults_are_parsed_back_from_sql_literals(self):
+        async with await self.schema.create("tallies") as table:
+            table.integer("total").default(5)
+            table.boolean("active").default(True)
+            table.string("note").default("draft")
+            table.string("empty").default("")
+            table.timestamp("seen_at").default("current")
+            table.string("maybe").nullable()
+
+        columns = await self.current_columns("tallies")
+
+        self.assertEqual(columns["total"].default, 5)
+        self.assertEqual(columns["note"].default, "draft")
+        self.assertEqual(columns["active"].default, "True")
+        self.assertTrue(columns["active"].default_is_raw)
+        self.assertEqual(columns["empty"].default, "")
+        self.assertEqual(columns["seen_at"].default, "current")
+        self.assertIsNone(columns["maybe"].default)
+
+    async def test_unknown_default_expressions_are_kept_raw(self):
+        platform = self.schema.platform()
+
+        self.assertEqual(platform._parse_default("1.5"), (1.5, False))
+        self.assertEqual(platform._parse_default("'it''s'"), ("it's", False))
+        self.assertEqual(platform._parse_default("NULL"), (None, False))
+        self.assertEqual(platform._parse_default("(datetime('now'))"), ("(datetime('now'))", True))
