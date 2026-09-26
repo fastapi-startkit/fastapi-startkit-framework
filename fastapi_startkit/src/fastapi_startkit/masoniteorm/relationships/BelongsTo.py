@@ -1,3 +1,5 @@
+from typing import cast
+
 from ..collection import Collection
 from . import BaseRelationship
 from fastapi_startkit.masoniteorm.models import registry
@@ -91,7 +93,7 @@ class BelongsTo(BaseRelationship):
         return related_result.group_by(self.foreign_key)
 
     def attach(self, current_model, related_record):
-        foreign_key_value = getattr(related_record, self.foreign_key)
+        foreign_key_value = getattr(related_record, cast(str, self.foreign_key))
         if not current_model.is_created():
             current_model.fill({self.local_key: foreign_key_value})
             return current_model.create(current_model.all_attributes(), cast=True)
