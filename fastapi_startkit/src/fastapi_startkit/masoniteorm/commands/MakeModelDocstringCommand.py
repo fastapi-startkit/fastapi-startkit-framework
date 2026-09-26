@@ -1,6 +1,10 @@
+import asyncio
+
 from cleo.helpers import argument, option
-from ..config import load_config
+
 from fastapi_startkit.console import Command
+from fastapi_startkit.masoniteorm.schema.Column import Column
+from fastapi_startkit.masoniteorm.schema.schema import Schema
 
 
 class MakeModelDocstringCommand(Command):
@@ -18,7 +22,7 @@ class MakeModelDocstringCommand(Command):
         option(
             "type-hints",
             "t",
-            description="The table you want to generate docstring and type hints",
+            description="Also generate type hints for the model attributes",
             flag=True,
         ),
         option(
@@ -30,24 +34,35 @@ class MakeModelDocstringCommand(Command):
         ),
     ]
 
-    def handle(self):
+    def handle(self) -> int:
+        return asyncio.run(self.handle_async())
+
+    async def handle_async(self) -> int:
         table = self.argument("table")
-        DB = load_config(self.option("config")).DB
+        schema: Schema = self.container.make("db").get_schema_builder().on(self.option("connection"))
 
-        schema = DB.get_schema_builder(self.option("connection"))
+        if not await schema.has_table(table):
+            self.line_error(f"There is no such table {table} for this connection.")
+            return 1
 
-        if not schema.has_table(table):
-            return self.line_error(f"There is no such table {table} for this connection.")
+        columns = await self.get_columns(schema, table)
 
         self.info(f"Model Docstring for table: {table}")
-        print('"""')
-        for _, column in schema.get_columns(table).items():
+        self.line('"""')
+        for column in columns.values():
             length = f"({column.length})" if column.length else ""
-            default = f" default: {column.default}"
-            print(f"{column.name}: {column.column_type}{length}{default}")
-        print('"""')
+            default = f" default: {column.default}" if column.default is not None else ""
+            self.line(f"{column.name}: {column.column_type}{length}{default}")
+        self.line('"""')
 
         if self.option("type-hints"):
             self.info(f"Model Type Hints for table: {table}")
-            for name, column in schema.get_columns(table).items():
-                print(f"    {name}:{column.column_python_type.__name__}")
+            for name, column in columns.items():
+                self.line(f"    {name}: {column.column_python_type.__name__}")
+
+        return 0
+
+    @staticmethod
+    async def get_columns(schema: Schema, table: str) -> dict[str, Column]:
+        current = await schema.platform().get_current_schema(schema.get_connection(), table)
+        return current.get_added_columns()
