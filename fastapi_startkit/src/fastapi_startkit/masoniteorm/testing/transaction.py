@@ -8,7 +8,7 @@ class DatabaseTransaction:
     async def asyncStartTestRun(self):
         from fastapi_startkit.masoniteorm.models import Model
 
-        self.connection = Model.db_manager.connection(None)
+        self.connection = Model.resolve_db_manager().connection(None)
         self.transaction = self.connection.transaction()
         await self.transaction.__aenter__()
 

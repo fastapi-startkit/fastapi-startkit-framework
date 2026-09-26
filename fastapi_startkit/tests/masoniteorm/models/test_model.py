@@ -132,3 +132,16 @@ class TestFillable(TestCase):
         assert "db_manager" not in Post.__fillable__
         assert "created_at" not in Post.__fillable__
         assert "updated_at" not in Post.__fillable__
+
+
+class TestDbManagerResolution(TestCase):
+    async def test_resolve_db_manager_returns_bound_manager(self):
+        assert User.resolve_db_manager() is self.db
+
+    async def test_new_query_without_db_manager_raises_clear_error(self):
+        Model.db_manager = None
+        try:
+            with self.assertRaisesRegex(RuntimeError, "Model.db_manager is not set"):
+                User().new_query()
+        finally:
+            Model.db_manager = self.db
