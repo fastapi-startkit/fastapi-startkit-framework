@@ -4,6 +4,7 @@ import pytest
 
 from fastapi_startkit.masoniteorm.schema.Blueprint import Blueprint
 from fastapi_startkit.masoniteorm.schema.platforms.MSSQLPlatform import MSSQLPlatform
+from fastapi_startkit.masoniteorm.schema.platforms.Platform import Platform
 from fastapi_startkit.masoniteorm.schema.platforms.SQLitePlatform import SQLitePlatform
 from fastapi_startkit.masoniteorm.schema.Table import Table
 from fastapi_startkit.masoniteorm.schema.TableDiff import TableDiff
@@ -99,6 +100,11 @@ class FakeConnection:
         return True
 
 
+class SingleStatementPlatform(Platform):
+    def compile_create_sql(self, table, /, if_not_exists=False):
+        return f"CREATE TABLE {table.name}"
+
+
 class TestExecution:
     def test_platform_defaults_to_connection_platform(self):
         blueprint = Blueprint(grammar=None, table=Table("users"), connection=FakeConnection())
@@ -133,3 +139,14 @@ class TestExecution:
         assert isinstance(blueprint.table, TableDiff)
         assert isinstance(blueprint.table.from_table, Table)
         assert connection.statements == ["ALTER TABLE [users] ADD [name] VARCHAR(255) NOT NULL"]
+
+    async def test_single_statement_runs_without_transaction(self):
+        connection = FakeConnection()
+        blueprint = Blueprint(
+            grammar=None, table=Table("users"), connection=connection, platform=SingleStatementPlatform, action="create"
+        )
+
+        async with blueprint:
+            pass
+
+        assert connection.statements == ["CREATE TABLE users"]
