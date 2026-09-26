@@ -337,6 +337,10 @@ class TestFactoryForRelationship(TestCase):
         # Both profiles must reference the SAME user (for_ creates parent once)
         self.assertEqual(len(user_ids), 1)
 
+    async def test_for_rejects_parent_factory_creating_many(self):
+        with self.assertRaises(TypeError):
+            await ProfileFactory.new().for_(UserFactory.new().count(2)).create()
+
 
 class TestFactoryNew(TestCase):
     """new() returns a fresh factory instance each call."""

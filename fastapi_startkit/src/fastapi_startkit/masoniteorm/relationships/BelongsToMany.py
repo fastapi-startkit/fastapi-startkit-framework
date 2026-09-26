@@ -41,12 +41,12 @@ class BelongsToMany(BaseRelationship):
         self.foreign_key = self.foreign_key or f"{attribute}_id"
         return self
 
-    async def apply_query(self, query, owner):
+    async def apply_query(self, foreign, owner):
         """Apply the query and return a dictionary to be hydrated.
             Used during accessing a relationship on a model
 
         Arguments:
-            query {oject} -- The relationship object
+            foreign {oject} -- The relationship object
             owner {object} -- The current model oject.
 
         Returns:
@@ -56,7 +56,7 @@ class BelongsToMany(BaseRelationship):
         if not self._table:
             pivot_tables = [
                 singularize(owner.get_table_name()),
-                singularize(query.get_table_name()),
+                singularize(foreign.get_table_name()),
             ]
             pivot_tables.sort()
             pivot_table_1, pivot_table_2 = pivot_tables
@@ -69,9 +69,9 @@ class BelongsToMany(BaseRelationship):
             self.local_key = self.local_key or f"{pivot_table_2}_id"
 
         table1 = owner.get_table_name()
-        table2 = query.get_table_name()
-        result = query.select(
-            f"{query.get_table_name()}.*",
+        table2 = foreign.get_table_name()
+        result = foreign.select(
+            f"{foreign.get_table_name()}.*",
             f"{self._table}.{self.local_key} as {self._table}_id",
             f"{self._table}.{self.foreign_key} as m_reserved2",
         ).table(f"{table1}")
@@ -137,7 +137,7 @@ class BelongsToMany(BaseRelationship):
                 self._as,
                 (
                     Pivot()
-                    .on(query.connection)
+                    .on(foreign.connection)
                     .table(self._table)
                     .set_raw_attributes(pivot_data, True)
                     .timestamps(self.with_timestamps)
@@ -233,6 +233,9 @@ class BelongsToMany(BaseRelationship):
 
     async def get_related(self, query, relation, eagers=None, callback=None):
         final_result = await self.make_query(query, relation, eagers=eagers, callback=callback)
+        # make_query always resolves the pivot table name before returning.
+        pivot_table = self._table
+        assert pivot_table is not None
 
         for model in final_result:
             pivot_data = {
@@ -264,7 +267,7 @@ class BelongsToMany(BaseRelationship):
                 (
                     Pivot()
                     .on(query.connection)
-                    .table(self._table)
+                    .table(pivot_table)
                     .set_raw_attributes(pivot_data, True)
                     .timestamps(self.with_timestamps)
                 ),
@@ -419,11 +422,11 @@ class BelongsToMany(BaseRelationship):
             .where_in(self.other_owner_key, callback(query.select(self.other_owner_key)))
         )
 
-    def query_has(self, builder, method="where_exists"):
+    def query_has(self, current_query_builder, method="where_exists"):
         query = self.get_builder()
-        pivot_table = self._table or self.get_pivot_table_name(query, builder)
+        pivot_table = self._table or self.get_pivot_table_name(query, current_query_builder)
         table = self.get_builder().get_table_name()
-        return getattr(builder, method)(
+        return getattr(current_query_builder, method)(
             query.new()
             .table(table)
             .join(
@@ -434,7 +437,7 @@ class BelongsToMany(BaseRelationship):
             )
             .where_column(
                 f"{pivot_table}.{self.local_key}",
-                f"{builder.get_table_name()}.{self.local_owner_key}",
+                f"{current_query_builder.get_table_name()}.{self.local_owner_key}",
             )
         )
 

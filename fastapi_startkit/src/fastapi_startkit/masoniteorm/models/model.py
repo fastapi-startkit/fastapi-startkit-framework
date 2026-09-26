@@ -62,8 +62,10 @@ class Model(Attribute, Relationship, ObservesEvents):
             fillable.append(name)
         cls.__fillable__ = fillable
 
-    created_at: Carbon = CreatedAtField(fmt="%Y-%m-%d %H:%M:%S", tz="UTC")
-    updated_at: Carbon = UpdatedAtField(fmt="%Y-%m-%d %H:%M:%S", tz="UTC")
+    # The Carbon annotations drive casting at runtime; instance access goes
+    # through the descriptor and returns the Carbon attribute value.
+    created_at: Carbon = CreatedAtField(fmt="%Y-%m-%d %H:%M:%S", tz="UTC")  # pyright: ignore[reportAssignmentType]
+    updated_at: Carbon = UpdatedAtField(fmt="%Y-%m-%d %H:%M:%S", tz="UTC")  # pyright: ignore[reportAssignmentType]
 
     def __init__(self, attributes: dict = None, **kwargs):
         super().__init__(attributes, **kwargs)
@@ -305,11 +307,11 @@ class Model(Attribute, Relationship, ObservesEvents):
         return cls.query().chunk(count)
 
     @classmethod
-    def chunk_by_id(cls, count: int, column: str = None, alias: str = None, descending: bool = False):
+    def chunk_by_id(cls, count: int, column: str | None = None, alias: str | None = None, descending: bool = False):
         return cls.query().chunk_by_id(count, column, alias, descending)
 
     @classmethod
-    def chunk_by_id_desc(cls, count: int, column: str = None, alias: str = None):
+    def chunk_by_id_desc(cls, count: int, column: str | None = None, alias: str | None = None):
         return cls.query().chunk_by_id_desc(count, column, alias)
 
     def set_connection(self, connection: str):
