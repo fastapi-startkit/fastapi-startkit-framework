@@ -1,6 +1,14 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from .Column import Column
 from .Table import Table
 from .TableDiff import TableDiff
+
+if TYPE_CHECKING:
+    from fastapi_startkit.masoniteorm.connections.connection import Connection
+    from fastapi_startkit.masoniteorm.schema.platforms.Platform import Platform
 
 
 class Blueprint:
@@ -10,8 +18,8 @@ class Blueprint:
         self,
         grammar,
         table: Table,
-        connection=None,
-        platform=None,
+        connection: Connection | None = None,
+        platform: type[Platform] | None = None,
         schema=None,
         action=None,
         default_string_length=None,
@@ -21,18 +29,21 @@ class Blueprint:
         self.table = table
         self._last_column: Column | list[Column] | None = None
         self._default_string_length = default_string_length
-        self.platform = platform
         self.schema = schema
         self._dry = dry
         self._action = action
         self.connection = connection
-        if not platform:
-            self.platform = self.connection.get_default_platform()
+        self.platform = platform or self._connection().get_default_platform()
 
     def _column(self) -> Column:
         if not isinstance(self._last_column, Column):
             raise AttributeError("This modifier needs a single column defined right before it.")
         return self._last_column
+
+    def _connection(self) -> Connection:
+        if self.connection is None:
+            raise AttributeError("This blueprint has no connection to run its statements on.")
+        return self.connection
 
     def _diff(self) -> TableDiff:
         if not isinstance(self.table, TableDiff):
@@ -719,7 +730,7 @@ class Blueprint:
             diff = self._diff()
             if diff.from_table is None:
                 diff.from_table = await self.platform().get_current_schema(
-                    self.connection, diff.name, schema=self.schema
+                    self._connection(), diff.name, schema=self.schema
                 )
             return self.platform().compile_alter_sql(diff)
 
@@ -730,13 +741,8 @@ class Blueprint:
         if self._dry:
             return
 
-        # TODO: review
-        sql = self.to_sql()
-        if isinstance(sql, list):
-            for q in sql:
-                self.connection.query(q, ())
-            return
-        return self.connection.query(sql, ())
+        # to_sql() is async, so a synchronous exit cannot compile or run the statements.
+        raise TypeError("Blueprint statements can only be executed with 'async with'.")
 
     async def __aenter__(self):
         return self
@@ -745,13 +751,14 @@ class Blueprint:
         if self._dry:
             return
 
+        connection = self._connection()
         sql = await self.to_sql()
         if isinstance(sql, list):
-            async with self.connection.transaction():
+            async with connection.transaction():
                 for q in sql:
-                    await self.connection.statement(q, ())
+                    await connection.statement(q)
             return
-        return await self.connection.statement(sql, ())
+        return await connection.statement(sql)
 
     def nullable(self):
         """Sets the last columns created as nullable

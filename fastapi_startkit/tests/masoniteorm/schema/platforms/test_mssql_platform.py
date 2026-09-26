@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 
 from fastapi_startkit.masoniteorm.schema.Column import Column
@@ -172,7 +173,7 @@ class TestMSSQLPlatformHelpers(unittest.TestCase):
         )
 
     def test_get_current_schema_returns_table(self):
-        table = self.platform.get_current_schema(connection=None, table_name="users")
+        table = asyncio.run(self.platform.get_current_schema(connection=None, table_name="users"))
         self.assertEqual(table.name, "users")
 
     def test_wrap_helpers(self):
