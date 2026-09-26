@@ -1,10 +1,13 @@
 import re
+from typing import Any
 
 from .BaseGrammar import BaseGrammar
 
 
 class SQLiteGrammar(BaseGrammar):
     """SQLite grammar class."""
+
+    _creates: Any
 
     aggregate_options = {
         "SUM": "SUM",

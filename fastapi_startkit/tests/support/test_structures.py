@@ -81,3 +81,14 @@ class TestLoad:
     def test_bad_path_raises_when_requested(self):
         with pytest.raises(LoaderNotFound):
             load("/no/such/module.py", raise_exception=True)
+
+    def test_path_without_module_loader_returns_none(self, tmp_path):
+        path = tmp_path / "notes.txt"
+        path.write_text("VALUE = 42\n")
+        assert load(str(path)) is None
+
+    def test_path_without_module_loader_raises_when_requested(self, tmp_path):
+        path = tmp_path / "notes.txt"
+        path.write_text("VALUE = 42\n")
+        with pytest.raises(LoaderNotFound, match="no module loader"):
+            load(str(path), raise_exception=True)

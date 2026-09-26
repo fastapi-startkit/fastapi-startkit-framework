@@ -28,7 +28,7 @@ class MakeObserverCommand(Command):
         ),
     ]
 
-    def handle(self):
+    def handle(self) -> int:
         name = self.argument("name")
         model = self.option("model")
         if model == "None":
@@ -48,7 +48,7 @@ class MakeObserverCommand(Command):
 
         if os.path.exists(os.path.join(full_directory_path, file_name)):
             self.line(f'<error>Observer "{name}" Already Exists ({full_directory_path}/{file_name})</error>')
-            return
+            return 0
 
         os.makedirs(os.path.join(full_directory_path), exist_ok=True)
 
@@ -56,3 +56,4 @@ class MakeObserverCommand(Command):
             fp.write(output)
 
         self.info(f"Observer created: {file_name}")
+        return 0

@@ -48,7 +48,9 @@ Quick-start::
 from __future__ import annotations
 
 import inspect
-from typing import Any, Generic, TypeVar
+from collections.abc import Sequence
+from importlib.util import find_spec
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 from urllib.parse import unquote_plus
 
 import inflection
@@ -98,7 +100,7 @@ def parse_fields(raw_query: dict[str, str]) -> dict[str, list[str]]:
 # ASGI mixin — makes resources directly returnable from FastAPI endpoints
 # ---------------------------------------------------------------------------
 
-try:
+if TYPE_CHECKING or find_spec("starlette") is not None:
     from starlette.responses import Response as _StarletteResponse
 
     class _FastAPICallable(_StarletteResponse):
@@ -148,9 +150,9 @@ try:
             )
             await send({"type": "http.response.body", "body": body})
 
-except ImportError:
+else:
 
-    class _FastAPICallable:  # type: ignore[no-redef]
+    class _FastAPICallable:
         """No-op when starlette is not installed."""
 
 
@@ -556,7 +558,7 @@ class ResourceCollection(_FastAPICallable):
 
     def __init__(
         self,
-        items: list[JsonResource],
+        items: Sequence[JsonResource[Any]],
         paginator: Any = None,
         primary_type: str = "",
     ) -> None:

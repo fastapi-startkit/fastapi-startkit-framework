@@ -5,7 +5,7 @@ from .Table import Table
 class TableDiff(Table):
     def __init__(self, name):
         self.name = name
-        self.from_table = None
+        self.from_table: Table | None = None
         self.new_name = None
         self.removed_indexes = []
         self.removed_unique_indexes = []
@@ -22,6 +22,10 @@ class TableDiff(Table):
         self.comment = None
 
     def remove_constraint(self, name):
+        if self.from_table is None:
+            raise AttributeError(
+                f"Cannot remove constraint '{name}': the current schema of '{self.name}' is not loaded."
+            )
         self.removed_constraints.update({name: self.from_table.get_constraint(name)})
 
     def get_removed_constraints(self):

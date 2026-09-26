@@ -94,10 +94,8 @@ class TestDefaultValue:
         assert col.default == "anon"
         assert col.default_is_raw is True
 
-    def test_default_method_is_reachable_on_the_class(self):
-        # The constructor assigns ``self.default`` as an attribute, shadowing the
-        # method on instances; the method is still invocable via the class.
+    def test_default_is_a_plain_attribute_not_a_method(self):
+        assert "default" not in vars(Column)
         col = make_column()
-        assert Column.default(col, "seed", raw=True) is col
+        col.default = "seed"
         assert col.default == "seed"
-        assert col.default_is_raw is True

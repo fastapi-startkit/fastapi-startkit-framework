@@ -10,6 +10,9 @@ if TYPE_CHECKING:
 class PostgresGrammar(BaseGrammar):
     """Postgres grammar class."""
 
+    types_without_lengths: list[str]
+    _creates: Any
+
     aggregate_options = {
         "SUM": "SUM",
         "MAX": "MAX",

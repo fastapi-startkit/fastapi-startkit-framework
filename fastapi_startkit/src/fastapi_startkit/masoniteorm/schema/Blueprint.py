@@ -1,12 +1,25 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from .Column import Column
+from .Table import Table
+from .TableDiff import TableDiff
+
+if TYPE_CHECKING:
+    from fastapi_startkit.masoniteorm.connections.connection import Connection
+    from fastapi_startkit.masoniteorm.schema.platforms.Platform import Platform
+
+
 class Blueprint:
     """Used for building schemas for creating, modifying or altering schema."""
 
     def __init__(
         self,
         grammar,
-        table="",
-        connection=None,
-        platform=None,
+        table: Table,
+        connection: Connection | None = None,
+        platform: type[Platform] | None = None,
         schema=None,
         action=None,
         default_string_length=None,
@@ -14,15 +27,28 @@ class Blueprint:
     ):
         self.grammar = grammar
         self.table = table
-        self._last_column = None
+        self._last_column: Column | list[Column] | None = None
         self._default_string_length = default_string_length
-        self.platform = platform
         self.schema = schema
         self._dry = dry
         self._action = action
         self.connection = connection
-        if not platform:
-            self.platform = self.connection.get_default_platform()
+        self.platform = platform or self._connection().get_default_platform()
+
+    def _column(self) -> Column:
+        if not isinstance(self._last_column, Column):
+            raise AttributeError("This modifier needs a single column defined right before it.")
+        return self._last_column
+
+    def _connection(self) -> Connection:
+        if self.connection is None:
+            raise AttributeError("This blueprint has no connection to run its statements on.")
+        return self.connection
+
+    def _diff(self) -> TableDiff:
+        if not isinstance(self.table, TableDiff):
+            raise AttributeError(f"Table '{self.table.name}' can only be altered through Schema.table().")
+        return self.table
 
     def string(self, column, length=255, nullable=False):
         """Sets a column to be the string representation for the table.
@@ -136,12 +162,6 @@ class Blueprint:
         """
         return self.big_integer(column, length=length, nullable=nullable).unsigned()
 
-    def _compile_create(self):
-        return self.grammar(creates=self._columns, table=self.table)._compile_create()
-
-    def _compile_alter(self):
-        return self.grammar(creates=self._columns, table=self.table)._compile_create()
-
     def increments(self, column, nullable=False):
         """Sets a column to be the auto incrementing primary key representation for the table.
 
@@ -250,8 +270,9 @@ class Blueprint:
         return self
 
     def default(self, value, raw=False):
-        self._last_column.default = value
-        self._last_column.default_is_raw = raw
+        column = self._column()
+        column.default = value
+        column.default_is_raw = raw
         return self
 
     def default_raw(self, value):
@@ -644,7 +665,7 @@ class Blueprint:
             self
         """
         if not column:
-            self._last_column.unsigned()
+            self._column().unsigned()
             return self
 
         self._last_column = self.table.add_column(column, "unsigned", length=length, nullable=nullable).unsigned()
@@ -706,11 +727,12 @@ class Blueprint:
         elif self._action == "create_table_if_not_exists":
             return self.platform().compile_create_sql(self.table, if_not_exists=True)
         else:
-            if self.table.from_table is None:
-                self.table.from_table = await self.platform().get_current_schema(
-                    self.connection, self.table.name, schema=self.schema
+            diff = self._diff()
+            if diff.from_table is None:
+                diff.from_table = await self.platform().get_current_schema(
+                    self._connection(), diff.name, schema=self.schema
                 )
-            return self.platform().compile_alter_sql(self.table)
+            return self.platform().compile_alter_sql(diff)
 
     def __enter__(self):
         return self
@@ -719,13 +741,8 @@ class Blueprint:
         if self._dry:
             return
 
-        # TODO: review
-        sql = self.to_sql()
-        if isinstance(sql, list):
-            for q in sql:
-                self.connection.query(q, ())
-            return
-        return self.connection.query(sql, ())
+        # to_sql() is async, so a synchronous exit cannot compile or run the statements.
+        raise TypeError("Blueprint statements can only be executed with 'async with'.")
 
     async def __aenter__(self):
         return self
@@ -734,13 +751,14 @@ class Blueprint:
         if self._dry:
             return
 
+        connection = self._connection()
         sql = await self.to_sql()
         if isinstance(sql, list):
-            async with self.connection.transaction():
+            async with connection.transaction():
                 for q in sql:
-                    await self.connection.statement(q, ())
+                    await connection.statement(q)
             return
-        return await self.connection.statement(sql, ())
+        return await connection.statement(sql)
 
     def nullable(self):
         """Sets the last columns created as nullable
@@ -748,12 +766,8 @@ class Blueprint:
         Returns:
             self
         """
-        _columns = []
         if not isinstance(self._last_column, list):
-            _columns = [self._last_column]
-
-        for column in _columns:
-            column.nullable()
+            self._column().nullable()
         return self
 
     def soft_deletes(self, name="deleted_at"):
@@ -771,7 +785,7 @@ class Blueprint:
             self
         """
         if not column:
-            column = self._last_column.name
+            column = self._column().name
 
         if not isinstance(column, list):
             column = [column]
@@ -794,7 +808,7 @@ class Blueprint:
             self
         """
         if not column:
-            column = self._last_column.name
+            column = self._column().name
 
         if not isinstance(column, list):
             column = [column]
@@ -817,7 +831,7 @@ class Blueprint:
             self
         """
         if not column:
-            column = self._last_column.name
+            column = self._column().name
 
         if not isinstance(column, list):
             column = [column]
@@ -837,7 +851,7 @@ class Blueprint:
             self
         """
         if column is None:
-            column = self._last_column.name
+            column = self._column().name
 
         if not isinstance(column, list):
             column = [column]
@@ -958,7 +972,7 @@ class Blueprint:
         return self
 
     def comment(self, comment):
-        self._last_column.add_comment(comment)
+        self._column().add_comment(comment)
         return self
 
     def table_comment(self, comment):
@@ -975,7 +989,7 @@ class Blueprint:
         Returns:
             self
         """
-        self.table.rename_column(old_column, new_column, data_type, length=length)
+        self._diff().rename_column(old_column, new_column, data_type, length=length)
         return self
 
     def after(self, old_column):
@@ -989,7 +1003,7 @@ class Blueprint:
         Returns:
             self
         """
-        self._last_column.after(old_column)
+        self._column().after(old_column)
         return self
 
     def drop_column(self, *columns):
@@ -999,7 +1013,7 @@ class Blueprint:
             self
         """
         for column in columns:
-            self.table.drop_column(column)
+            self._diff().drop_column(column)
 
         return self
 
@@ -1014,16 +1028,16 @@ class Blueprint:
         """
         if isinstance(index, list):
             for column in index:
-                self.table.remove_index(f"{self.table.name}_{column}_index")
+                self._diff().remove_index(f"{self.table.name}_{column}_index")
 
             return self
 
-        self.table.remove_index(index)
+        self._diff().remove_index(index)
 
         return self
 
     def change(self):
-        self.table.change_column(self._last_column)
+        self._diff().change_column(self._column())
         return self
 
     def drop_unique(self, index):
@@ -1037,11 +1051,11 @@ class Blueprint:
         """
         if isinstance(index, list):
             for column in index:
-                self.table.remove_unique_index(f"{self.table.name}_{column}_unique")
+                self._diff().remove_unique_index(f"{self.table.name}_{column}_unique")
 
             return self
 
-        self.table.remove_unique_index(index)
+        self._diff().remove_unique_index(index)
 
     def drop_primary(self, index):
         """Drops a unique index.
@@ -1054,11 +1068,11 @@ class Blueprint:
         """
         if isinstance(index, list):
             for column in index:
-                self.table.drop_primary(f"{self.table.name}_{column}_primary")
+                self._diff().drop_primary(f"{self.table.name}_{column}_primary")
 
             return self
 
-        self.table.drop_primary(index)
+        self._diff().drop_primary(index)
 
     def drop_foreign(self, index):
         """Drops foreign key indexes.
@@ -1071,10 +1085,10 @@ class Blueprint:
         """
         if isinstance(index, list):
             for column in index:
-                self.table.drop_foreign(f"{self.table.name}_{column}_foreign")
+                self._diff().drop_foreign(f"{self.table.name}_{column}_foreign")
 
             return self
 
-        self.table.drop_foreign(index)
+        self._diff().drop_foreign(index)
 
         return self

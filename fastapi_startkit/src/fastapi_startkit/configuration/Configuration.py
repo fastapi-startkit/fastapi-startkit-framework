@@ -1,3 +1,6 @@
+from collections.abc import Mapping
+from typing import Any, cast
+
 from fastapi_startkit.loader import Loader
 from ..support.structures import data
 from ..exceptions import InvalidConfigurationSetup
@@ -47,7 +50,8 @@ class Configuration:
         else:
             params = external_config
         base_config = {name.lower(): value for name, value in params.items()}
-        merged_config = {**base_config, **self.get(path, {})}
+        project_config = cast("Mapping[str, Any]", self._config.get(path, {}))
+        merged_config = {**base_config, **project_config}
         self.set(path, merged_config)
 
     def set(self, path, value):

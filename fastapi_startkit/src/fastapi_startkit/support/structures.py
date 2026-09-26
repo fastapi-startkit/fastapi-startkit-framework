@@ -21,7 +21,7 @@ def load(path, object_name=None, default=None, raise_exception=False):
         name = path.split("/")[-1].replace(".py", "") if "/" in path else path.replace(".py", "")
         spec = importlib.util.spec_from_file_location(name, path)
         if spec is None or spec.loader is None:
-            raise ImportError(f"Unable to create an import spec for {path}")
+            raise ImportError(f"no module loader for '{path}'")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
     except Exception as e:

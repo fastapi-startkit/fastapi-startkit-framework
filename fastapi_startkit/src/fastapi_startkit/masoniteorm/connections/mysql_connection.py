@@ -8,7 +8,7 @@ class MySQLConnection(Connection):
     """Async MySQL connection backed by aiomysql via SQLAlchemy."""
 
     @classmethod
-    def get_query_grammar(cls):
+    def get_query_grammar(cls) -> type[MySQLGrammar]:
         return MySQLGrammar
 
     @classmethod
@@ -16,5 +16,5 @@ class MySQLConnection(Connection):
         return MySQLPlatform
 
     @classmethod
-    def get_post_processor(cls):
+    def get_post_processor(cls) -> type[MySQLPostProcessor]:
         return MySQLPostProcessor

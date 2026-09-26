@@ -87,6 +87,18 @@ class TestAuthEndpoint:
         )
         assert response.status_code == 200
 
+    async def test_rejects_non_string_json_channel_name(self, tmp_path):
+        handler = auth_handler(mount_auth(tmp_path))
+        response = await handler(FakeRequest("application/json", json_body={"channel_name": 42}))
+        assert response.status_code == 422
+
+    async def test_rejects_file_upload_as_channel_name(self, tmp_path):
+        handler = auth_handler(mount_auth(tmp_path))
+        response = await handler(
+            FakeRequest("multipart/form-data", form_body={"channel_name": SimpleNamespace(filename="x.txt")})
+        )
+        assert response.status_code == 422
+
     async def test_uses_request_state_user(self, tmp_path):
         handler = auth_handler(mount_auth(tmp_path))
         response = await handler(FakeRequest("application/json", json_body={"channel_name": "orders"}, user=object()))

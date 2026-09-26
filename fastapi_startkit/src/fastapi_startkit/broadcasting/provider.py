@@ -143,6 +143,9 @@ class ReverbProvider(Provider):
                 form = await request.form()
                 channel_name = form.get("channel_name", "")
 
+            if not isinstance(channel_name, str):
+                return JSONResponse({"error": "channel_name must be a string"}, status_code=422)
+
             # Resolve authenticated user.
             # Prefer request.state.user (set by auth middleware), then fall
             # back to the container's "auth" service.

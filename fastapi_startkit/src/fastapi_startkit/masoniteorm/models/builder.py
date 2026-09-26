@@ -172,7 +172,7 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
 
     async def get_models(self, columns=None):
         self.select(columns)
-        models = await self.connection.select(self.to_qmark(), self.get_bindings())
+        models = await self.connection.select(self.to_qmark(), list(self.get_bindings()))
         collection = self._model.hydrate(models)
 
         if self._eager_relation.eagers or self._eager_relation.nested_eagers or self._eager_relation.callback_eagers:
@@ -298,7 +298,7 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
 
     async def aggregate(self, function: str, column: str):
         self._aggregates += (AggregateExpression(function, column),)
-        row = await self.connection.select_one(self.to_qmark(), self.get_bindings())
+        row = await self.connection.select_one(self.to_qmark(), list(self.get_bindings()))
         if row is None:
             return None
         return next(iter(row.values()))
@@ -327,7 +327,7 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
             self.where(column, value)
         self.set_action("delete")
         sql = self.to_qmark()
-        return await self.connection.delete(sql, self.get_bindings())
+        return await self.connection.delete(sql, list(self.get_bindings()))
 
     async def create(self, attributes: dict):
         model = self._model.new_model_instance(attributes)
@@ -429,7 +429,9 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
                 break
             page += 1
 
-    async def chunk_by_id(self, count: int, column: str = None, alias: str = None, descending: bool = False):
+    async def chunk_by_id(
+        self, count: int, column: str | None = None, alias: str | None = None, descending: bool = False
+    ):
         if count <= 0:
             raise ValueError("chunk_by_id() size must be a positive integer.")
 
@@ -479,7 +481,7 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
                 break
             page += 1
 
-    async def chunk_by_id_desc(self, count: int, column: str = None, alias: str = None):
+    async def chunk_by_id_desc(self, count: int, column: str | None = None, alias: str | None = None):
         async for results in self.chunk_by_id(count, column, alias, descending=True):
             yield results
 

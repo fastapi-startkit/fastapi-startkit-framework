@@ -2,6 +2,10 @@ from .BaseDriver import BaseDriver
 import requests
 
 
+class SlackChannelNotFound(Exception):
+    pass
+
+
 class LogSlackDriver(BaseDriver):
     def __init__(self, *args, **kwargs):
         self.slack_url = "https://slack.com/api/chat.postMessage"

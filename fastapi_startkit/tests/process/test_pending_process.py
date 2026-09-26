@@ -286,6 +286,13 @@ class TestPendingProcessPool:
         assert len(results) == 2
         assert all(r.successful() for r in results)
 
+    def test_pool_start_callback_receives_process_index(self, pending):
+        received = []
+        pool = pending.pool(lambda p: (p.command("echo first"), p.command("echo second")))
+        pool.start(callback=lambda kind, output, index: received.append((kind, output.strip(), index)))
+        pool.wait()
+        assert sorted(received) == [("stdout", "first", 0), ("stdout", "second", 1)]
+
     def test_pool_results_iterable(self, pending):
         pool = pending.pool(
             lambda p: (

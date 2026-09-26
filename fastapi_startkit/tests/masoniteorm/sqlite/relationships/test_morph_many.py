@@ -104,6 +104,14 @@ class TestMorphManyRelationship(TestCase):
         likes_result = await result
         self.assertEqual(len(likes_result), 1)
 
+    async def test_get_related_with_collection_and_callback(self):
+        await Like.create({"likeable_type": "article", "likeable_id": self.article.id})
+        articles = await ArticleModel.get()
+        rel = ArticleModel.likes
+
+        likes_result = await rel.get_related(None, articles, callback=lambda q: q)
+        self.assertGreaterEqual(len(likes_result), 1)
+
     async def test_register_related_adds_relation(self):
         await Like.create({"likeable_type": "article", "likeable_id": self.article.id})
         await Like.create({"likeable_type": "product", "likeable_id": 999})

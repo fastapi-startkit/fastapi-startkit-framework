@@ -1,4 +1,18 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from fastapi_startkit.masoniteorm.schema.Table import Table
+    from fastapi_startkit.masoniteorm.schema.TableDiff import TableDiff
+
+
 class Platform:
+    type_map: dict[str, str]
+    types_without_lengths: list[str]
+    premapped_nulls: dict[bool, str]
+    premapped_defaults: dict[str, str]
+
     foreign_key_actions = {
         "cascade": "CASCADE",
         "set null": "SET NULL",
@@ -45,7 +59,16 @@ class Platform:
 
         return sql
 
-    def columnize_string(self):
+    def columnize_string(self) -> str:
+        raise NotImplementedError
+
+    def get_table_string(self) -> str:
+        raise NotImplementedError
+
+    def get_column_string(self) -> str:
+        raise NotImplementedError
+
+    def get_foreign_key_constraint_string(self) -> str:
         raise NotImplementedError
 
     def create_column_length(self, column_type):
@@ -73,7 +96,7 @@ class Platform:
             )
         return sql
 
-    def constraintize(self, constraints):
+    def constraintize(self, constraints, table):
         sql = []
         for name, constraint in constraints.items():
             sql.append(
@@ -88,3 +111,12 @@ class Platform:
 
     def wrap_column(self, column_name):
         return self.get_column_string().format(column=column_name)
+
+    def compile_create_sql(self, table: Table, /, if_not_exists: bool = False) -> str | list[str]:
+        raise NotImplementedError
+
+    def compile_alter_sql(self, diff: TableDiff, /) -> str | list[str]:
+        raise NotImplementedError
+
+    async def get_current_schema(self, connection, table_name: str, schema: str | None = None) -> Table:
+        raise NotImplementedError

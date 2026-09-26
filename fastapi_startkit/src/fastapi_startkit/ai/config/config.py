@@ -11,7 +11,7 @@ class AnthropicConfig:
 
     driver: str = "anthropic"
     key: str = field(default_factory=lambda: env("ANTHROPIC_API_KEY", "", cast=False))
-    url: str = field(default_factory=lambda: env("ANTHROPIC_BASE_URL", "https://api.anthropic.com", cast=False))
+    url: str = field(default_factory=lambda: env("ANTHROPIC_BASE_URL", "https://api.anthropic.com"))
 
     models: dict = field(
         default_factory=lambda: {
@@ -26,7 +26,7 @@ class OpenAIConfig:
 
     driver: str = "openai"
     key: str = field(default_factory=lambda: env("OPENAI_API_KEY", "", cast=False))
-    url: str = field(default_factory=lambda: env("OPENAI_BASE_URL", "https://api.openai.com/v1", cast=False))
+    url: str = field(default_factory=lambda: env("OPENAI_BASE_URL", "https://api.openai.com/v1"))
 
     models: dict = field(
         default_factory=lambda: {
@@ -42,8 +42,7 @@ class GoogleConfig:
 
     driver: str = "google"
     key: str = field(
-        default_factory=lambda: env("GEMINI_API_KEY", "", cast=False)
-        or env("GOOGLE_API_KEY", "", cast=False)
+        default_factory=lambda: env("GEMINI_API_KEY", "", cast=False) or env("GOOGLE_API_KEY", "", cast=False)
     )
 
     models: dict = field(

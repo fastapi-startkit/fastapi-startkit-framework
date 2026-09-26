@@ -108,6 +108,10 @@ def test_has_nested_scope():
     ).etc()
 
 
+def test_has_explicit_none_callback_only_asserts_presence():
+    aj({"profile": {"email": "a@b.com"}}).has("profile", callback=None).etc()
+
+
 def test_has_length_and_scope():
     data = {"rows": [{"id": 1}, {"id": 2}]}
     aj(data).has("rows", 2, lambda r: r.first(lambda f: f.where("id", 1).etc())).etc()
