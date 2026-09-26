@@ -376,16 +376,14 @@ class SQLitePlatform(Platform):
                 column_type = "increments"
             length = self.get_column_length(column["type"])
 
-            # find default
-            default = column.get("dflt_value")
-            if default:
-                default = default.replace("'", "")
+            default, default_is_raw = self._parse_default(column.get("dflt_value"))
 
             table.add_column(
                 column["name"],
                 column_type,
                 column_python_type=str if column_type is None else Schema._type_hints_map.get(column_type, str),
                 default=default,
+                default_is_raw=default_is_raw,
                 length=length,
                 nullable=int(column.get("notnull")) == 0,
             )
@@ -393,6 +391,22 @@ class SQLitePlatform(Platform):
                 table.set_primary_key(column["name"])
 
         return table
+
+    @staticmethod
+    def _parse_default(raw: str | None) -> tuple[object, bool]:
+        """Turn a PRAGMA dflt_value SQL literal back into a blueprint default and its raw flag."""
+        if raw is None or raw.upper() == "NULL":
+            return None, False
+        if len(raw) >= 2 and raw[0] == raw[-1] == "'":
+            return raw[1:-1].replace("''", "'"), False
+        if raw.upper() == "CURRENT_TIMESTAMP":
+            return "current", False
+        for number in (int, float):
+            try:
+                return number(raw), False
+            except ValueError:
+                pass
+        return raw, True
 
     @staticmethod
     async def _has_autoincrement(connection, table_name) -> bool:
