@@ -1,4 +1,6 @@
 import pydoc
+from collections.abc import Callable
+from typing import Any, cast
 
 
 class Seeder:
@@ -14,7 +16,9 @@ class Seeder:
             await seeder_class(connection=self.connection).run()
 
     async def run_database_seed(self):
-        database_seeder = pydoc.locate(f"{self.seed_module}.database_seeder.DatabaseSeeder")
+        database_seeder = cast(
+            "Callable[..., Any] | None", pydoc.locate(f"{self.seed_module}.database_seeder.DatabaseSeeder")
+        )
 
         if not database_seeder:
             raise ValueError(f"Could not find the DatabaseSeeder class in {self.seed_module}.database_seeder")
@@ -25,7 +29,7 @@ class Seeder:
 
     async def run_specific_seed(self, seed):
         file_name = f"{self.seed_module}.{seed}"
-        database_seeder = pydoc.locate(file_name)
+        database_seeder = cast("Callable[..., Any] | None", pydoc.locate(file_name))
 
         if not database_seeder:
             raise ValueError(f"Could not find the {file_name} seeder file")
