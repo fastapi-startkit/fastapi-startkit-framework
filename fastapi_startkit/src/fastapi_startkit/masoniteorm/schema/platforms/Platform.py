@@ -1,3 +1,12 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from fastapi_startkit.masoniteorm.schema.Table import Table
+    from fastapi_startkit.masoniteorm.schema.TableDiff import TableDiff
+
+
 class Platform:
     type_map: dict[str, str]
     types_without_lengths: list[str]
@@ -102,3 +111,12 @@ class Platform:
 
     def wrap_column(self, column_name):
         return self.get_column_string().format(column=column_name)
+
+    def compile_create_sql(self, table: Table, /, if_not_exists: bool = False) -> str | list[str]:
+        raise NotImplementedError
+
+    def compile_alter_sql(self, diff: TableDiff, /) -> str | list[str]:
+        raise NotImplementedError
+
+    async def get_current_schema(self, connection, table_name: str, schema: str | None = None) -> Table:
+        raise NotImplementedError

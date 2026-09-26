@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from typing import Self
 
     from fastapi_startkit.masoniteorm.query.grammars.BaseGrammar import BaseGrammar
+    from fastapi_startkit.masoniteorm.schema.platforms.Platform import Platform
 
 
 class Transaction:
@@ -109,6 +110,10 @@ class Connection:
     @classmethod
     def get_post_processor(cls) -> type | None:
         return None
+
+    @classmethod
+    def get_default_platform(cls) -> type[Platform]:
+        raise NotImplementedError
 
     async def begin_transaction(self) -> None:
         connection = self.connection

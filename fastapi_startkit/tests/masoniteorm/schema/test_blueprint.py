@@ -1,6 +1,9 @@
+from contextlib import asynccontextmanager
+
 import pytest
 
 from fastapi_startkit.masoniteorm.schema.Blueprint import Blueprint
+from fastapi_startkit.masoniteorm.schema.platforms.MSSQLPlatform import MSSQLPlatform
 from fastapi_startkit.masoniteorm.schema.platforms.SQLitePlatform import SQLitePlatform
 from fastapi_startkit.masoniteorm.schema.Table import Table
 from fastapi_startkit.masoniteorm.schema.TableDiff import TableDiff
@@ -77,3 +80,56 @@ class TestAlterOnlyMethods:
     def test_alter_method_on_create_table_raises(self):
         with pytest.raises(AttributeError, match="Schema.table"):
             create_blueprint().drop_column("age")
+
+
+class FakeConnection:
+    def __init__(self):
+        self.statements = []
+
+    @classmethod
+    def get_default_platform(cls):
+        return MSSQLPlatform
+
+    @asynccontextmanager
+    async def transaction(self):
+        yield
+
+    async def statement(self, query, bindings=None):
+        self.statements.append(query)
+        return True
+
+
+class TestExecution:
+    def test_platform_defaults_to_connection_platform(self):
+        blueprint = Blueprint(grammar=None, table=Table("users"), connection=FakeConnection())
+
+        assert blueprint.platform is MSSQLPlatform
+
+    def test_missing_platform_and_connection_raises(self):
+        with pytest.raises(AttributeError, match="no connection"):
+            Blueprint(grammar=None, table=Table("users"))
+
+    def test_sync_exit_requires_async_with(self):
+        blueprint = Blueprint(grammar=None, table=Table("users"), platform=SQLitePlatform)
+
+        with pytest.raises(TypeError, match="async with"):
+            with blueprint:
+                pass
+
+    async def test_async_exit_without_connection_raises(self):
+        blueprint = Blueprint(grammar=None, table=Table("users"), platform=SQLitePlatform, action="create")
+
+        with pytest.raises(AttributeError, match="no connection"):
+            async with blueprint:
+                blueprint.string("name")
+
+    async def test_mssql_alter_resolves_current_schema(self):
+        connection = FakeConnection()
+        blueprint = Blueprint(grammar=None, table=TableDiff("users"), connection=connection, action="alter")
+
+        async with blueprint:
+            blueprint.string("name")
+
+        assert isinstance(blueprint.table, TableDiff)
+        assert isinstance(blueprint.table.from_table, Table)
+        assert connection.statements == ["ALTER TABLE [users] ADD [name] VARCHAR(255) NOT NULL"]
