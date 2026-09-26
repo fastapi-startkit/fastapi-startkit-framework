@@ -245,6 +245,33 @@ class TestFastapiLazyLoad:
         a.use_fastapi(custom)
         assert a.fastapi is custom
 
+    def test_head_and_trace_register_routes_on_lazy_fastapi(self, app):
+        app.head("/ping")(lambda: None)
+        app.trace("/ping")(lambda: None)
+
+        methods = {m for route in app.fastapi.routes if getattr(route, "path", None) == "/ping" for m in route.methods}
+        assert {"HEAD", "TRACE"} <= methods
+
+    def test_add_middleware_creates_fastapi_when_unset(self, app):
+        from starlette.middleware.base import BaseHTTPMiddleware
+
+        app.add_middleware(BaseHTTPMiddleware)
+        assert any(m.cls is BaseHTTPMiddleware for m in app.fastapi.user_middleware)
+
+    def test_mount_creates_fastapi_when_unset(self, app):
+        from fastapi import FastAPI
+
+        sub = FastAPI()
+        app.mount("/sub", sub)
+        assert any(getattr(route, "path", None) == "/sub" for route in app.fastapi.routes)
+
+    def test_add_exception_handler_creates_fastapi_when_unset(self, app):
+        async def handler(request, exc):
+            return None
+
+        app.add_exception_handler(ValueError, handler)
+        assert app.fastapi.exception_handlers[ValueError] is handler
+
 
 # ---------------------------------------------------------------------------
 # App config integration
