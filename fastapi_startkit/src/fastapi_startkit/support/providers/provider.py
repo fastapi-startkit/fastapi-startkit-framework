@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from fastapi_startkit.support import Str
@@ -10,13 +11,13 @@ if TYPE_CHECKING:
 
 
 class Provider:
-    provider_key: str | None = None
+    provider_key: str = ""
 
     def __init__(self, application: "Application[AppConfig]", config: dict[str, Any] | None = None):
         self.app: "Application[AppConfig]" = application
         self.config = config or {}
 
-        if self.provider_key is None:
+        if not self.provider_key:
             self.provider_key = str(Str.of(self.__class__.__name__).trim("ServiceProvider").trim("Provider").slugify())
 
     def register(self) -> None:
@@ -34,7 +35,7 @@ class Provider:
     def merge_config_from(self, source: str | dict, provider_key: str) -> None:
         self.app.make("config").merge_with(provider_key, source)
 
-    def publishes(self, resources: dict[str, Any], tag: str | None = None) -> None:
+    def publishes(self, resources: dict[str | Path, str], tag: str | None = None) -> None:
         self.app.published_resources.setdefault(self.provider_key, {}).update(resources)
 
     def commands(self, commands: list) -> None:
