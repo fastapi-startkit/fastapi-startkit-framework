@@ -2,9 +2,6 @@ from typing import TYPE_CHECKING
 
 from fastapi_startkit.masoniteorm.models.caster import Caster
 
-if TYPE_CHECKING:
-    from fastapi_startkit.orm.connections.manager import Model
-
 
 class Attribute:
     # Attributes that are model infrastructure, not data columns.
@@ -13,11 +10,15 @@ class Attribute:
 
     __casts__ = {}
 
-    caster: Caster = None
+    if TYPE_CHECKING:
+        caster: Caster
+    else:
+        # Class-level sentinel so a Model's __getattr__ fallback cannot recurse
+        # on instances created without __init__ (e.g. by copy or pickle).
+        caster = None
 
-    def __init__(self, attributes: dict = None, **kwargs):
-        model: "Model" = self.__class__
-        self.caster = Caster(model)
+    def __init__(self, attributes: dict | None = None, **kwargs):
+        self.caster = Caster(self.__class__)
 
         self._original = {}
         self._attributes = attributes or {}
@@ -76,7 +77,7 @@ class Attribute:
         if current == original:
             return True
 
-        if current is None:
+        if current is None or original is None:
             return False
 
         # Numeric equivalence (e.g. 1 == "1")

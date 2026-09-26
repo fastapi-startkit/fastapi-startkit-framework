@@ -4,13 +4,12 @@ import datetime
 from decimal import Decimal
 from enum import Enum
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, get_args, get_type_hints, Optional
+from collections.abc import Callable
+from typing import Any, get_args, get_type_hints, Optional
+from typing import cast as typing_cast
 from pydantic.fields import FieldInfo
 from pydantic import BaseModel as PydanticModel
 from fastapi_startkit.carbon import Carbon
-
-if TYPE_CHECKING:
-    from .model import Model
 
 
 @dataclass
@@ -99,7 +98,11 @@ class DateCast(BaseCast):
         if not value:
             return None
 
-        return pendulum.parse(str(value)).to_datetime_string()
+        parsed = pendulum.parse(str(value))
+        if not isinstance(parsed, pendulum.DateTime):
+            raise ValueError(f"Cannot cast {value!r} to a datetime")
+
+        return parsed.to_datetime_string()
 
 
 class DecimalCast(BaseCast):
@@ -150,7 +153,7 @@ class TimeDeltaCast(BaseCast):
 
 @dataclass
 class ModelCast(BaseCast):
-    model_class: type = field(default=None)
+    model_class: type
 
     def get(self, value):
         if value is None:
@@ -188,7 +191,7 @@ class Caster:
 
     IGNORE_CASTS = ["caster", "db_manager"]
 
-    def __init__(self, model: "Model", casts: dict | None = None):
+    def __init__(self, model: type, casts: dict | None = None):
         self.model = model
         self.casts = Caster.build_casts(model)
         self.casts.update(casts or {})
@@ -250,14 +253,14 @@ class Caster:
 
             # Nested Pydantic models are stored as JSON and hydrated back into
             # their declared type, e.g. ``address = Field[Address]()``.
-            if isinstance(descriptor, ModelField) or (isinstance(typ, type) and issubclass(typ, PydanticModel)):
+            if isinstance(typ, type) and (isinstance(descriptor, ModelField) or issubclass(typ, PydanticModel)):
                 casts[field_name] = ModelCast(model_class=typ)
                 continue
 
             field_info = descriptor.field_info if isinstance(descriptor, FieldDescriptor) else None
 
             caster = Caster.normalize_type(typ)
-            if caster in Caster.cast_class_map:
+            if isinstance(caster, str) and caster in Caster.cast_class_map:
                 casts[field_name] = cls.cast_class_map[caster](config=field_info)
             else:
                 casts[field_name] = caster
@@ -298,7 +301,8 @@ class Caster:
         if cast.config.default is not PydanticUndefined:
             return cast.config.default
         if cast.config.default_factory is not None:
-            return cast.config.default_factory()
+            factory = typing_cast(Callable[[], Any], cast.config.default_factory)
+            return factory()
         return None
 
     def get(self, attribute: str, value: Any) -> Any:
