@@ -18,6 +18,9 @@ import asyncio
 import base64
 from abc import ABC, abstractmethod
 
+# Provider SDKs are optional extras imported lazily per backend, so they are
+# absent from the type-check environment; the pyright ignores below cover only that.
+
 
 class ImageFactory(ABC):
     """Abstract base for image generation backends."""
@@ -43,7 +46,7 @@ class OpenAIImageFactory(ImageFactory):
         self._base_url = base_url
 
     async def generate(self, prompt: str, size: str, model: str, quality: str) -> bytes:
-        from openai import AsyncOpenAI  # noqa: PLC0415
+        from openai import AsyncOpenAI  # noqa: PLC0415  # pyright: ignore[reportMissingImports]
 
         client = AsyncOpenAI(api_key=self._api_key, base_url=self._base_url)
         params: dict = {
@@ -62,7 +65,7 @@ class OpenAIImageFactory(ImageFactory):
     async def edit(self, prompt: str, image_bytes: bytes, size: str) -> bytes:
         import io  # noqa: PLC0415
 
-        from openai import AsyncOpenAI  # noqa: PLC0415
+        from openai import AsyncOpenAI  # noqa: PLC0415  # pyright: ignore[reportMissingImports]
 
         client = AsyncOpenAI(api_key=self._api_key, base_url=self._base_url)
         image_file = io.BytesIO(image_bytes)
@@ -118,8 +121,8 @@ class GoogleImageFactory(ImageFactory):
 
     async def generate(self, prompt: str, size: str, model: str, quality: str) -> bytes:
         """Generate an image via Imagen 3 and return raw PNG bytes."""
-        from google import genai  # noqa: PLC0415
-        from google.genai import types  # noqa: PLC0415
+        from google import genai  # noqa: PLC0415  # pyright: ignore[reportAttributeAccessIssue]
+        from google.genai import types  # noqa: PLC0415  # pyright: ignore[reportMissingImports]
 
         client = genai.Client(api_key=self._api_key)
         aspect_ratio = self._ASPECT_MAP.get(size, "1:1")
