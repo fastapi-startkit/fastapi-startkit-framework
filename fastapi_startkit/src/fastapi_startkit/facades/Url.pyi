@@ -1,10 +1,14 @@
+from typing import Any
+
 class Url:
     """URL helper facade."""
 
+    @staticmethod
     def url(path: str = "") -> str:
         """Generates a fully qualified url to the given path. If no path is given this will return
         the base url domain."""
         ...
+    @staticmethod
     def asset(alias: str, filename: str) -> str:
         """Generates a fully qualified URL for the given asset using the given disk
         Example:
@@ -12,7 +16,8 @@ class Url:
             asset("s3.private", "doc.pdf") (when multiple paths are specified for the disk)
         """
         ...
-    def route(name: str, params: dict = {}, absolute: bool = True) -> str:
+    @staticmethod
+    def route(name: str, params: dict[str, Any] | None = None, absolute: bool = True) -> str:
         """Generates a fully qualified URL to the given route name.
         Example:
             route("users.home") : http://masonite.app/dashboard/

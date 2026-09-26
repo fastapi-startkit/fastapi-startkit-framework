@@ -1,7 +1,7 @@
 """Core of the IOC Container."""
 
 import inspect
-from typing import Any, TypeVar, overload
+from typing import Any, ClassVar, TypeVar, overload
 
 from ..exceptions import (
     ContainerError,
@@ -18,14 +18,14 @@ class Container:
     Performs bindings and resolving of objects to and from the container.
     """
 
-    _instance = None
+    _instance: ClassVar["Container | None"] = None
 
     @classmethod
-    def set_instance(cls, instance):
+    def set_instance(cls, instance: "Container") -> None:
         cls._instance = instance
 
     @classmethod
-    def instance(cls):
+    def instance(cls) -> "Container":
         if cls._instance is None:
             raise RuntimeError("Container not initialized")
         return cls._instance
@@ -111,12 +111,13 @@ class Container:
     @overload
     def make(self, name: str, *arguments: Any) -> Any: ...
 
-    def make(self, name: str | type[T], *arguments: Any) -> Any:
+    def make(self, name: type[T] | str, *arguments: Any) -> Any:
         """Retrieve a class from the container by key.
 
-        Class keys resolve to an instance of that class (make(SomeClass) -> SomeClass);
-        string keys resolve to whatever was bound (Any). A missing key raises rather
-        than returning None, so the return type is deliberately non-Optional.
+        A class key resolves to an instance of that class, so `make(Foo)` is
+        typed as `Foo`. A string key carries no static type information, so it
+        stays `Any` and callers annotate the binding themselves. The return is
+        never `None`: a missing key raises instead.
 
         Arguments:
             name {string | type} -- Key in the container that you want to get.

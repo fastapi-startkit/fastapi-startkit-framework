@@ -1,4 +1,4 @@
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from sqlalchemy import StaticPool
 from sqlalchemy.pool import NullPool
@@ -11,6 +11,9 @@ from fastapi_startkit.masoniteorm.connections.postgres_connection import (
     PostgresConnection,
 )
 from fastapi_startkit.masoniteorm.connections.mysql_connection import MySQLConnection
+
+if TYPE_CHECKING:
+    from fastapi_startkit.application import Application
 
 
 class ConnectionFactory:
@@ -64,7 +67,7 @@ class ConnectionFactory:
         kwargs: dict[str, Any] = {"echo": True}
         from fastapi_startkit.application import app
 
-        if app().is_testing():
+        if cast("Application", app()).is_testing():
             kwargs["poolclass"] = NullPool
         elif cfg["driver"] == "sqlite":
             kwargs["connect_args"] = {"check_same_thread": False}

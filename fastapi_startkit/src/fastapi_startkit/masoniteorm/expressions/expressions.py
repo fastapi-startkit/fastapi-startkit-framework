@@ -100,13 +100,17 @@ class SelectExpression:
 class OrderByExpression:
     """A helper class to manage select expressions."""
 
-    def __init__(self, column, direction="ASC", raw=False, bindings=()):
-        self.column = column.strip()
-
+    def __init__(self, column, direction="ASC", raw=False, bindings=(), builder=None):
         self.raw = raw
-
         self.direction = direction
         self.bindings = bindings
+        self.builder = builder
+
+        if builder is not None:
+            self.column = None
+            return
+
+        self.column = column.strip()
 
         if raw is False:
             if self.column.endswith(" desc"):
@@ -121,7 +125,7 @@ class OrderByExpression:
 class GroupByExpression:
     """A helper class to manage select expressions."""
 
-    def __init__(self, column=None, raw=False, bindings=()):
+    def __init__(self, column: str, raw=False, bindings=()):
         self.column = column.strip()
 
         self.raw = raw
@@ -129,7 +133,7 @@ class GroupByExpression:
 
 
 class AggregateExpression:
-    def __init__(self, aggregate=None, column=None, alias=False):
+    def __init__(self, aggregate: str, column: str, alias=False):
         self.aggregate = aggregate
         self.column = column.strip()
         self.alias = alias

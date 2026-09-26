@@ -216,7 +216,7 @@ class MSSQLPlatform(Platform):
                 default = self.premapped_defaults.get(column.default)
             elif column.default:
                 if isinstance(column.default, (str,)) and not column.default_is_raw:
-                    default = f" DEFAULT '{column.default}'"
+                    default = f" DEFAULT {self.quote_string(column.default)}"
                 else:
                     default = f" DEFAULT {column.default}"
             else:
@@ -318,7 +318,7 @@ class MSSQLPlatform(Platform):
     def compile_get_all_tables(self, database, schema=None):
         return f"SELECT name FROM {database}.sys.tables"
 
-    def get_current_schema(self, connection, table_name, schema=None):
+    async def get_current_schema(self, connection, table_name, schema=None):
         return Table(table_name)
 
     def enable_foreign_key_constraints(self):

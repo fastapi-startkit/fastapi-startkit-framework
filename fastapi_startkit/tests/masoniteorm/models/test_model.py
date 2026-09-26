@@ -1,4 +1,5 @@
 from fastapi_startkit.masoniteorm.models.model import Model
+from fastapi_startkit.masoniteorm.models.fields import Field
 from tests.masoniteorm.fixtures.model import User
 from tests.masoniteorm.sqlite.test_case import TestCase
 
@@ -114,6 +115,15 @@ class TestFillable(TestCase):
         assert "title" in Post.__fillable__
         assert "body" in Post.__fillable__
 
+    async def test_typed_fields_are_in_fillable(self):
+        class Post(Model):
+            __table__ = "posts"
+            title = Field[str]()
+            published = Field(default=False)
+
+        assert "title" in Post.__fillable__
+        assert "published" in Post.__fillable__
+
     async def test_framework_fields_excluded_from_fillable(self):
         class Post(Model):
             __table__ = "posts"
@@ -122,3 +132,16 @@ class TestFillable(TestCase):
         assert "db_manager" not in Post.__fillable__
         assert "created_at" not in Post.__fillable__
         assert "updated_at" not in Post.__fillable__
+
+
+class TestDbManagerResolution(TestCase):
+    async def test_resolve_db_manager_returns_bound_manager(self):
+        assert User.resolve_db_manager() is self.db
+
+    async def test_new_query_without_db_manager_raises_clear_error(self):
+        Model.db_manager = None
+        try:
+            with self.assertRaisesRegex(RuntimeError, "Model.db_manager is not set"):
+                User().new_query()
+        finally:
+            Model.db_manager = self.db

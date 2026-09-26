@@ -24,6 +24,111 @@ SQLITE_CONFIG = {
 }
 
 
+def test_deprecated_model_field_remains_compatible():
+    from fastapi_startkit.masoniteorm import ModelField
+    from tests.masoniteorm.fixtures.casts import Address
+
+    with pytest.warns(DeprecationWarning, match="use Field"):
+
+        class LegacyUser(Model):
+            address: Address = ModelField()
+
+    user = LegacyUser(address={"city": "Sydney"})
+    assert isinstance(user.address, Address)
+    assert user.address.city == "Sydney"
+    assert isinstance(LegacyUser.address, ModelField)
+    user.address = Address(city="Melbourne")
+    assert user.address.city == "Melbourne"
+    restored = LegacyUser(user.get_attributes())
+    assert restored.address.city == "Melbourne"
+
+
+@pytest.mark.parametrize("mixed_fields", [False, True], ids=["annotation-only", "mixed-fields"])
+def test_annotation_only_columns_remain_supported(mixed_fields):
+    from fastapi_startkit.masoniteorm import Field
+
+    if mixed_fields:
+
+        class CompatibleUser(Model):
+            id: int
+            name: str
+            email: str
+            score = Field[int]()
+            is_admin = Field(default=False)
+
+    else:
+
+        class CompatibleUser(Model):
+            id: int
+            name: str
+            email: str
+
+    # Hydration from raw storage still uses plain annotations for casting.
+    user = CompatibleUser({"id": "42", "name": "Alex", "email": "alex@example.com", "score": "7"})
+    assert user.id == 42
+    assert isinstance(user.id, int)
+    assert user.name == "Alex"
+    assert user.email == "alex@example.com"
+
+    user.name = "Jane"
+    user.fill({"email": "jane@example.com"})
+    assert user.name == "Jane"
+    assert user.email == "jane@example.com"
+    assert {"id", "name", "email"} <= set(CompatibleUser.__fillable__)
+
+    if mixed_fields:
+        assert user.score == 7
+        assert isinstance(user.score, int)
+        assert user.is_admin is False
+        user.fill({"score": 9, "is_admin": True})
+        assert user.score == 9
+        assert user.is_admin is True
+
+
+def test_field_descriptor_assignment_casts_and_tracks_dirty_values():
+    from fastapi_startkit.masoniteorm import Field
+
+    class DescriptorUser(Model):
+        id = Field[int]()
+
+    user = DescriptorUser({"id": 1})
+    user.sync_original()
+    # Bypass Model.__setattr__ to exercise Python's descriptor protocol.
+    object.__setattr__(user, "id", "42")
+    assert user.id == 42
+    assert user.get_dirty() == {"id": 42}
+    assert user._original["id"] == 1
+
+
+def test_legacy_model_field_descriptor_assignment_serializes_pydantic_values():
+    import json
+
+    from fastapi_startkit.masoniteorm import ModelField
+    from tests.masoniteorm.fixtures.casts import Address
+
+    with pytest.warns(DeprecationWarning, match="removed in 2.x"):
+
+        class DescriptorLegacyUser(Model):
+            address: Address = ModelField()
+
+    user = DescriptorLegacyUser()
+    object.__setattr__(user, "address", Address(city="Sydney"))
+    assert isinstance(user.address, Address)
+    assert user.address.city == "Sydney"
+    assert json.loads(user.get_dirty()["address"])["city"] == "Sydney"
+
+
+def test_updated_at_descriptor_assignment_uses_attribute_storage():
+    class TimestampUser(Model):
+        pass
+
+    user = TimestampUser()
+    timestamp = pendulum.datetime(2026, 1, 2, 3, 4, 5, tz="UTC")
+    object.__setattr__(user, "updated_at", timestamp)
+    assert user.updated_at == timestamp
+    assert user.get_dirty()["updated_at"] == "2026-01-02 03:04:05"
+
+
 @pytest.fixture
 async def db():
     manager = DatabaseManager(ConnectionFactory(), SQLITE_CONFIG)

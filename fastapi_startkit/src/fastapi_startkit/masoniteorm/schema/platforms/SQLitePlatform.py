@@ -126,7 +126,7 @@ class SQLitePlatform(Platform):
                 default = self.premapped_defaults.get(column.default)
             elif column.default:
                 if isinstance(column.default, (str,)) and not column.default_is_raw:
-                    default = f" DEFAULT '{column.default}'"
+                    default = f" DEFAULT {self.quote_string(column.default)}"
                 else:
                     default = f" DEFAULT {column.default}"
             else:
@@ -149,7 +149,7 @@ class SQLitePlatform(Platform):
                     column_constraint=column_constraint,
                     length=length,
                     signed=(
-                        " " + self.signed.get(column._signed)
+                        " " + self.signed[column._signed]
                         if column.column_type not in self.types_without_signs and column._signed
                         else ""
                     ),
@@ -179,7 +179,7 @@ class SQLitePlatform(Platform):
                     default = self.premapped_defaults.get(column.default)
                 elif column.default:
                     if isinstance(column.default, (str,)):
-                        default = f" DEFAULT '{column.default}'"
+                        default = f" DEFAULT {self.quote_string(column.default)}"
                     else:
                         default = f" DEFAULT {column.default}"
                 else:
@@ -203,7 +203,7 @@ class SQLitePlatform(Platform):
                         nullable="NULL" if column.is_null else "NOT NULL",
                         default=default,
                         signed=(
-                            " " + self.signed.get(column._signed)
+                            " " + self.signed[column._signed]
                             if column.column_type not in self.types_without_signs and column._signed
                             else ""
                         ),
@@ -320,7 +320,7 @@ class SQLitePlatform(Platform):
     def get_primary_key_constraint_string(self):
         return "CONSTRAINT {constraint_name} PRIMARY KEY ({columns})"
 
-    def constraintize(self, constraints):
+    def constraintize(self, constraints, table=None):
         sql = []
         for name, constraint in constraints.items():
             sql.append(
@@ -361,24 +361,29 @@ class SQLitePlatform(Platform):
     async def get_current_schema(self, connection, table_name, schema=None):
         sql = f"PRAGMA table_info({table_name})"
 
-        reversed_type_map = {v: k for k, v in self.type_map.items()}
+        # Several blueprint types share a database type (e.g. integer/increments -> INTEGER);
+        # keep the first, canonical one instead of letting the last entry win.
+        reversed_type_map = {}
+        for blueprint_type, db_type in self.type_map.items():
+            reversed_type_map.setdefault(db_type, blueprint_type)
         table = Table(table_name)
 
         result = await connection.select(sql, ())
+        autoincrement = await self._has_autoincrement(connection, table_name)
         for column in result:
             column_type = self.get_column_type(reversed_type_map, column["type"].upper())
+            if autoincrement and column_type == "integer" and column.get("pk") == 1:
+                column_type = "increments"
             length = self.get_column_length(column["type"])
 
-            # find default
-            default = column.get("dflt_value")
-            if default:
-                default = default.replace("'", "")
+            default, default_is_raw = self._parse_default(column.get("dflt_value"))
 
             table.add_column(
                 column["name"],
                 column_type,
-                column_python_type=Schema._type_hints_map.get(column_type, str),
+                column_python_type=str if column_type is None else Schema._type_hints_map.get(column_type, str),
                 default=default,
+                default_is_raw=default_is_raw,
                 length=length,
                 nullable=int(column.get("notnull")) == 0,
             )
@@ -386,6 +391,31 @@ class SQLitePlatform(Platform):
                 table.set_primary_key(column["name"])
 
         return table
+
+    @staticmethod
+    def _parse_default(raw: str | None) -> tuple[object, bool]:
+        """Turn a PRAGMA dflt_value SQL literal back into a blueprint default and its raw flag."""
+        if raw is None or raw.upper() == "NULL":
+            return None, False
+        if len(raw) >= 2 and raw[0] == raw[-1] == "'":
+            return raw[1:-1].replace("''", "'"), False
+        if raw.upper() == "CURRENT_TIMESTAMP":
+            return "current", False
+        for number in (int, float):
+            try:
+                return number(raw), False
+            except ValueError:
+                pass
+        return raw, True
+
+    @staticmethod
+    async def _has_autoincrement(connection, table_name) -> bool:
+        # SQLite only allows AUTOINCREMENT on the INTEGER PRIMARY KEY column.
+        result = await connection.select(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name = ?",
+            (table_name,),
+        )
+        return any("AUTOINCREMENT" in (row.get("sql") or "").upper() for row in result)
 
     def get_column_length(self, column_type):
         if "(" in column_type:

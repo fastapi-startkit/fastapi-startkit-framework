@@ -75,7 +75,7 @@ class MySQLPlatform(Platform):
                 default = self.premapped_defaults.get(column.default)
             elif column.default:
                 if isinstance(column.default, (str,)) and not column.default_is_raw:
-                    default = f" DEFAULT '{column.default}'"
+                    default = f" DEFAULT {self.quote_string(column.default)}"
                 else:
                     default = f" DEFAULT {column.default}"
             else:
@@ -99,7 +99,7 @@ class MySQLPlatform(Platform):
                     constraint=constraint,
                     nullable=self.premapped_nulls.get(column.is_null) or "",
                     default=default,
-                    signed=(" " + self.signed.get(column._signed) if column._signed else ""),
+                    signed=(" " + self.signed[column._signed] if column._signed else ""),
                     comment=("COMMENT '" + column.comment + "'" if column.comment else ""),
                 )
                 .strip()
@@ -159,7 +159,7 @@ class MySQLPlatform(Platform):
                     default = self.premapped_defaults.get(column.default)
                 elif column.default:
                     if isinstance(column.default, (str,)):
-                        default = f" DEFAULT '{column.default}'"
+                        default = f" DEFAULT {self.quote_string(column.default)}"
                     else:
                         default = f" DEFAULT {column.default}"
                 else:
@@ -179,7 +179,7 @@ class MySQLPlatform(Platform):
                         constraint="PRIMARY KEY" if column.primary else "",
                         nullable="NULL" if column.is_null else "NOT NULL",
                         default=default,
-                        signed=(" " + self.signed.get(column._signed) if column._signed else ""),
+                        signed=(" " + self.signed[column._signed] if column._signed else ""),
                         after=((" AFTER " + self.wrap_column(column._after)) if column._after else ""),
                         comment=(" COMMENT '" + column.comment + "'" if column.comment else ""),
                     )
@@ -407,7 +407,7 @@ class MySQLPlatform(Platform):
             table.add_column(
                 column["Field"],
                 column_type,
-                column_python_type=Schema._type_hints_map.get(column_type, str),
+                column_python_type=str if column_type is None else Schema._type_hints_map.get(column_type, str),
                 default=default,
                 length=length,
             )

@@ -4,9 +4,8 @@ import logging.handlers
 
 
 class LogSyslogDriver(BaseDriver):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, path: str | tuple[str, int], **kwargs):
         self.log = logging.getLogger("root")
-        path = kwargs.get("path")
 
         handler = logging.handlers.SysLogHandler(address=path)
 
@@ -36,7 +35,7 @@ class LogSyslogDriver(BaseDriver):
         return self.log.warning(message)
 
     def notice(self, message):
-        self.log.setLevel(logging.NOTICE)
+        self.log.setLevel(logging.INFO)
         return self.log.info(message)
 
     def info(self, message):

@@ -102,7 +102,7 @@ def build_pipeline(middlewares: list[Callable], core: Callable) -> Callable:
     for mw in reversed(middlewares):
         nxt = handler
         instance = mw() if isinstance(mw, type) else mw
-        call = instance.handle if hasattr(instance, "handle") else instance
+        call = instance.handle if isinstance(instance, Middleware) else instance
 
         def layer(model: Any, call: Callable = call, nxt: Callable = nxt) -> Response:
             async def _source() -> AsyncIterator:

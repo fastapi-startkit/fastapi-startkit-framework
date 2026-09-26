@@ -1,5 +1,7 @@
 import unittest
 
+import pytest
+
 from fastapi_startkit.masoniteorm.schema import Table
 from fastapi_startkit.masoniteorm.schema.platforms.SQLitePlatform import SQLitePlatform
 from fastapi_startkit.masoniteorm.schema.TableDiff import TableDiff
@@ -164,3 +166,28 @@ class TestTableDiff(unittest.TestCase):
         ]
 
         self.assertEqual(sql, self.platform.compile_alter_sql(diff))
+
+    def test_remove_constraint_moves_constraint_from_the_loaded_schema(self):
+        table = Table("users")
+        table.add_constraint("users_email_unique", "unique", ["email"])
+
+        diff = TableDiff("users")
+        diff.from_table = table
+        diff.remove_constraint("users_email_unique")
+
+        self.assertIs(diff.get_removed_constraints()["users_email_unique"], table.get_constraint("users_email_unique"))
+
+    def test_remove_constraint_without_loaded_schema_raises(self):
+        diff = TableDiff("users")
+
+        with pytest.raises(AttributeError, match="not loaded"):
+            diff.remove_constraint("users_email_unique")
+
+    def test_constraintize_accepts_optional_table(self):
+        table = Table("users")
+        table.add_constraint("users_email_unique", "unique", ["email"])
+
+        self.assertEqual(
+            self.platform.constraintize(table.get_added_constraints()),
+            self.platform.constraintize(table.get_added_constraints(), table),
+        )

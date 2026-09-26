@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Any, Self, dataclass_transform, overload
 
 import inflection
 import pendulum
@@ -9,17 +9,24 @@ from fastapi_startkit.carbon import Carbon
 from fastapi_startkit.masoniteorm.collection import Collection
 from fastapi_startkit.masoniteorm.connections.manager import DatabaseManager
 from fastapi_startkit.masoniteorm.models.attribute import Attribute
-from fastapi_startkit.masoniteorm.models.fields import CreatedAtField, UpdatedAtField
+from fastapi_startkit.masoniteorm.models.fields import (
+    CreatedAtField,
+    Field,
+    FieldDescriptor,
+    ModelField,
+    UpdatedAtField,
+)
 from fastapi_startkit.masoniteorm.models.registry import Registry
 from fastapi_startkit.masoniteorm.models.relationship import Relationship
 from fastapi_startkit.masoniteorm.observers import ObservesEvents
 
 if TYPE_CHECKING:
-    from fastapi_startkit.masoniteorm.models.builder import QueryBuilder
+    from fastapi_startkit.masoniteorm.models.builder import QueryBuilder, WhereGroup
 
 
+@dataclass_transform(field_specifiers=(Field, ModelField))
 class Model(Attribute, Relationship, ObservesEvents):
-    db_manager: "DatabaseManager" = None
+    db_manager: DatabaseManager | None = None
     __table__ = None
     __primary_key__ = "id"
     __timestamps__ = True
@@ -34,9 +41,16 @@ class Model(Attribute, Relationship, ObservesEvents):
         super().__init_subclass__(**kwargs)
         Registry.register(cls)
 
+        declared_fields = dict.fromkeys(
+            [
+                *cls.__annotations__,
+                *(name for name, value in vars(cls).items() if isinstance(value, FieldDescriptor)),
+            ]
+        )
+
         fillable = []
-        for name, _typ in cls.__annotations__.items():
-            attr = getattr(cls, name, None)
+        for name in declared_fields:
+            attr = vars(cls).get(name)
             from fastapi_startkit.masoniteorm.relationships.BaseRelationship import (
                 BaseRelationship,
             )
@@ -48,10 +62,12 @@ class Model(Attribute, Relationship, ObservesEvents):
             fillable.append(name)
         cls.__fillable__ = fillable
 
-    created_at: Carbon = CreatedAtField(fmt="%Y-%m-%d %H:%M:%S", tz="UTC")
-    updated_at: Carbon = UpdatedAtField(fmt="%Y-%m-%d %H:%M:%S", tz="UTC")
+    # The Carbon annotations drive casting at runtime; instance access goes
+    # through the descriptor and returns the Carbon attribute value.
+    created_at: Carbon = CreatedAtField(fmt="%Y-%m-%d %H:%M:%S", tz="UTC")  # pyright: ignore[reportAssignmentType]
+    updated_at: Carbon = UpdatedAtField(fmt="%Y-%m-%d %H:%M:%S", tz="UTC")  # pyright: ignore[reportAssignmentType]
 
-    def __init__(self, attributes: dict = None, **kwargs):
+    def __init__(self, attributes: dict | None = None, **kwargs):
         super().__init__(attributes, **kwargs)
         self.connection = getattr(self.__class__, "__connection__", "default")
         self._global_scopes = {}
@@ -93,8 +109,28 @@ class Model(Attribute, Relationship, ObservesEvents):
     def with_(cls, *eagers) -> "QueryBuilder":
         return cls.query().with_(*eagers)
 
+    @overload
     @classmethod
-    def where(cls, column, *args) -> "QueryBuilder[Self]":
+    def where(cls, column: str, /) -> QueryBuilder[Self]: ...
+
+    @overload
+    @classmethod
+    def where(cls, column: str, value: Any, /) -> QueryBuilder[Self]: ...
+
+    @overload
+    @classmethod
+    def where(cls, column: str, operator: str, value: Any, /) -> QueryBuilder[Self]: ...
+
+    @overload
+    @classmethod
+    def where(cls, column: dict[str, Any], /) -> QueryBuilder[Self]: ...
+
+    @overload
+    @classmethod
+    def where(cls, column: WhereGroup[Self], /) -> QueryBuilder[Self]: ...
+
+    @classmethod
+    def where(cls, column: str | dict[str, Any] | WhereGroup[Self], *args: Any) -> QueryBuilder[Self]:
         return cls.query().where(column, *args)
 
     @classmethod
@@ -243,7 +279,7 @@ class Model(Attribute, Relationship, ObservesEvents):
         return await cls.query().first(columns)
 
     @classmethod
-    async def get(cls):
+    async def get(cls) -> Collection[Self]:
         return await cls.query().get()
 
     @classmethod
@@ -271,11 +307,11 @@ class Model(Attribute, Relationship, ObservesEvents):
         return cls.query().chunk(count)
 
     @classmethod
-    def chunk_by_id(cls, count: int, column: str = None, alias: str = None, descending: bool = False):
+    def chunk_by_id(cls, count: int, column: str | None = None, alias: str | None = None, descending: bool = False):
         return cls.query().chunk_by_id(count, column, alias, descending)
 
     @classmethod
-    def chunk_by_id_desc(cls, count: int, column: str = None, alias: str = None):
+    def chunk_by_id_desc(cls, count: int, column: str | None = None, alias: str | None = None):
         return cls.query().chunk_by_id_desc(count, column, alias)
 
     def set_connection(self, connection: str):
@@ -295,8 +331,14 @@ class Model(Attribute, Relationship, ObservesEvents):
 
         return model
 
+    @classmethod
+    def resolve_db_manager(cls) -> DatabaseManager:
+        if cls.db_manager is None:
+            raise RuntimeError("Model.db_manager is not set; register the DatabaseProvider first.")
+        return cls.db_manager
+
     def new_query(self) -> "QueryBuilder[Self]":
-        return self.db_manager.connection(self.connection).query().set_model(self)
+        return self.resolve_db_manager().connection(self.connection).query().set_model(self)
 
     def hydrate(self, items):
         instance = self.new_model_instance()

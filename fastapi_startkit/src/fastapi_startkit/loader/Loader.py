@@ -2,6 +2,7 @@
 
 import inspect
 import pkgutil
+from importlib.machinery import FileFinder
 
 from ..exceptions import LoaderNotFound
 from ..support.structures import load
@@ -18,9 +19,12 @@ class Loader:
 
         _modules = {}
         module_paths = list(map(lambda p: p.replace(".", "/"), files_or_directories))
-        for module_loader, name, _ in pkgutil.iter_modules(module_paths):
+        for module_finder, name, _ in pkgutil.iter_modules(module_paths):
+            # load() imports from a file path, so only filesystem finders (not e.g. zip archives) apply.
+            if not isinstance(module_finder, FileFinder):
+                continue
             module = load(
-                f"{module_loader.path}/{name}.py",
+                f"{module_finder.path}/{name}.py",
                 raise_exception=raise_exception,
             )
             _modules.update({name: module})
@@ -64,7 +68,7 @@ class Loader:
 
     def get_parameters(self, module_or_path):
         _parameters = {}
-        for name, obj in self.get_objects(module_or_path).items():
+        for name, obj in (self.get_objects(module_or_path) or {}).items():
             if parameters_filter(name, obj):
                 _parameters.update({name: obj})
 

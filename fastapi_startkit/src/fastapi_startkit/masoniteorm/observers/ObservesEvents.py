@@ -1,4 +1,10 @@
+from typing import Any
+
+
 class ObservesEvents:
+    __has_events__: bool
+    __observers__: dict[type, list[Any]]
+
     def observe_events(self, model, event):
         if model.__has_events__ == True:
             for klass in type(model).__mro__:

@@ -37,7 +37,7 @@ class MorphMany(BaseRelationship):
         relationship = self.fn(self)()
         return getattr(relationship.builder, attribute)
 
-    def apply_query(self, builder, instance):
+    def apply_query(self, foreign, owner):
         """Apply the query and return a dictionary to be hydrated
 
         Arguments:
@@ -47,11 +47,11 @@ class MorphMany(BaseRelationship):
         Returns:
             dict -- A dictionary of data which will be hydrated.
         """
-        polymorphic_key = self.get_record_key_lookup(instance)
+        polymorphic_key = self.get_record_key_lookup(owner)
         polymorphic_builder = self.polymorphic_builder
         return (
             polymorphic_builder.where(self.morph_key, polymorphic_key)
-            .where(self.morph_id, instance.get_attribute(instance.__primary_key__))
+            .where(self.morph_id, owner.get_attribute(owner.__primary_key__))
             .get()
         )
 
@@ -78,7 +78,7 @@ class MorphMany(BaseRelationship):
                         record_type,
                     ).where_in(
                         self.morph_id,
-                        relation.pluck(relation.first().__primary_key__, keep_nulls=False).unique(),
+                        relation.pluck(relation[0].__primary_key__, keep_nulls=False).unique(),
                     )
                 ).get()
             return (
@@ -88,7 +88,7 @@ class MorphMany(BaseRelationship):
                 )
                 .where_in(
                     self.morph_id,
-                    relation.pluck(relation.first().__primary_key__, keep_nulls=False).unique(),
+                    relation.pluck(relation[0].__primary_key__, keep_nulls=False).unique(),
                 )
                 .get()
             )
