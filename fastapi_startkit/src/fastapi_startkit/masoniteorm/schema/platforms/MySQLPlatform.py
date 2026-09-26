@@ -75,7 +75,7 @@ class MySQLPlatform(Platform):
                 default = self.premapped_defaults.get(column.default)
             elif column.default:
                 if isinstance(column.default, (str,)) and not column.default_is_raw:
-                    default = f" DEFAULT '{column.default}'"
+                    default = f" DEFAULT {self.quote_string(column.default)}"
                 else:
                     default = f" DEFAULT {column.default}"
             else:
@@ -159,7 +159,7 @@ class MySQLPlatform(Platform):
                     default = self.premapped_defaults.get(column.default)
                 elif column.default:
                     if isinstance(column.default, (str,)):
-                        default = f" DEFAULT '{column.default}'"
+                        default = f" DEFAULT {self.quote_string(column.default)}"
                     else:
                         default = f" DEFAULT {column.default}"
                 else:
