@@ -5,14 +5,27 @@ import logging.handlers
 
 class LogSyslogDriver(BaseDriver):
     def __init__(self, *args, path: str | tuple[str, int], **kwargs):
-        self.log = logging.getLogger("root")
+        # A dedicated, non-propagating logger per address keeps records away from the root
+        # logger (and its LoggingHandler bridge, which would feed them back into Logger).
+        self.log = logging.getLogger(f"fastapi_startkit.logging.syslog.{path}")
+        self.log.propagate = False
+        self.handler = self._syslog_handler(path)
+        self.handler.setFormatter(
+            logging.Formatter("{} - %(levelname)s - %(message)s".format(self.get_time().to_datetime_string()))
+        )
 
-        handler = logging.handlers.SysLogHandler(address=path)
+    def _syslog_handler(self, address: str | tuple[str, int]) -> logging.Handler:
+        # Drivers are rebuilt per channel instance; reuse the handler so each address holds one socket.
+        if self.log.handlers:
+            return self.log.handlers[0]
 
-        formatter = logging.Formatter("{} - %(levelname)s - %(message)s".format(self.get_time().to_datetime_string()))
-        handler.setFormatter(formatter)
-
+        handler = logging.handlers.SysLogHandler(address=address)
         self.log.addHandler(handler)
+        return handler
+
+    def close(self):
+        self.log.removeHandler(self.handler)
+        self.handler.close()
 
     def emergency(self, message):
         self.log.setLevel(logging.CRITICAL)
