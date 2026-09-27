@@ -29,6 +29,11 @@ TModel = TypeVar("TModel", bound="Model")
 # returns it, which the parent renders as a parenthesised subgroup.
 type WhereGroup[M: "Model"] = Callable[["QueryBuilder[M]"], "QueryBuilder[M]"]
 
+# select_sub()/add_select() subquery source: a builder, or a callable that
+# receives a fresh builder and returns the subquery.
+type Subquery = "QueryBuilder[Any] | Callable[[QueryBuilder[Any]], QueryBuilder[Any]]"
+type SelectEntry = "str | dict[str, str | Subquery]"
+
 
 class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
     operators = [
@@ -128,6 +133,59 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
                 for column in arg.split(","):
                     self._columns += (SelectExpression(column),)
         return self
+
+    def select_sub(self, subquery: "Subquery", alias: str) -> "Self":
+        """Add ``(subquery) AS alias`` to the selection.
+
+        ``subquery`` is a builder, or a callable that receives a fresh table-less
+        builder and returns one.
+        """
+        if not isinstance(subquery, QueryBuilder) and callable(subquery):
+            subquery = subquery(QueryBuilder(self.connection, self.grammar, self.processor))
+        if not isinstance(subquery, QueryBuilder):
+            raise TypeError("select_sub() expects a QueryBuilder subquery or a callable returning one.")
+        self._columns.append(SubGroupExpression(subquery, alias))
+        return self
+
+    def add_select(self, *columns: "SelectEntry | list[SelectEntry]") -> "Self":
+        """Append columns to the current selection without replacing it.
+
+        Plain string columns are appended once. A ``{alias: subquery}`` entry
+        adds a correlated column via :meth:`select_sub`, first selecting
+        ``{table}.*`` when nothing is selected yet so the base columns survive.
+        A string value under a string key is still a plain column.
+        """
+        entries: list[SelectEntry] = []
+        for column in columns:
+            if isinstance(column, list):
+                entries.extend(column)
+            else:
+                entries.append(column)
+
+        for entry in entries:
+            pairs: Iterable[tuple[str | None, str | Subquery]] = (
+                entry.items() if isinstance(entry, dict) else [(None, entry)]
+            )
+            for alias, value in pairs:
+                if isinstance(value, str):
+                    if not self._is_selected(value):
+                        self._columns.append(SelectExpression(value))
+                    continue
+                if alias is None:
+                    raise TypeError(
+                        "add_select() received a subquery without a string alias; "
+                        "pass {alias: subquery} or use select_sub(subquery, alias)."
+                    )
+                if not self._columns:
+                    self.select(f"{self._table}.*")
+                self.select_sub(value, alias)
+        return self
+
+    def _is_selected(self, column: str) -> bool:
+        return any(
+            isinstance(existing, SelectExpression) and existing.alias is None and existing.column == column
+            for existing in self._columns
+        )
 
     def limit(self, limit: int) -> "Self":
         self._limit = limit
