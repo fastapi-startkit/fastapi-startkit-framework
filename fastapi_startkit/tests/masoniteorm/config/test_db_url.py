@@ -1,6 +1,7 @@
 import unittest
 
 from fastapi_startkit.exceptions.exceptions import DriverNotFound
+from fastapi_startkit.masoniteorm.config.config import MySQLConfig, PostgresConfig, SQLiteConfig
 from fastapi_startkit.masoniteorm.connections.factory import ConnectionFactory
 
 
@@ -175,3 +176,17 @@ class TestConnectionFactoryUnsupportedDriver(unittest.TestCase):
         }
         url = ConnectionFactory.build_url(config)
         self.assertEqual(url, "sqlite+aiosqlite:///db.sqlite3")
+
+
+class TestConnectionFactoryEcho(unittest.TestCase):
+    def test_engine_echo_is_off_by_default(self):
+        engine = ConnectionFactory.create_engine({"driver": "sqlite", "database": ":memory:"})
+        self.assertFalse(engine.echo)
+
+    def test_engine_echo_follows_config(self):
+        engine = ConnectionFactory.create_engine({"driver": "sqlite", "database": ":memory:", "echo": True})
+        self.assertTrue(engine.echo)
+
+    def test_connection_configs_default_echo_to_false(self):
+        for config_class in (SQLiteConfig, MySQLConfig, PostgresConfig):
+            self.assertFalse(config_class().echo)
