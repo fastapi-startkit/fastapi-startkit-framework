@@ -1,5 +1,6 @@
 import io
 import logging
+import os
 import unittest
 from contextlib import redirect_stdout
 from unittest.mock import MagicMock, patch
@@ -242,53 +243,101 @@ class TerminalDriverTest(unittest.TestCase):
 
 class SingleDriverTest(unittest.TestCase):
     def setUp(self):
-        # The single/syslog drivers log through the "root"-named logger; disable
-        # propagation so records do not reach the installed LoggingHandler.
-        self.root_named = logging.getLogger("root")
-        self._propagate = self.root_named.propagate
-        self.root_named.propagate = False
-        self._existing_handlers = list(self.root_named.handlers)
+        import tempfile
+
+        self.directory = tempfile.TemporaryDirectory()
+        self.path = os.path.join(self.directory.name, "app.log")
+        self.drivers: list[LogSingleDriver] = []
 
     def tearDown(self):
-        for handler in list(self.root_named.handlers):
-            if handler not in self._existing_handlers:
-                self.root_named.removeHandler(handler)
-                handler.close()
-        self.root_named.propagate = self._propagate
+        for driver in self.drivers:
+            driver.close()
+        self.directory.cleanup()
+
+    def _driver(self, path=None):
+        driver = LogSingleDriver(path=path or self.path, max_level="debug")
+        self.drivers.append(driver)
+        return driver
+
+    def _contents(self):
+        with open(self.path) as handle:
+            return handle.read()
+
+    @staticmethod
+    def _open_fd_count():
+        return len(os.listdir("/dev/fd"))
 
     def test_writes_formatted_levels_to_the_file(self):
-        import tempfile
-        import os
+        driver = self._driver()
+        for level in ("emergency", "alert", "critical", "error", "warning", "notice", "info", "debug"):
+            getattr(driver, level)(f"{level}-message")
 
-        fd, path = tempfile.mkstemp(suffix=".log")
-        os.close(fd)
+        lines = self._contents().splitlines()
+        self.assertEqual(len(lines), 8)
+        for line, label in zip(
+            lines, ("EMERGENCY", "ALERT", "CRITICAL", "ERROR", "WARNING", "NOTICE", "INFO", "DEBUG")
+        ):
+            self.assertIn(f" - {label} - {label.lower()}-message", line)
+
+    def test_repeated_logging_keeps_handler_and_fd_counts_stable(self):
+        driver = self._driver()
+        driver.info("warm up")
+        handlers_before = len(driver.log.handlers)
+        fds_before = self._open_fd_count()
+
+        for i in range(200):
+            driver.error(f"boom {i}")
+            driver.debug(f"trace {i}")
+
+        self.assertEqual(handlers_before, 1)
+        self.assertEqual(len(driver.log.handlers), handlers_before)
+        self.assertEqual(self._open_fd_count(), fds_before)
+        self.assertEqual(len(self._contents().splitlines()), 401)
+
+    def test_drivers_for_the_same_file_share_one_handler(self):
+        first = self._driver()
+        second = self._driver()
+
+        self.assertIs(first.handler, second.handler)
+        self.assertEqual(len(second.log.handlers), 1)
+
+    def test_change_format_swaps_formatter_on_the_existing_handler(self):
+        driver = self._driver()
+        handler = driver.handler
+
+        driver.change_format("custom: %(message)s")
+        driver.log.info("hello")
+
+        self.assertEqual(driver.log.handlers, [handler])
+        self.assertEqual(self._contents(), "custom: hello\n")
+
+    def test_logging_leaves_root_logger_handlers_and_level_untouched(self):
+        root = logging.getLogger()
+        sentinel = logging.NullHandler()
+        root.addHandler(sentinel)
+        handlers_before = list(root.handlers)
+        level_before = root.level
         try:
-            driver = LogSingleDriver(path=path, max_level="debug")
+            driver = self._driver()
             driver.error("boom")
-            driver.info("ping")
-            with open(path) as handle:
-                contents = handle.read()
-            self.assertIn("ERROR", contents)
-            self.assertIn("boom", contents)
-            self.assertIn("INFO", contents)
-            self.assertIn("ping", contents)
-        finally:
-            os.remove(path)
+            driver.debug("trace")
 
-    def test_change_format_replaces_handlers(self):
-        import tempfile
-        import os
-
-        fd, path = tempfile.mkstemp(suffix=".log")
-        os.close(fd)
-        try:
-            driver = LogSingleDriver(path=path, max_level="debug")
-            before = len(driver.log.handlers)
-            driver.change_format("%(message)s")
-            self.assertLessEqual(len(driver.log.handlers), before)
-            self.assertTrue(len(driver.log.handlers) >= 1)
+            self.assertEqual(root.handlers, handlers_before)
+            self.assertTrue(any(isinstance(h, LoggingHandler) for h in root.handlers))
+            self.assertEqual(root.level, level_before)
+            self.assertFalse(driver.log.propagate)
         finally:
-            os.remove(path)
+            root.removeHandler(sentinel)
+
+    def test_close_releases_the_file_handler(self):
+        driver = self._driver()
+        driver.info("hello")
+        fds_open = self._open_fd_count()
+
+        driver.close()
+
+        self.assertEqual(driver.log.handlers, [])
+        self.assertEqual(self._open_fd_count(), fds_open - 1)
 
 
 class SlackDriverTest(unittest.TestCase):
@@ -364,24 +413,17 @@ class TimezoneAwareLogFileTest(unittest.TestCase):
 
     def setUp(self):
         self.config = get_app().make("config")
-        self.root_named = logging.getLogger("root")
-        self._propagate = self.root_named.propagate
-        self.root_named.propagate = False
-        self._existing_handlers = list(self.root_named.handlers)
 
     def tearDown(self):
-        for handler in list(self.root_named.handlers):
-            if handler not in self._existing_handlers:
-                self.root_named.removeHandler(handler)
-                handler.close()
-        self.root_named.propagate = self._propagate
         # Restore to the code's default so other tests' get_time() keeps working.
         self.config.set("logging.channels.timezone", "UTC")
 
     def _daily_path(self, directory, tz, fixed_instant):
         self.config.set("logging.channels.timezone", tz)
         with patch("pendulum.now", return_value=fixed_instant):
-            return DailyChannel(driver="daily", path=directory).driver.path
+            driver = DailyChannel(driver="daily", path=directory).driver
+        driver.close()
+        return driver.path
 
     def test_daily_file_date_follows_configured_timezone(self):
         import os
