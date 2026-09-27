@@ -22,7 +22,6 @@ if TYPE_CHECKING:
     from fastapi_startkit.masoniteorm.collection import Collection
     from fastapi_startkit.masoniteorm.connections.connection import Connection
     from fastapi_startkit.masoniteorm.models.model import Model
-    from fastapi_startkit.masoniteorm.query.grammars.BaseGrammar import BaseGrammar
 
 TModel = TypeVar("TModel", bound="Model")
 
