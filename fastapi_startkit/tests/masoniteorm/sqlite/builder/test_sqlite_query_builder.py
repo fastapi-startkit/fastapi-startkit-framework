@@ -134,3 +134,30 @@ class TestSQLiteQueryBuilder(TestCase):
         sql, bindings = mock_delete.call_args[0]
         self.assertEqual(sql, 'DELETE FROM "users" WHERE "age" = ? AND "profile" = ?')
         self.assertEqual(list(bindings), [20, 1])
+
+    async def test_where_grouped_lambda_prefixes_subgroup_columns(self):
+        sql = (
+            User.query()
+            .where("name", "Joe")
+            .where(lambda q: q.where("active", 1).where("age", ">", 20).or_where("id", ">=", 42))
+            .to_sql()
+        )
+        self.assertEqual(
+            sql,
+            'SELECT * FROM "users" WHERE "users"."name" = \'Joe\' AND '
+            '("users"."active" = \'1\' AND "users"."age" > \'20\' OR "users"."id" >= \'42\')',
+        )
+
+    async def test_where_grouped_lambda_to_qmark_binding_order(self):
+        builder = (
+            User.query()
+            .where("name", "Joe")
+            .where(lambda q: q.where("active", 1).where("age", ">", 20).or_where("id", ">=", 42))
+        )
+        sql = builder.to_qmark()
+        self.assertEqual(
+            sql,
+            'SELECT * FROM "users" WHERE "users"."name" = ? AND '
+            '("users"."active" = ? AND "users"."age" > ? OR "users"."id" >= ?)',
+        )
+        self.assertEqual(list(builder._bindings), ["Joe", 1, 20, 42])

@@ -38,9 +38,9 @@ class MorphTo(BaseRelationship):
         relationship = registry.Registry.resolve(self.fn)()
         return getattr(relationship._related_builder, attribute)
 
-    def apply_query(self, builder, instance):
-        model = self.morph_map().get(instance.__attributes__[self.morph_key])
-        record = instance.__attributes__[self.morph_id]
+    def apply_query(self, foreign, owner):
+        model = registry.Registry.get_morph_model(owner.__attributes__[self.morph_key])
+        record = owner.__attributes__[self.morph_id]
 
         return model.where(model.__primary_key__, record).first()
 
@@ -48,7 +48,7 @@ class MorphTo(BaseRelationship):
         if isinstance(relation, Collection):
             relations = Collection()
             for group, items in relation.group_by(self.morph_key).items():
-                morphed_model = self.morph_map().get(group)
+                morphed_model = registry.Registry.get_morph_model(group)
                 relations.merge(
                     await morphed_model.where_in(
                         f"{morphed_model.__table__}.{morphed_model.__primary_key__}",
@@ -57,12 +57,12 @@ class MorphTo(BaseRelationship):
                 )
             return relations
         else:
-            model = await self.morph_map().get(getattr(relation, self.morph_key))
+            model = self.morph_map().get(getattr(relation, self.morph_key))
             if model:
                 return await model.find(getattr(relation, self.morph_id))
 
     def register_related(self, key, model, collection):
-        morphed_model = self.morph_map().get(getattr(model, self.morph_key))
+        morphed_model = registry.Registry.get_morph_model(getattr(model, self.morph_key))
 
         related = collection.where(morphed_model.__primary_key__, getattr(model, self.morph_id)).first()
 

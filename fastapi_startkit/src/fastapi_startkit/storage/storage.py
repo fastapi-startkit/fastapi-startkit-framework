@@ -3,11 +3,13 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from fastapi_startkit import Application
 
+    from .drivers.fake import FakeDriver
+
 
 class StorageManager:
     """File storage manager handling managing files with different drivers."""
 
-    def __init__(self, application: "Application", store_config: dict = None):
+    def __init__(self, application: "Application", store_config: dict | None = None):
         self.application = application
         self.drivers = {}
         self.store_config = store_config or {}
@@ -20,14 +22,14 @@ class StorageManager:
         self.store_config = config
         return self
 
-    def get_driver(self, name: str = None) -> Any:
+    def get_driver(self, name: str | None = None) -> Any:
         if name is None:
             name = self.store_config.get("default")
 
         driver_name = self.get_config_options(name).get("driver")
         return self.drivers[driver_name]
 
-    def get_config_options(self, name: str = None) -> dict:
+    def get_config_options(self, name: str | None = None) -> dict:
         disks = self.store_config.get("disks", {})
         if name is None or name == "default":
             name = self.store_config.get("default")
@@ -36,9 +38,6 @@ class StorageManager:
 
     def disk(self, name: str = "default") -> Any:
         """Get the file manager instance for the given disk name."""
-        if name == "default":
-            name = self.store_config.get("default")
-
         store_config = self.get_config_options(name)
         driver = self.get_driver(name)
         return driver.set_options(store_config)

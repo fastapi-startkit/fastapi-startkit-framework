@@ -17,7 +17,7 @@ class LogProvider(Provider):
 
         self.app.bind("LogChannelFactory", ChannelFactory)
         self.app.bind("LogDriverFactory", DriverFactory)
-        self.app.bind("LoggingManager", LoggingManager(ChannelFactory, DriverFactory))
+        self.app.bind("LoggingManager", LoggingManager(ChannelFactory, DriverFactory, config.get("level")))
 
     def boot(self):
         self.publishes({Path(__file__).resolve().parent.parent.joinpath("config/logging.py"): "config/logging.py"})

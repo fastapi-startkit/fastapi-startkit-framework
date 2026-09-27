@@ -105,20 +105,6 @@ class Column:
         """
         return self._after
 
-    def default(self, value, raw=False):
-        """Sets a default value for this column
-
-        Arguments:
-            value {string} -- A default value.
-            raw {bool} -- should the value be quoted
-
-        Returns:
-            self
-        """
-        self.default = value
-        self.default_is_raw = raw
-        return self
-
     def change(self):
         """Sets the schema to create a modify sql statement.
 

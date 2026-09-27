@@ -65,6 +65,54 @@ class TestCollection(TestCase):
 
         self.assertIs(result, users)
 
+    async def test_load_registers_non_collection_result_via_add_relation(self):
+        # Defensive branch in load(): when a relationship's get_related returns
+        # a truthy value that is NOT a Collection, load() attaches it to every
+        # model with add_relation instead of the register_related batch path.
+        # No built-in relationship hits this (they all return Collections for a
+        # collection input), so it is exercised with a stub relationship.
+        class StubRelationship:
+            async def get_related(self, query, relation, eagers=None, callback=None):
+                return {"payload": 1}  # truthy, not a Collection
+
+            def map_related(self, related_result):
+                return related_result
+
+            def register_related(self, key, model, collection):
+                raise AssertionError("register_related must not run for a non-Collection result")
+
+        class Widget(Model):
+            gadget = StubRelationship()
+
+        items = Collection([Widget(), Widget()])
+
+        result = await items.load("gadget")
+
+        self.assertIs(result, items)
+        for widget in items:
+            self.assertEqual(widget._relationships["gadget"], {"payload": 1})
+
+    async def test_load_registers_none_when_mapped_result_is_falsy(self):
+        # Same branch, but a falsy mapped result is stored as None.
+        class StubRelationship:
+            async def get_related(self, query, relation, eagers=None, callback=None):
+                return "truthy-raw-result"  # not a Collection, so else branch
+
+            def map_related(self, related_result):
+                return {}  # falsy → `map_related or None` stores None
+
+            def register_related(self, key, model, collection):
+                raise AssertionError("register_related must not run here")
+
+        class Gizmo(Model):
+            part = StubRelationship()
+
+        items = Collection([Gizmo()])
+
+        await items.load("part")
+
+        self.assertIsNone(items.first()._relationships["part"])
+
     def test_with_relationship_autoloading_is_noop(self):
         self.assertIsNone(Collection([]).with_relationship_autoloading())
 

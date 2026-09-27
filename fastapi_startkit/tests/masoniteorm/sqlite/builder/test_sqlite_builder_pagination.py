@@ -38,3 +38,11 @@ class TestQueryBuilderPagination(TestCase):
             self.assertIsInstance(user, User)
 
         self.assertIsInstance(paginator.to_json(), str)
+
+    async def test_concurrent_paginate_calls(self):
+        import asyncio
+
+        paginators = await asyncio.gather(*(User.query().paginate(1) for _ in range(8)))
+
+        self.assertTrue(all(paginator.total for paginator in paginators))
+        self.assertTrue(all(paginator.count == 1 for paginator in paginators))

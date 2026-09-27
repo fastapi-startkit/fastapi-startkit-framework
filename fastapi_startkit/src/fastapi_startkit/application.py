@@ -3,11 +3,12 @@ import shlex
 from fastapi_startkit.foundation.app_provider import AppProvider
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
-from typing import Type, Callable, Any, List, TypeVar, Generic
+from typing import Type, Callable, Any, List, TypeVar, Generic, cast
 
 from .config import AppConfig
 from .configuration.providers import ConfigurationProvider
 from .container import Container
+from .events import EventServiceProvider
 from .environment.environment import Environment
 
 if TYPE_CHECKING:
@@ -27,13 +28,14 @@ TConfig = TypeVar("TConfig", bound=AppConfig)
 class Application(Container, Generic[TConfig]):
     DEFAULT_PROVIDERS = [
         ConfigurationProvider,
+        EventServiceProvider,
         AppProvider,
     ]
 
     def __init__(
         self,
-        base_path: str | Path = None,
-        env=None,
+        base_path: str | Path | None = None,
+        env: str | None = None,
         providers=None,
         config: Type[TConfig] | None = None,
         exception_handler: Type[ExceptionHandler] | None = None,
@@ -41,11 +43,11 @@ class Application(Container, Generic[TConfig]):
         super().__init__()
 
         self.base_path: Path = Path(base_path) if base_path else Path(os.getcwd())
-        self.env = env
+        self.env: str | None = env
         self.providers = self.DEFAULT_PROVIDERS + (providers or [])
         self.published_resources = {}
         self.commands = []
-        self._config = config
+        self._config: Type[TConfig] = config or cast(Type[TConfig], AppConfig)
         self._config_instance: Optional[TConfig] = None
         self._exception_handler_class = exception_handler or ExceptionHandler
         self.exception_manager: ExceptionHandler
@@ -70,12 +72,14 @@ class Application(Container, Generic[TConfig]):
 
     def load_environment(self):
         """Reload environment variables for the current self.env."""
+        # resolve_environment() runs during __init__, so env is always set here.
+        assert self.env is not None
         Environment.load_base(base_path=self.base_path)
         Environment.load(self.env, base_path=self.base_path)
         return self
 
     def configure_exception_handler(self):
-        self.exception_manager: ExceptionHandler = self._exception_handler_class(application=self)
+        self.exception_manager = self._exception_handler_class(application=self)
         self.exception_manager.register()
         self.exception_manager.install()
         self.bind("exception_manager", self.exception_manager)
@@ -136,10 +140,10 @@ class Application(Container, Generic[TConfig]):
         return self.fastapi.options(path, **kwargs)
 
     def head(self, path: str, **kwargs) -> Callable:
-        return self._fastapi.head(path, **kwargs)
+        return self.fastapi.head(path, **kwargs)
 
     def trace(self, path: str, **kwargs) -> Callable:
-        return self._fastapi.trace(path, **kwargs)
+        return self.fastapi.trace(path, **kwargs)
 
     # Include routers
     def include_router(self, router: "APIRouter", **kwargs):
@@ -148,7 +152,7 @@ class Application(Container, Generic[TConfig]):
 
     # Add middleware
     def add_middleware(self, middleware_class: Type["BaseHTTPMiddleware"], **options):
-        self._fastapi.add_middleware(middleware_class, **options)
+        self.fastapi.add_middleware(middleware_class, **options)
         return self
 
     # Add event handlers (startup/shutdown)
@@ -158,12 +162,12 @@ class Application(Container, Generic[TConfig]):
 
     # Mount sub-apps
     def mount(self, path: str, app_instance: "FastAPI", **kwargs):
-        self._fastapi.mount(path, app_instance, **kwargs)
+        self.fastapi.mount(path, app_instance, **kwargs)
         return self
 
     # Add custom exception handlers
     def add_exception_handler(self, exc_class_or_status_code: Any, handler: Callable[..., Any]):
-        self._fastapi.add_exception_handler(exc_class_or_status_code, handler)
+        self.fastapi.add_exception_handler(exc_class_or_status_code, handler)
         return self
 
     @property
@@ -197,24 +201,23 @@ class Application(Container, Generic[TConfig]):
         return self.env == "testing"
 
     def configure_config(self):
-        if self._config is not None:
-            self._config_instance = self._config()
+        self._config_instance = self._config()
 
     @property
     def config(self) -> TConfig:
-        if self._config_instance is None:
-            raise RuntimeError("Config is not set")
+        # configure_config() runs during __init__, so this is always populated.
+        assert self._config_instance is not None
         return self._config_instance
 
     def configure_paths(self):
         self.bind("config.location", self.base_path / "config")
 
-    def use_config_path(self, path: str = None):
+    def use_config_path(self, path: str | None = None):
         self.bind("config.location", path)
 
         return self
 
-    def use_storage_path(self, path: str = None):
+    def use_storage_path(self, path: str | None = None):
         self.bind("storage.location", path)
 
         return self

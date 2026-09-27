@@ -85,7 +85,7 @@ class CreateLessonsTable(Migration):
 
 ```python
 # databases/seeders/course_seeder.py
-from fastapi_startkit.masoniteorm.seeds import Seeder
+from fastapi_startkit.masoniteorm.seeders import Seeder
 from app.models.course import Course
 
 

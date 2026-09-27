@@ -162,7 +162,7 @@ class AssertableJson:
         self,
         key: str,
         length: Any = _MISSING,
-        callback: Callable[["AssertableJson"], Any] = _MISSING,
+        callback: Callable[["AssertableJson"], Any] | None = None,
     ) -> "AssertableJson":
         """Assert that ``key`` exists, optionally its length and/or a scope.
 
@@ -188,7 +188,7 @@ class AssertableJson:
                 f"Expected [{length}], got [{len(value)}]."
             )
 
-        if callback is not _MISSING:
+        if callback is not None:
             child = AssertableJson(value, self._full(key))
             callback(child)
             child._verify()

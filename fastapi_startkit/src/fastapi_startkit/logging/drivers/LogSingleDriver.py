@@ -3,9 +3,9 @@ from .BaseDriver import BaseDriver
 
 
 class LogSingleDriver(BaseDriver):
-    def __init__(self, *args, **kwargs):
-        self.max_level = kwargs.get("max_level")
-        self.path = kwargs.get("path")
+    def __init__(self, *args, path: str, max_level: str | None = None, **kwargs):
+        self.max_level = max_level
+        self.path = path
         self.log = logging.getLogger("root")
 
         handler = logging.FileHandler(self.path, "a")

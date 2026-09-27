@@ -9,7 +9,9 @@ from fastapi_startkit.logging.ChannelFactory import ChannelFactory
 from fastapi_startkit.logging.channels import (
     DailyChannel,
     SingleChannel,
+    SlackChannel,
     StackChannel,
+    SyslogChannel,
     TerminalChannel,
 )
 from fastapi_startkit.logging.channels.BaseChannel import BaseChannel
@@ -18,7 +20,7 @@ from fastapi_startkit.logging.config import LoggingConfig
 from fastapi_startkit.logging.config import channels as config_channels
 from fastapi_startkit.logging.drivers.BaseDriver import BaseDriver
 from fastapi_startkit.logging.drivers.LogSingleDriver import LogSingleDriver
-from fastapi_startkit.logging.drivers.LogSlackDriver import LogSlackDriver
+from fastapi_startkit.logging.drivers.LogSlackDriver import LogSlackDriver, SlackChannelNotFound
 from fastapi_startkit.logging.drivers.LogSyslogDriver import LogSyslogDriver
 from fastapi_startkit.logging.drivers.LogTerminalDriver import LogTerminalDriver
 from fastapi_startkit.logging.factory import DriverFactory
@@ -174,6 +176,14 @@ class BaseChannelTest(unittest.TestCase):
         channel = self._channel()
         self.assertIsInstance(channel.channel("terminal"), TerminalChannel)
 
+    def test_channel_raises_for_unknown_channel(self):
+        with self.assertRaisesRegex(ValueError, "Unknown log channel"):
+            self._channel().channel("does-not-exist")
+
+    def test_driver_class_raises_for_unknown_driver(self):
+        with self.assertRaisesRegex(ValueError, "Unknown log driver"):
+            BaseChannel.driver_class("does-not-exist")
+
 
 class MultiBaseChannelTest(unittest.TestCase):
     def _multi(self, should_run=True):
@@ -322,7 +332,7 @@ class SlackDriverTest(unittest.TestCase):
         response.json.return_value = {"channels": [{"name": "other", "id": "C999"}]}
         with patch("fastapi_startkit.logging.drivers.LogSlackDriver.requests") as requests_mock:
             requests_mock.post.return_value = response
-            with self.assertRaises(Exception):
+            with self.assertRaises(SlackChannelNotFound):
                 driver.find_channel("#bot")
 
 
@@ -337,6 +347,14 @@ class SyslogDriverTest(unittest.TestCase):
         driver.log.info.assert_called_once_with("ping")
         driver.critical("halt")
         driver.log.critical.assert_called_once_with("halt")
+
+    def test_notice_logs_at_info_level(self):
+        with patch("fastapi_startkit.logging.drivers.LogSyslogDriver.logging.handlers.SysLogHandler"):
+            driver = LogSyslogDriver(path="/dev/null")
+        driver.log = MagicMock()
+        driver.notice("heads up")
+        driver.log.setLevel.assert_called_once_with(logging.INFO)
+        driver.log.info.assert_called_once_with("heads up")
 
 
 class TimezoneAwareLogFileTest(unittest.TestCase):
@@ -434,6 +452,24 @@ class ChannelConstructionTest(unittest.TestCase):
                     channel.driver.log.removeHandler(handler)
                     handler.close()
 
+    def test_slack_channel_builds_slack_driver(self):
+        channel = SlackChannel(driver="slack")
+        self.assertIsInstance(channel.driver, LogSlackDriver)
+
+    def test_syslog_channel_builds_syslog_driver(self):
+        import os
+        import tempfile
+
+        path = os.path.join(tempfile.mkdtemp(), "syslog")
+        root = logging.getLogger("root")
+        with patch("fastapi_startkit.logging.drivers.LogSyslogDriver.logging.handlers.SysLogHandler") as handler_cls:
+            channel = SyslogChannel(driver="syslog", path=path)
+        try:
+            self.assertIsInstance(channel.driver, LogSyslogDriver)
+            handler_cls.assert_called_once_with(address=path)
+        finally:
+            root.removeHandler(handler_cls.return_value)
+
     def test_stack_channel_collects_known_channels(self):
         channel = StackChannel(channels=["terminal"])
         self.assertEqual(len(channel.channels), 1)
@@ -522,6 +558,18 @@ class LoggingManagerTest(unittest.TestCase):
         manager = LoggingManager(channel_factory=factory, driver_factory=None)
         self.assertIs(manager.channel("single"), sentinel)
         factory.make.assert_called_once_with("single")
+
+    def test_unknown_channel_raises_value_error(self):
+        factory = MagicMock()
+        factory.make.return_value = None
+        manager = LoggingManager(channel_factory=factory)
+        with self.assertRaisesRegex(ValueError, "missing"):
+            manager.channel("missing")
+
+    def test_defaults_to_the_builtin_factories(self):
+        manager = LoggingManager()
+        self.assertIs(manager.channel_factory, ChannelFactory)
+        self.assertIs(manager.driver_factory, DriverFactory)
 
     def test_configure_python_logging_installs_handler_once(self):
         root = logging.getLogger()

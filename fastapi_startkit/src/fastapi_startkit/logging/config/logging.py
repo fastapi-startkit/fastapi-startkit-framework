@@ -7,6 +7,7 @@ from fastapi_startkit.logging.config import StackChannel, DailyChannel, Terminal
 @dataclasses.dataclass
 class LoggingConfig:
     default: str = dataclasses.field(default_factory=lambda: env("LOG_CHANNEL", "stack"))
+    level: str = dataclasses.field(default_factory=lambda: env("LOG_LEVEL", "info"))
 
     channels: dict = dataclasses.field(
         default_factory=lambda: {

@@ -1,0 +1,6 @@
+{
+  "judge:578ba39be23e463a5389dd27358c71b2e96be2fa037a6e33ba86ab581f2b7cd4": {
+    "passed": true,
+    "reasoning": "The response successfully uses a job search tool to find and list relevant roles matching the user's request."
+  }
+}

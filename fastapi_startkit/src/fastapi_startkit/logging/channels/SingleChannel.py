@@ -1,4 +1,3 @@
-from ..factory import DriverFactory
 from fastapi_startkit.facades import Config
 from ..file import make_directory
 from .BaseChannel import BaseChannel
@@ -9,6 +8,6 @@ class SingleChannel(BaseChannel):
         path = path or Config.get("logging.channels.single.path")
         make_directory(path)
         self.max_level = Config.get("logging.channels.single.level")
-        self.driver = DriverFactory.make(driver or Config.get("logging.channels.single.driver"))(
+        self.driver = self.driver_class(driver or Config.get("logging.channels.single.driver"))(
             path=path, max_level=self.max_level
         )

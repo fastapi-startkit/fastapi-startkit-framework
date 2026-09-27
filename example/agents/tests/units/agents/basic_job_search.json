@@ -1,0 +1,45 @@
+{
+  "921847ca3e137cf6fb59760ecb38e34522a6df8f702eea6329b466b5f488d786": [
+    {
+      "content": "Suggest python developer jobs",
+      "type": "human"
+    },
+    {
+      "response_time": 496.14816601388156,
+      "tool_calls": [
+        {
+          "args": {
+            "query": "python developer"
+          },
+          "id": "91311f6e-e343-4bbe-be96-45a0395a184a",
+          "name": "job_search_tool",
+          "type": "tool_call"
+        }
+      ],
+      "type": "ai",
+      "uses": {
+        "cache_token": 0,
+        "input_token": 49,
+        "output_token": 18,
+        "total_token": 67
+      }
+    },
+    {
+      "content": "[{\"id\": 2, \"title\": \"Python Developer\", \"location\": \"Remote\", \"company\": \"Startup Inc\", \"type\": \"Full-time\"}]",
+      "content_type": "json",
+      "response_time": 1.1477499501779675,
+      "type": "tool_response"
+    },
+    {
+      "content": "I found a Python Developer position at Startup Inc. It is a full-time role and is remote.",
+      "response_time": 388.0674580577761,
+      "type": "ai",
+      "uses": {
+        "cache_token": 0,
+        "input_token": 117,
+        "output_token": 21,
+        "total_token": 138
+      }
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 from fastapi_startkit.fastapi import FastAPIProvider
 
+
 class FastAPIServiceProvider(FastAPIProvider):
     def boot(self) -> None:
         super().boot()

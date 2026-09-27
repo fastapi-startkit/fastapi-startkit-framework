@@ -7,6 +7,4 @@ class ConsoleServiceProvider(Provider):
         pass
 
     def boot(self):
-        self.app.add_commands([
-            ExampleCommand
-        ])
+        self.app.add_commands([ExampleCommand])

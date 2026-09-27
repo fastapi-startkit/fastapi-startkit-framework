@@ -46,7 +46,7 @@ class Factory(ABC):
     def __init__(self) -> None:
         if Faker is None:  # pragma: no cover
             raise ImportError("The 'faker' package is required to use Factory. Install it with: pip install faker")
-        self.fake: Faker = Faker()
+        self.fake = Faker()
         self._count: int = 1
         self._state_callbacks: list[Callable] = []
         self._after_making_callbacks: list[Callable] = []
@@ -202,6 +202,8 @@ class Factory(ABC):
         # ---- Handle parent (for_) relationships ----
         for parent_factory in self._for_factories:
             parent = await parent_factory.create()
+            if isinstance(parent, list):
+                raise TypeError("for_() requires a parent factory that creates a single model.")
             fk = self._infer_fk(parent_factory.model)
             pk_val = parent.get_attribute(parent_factory.model.__primary_key__)
             overrides.setdefault(fk, pk_val)

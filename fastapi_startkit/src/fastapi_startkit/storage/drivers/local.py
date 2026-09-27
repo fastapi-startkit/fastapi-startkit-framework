@@ -19,6 +19,8 @@ class LocalDriver:
 
     def get_path(self, path):
         root = self.options.get("root") or self.options.get("path")
+        if not root:
+            raise ValueError("Local storage disk requires a 'root' or 'path' option")
         if not os.path.isabs(root):
             root = os.path.join(str(self.application.base_path), root)
         file_path = os.path.join(root, path)

@@ -16,6 +16,7 @@ class AppExceptionHandler(ExceptionHandler):
     def register(self):
         pass
 
+
 app: Application[AppConfig] = Application(
     base_path=Path(__file__).parent.parent,
     config=AppConfig,

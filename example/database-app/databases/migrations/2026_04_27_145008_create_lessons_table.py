@@ -11,7 +11,9 @@ class CreateLessonsTable(Migration):
         async with await self.schema.create("lessons") as table:
             table.increments("id")
             table.integer("course_id").unsigned()
-            table.foreign("course_id").references("id").on("courses").on_delete("cascade")
+            table.foreign("course_id").references("id").on("courses").on_delete(
+                "cascade"
+            )
             table.string("title")
             table.timestamps()
 

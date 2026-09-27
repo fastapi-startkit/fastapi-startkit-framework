@@ -1,0 +1,14 @@
+[project]
+name = "queue-app"
+version = "0.1.0"
+description = "Queue application example using fastapi-startkit and taskiq"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi-startkit[fastapi]",
+    "taskiq>=0.11.0",
+    "taskiq-redis>=1.0.0",
+]
+
+[tool.uv.sources]
+fastapi-startkit = { path = "../../fastapi_startkit", editable = true }

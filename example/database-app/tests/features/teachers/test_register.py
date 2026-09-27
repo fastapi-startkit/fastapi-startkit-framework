@@ -6,7 +6,12 @@ from tests.test_case import TestCase
 
 class TestRegister(RefreshDatabase, TestCase):
     async def test_register(self):
-        user = User(name="Teacher", email="teacher@example.com", password="password123", role="teacher")
+        user = User(
+            name="Teacher",
+            email="teacher@example.com",
+            password="password123",
+            role="teacher",
+        )
         await user.save()
 
         found = await User.where("email", "teacher@example.com").first()

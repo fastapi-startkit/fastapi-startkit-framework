@@ -1,3 +1,4 @@
+from .BaseChannel import BaseChannel
 from .MultiBaseChannel import MultiBaseChannel
 
 
@@ -5,10 +6,10 @@ class StackChannel(MultiBaseChannel):
     def __init__(self, channels=None):
         from fastapi_startkit.facades import Config
 
-        channels = channels or Config.get("logging.channels.stack.channels", [])
+        channels = channels or Config.get("logging.channels.stack.channels") or []
         from ..ChannelFactory import ChannelFactory
 
-        self.channels = []
+        self.channels: list[BaseChannel] = []
         for channel in channels:
             channel_class = ChannelFactory.make(channel)
             if channel_class:

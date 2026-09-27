@@ -1,0 +1,123 @@
+import json
+
+from fastapi_startkit.ai import Middleware
+from fastapi_startkit.ai import state as ai_state
+from langchain_core.messages import BaseMessage, SystemMessage
+from langchain_core.tools import BaseTool
+
+from app.agents.remember import RememberMixin, ThreadAgent
+from app.agents.state import Context, RouterOutput
+from app.middleware.agent_logger import AgentLogger
+from app.repositories.conversation import ChatConversationBuilder
+from app.tools.job_search_tool import job_search_tool
+
+# Stand-in for a real profile lookup; JobSearchAgent injects it when the router
+# asked for it via `contexts`.
+USER_PROFILE = {
+    "name": "Alice",
+    "title": "Python Developer",
+    "location": "Remote",
+    "skills": ["Python", "FastAPI", "PostgreSQL"],
+}
+
+JOB_SEARCH_PROMPT = """You find jobs for a user. ALWAYS call job_search_tool exactly once —
+never reply with text only, and never ask clarifying questions.
+
+Derive role/skill/location keywords from the LATEST user message only (e.g. 'python
+developer remote'); it replaces any earlier search. Use earlier messages solely for
+preferences like location or remote. Ignore filler words like 'suggest', 'me', 'jobs'.
+If the latest message has no usable keywords, take them from the user's profile."""
+
+SUMMARIZER_PROMPT = """Write a short, friendly summary of these job listings for the user.
+Group by role type, mention company and location. If the list is empty, say so plainly.
+Use only what is given - do not invent jobs."""
+
+ROUTER_PROMPT = """You route a career assistant's queries. Pick exactly one intent.
+
+- job_search: the user wants job listings / openings / roles — in ANY form, however
+  vague. "any jobs", "suggest me jobs", "show openings", "jobs remote", or a bare
+  "jobs" all count. A vague ask is STILL job_search: never ask the user to narrow it
+  down — set include_user_profile and let the search use their profile.
+- company_research: the user asks about a specific company.
+- chat: ONLY greetings (hi / hello), thanks, or small talk with no job intent.
+
+Fill `reply` only for chat. For job_search leave `reply` empty and do NOT ask a
+clarifying question — the search node handles vague queries.
+
+Also decide which extra context the next node needs:
+- include_user_profile: the query is vague about role, skills or location, so the user's own profile helps.
+- include_last_job_search_response: the user is refining an earlier search.
+"""
+
+
+class JobSearchRouterAgent(RememberMixin, ThreadAgent):
+    """Classifies a query into a RouterOutput via structured output, answering
+    greetings inline through its `reply` field. Context: only the user input."""
+
+    model = "gemini-3.1-flash-lite"  # match the graph's model, not the lab default
+
+    def instructions(self) -> str:
+        return ROUTER_PROMPT
+
+    def schema(self) -> type:
+        return RouterOutput
+
+    def middleware(self) -> list[Middleware]:
+        return [AgentLogger()]
+
+    async def remember(self, state: dict) -> None:
+        # The router's output is routing state, except when it answers a greeting
+        # inline — that reply is conversation, so it goes on the thread.
+        decision = ai_state.structured(state)
+        if decision and decision.intent == "chat" and decision.reply:
+            await self.remember_row("text", {"text": decision.reply}, state)
+
+
+class JobSummarizerAgent(RememberMixin, ThreadAgent):
+    """Summarizes a job list into prose. Context: only the tool response it is
+    prompted with — no history, no profile, no tools."""
+
+    model = "gemini-3.1-flash-lite"  # match the graph's model, not the lab default
+
+    def instructions(self) -> str:
+        return SUMMARIZER_PROMPT
+
+    def middleware(self) -> list[Middleware]:
+        return [AgentLogger()]
+
+
+class JobSearchAgent(RememberMixin, ThreadAgent):
+    tool_choice = "any"
+
+    @property
+    def contexts(self) -> list[Context]:
+        return self.state.get("contexts") or []
+
+    async def messages(self) -> list[BaseMessage]:
+        messages: list[BaseMessage] = []
+
+        # The builder can't emit SystemMessages, so the profile stays out here.
+        if Context.INCLUDE_USER_PROFILE in self.contexts:
+            messages.append(SystemMessage(content=f"User profile: {json.dumps(USER_PROFILE)}"))
+
+        builder = (
+            ChatConversationBuilder(self.thread_id)
+            .only_user_messages()
+            # The runner appends the live query itself; with_query drops the row
+            # the route persisted before the run, so it isn't sent twice.
+            .with_query(self.state.get("query"))
+        )
+        if Context.INCLUDE_LAST_JOB_SEARCH_RESPONSE in self.contexts:
+            builder.with_last_job_search()
+
+        messages.extend(await builder.get())
+        return messages
+
+    def instructions(self) -> str:
+        return JOB_SEARCH_PROMPT
+
+    def middleware(self) -> list[Middleware]:
+        return [AgentLogger()]
+
+    def tools(self) -> list[BaseTool]:
+        return [job_search_tool]

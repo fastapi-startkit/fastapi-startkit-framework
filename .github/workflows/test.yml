@@ -93,8 +93,18 @@ jobs:
                 working-directory: example/agents
                 run: cp .env.example .env
 
+            # The job-level DB_* vars point at MySQL (3306); the agents app uses
+            # the Postgres service from docker-compose, published on 15432.
+            -   name: Run migrations (agents)
+                working-directory: example/agents
+                env:
+                    DB_PORT: 15432
+                run: uv run python artisan db:migrate
+
             -   name: Run tests (agents)
                 working-directory: example/agents
+                env:
+                    DB_PORT: 15432
                 run: uv run pytest tests/ -v
 
             -   name: Stop MySQL

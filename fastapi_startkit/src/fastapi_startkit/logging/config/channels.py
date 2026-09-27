@@ -34,7 +34,7 @@ class SlackChannel:
     channel: str = "#bot"
     emoji: str = ":warning:"
     username: str = "Logging Bot"
-    token: str = None
+    token: str | None = None
     level: str = "debug"
 
 
