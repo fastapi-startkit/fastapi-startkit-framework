@@ -128,7 +128,7 @@ class PostgresPlatform(Platform):
                 default = self.premapped_defaults.get(column.default)
             elif column.default:
                 if isinstance(column.default, (str,)) and not column.default_is_raw:
-                    default = f" DEFAULT '{column.default}'"
+                    default = f" DEFAULT {self.quote_string(column.default)}"
                 else:
                     default = f" DEFAULT {column.default}"
             else:
@@ -178,7 +178,7 @@ class PostgresPlatform(Platform):
                     default = self.premapped_defaults.get(column.default)
                 elif column.default:
                     if isinstance(column.default, (str,)):
-                        default = f" DEFAULT '{column.default}'"
+                        default = f" DEFAULT {self.quote_string(column.default)}"
                     else:
                         default = f" DEFAULT {column.default}"
                 else:
@@ -485,7 +485,7 @@ class PostgresPlatform(Platform):
                 column["column_name"],
                 column_type,
                 default=default,
-                column_python_type=Schema._type_hints_map.get(column_type, str),
+                column_python_type=str if column_type is None else Schema._type_hints_map.get(column_type, str),
                 length=length,
             )
 

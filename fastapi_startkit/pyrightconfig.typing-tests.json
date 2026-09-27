@@ -1,0 +1,7 @@
+{
+  "include": [
+    "tests/masoniteorm/sqlite/models/test_model_query_typing.py"
+  ],
+  "typeCheckingMode": "standard",
+  "pythonVersion": "3.12"
+}

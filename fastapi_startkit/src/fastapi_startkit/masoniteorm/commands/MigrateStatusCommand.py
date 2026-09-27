@@ -24,10 +24,11 @@ class MigrateStatusCommand(Command):
         ),
     ]
 
-    def handle(self):
+    def handle(self) -> int:
         import asyncio
 
-        return asyncio.run(self.handle_async())
+        asyncio.run(self.handle_async())
+        return 0
 
     async def handle_async(self):
         directory = self.resolve_migration_path()
@@ -77,4 +78,4 @@ class MigrateStatusCommand(Command):
         default_directory = config.get("directory")
 
         migration_directory = path or default_directory
-        return self.container.use_base_path(migration_directory)
+        return str(self.container.use_base_path(migration_directory))

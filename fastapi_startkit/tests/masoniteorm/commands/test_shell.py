@@ -1,8 +1,12 @@
+import subprocess
 import unittest
-from unittest import skip
+from unittest.mock import MagicMock, patch
+
 from cleo.testers.command_tester import CommandTester
 
 from fastapi_startkit.masoniteorm.commands import ShellCommand
+from fastapi_startkit.masoniteorm.config.config import PostgresConfig, SQLiteConfig
+from fastapi_startkit.masoniteorm.connections.manager import DatabaseManager
 
 
 class TestShellCommand(unittest.TestCase):
@@ -65,12 +69,57 @@ class TestShellCommand(unittest.TestCase):
         command, _ = self.command.get_command(config)
         assert command == "sqlcmd -d orm -U root -P secretpostgres -S tcp:db.masonite.com,1234"
 
-    @skip("ShellCommand.handle() uses legacy load_config() not available in new framework")
+    def _manager(self, connections, default="dev"):
+        return DatabaseManager(MagicMock(), {"default": default, "connections": connections})
+
     def test_running_command_with_sqlite(self):
-        self.command_tester.execute("-c dev")
-        assert "sqlite3" not in self.command_tester.io.fetch_output()
-        self.command_tester.execute("-c dev -s")
-        assert "sqlite3 orm.sqlite3" in self.command_tester.io.fetch_output()
+        manager = self._manager({"dev": SQLiteConfig(database="orm.sqlite3")})
+        with patch("fastapi_startkit.masoniteorm.commands.ShellCommand.DB.instance", return_value=manager):
+            with patch("subprocess.run") as run:
+                assert self.command_tester.execute("-c dev") == 0
+                assert "sqlite3" not in self.command_tester.io.fetch_output()
+                assert run.call_args.args[0] == ["sqlite3", "orm.sqlite3"]
+
+                assert self.command_tester.execute("-s 1") == 0
+                assert "sqlite3 orm.sqlite3" in self.command_tester.io.fetch_output()
+
+    def test_running_command_with_unknown_connection(self):
+        manager = self._manager({})
+        with patch("fastapi_startkit.masoniteorm.commands.ShellCommand.DB.instance", return_value=manager):
+            with self.assertRaises(SystemExit):
+                self.command_tester.execute("-c missing")
+        assert "Connection configuration for 'missing' not found" in self.command_tester.io.fetch_output()
+
+    def test_running_command_reports_missing_program(self):
+        manager = self._manager({"dev": {"driver": "sqlite", "database": "orm.sqlite3"}})
+        with patch("fastapi_startkit.masoniteorm.commands.ShellCommand.DB.instance", return_value=manager):
+            with patch("subprocess.run", side_effect=FileNotFoundError):
+                with self.assertRaises(SystemExit):
+                    self.command_tester.execute("")
+        assert "Cannot find sqlite program" in self.command_tester.io.fetch_output()
+
+    def test_running_command_reports_process_error(self):
+        manager = self._manager({"dev": SQLiteConfig(database="orm.sqlite3")})
+        with patch("fastapi_startkit.masoniteorm.commands.ShellCommand.DB.instance", return_value=manager):
+            with patch("subprocess.run", side_effect=subprocess.CalledProcessError(1, "sqlite3")):
+                with self.assertRaises(SystemExit):
+                    self.command_tester.execute("")
+        assert "An error happened calling the command." in self.command_tester.io.fetch_output()
+
+    def test_connection_information_maps_username_to_user(self):
+        config = self.command.get_connection_information(
+            {"connections": {"pg": PostgresConfig(host="db", port=5432, database="orm", username="admin")}}, "pg"
+        )
+        assert config["user"] == "admin"
+        assert config["options"] == {}
+        assert config["full_details"]["driver"] == "postgres"
+        command, _ = self.command.get_command(config)
+        assert command == "psql orm --host db --port 5432 --username admin"
+
+    def test_unsupported_driver_exits(self):
+        with patch.object(self.command, "line") as line, self.assertRaises(SystemExit):
+            self.command.get_command({"full_details": {"driver": "oracle"}})
+        line.assert_called_once_with("<error>Connecting with driver 'oracle' is not implemented !</error>")
 
     def test_hiding_sensitive_options(self):
         config = {

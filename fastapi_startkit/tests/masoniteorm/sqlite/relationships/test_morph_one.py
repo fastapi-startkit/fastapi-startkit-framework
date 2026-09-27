@@ -128,6 +128,14 @@ class TestMorphOneRelationship(TestCase):
         like = await result
         self.assertIsNotNone(like)
 
+    async def test_get_related_with_collection_and_callback(self):
+        await Like.create({"likeable_type": "article_one", "likeable_id": self.article.id})
+        articles = await ArticleModelMorphOne.get()
+        rel = ArticleModelMorphOne.first_like
+
+        likes_result = await rel.get_related(None, articles, callback=lambda q: q)
+        self.assertGreaterEqual(len(likes_result), 1)
+
     async def test_register_related_adds_first(self):
         await Like.create({"likeable_type": "article_one", "likeable_id": self.article.id})
         all_likes = await Like.get()
@@ -137,3 +145,9 @@ class TestMorphOneRelationship(TestCase):
         rel.register_related("first_like", article, all_likes)
 
         self.assertIn("first_like", article._relationships)
+
+    async def test_proxied_attribute_without_callable_raises_attribute_error(self):
+        rel = MorphOne("likeable_type", "likeable_id")
+        with self.assertRaises(AttributeError):
+            rel.resolver()
+        self.assertFalse(hasattr(rel, "where"))

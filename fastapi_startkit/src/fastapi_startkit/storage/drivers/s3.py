@@ -17,7 +17,7 @@ class S3Driver:
 
     def get_connection(self):
         try:
-            import boto3
+            import boto3  # pyright: ignore[reportMissingImports]  # boto3 is an optional extra, imported lazily
         except ImportError:
             raise ModuleNotFoundError("Could not find the 'boto3' library. Run 'pip install boto3' to fix this.")
 
@@ -31,7 +31,7 @@ class S3Driver:
         return self.connection
 
     def get_client(self):
-        import botocore.config
+        import botocore.config  # pyright: ignore[reportMissingImports]  # boto3 is an optional extra, imported lazily
 
         config = botocore.config.Config(
             s3={"addressing_style": "path" if self.options.get("use_path_style_endpoint") else "auto"}
@@ -39,7 +39,7 @@ class S3Driver:
         return self.get_connection().client("s3", endpoint_url=self.options.get("endpoint"), config=config)
 
     def get_resource(self):
-        import botocore.config
+        import botocore.config  # pyright: ignore[reportMissingImports]  # boto3 is an optional extra, imported lazily
 
         config = botocore.config.Config(
             s3={"addressing_style": "path" if self.options.get("use_path_style_endpoint") else "auto"}
@@ -75,7 +75,7 @@ class S3Driver:
             pass
 
     def missing_file_exceptions(self):
-        import botocore
+        import botocore  # pyright: ignore[reportMissingImports]  # boto3 is an optional extra, imported lazily
 
         return (botocore.exceptions.ClientError,)
 

@@ -18,6 +18,9 @@ import asyncio
 import struct
 from abc import ABC, abstractmethod
 
+# Provider SDKs are optional extras imported lazily per backend, so they are
+# absent from the type-check environment; the pyright ignores below cover only that.
+
 
 class AudioFactory(ABC):
     """Abstract base for text-to-speech backends."""
@@ -53,7 +56,7 @@ class OpenAIAudioFactory(AudioFactory):
         speed: float,
         fmt: str,
     ) -> bytes:
-        from openai import AsyncOpenAI  # noqa: PLC0415
+        from openai import AsyncOpenAI  # noqa: PLC0415  # pyright: ignore[reportMissingImports]
 
         client = AsyncOpenAI(api_key=self._api_key, base_url=self._base_url)
         response = await client.audio.speech.create(
@@ -126,8 +129,8 @@ class GoogleAudioFactory(AudioFactory):
             The ``speed`` parameter is accepted for API compatibility but is
             not currently supported by the Gemini TTS API.
         """
-        from google import genai  # noqa: PLC0415
-        from google.genai import types  # noqa: PLC0415
+        from google import genai  # noqa: PLC0415  # pyright: ignore[reportAttributeAccessIssue]
+        from google.genai import types  # noqa: PLC0415  # pyright: ignore[reportMissingImports]
 
         client = genai.Client(api_key=self._api_key)
         google_voice = self._VOICE_MAP.get(voice, voice)
@@ -205,7 +208,7 @@ class ElevenLabsAudioFactory(AudioFactory):
         speed: float,
         fmt: str,
     ) -> bytes:
-        from elevenlabs.client import ElevenLabs  # noqa: PLC0415
+        from elevenlabs.client import ElevenLabs  # noqa: PLC0415  # pyright: ignore[reportMissingImports]
 
         voice_id = self._VOICE_MAP.get(voice, voice)
         client = ElevenLabs(api_key=self._api_key)

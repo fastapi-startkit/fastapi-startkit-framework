@@ -142,27 +142,35 @@ class AgentFake:
         return False
 
     async def prompt(
-        self, message: str, *, attachments: list[Document] | None = None, config: dict | None = None
+        self,
+        message: str,
+        *,
+        model: str | None = None,
+        attachments: list[Document] | None = None,
+        provider_options: dict | None = None,
     ) -> dict:
         start = time.monotonic()
-        extra = {"config": config} if config is not None else {}
-        self._last_response = await self._agent.prompt(message, attachments=attachments, **extra)
+        self._last_response = await self._agent.prompt(
+            message, model=model, attachments=attachments, provider_options=provider_options
+        )
         self.last_elapsed = time.monotonic() - start
         self._remember(message, self._last_response)
         return self._last_response
 
-    async def stream(self, message: str, *, config: dict | None = None) -> AsyncIterator[dict]:
+    async def stream(
+        self, message: str, *, model: str | None = None, provider_options: dict | None = None
+    ) -> AsyncIterator[dict]:
         chunks: list[str] = []
-        extra = {"config": config} if config is not None else {}
         # Drive the runner directly so we can read the structured response it
         # captures while streaming (content + tool_calls), not just joined text.
         runner = self._agent.runner()
-        async for frame in runner.stream(message, **extra):
+        async for frame in runner.stream(message, model=model, provider_options=provider_options):
             if text := _frame_text(frame):
                 chunks.append(text)
             yield frame
-        self._last_response = getattr(runner, "last_response", None) or _text_state("".join(chunks))
-        self._remember(message, self._last_response)
+        state = getattr(runner, "last_response", None) or _text_state("".join(chunks))
+        self._last_response = state
+        self._remember(message, state)
 
     def _remember(self, message: str, state: dict) -> None:
         self._accumulate_tokens(state)
@@ -347,7 +355,7 @@ class AgentFake:
 
     async def _judge(
         self,
-        model: str,
+        model: str | None,
         expectation: str,
         content: str,
         provider: str | None = None,
@@ -356,7 +364,7 @@ class AgentFake:
     ) -> dict:
         return await self._judge_live(model, expectation, content, provider)
 
-    async def _judge_live(self, model: str, expectation: str, content: str, provider: str | None = None) -> dict:
+    async def _judge_live(self, model: str | None, expectation: str, content: str, provider: str | None = None) -> dict:
         from .judge import JudgeAgent  # noqa: PLC0415
 
         judge = JudgeAgent()
@@ -473,7 +481,12 @@ class AgentRecordFake(AgentFake):
         self._records.append(turn)
 
     async def prompt(
-        self, message: str, *, attachments: list[Document] | None = None, config: dict | None = None
+        self,
+        message: str,
+        *,
+        model: str | None = None,
+        attachments: list[Document] | None = None,
+        provider_options: dict | None = None,
     ) -> dict:
         cassette, store = self._load()
         key = self._key(message, attachments)
@@ -481,8 +494,9 @@ class AgentRecordFake(AgentFake):
         if key in store:
             state = self._state_from_cache(store[key])
         else:
-            extra = {"config": config} if config is not None else {}
-            state = await self._real.prompt(message, attachments=attachments, **extra)
+            state = await self._real.prompt(
+                message, model=model, attachments=attachments, provider_options=provider_options
+            )
             self._save(cassette, store, key, self._turn(message, state))
         state = self._real.runner()._apply_schema(state)
         self.last_elapsed = time.monotonic() - start
@@ -490,7 +504,9 @@ class AgentRecordFake(AgentFake):
         self._remember_turn(message, state)
         return state
 
-    async def stream(self, message: str, *, config: dict | None = None) -> AsyncIterator[dict]:
+    async def stream(
+        self, message: str, *, model: str | None = None, provider_options: dict | None = None
+    ) -> AsyncIterator[dict]:
         cassette, store = self._load()
         key = self._key(message, None)
         if key in store:
@@ -507,12 +523,11 @@ class AgentRecordFake(AgentFake):
             for chunk in chunks:
                 yield _chunk_event(chunk)
         else:
-            extra = {"config": config} if config is not None else {}
             # Drive the runner directly to capture the structured state
             # (messages + chunks) it records while streaming.
             runner = self._real.runner()
             chunks = []
-            async for frame in runner.stream(message, **extra):
+            async for frame in runner.stream(message, model=model, provider_options=provider_options):
                 if text := _frame_text(frame):
                     chunks.append(text)
                 yield frame
@@ -534,7 +549,7 @@ class AgentRecordFake(AgentFake):
 
     async def _judge(
         self,
-        model: str,
+        model: str | None,
         expectation: str,
         content: str,
         provider: str | None = None,
@@ -554,7 +569,7 @@ class AgentRecordFake(AgentFake):
         return verdict
 
     @staticmethod
-    def _judge_key(model: str, expectation: str, content: str, provider: str | None = None) -> str:
+    def _judge_key(model: str | None, expectation: str, content: str, provider: str | None = None) -> str:
         payload = json.dumps(
             {"judge_model": model, "judge_provider": provider, "expectation": expectation, "content": content},
             sort_keys=True,

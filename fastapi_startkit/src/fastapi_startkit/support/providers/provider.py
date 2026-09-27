@@ -1,4 +1,6 @@
-from typing import TYPE_CHECKING
+from collections.abc import Callable
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from fastapi_startkit.support import Str
 from fastapi_startkit.support.dataclass import Dataclass
@@ -9,13 +11,13 @@ if TYPE_CHECKING:
 
 
 class Provider:
-    provider_key: str = None
+    provider_key: str = ""
 
-    def __init__(self, application: "Application[AppConfig]", config: dict = None):
+    def __init__(self, application: "Application[AppConfig]", config: dict[str, Any] | None = None):
         self.app: "Application[AppConfig]" = application
         self.config = config or {}
 
-        if self.provider_key is None:
+        if not self.provider_key:
             self.provider_key = str(Str.of(self.__class__.__name__).trim("ServiceProvider").trim("Provider").slugify())
 
     def register(self) -> None:
@@ -24,7 +26,7 @@ class Provider:
     def boot(self) -> None:
         pass
 
-    def resolve_config(self, default) -> dict:
+    def resolve_config(self, default: Callable[[], object]) -> dict[str, Any]:
         user_config = Dataclass.to_dict(self.config)
         default_config = Dataclass.to_dict(default())
 
@@ -33,7 +35,7 @@ class Provider:
     def merge_config_from(self, source: str | dict, provider_key: str) -> None:
         self.app.make("config").merge_with(provider_key, source)
 
-    def publishes(self, resources: dict, tag: str = None) -> None:
+    def publishes(self, resources: dict[str | Path, str], tag: str | None = None) -> None:
         self.app.published_resources.setdefault(self.provider_key, {}).update(resources)
 
     def commands(self, commands: list) -> None:

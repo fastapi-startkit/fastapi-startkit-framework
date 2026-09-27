@@ -1,8 +1,35 @@
+from typing import Any, Callable, Protocol
+
 import pendulum
 from fastapi_startkit.facades import Config
 
+from ..factory import DriverFactory
+
+
+class LogDriver(Protocol):
+    emergency: Callable[..., Any]
+    alert: Callable[..., Any]
+    critical: Callable[..., Any]
+    error: Callable[..., Any]
+    warning: Callable[..., Any]
+    notice: Callable[..., Any]
+    info: Callable[..., Any]
+    debug: Callable[..., Any]
+
+    def should_run(self, level: str, max_level: str | None) -> bool: ...
+
 
 class BaseChannel:
+    driver: LogDriver
+    max_level: str | None
+
+    @staticmethod
+    def driver_class(driver: str | None) -> Callable[..., LogDriver]:
+        driver_class = DriverFactory.make(driver)
+        if driver_class is None:
+            raise ValueError(f"Unknown log driver: {driver!r}")
+        return driver_class
+
     def get_time(self):
         return pendulum.now().in_tz(Config.get("logging.channels.timezone", "UTC"))
 
@@ -60,4 +87,7 @@ class BaseChannel:
     def channel(self, channel):
         from ..ChannelFactory import ChannelFactory
 
-        return ChannelFactory().make(channel)()
+        channel_class = ChannelFactory.make(channel)
+        if channel_class is None:
+            raise ValueError(f"Unknown log channel: {channel!r}")
+        return channel_class()

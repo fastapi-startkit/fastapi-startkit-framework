@@ -7,11 +7,15 @@ coroutine listeners are supported — coroutine results are awaited transparentl
 
 import inspect
 from fnmatch import fnmatchcase
-from typing import TYPE_CHECKING, Any, Callable, cast, overload
+from typing import TYPE_CHECKING, Any, Callable, Protocol, cast, overload
 
 if TYPE_CHECKING:
     from ..container import Container
     from .fake import EventFake
+
+
+class _ClassListener(Protocol):
+    def handle(self, *args: Any) -> Any: ...
 
 
 class Dispatcher:
@@ -132,7 +136,7 @@ class Dispatcher:
 
     def _resolve_listener(self, listener: Callable) -> Callable:
         if inspect.isclass(listener):
-            return self._make(listener).handle
+            return cast(_ClassListener, self._make(listener)).handle
         return listener
 
     def _make(self, cls):

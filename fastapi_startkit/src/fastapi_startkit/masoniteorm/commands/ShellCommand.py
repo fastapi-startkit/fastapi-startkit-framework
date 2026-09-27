@@ -4,7 +4,11 @@ import re
 import shlex
 import subprocess
 from collections import OrderedDict
+from dataclasses import asdict, is_dataclass
+from typing import Any
+
 from fastapi_startkit.console import Command
+from fastapi_startkit.masoniteorm.facades.DB import DB
 
 
 class ShellCommand(Command):
@@ -35,12 +39,10 @@ class ShellCommand(Command):
         "mssql": "sqlcmd",
     }
 
-    def handle(self):
-        resolver = load_config(self.option("config")).DB
-        connection = self.option("connection")
-        if connection == "default":
-            connection = resolver.get_connection_details()["default"]
-        config = resolver.get_connection_information(connection)
+    def handle(self) -> int:
+        manager = DB.instance()
+        connection = manager.get_default_connection_name(self.option("connection"))
+        config = self.get_connection_information(manager.config, connection)
         if not config.get("full_details"):
             self.line(f"<error>Connection configuration for '{connection}' not found !</error>")
             exit(-1)
@@ -58,14 +60,31 @@ class ShellCommand(Command):
             subprocess.run(command_args, check=True, env=env)
         except FileNotFoundError:
             self.line(
-                f"<error>Cannot find {config.get('full_details').get('driver')} program ! Please ensure you can call this program in your shell first.</error>"
+                f"<error>Cannot find {config['full_details']['driver']} program ! Please ensure you can call this program in your shell first.</error>"
             )
             exit(-1)
         except subprocess.CalledProcessError:
             self.line("<error>An error happened calling the command.</error>")
             exit(-1)
+        return 0
 
-    def get_shell_program(self, connection):
+    def get_connection_information(self, database_config: dict, connection: str) -> dict:
+        connection_config = database_config.get("connections", {}).get(connection)
+        details: dict[str, Any]
+        if isinstance(connection_config, dict):
+            details = connection_config
+        elif is_dataclass(connection_config) and not isinstance(connection_config, type):
+            details = asdict(connection_config)
+        else:
+            return {}
+        return {
+            **details,
+            "user": details.get("user", details.get("username")),
+            "options": details.get("options") or {},
+            "full_details": details,
+        }
+
+    def get_shell_program(self, connection) -> str | None:
         """Get the database shell program to run."""
         return self.shell_programs.get(connection)
 
@@ -73,9 +92,8 @@ class ShellCommand(Command):
         """Get the command to run as a string."""
         driver = config.get("full_details").get("driver")
         program = self.get_shell_program(driver)
-        try:
-            get_driver_args = getattr(self, f"get_{driver}_args")
-        except AttributeError:
+        get_driver_args = getattr(self, f"get_{driver}_args", None)
+        if program is None or get_driver_args is None:
             self.line(f"<error>Connecting with driver '{driver}' is not implemented !</error>")
             exit(-1)
         args, options = get_driver_args(config)
@@ -196,6 +214,6 @@ class ShellCommand(Command):
             # if option is used obfuscate its value
             if option in command:
                 match = re.search(rf"{option} (\w+)", command)
-                if match.groups():
-                    cleaned_command = cleaned_command.replace(match.groups()[0], "***")
+                if match:
+                    cleaned_command = cleaned_command.replace(match.group(1), "***")
         return cleaned_command

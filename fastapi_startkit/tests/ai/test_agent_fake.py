@@ -287,3 +287,22 @@ class TestAgentRecord(unittest.IsolatedAsyncioTestCase):
                 response = await agent.prompt("hi")
 
             self.assertEqual(ai_state.text(response), "Hello!")
+
+    async def test_record_stream_forwards_model_and_provider_options_to_runner(self):
+        from fastapi_startkit.ai.runner import Runner
+
+        received = {}
+
+        async def fake_stream(runner_self, message, **kwargs):
+            received.update(kwargs)
+            yield {"type": "delta", "text": "ok"}
+
+        patcher = mock.patch.object(Runner, "stream", fake_stream)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with SimpleAgent.record(os.path.join(tmp, "s.json")) as agent:
+                [c async for c in agent.stream("hi", model="m-1", provider_options={"temperature": 0})]
+
+        self.assertEqual(received, {"model": "m-1", "provider_options": {"temperature": 0}})

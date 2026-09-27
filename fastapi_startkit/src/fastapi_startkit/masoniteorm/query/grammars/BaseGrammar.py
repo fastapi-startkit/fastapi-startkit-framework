@@ -26,6 +26,61 @@ class BaseGrammar:
 
     table = "users"
 
+    if TYPE_CHECKING:
+        # Dialect contract: every concrete grammar (MySQL, Postgres, SQLite, MSSQL)
+        # supplies these. Declared for the type checker only so that a missing hook
+        # still fails loudly at runtime instead of silently using a base default.
+        aggregate_options: dict[str, str]
+        join_keywords: dict[str, str]
+        column_strings: dict[str, str]
+        locks: dict[str | bool, str]
+
+        def select_format(self) -> str: ...
+        def select_no_table(self) -> str: ...
+        def update_format(self) -> str: ...
+        def insert_format(self) -> str: ...
+        def bulk_insert_format(self) -> str: ...
+        def delete_format(self) -> str: ...
+        def aggregate_string_with_alias(self) -> str: ...
+        def aggregate_string_without_alias(self) -> str: ...
+        def subquery_string(self) -> str: ...
+        def subquery_alias_string(self) -> str: ...
+        def raw_query_string(self) -> str: ...
+        def key_value_string(self) -> str: ...
+        def column_value_string(self) -> str: ...
+        def increment_string(self) -> str: ...
+        def decrement_string(self) -> str: ...
+        def table_string(self) -> str: ...
+        def column_string(self) -> str: ...
+        def value_string(self) -> str: ...
+        def join_string(self) -> str: ...
+        def order_by_format(self) -> str: ...
+        def order_by_string(self) -> str: ...
+        def limit_string(self, offset: Any = False) -> str: ...
+        def offset_string(self) -> str: ...
+        def having_string(self) -> str: ...
+        def having_equality_string(self) -> str: ...
+        def first_where_string(self) -> str: ...
+        def additional_where_string(self) -> str: ...
+        def or_where_string(self) -> str: ...
+        def where_string(self) -> str: ...
+        def where_group_string(self) -> str: ...
+        def where_null_string(self) -> str: ...
+        def where_not_null_string(self) -> str: ...
+        def where_date_string(self) -> str: ...
+        def where_exists_string(self) -> str: ...
+        def where_not_exists_string(self) -> str: ...
+        def where_like_string(self) -> str: ...
+        def where_not_like_string(self) -> str: ...
+        def between_string(self) -> str: ...
+        def not_between_string(self) -> str: ...
+        def value_equal_string(self) -> str: ...
+        def table_exists_string(self) -> str: ...
+        def column_exists_string(self) -> str: ...
+        def drop_table_string(self) -> str: ...
+        def drop_table_if_exists_string(self) -> str: ...
+        def rename_table_string(self) -> str: ...
+
     def __init__(
         self,
         columns=(),
@@ -93,7 +148,7 @@ class BaseGrammar:
                     limit=self.process_limit(),
                     offset=self.process_offset(),
                     aggregates=self.process_aggregates(),
-                    order_by=self.process_order_by(),
+                    order_by=self.process_order_by(qmark=qmark),
                     group_by=self.process_group_by(),
                     having=self.process_having(),
                     lock=self.process_locks(),
@@ -112,7 +167,7 @@ class BaseGrammar:
                     limit=self.process_limit(),
                     offset=self.process_offset(),
                     aggregates=self.process_aggregates(),
-                    order_by=self.process_order_by(),
+                    order_by=self.process_order_by(qmark=qmark),
                     group_by=self.process_group_by(),
                     having=self.process_having(),
                     lock=self.process_locks(),
@@ -388,7 +443,7 @@ class BaseGrammar:
 
         return sql
 
-    def process_order_by(self):
+    def process_order_by(self, qmark=False):
         """Compiles an order by for a query expression.
 
         Returns:
@@ -406,6 +461,21 @@ class BaseGrammar:
                     if order_bys.bindings:
                         self.add_binding(*order_bys.bindings)
 
+                    continue
+
+                if getattr(order_bys, "builder", None) is not None:
+                    if len(order_crit):
+                        order_crit += ", "
+                    if qmark:
+                        subquery_sql = order_bys.builder.to_qmark()
+                        if order_bys.builder._bindings:
+                            self.add_binding(*order_bys.builder._bindings)
+                    else:
+                        subquery_sql = order_bys.builder.to_sql()
+                    column_string = self.subquery_string().format(query=subquery_sql)
+                    order_crit += self.order_by_format().format(
+                        column=column_string, direction=order_bys.direction.upper()
+                    )
                     continue
 
                 if len(order_crit):
@@ -634,7 +704,9 @@ class BaseGrammar:
                     keyword=keyword,
                 )
             elif value_type == "value_equals":
-                sql_string = self.value_equal_string().format(value1=where.column, value2=where.value, keyword=keyword)
+                sql_string = self.value_equal_string().format(
+                    value1=where.column, value2=where.value, keyword=keyword, equality=where.equality
+                )
             elif value_type == "NULL":
                 sql_string = self.where_null_string()
             elif value_type == "DATE":
@@ -727,10 +799,10 @@ class BaseGrammar:
 
         return sql
 
-    def get_true_column_string(self):
+    def get_true_column_string(self) -> str:
         return "{keyword} {column} = '1'"
 
-    def get_false_column_string(self):
+    def get_false_column_string(self) -> str:
         return "{keyword} {column} = '0'"
 
     def add_binding(self, *bindings):
@@ -907,18 +979,17 @@ class BaseGrammar:
             table, column = column.split(".")
 
         if column == "*":
-            return self.column_strings.get("select_all").format(
+            return self.column_strings["select_all"].format(
                 column=column,
                 separator=separator,
                 table=self.process_table(table or self.table),
             )
 
-        if alias:
-            alias_string = self.subquery_alias_string().format(alias=alias)
-        return self.column_strings.get(self._action).format(
+        alias_string = " " + self.subquery_alias_string().format(alias=alias) if alias else ""
+        return self.column_strings[self._action].format(
             column=column,
             separator=separator,
-            alias=" " + alias_string if alias else "",
+            alias=alias_string,
             table=self.process_table(table or self.table),
         )
 
@@ -987,8 +1058,8 @@ class BaseGrammar:
         """
         raise NotImplementedError(f"'{self.__class__.__name__}' does not support truncating")
 
-    def where_regexp_string(self):
+    def where_regexp_string(self) -> str:
         return "{keyword} {column} REGEXP {value}"
 
-    def where_not_regexp_string(self):
+    def where_not_regexp_string(self) -> str:
         return "{keyword} {column} NOT REGEXP {value}"

@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from fastapi_startkit.orm.schema.schema import Schema as SchemaBuilder
+    from fastapi_startkit.masoniteorm.schema.schema import Schema as SchemaBuilder
     from fastapi_startkit.masoniteorm.schema.Blueprint import Blueprint
 
 

@@ -1,5 +1,7 @@
 """Tests for the Provider pattern (task #10)."""
 
+from pathlib import Path
+
 import pytest
 
 from fastapi_startkit.application import Application
@@ -114,6 +116,26 @@ class TestProviderKey:
 
         p = DatabaseProvider(app)
         assert p.provider_key == "database"
+
+    def test_empty_provider_key_is_inferred(self, app):
+        class BlankKeyProvider(Provider):
+            provider_key = ""
+
+        p = BlankKeyProvider(app)
+        assert p.provider_key == "blankkey"
+
+    def test_publishes_accepts_str_and_path_sources(self, app):
+        class AssetsProvider(Provider):
+            pass
+
+        p = AssetsProvider(app)
+        p.publishes({"/stubs/a.py": "config/a.py"})
+        p.publishes({Path("/stubs/b.py"): "config/b.py"})
+
+        assert app.published_resources["assets"] == {
+            "/stubs/a.py": "config/a.py",
+            Path("/stubs/b.py"): "config/b.py",
+        }
 
 
 # ---------------------------------------------------------------------------

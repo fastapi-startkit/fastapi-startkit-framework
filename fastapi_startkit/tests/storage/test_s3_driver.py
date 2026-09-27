@@ -278,3 +278,39 @@ class TestS3DriverConnectionCaching:
             c2 = d.get_connection()
             assert c1 is c2
             mock_boto3.Session.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Lazy botocore imports (SDK stubbed via sys.modules)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def mock_botocore():
+    botocore = MagicMock()
+    with patch.dict("sys.modules", {"botocore": botocore, "botocore.config": botocore.config}):
+        yield botocore
+
+
+class TestS3DriverBotocoreImports:
+    def test_get_client_uses_path_style_addressing(self, driver, mock_botocore):
+        driver.options["use_path_style_endpoint"] = True
+        with patch.object(driver, "get_connection") as mock_conn:
+            driver.get_client()
+
+        mock_botocore.config.Config.assert_called_once_with(s3={"addressing_style": "path"})
+        mock_conn().client.assert_called_once_with(
+            "s3", endpoint_url=None, config=mock_botocore.config.Config.return_value
+        )
+
+    def test_get_resource_uses_auto_addressing(self, driver, mock_botocore):
+        with patch.object(driver, "get_connection") as mock_conn:
+            driver.get_resource()
+
+        mock_botocore.config.Config.assert_called_once_with(s3={"addressing_style": "auto"})
+        mock_conn().resource.assert_called_once_with(
+            "s3", endpoint_url=None, config=mock_botocore.config.Config.return_value
+        )
+
+    def test_missing_file_exceptions_returns_client_error(self, driver, mock_botocore):
+        assert driver.missing_file_exceptions() == (mock_botocore.exceptions.ClientError,)

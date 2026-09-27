@@ -2,12 +2,19 @@
 
 import os
 import sys
+from pathlib import Path
+from typing import Any, Literal, TypeVar, overload
+
 from dotenv import load_dotenv
+
+
+T = TypeVar("T")
+EnvValue = str | int | bool
 
 
 class Environment:
     @staticmethod
-    def resolve_environment(base_path=None, env: str | None = None):
+    def resolve_environment(base_path: Path | None = None, env: str | None = None):
         Environment.resolve_environment_from_argument()
 
         if "PYTEST_CURRENT_TEST" in os.environ:
@@ -20,7 +27,7 @@ class Environment:
         if os.environ.get("APP_ENV"):
             return os.environ["APP_ENV"]
 
-        path = base_path / ".env"
+        path = Environment._require_base_path(base_path) / ".env"
         if not path.exists():
             raise ValueError("Unable to determine environment.")
 
@@ -33,15 +40,22 @@ class Environment:
         return env
 
     @staticmethod
-    def load_base(base_path=None):
+    def _require_base_path(base_path: Path | None) -> Path:
+        # Keeps the TypeError the old unguarded `None / ".env"` raised, with a clearer message.
+        if base_path is None:
+            raise TypeError("base_path is required to locate .env files")
+        return base_path
+
+    @staticmethod
+    def load_base(base_path: Path | None = None):
         """Load the base .env file, resetting vars to their default values."""
-        path = base_path / ".env"
+        path = Environment._require_base_path(base_path) / ".env"
         if path.exists():
             load_dotenv(path, override=True)
 
     @staticmethod
-    def load(env: str, override=True, only=None, base_path=None):
-        path = base_path / f".env.{env}"
+    def load(env: str, override=True, only=None, base_path: Path | None = None):
+        path = Environment._require_base_path(base_path) / f".env.{env}"
         if not path.exists():
             return
         load_dotenv(path, override=override)
@@ -63,11 +77,45 @@ class Environment:
                 break
 
 
-def env(value, default="", cast=True):
-    """Helper to retrieve the value of an environment variable or returns
-    a default value. In addition, if type can be inferred then the value can be casted to the
-    inferred type."""
-    env_var = os.getenv(value, default)
+@overload
+def env(val: str, default: T, cast: Literal[False]) -> str | T: ...
+
+
+@overload
+def env(val: str, default: Literal[""], cast: Literal[True] = True) -> EnvValue: ...
+
+
+@overload
+def env(val: str, default: None, cast: Literal[True] = True) -> EnvValue | None: ...
+
+
+@overload
+def env(val: str, default: T, cast: Literal[True] = True) -> T: ...
+
+
+@overload
+def env(val: str, default: None, cast: bool) -> EnvValue | None: ...
+
+
+@overload
+def env(val: str, default: T, cast: bool) -> EnvValue | T: ...
+
+
+@overload
+def env(val: str) -> EnvValue: ...
+
+
+@overload
+def env(val: str, *, cast: Literal[False]) -> str: ...
+
+
+@overload
+def env(val: str, *, cast: bool) -> EnvValue: ...
+
+
+def env(val: str, default: Any = "", cast: bool = True) -> Any:
+    """Return an environment value, casting it to the supplied default's type when possible."""
+    env_var = os.getenv(val, default)
 
     if not cast:
         return env_var
@@ -75,18 +123,23 @@ def env(value, default="", cast=True):
     if env_var == "":
         env_var = default
 
-    if isinstance(env_var, bool):
-        return env_var
-    elif env_var is None:
-        return None
-    elif isinstance(env_var, int) or env_var.isnumeric():
-        return int(env_var)
-    elif env_var in ("false", "False"):
-        return False
-    elif env_var in ("true", "True"):
-        return True
-    else:
-        return env_var
+    if default in ("", None):
+        return value(env_var)
+
+    default_type = type(default)
+    if default_type is bool:
+        if isinstance(env_var, bool):
+            return env_var
+        if env_var in ("true", "True"):
+            return True
+        if env_var in ("false", "False"):
+            return False
+        raise ValueError(f"Cannot cast environment variable {val!r} to bool")
+
+    try:
+        return default_type(env_var)
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"Cannot cast environment variable {val!r} to {default_type.__name__}") from error
 
 
 def value(env_var, default=""):

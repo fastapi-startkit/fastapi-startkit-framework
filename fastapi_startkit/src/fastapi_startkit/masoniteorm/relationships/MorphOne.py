@@ -1,10 +1,14 @@
+from collections.abc import Callable
+from typing import Any
+
 from fastapi_startkit.masoniteorm.models import registry
 from ..collection import Collection
 from .BaseRelationship import BaseRelationship
 
 
 class MorphOne(BaseRelationship):
-    def __init__(self, fn, morph_key="record_type", morph_id="record_id"):
+    def __init__(self, fn: Callable[..., Any] | str, morph_key="record_type", morph_id="record_id"):
+        self.fn: Callable[..., Any] | None
         if isinstance(fn, str):
             self.fn = None
             self.morph_key = fn
@@ -16,6 +20,12 @@ class MorphOne(BaseRelationship):
 
     def get_builder(self):
         return self._related_builder
+
+    def resolver(self) -> Callable[..., Any]:
+        # AttributeError (not ValueError) keeps __getattr__ and hasattr() semantics intact.
+        if self.fn is None:
+            raise AttributeError(f"{self.__class__.__name__} was declared without a relationship callable")
+        return self.fn
 
     def set_keys(self, owner, attribute):
         self.morph_id = self.morph_id or "record_id"
@@ -37,10 +47,11 @@ class MorphOne(BaseRelationship):
         if instance is None:
             return self
 
-        attribute = self.fn.__name__
+        fn = self.resolver()
+        attribute = fn.__name__
         self._related_builder = instance.get_builder()
-        self.polymorphic_builder = self.fn(self)()
-        self.set_keys(owner, self.fn)
+        self.polymorphic_builder = fn(self)()
+        self.set_keys(owner, fn)
 
         if not instance.is_loaded():
             return self
@@ -51,10 +62,10 @@ class MorphOne(BaseRelationship):
         return self.apply_query(self._related_builder, instance)
 
     def __getattr__(self, attribute):
-        relationship = self.fn(self)()
+        relationship = self.resolver()(self)()
         return getattr(relationship.builder, attribute)
 
-    def apply_query(self, builder, instance):
+    def apply_query(self, foreign, owner):
         """Apply the query and return a dictionary to be hydrated
 
         Arguments:
@@ -64,12 +75,12 @@ class MorphOne(BaseRelationship):
         Returns:
             dict -- A dictionary of data which will be hydrated.
         """
-        polymorphic_key = self.get_record_key_lookup(instance)
+        polymorphic_key = self.get_record_key_lookup(owner)
         polymorphic_builder = self.polymorphic_builder
 
         return (
             polymorphic_builder.where(self.morph_key, polymorphic_key)
-            .where(self.morph_id, instance.get_attribute(instance.__primary_key__))
+            .where(self.morph_id, owner.get_attribute(owner.__primary_key__))
             .first()
         )
 
@@ -85,7 +96,7 @@ class MorphOne(BaseRelationship):
         Returns:
             Model|Collection
         """
-        self.polymorphic_builder = self.fn(self)()
+        self.polymorphic_builder = self.resolver()(self)()
 
         if isinstance(relation, Collection):
             record_type = self.get_record_key_lookup(relation.first())
@@ -96,7 +107,7 @@ class MorphOne(BaseRelationship):
                         record_type,
                     ).where_in(
                         self.morph_id,
-                        relation.pluck(relation.first().__primary_key__, keep_nulls=False).unique(),
+                        relation.pluck(relation[0].__primary_key__, keep_nulls=False).unique(),
                     )
                 ).get()
 
@@ -107,7 +118,7 @@ class MorphOne(BaseRelationship):
                 )
                 .where_in(
                     self.morph_id,
-                    relation.pluck(relation.first().__primary_key__, keep_nulls=False).unique(),
+                    relation.pluck(relation[0].__primary_key__, keep_nulls=False).unique(),
                 )
                 .get()
             )

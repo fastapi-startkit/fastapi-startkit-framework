@@ -55,7 +55,7 @@ class MakeModelCommand(Command):
         ),
     ]
 
-    def handle(self):
+    def handle(self) -> int:
         name = self.argument("name")
 
         model_directory = self.option("directory")
@@ -73,7 +73,7 @@ class MakeModelCommand(Command):
 
         if os.path.exists(os.path.join(full_directory_path, file_name)):
             self.line(f'<error>Model "{name}" Already Exists ({full_directory_path}/{file_name})</error>')
-            return
+            return 0
 
         os.makedirs(os.path.dirname(os.path.join(full_directory_path)), exist_ok=True)
 
@@ -97,3 +97,5 @@ class MakeModelCommand(Command):
         if self.option("seeder"):
             directory = self.option("seeders-directory")
             self.call("seed", f"{self.argument('name')} --directory {directory}")
+
+        return 0

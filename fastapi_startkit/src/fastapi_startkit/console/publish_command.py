@@ -1,6 +1,6 @@
 import os
 import shutil
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from fastapi_startkit.console import Command
 from cleo.helpers import option
@@ -23,14 +23,14 @@ class PublishCommand(Command):
         ),
     ]
 
-    def handle(self):
+    def handle(self) -> int:
         from fastapi_startkit.application import app
 
-        application: "Application" = app()
+        application = cast("Application", app())
 
         if not application.published_resources:
             self.line("<comment>Nothing to publish.</comment>")
-            return
+            return 0
 
         provider_arg = self.option("provider")
 
@@ -41,7 +41,7 @@ class PublishCommand(Command):
             }
             if not resources:
                 self.line(f"<error>No provider found matching '{provider_arg}'.</error>")
-                return
+                return 0
         else:
             resources = application.published_resources
 
@@ -61,3 +61,5 @@ class PublishCommand(Command):
                 os.makedirs(os.path.dirname(dest_path), exist_ok=True)
                 shutil.copy2(source, dest_path)
                 self.line(f"  [{provider_key}] Published <info>{destination}</info>")
+
+        return 0

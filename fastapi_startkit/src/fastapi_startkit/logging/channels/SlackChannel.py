@@ -1,7 +1,4 @@
 from fastapi_startkit.facades import Config
-from ..factory import DriverFactory
-
-from ..factory import DriverFactory
 from .BaseChannel import BaseChannel
 
 
@@ -12,7 +9,7 @@ class SlackChannel(BaseChannel):
         emoji = Config.get("logging.channels.slack.emoji")
         username = Config.get("logging.channels.slack.username")
         self.max_level = Config.get("logging.channels.slack.level")
-        self.driver = DriverFactory.make(driver or Config.get("logging.channels.slack.driver"))(
+        self.driver = self.driver_class(driver or Config.get("logging.channels.slack.driver"))(
             emoji=emoji, username=username, token=token, channel=channel
         )
 

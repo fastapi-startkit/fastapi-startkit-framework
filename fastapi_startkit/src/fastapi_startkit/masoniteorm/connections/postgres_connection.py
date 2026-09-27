@@ -10,13 +10,10 @@ class PostgresConnection(Connection):
     async def insert_get_id(self, query: str, bindings: list | None = None) -> int | None:
         result = await self.run(query, bindings)
         row = result.fetchone()
-        if not self.transactions:
-            conn = await self.get_connection()
-            await conn.commit()
         return row[0] if row is not None else None
 
     @classmethod
-    def get_query_grammar(cls):
+    def get_query_grammar(cls) -> type[PostgresGrammar]:
         return PostgresGrammar
 
     @classmethod
@@ -24,5 +21,5 @@ class PostgresConnection(Connection):
         return PostgresPlatform
 
     @classmethod
-    def get_post_processor(cls):
+    def get_post_processor(cls) -> type[PostgresPostProcessor]:
         return PostgresPostProcessor

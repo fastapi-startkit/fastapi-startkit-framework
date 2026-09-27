@@ -1,13 +1,15 @@
 """Core of the IOC Container."""
 
 import inspect
-from typing import Any
+from typing import Any, ClassVar, TypeVar, overload
 
 from ..exceptions import (
     ContainerError,
     MissingContainerBindingNotFound,
     StrictContainerException,
 )
+
+T = TypeVar("T")
 
 
 class Container:
@@ -16,14 +18,14 @@ class Container:
     Performs bindings and resolving of objects to and from the container.
     """
 
-    _instance = None
+    _instance: ClassVar["Container | None"] = None
 
     @classmethod
-    def set_instance(cls, instance):
+    def set_instance(cls, instance: "Container") -> None:
         cls._instance = instance
 
     @classmethod
-    def instance(cls):
+    def instance(cls) -> "Container":
         if cls._instance is None:
             raise RuntimeError("Container not initialized")
         return cls._instance
@@ -103,11 +105,22 @@ class Container:
         obj = self.resolve(class_obj)
         self.bind(name, obj)
 
-    def make(self, name, *arguments):
+    @overload
+    def make(self, name: type[T], *arguments: Any) -> T: ...
+
+    @overload
+    def make(self, name: str, *arguments: Any) -> Any: ...
+
+    def make(self, name: type[T] | str, *arguments: Any) -> Any:
         """Retrieve a class from the container by key.
 
+        A class key resolves to an instance of that class, so `make(Foo)` is
+        typed as `Foo`. A string key carries no static type information, so it
+        stays `Any` and callers annotate the binding themselves. The return is
+        never `None`: a missing key raises instead.
+
         Arguments:
-            name {string} -- Key in the container that you want to get.
+            name {string | type} -- Key in the container that you want to get.
 
         Raises:
             MissingContainerBindingNotFound -- Raised if the key is not in the container.

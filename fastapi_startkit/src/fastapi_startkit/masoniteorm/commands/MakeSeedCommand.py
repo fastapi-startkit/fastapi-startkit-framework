@@ -21,7 +21,7 @@ class MakeSeedCommand(Command):
         ),
     ]
 
-    def handle(self):
+    def handle(self) -> int:
         # get the contents of a stub file
         # replace the placeholders of a stub file
         # output the content to a file location
@@ -46,9 +46,11 @@ class MakeSeedCommand(Command):
         path_normalized = pathlib.Path(seed_directory) / pathlib.Path(file_name)
 
         if os.path.exists(full_path):
-            return self.line(f"<error>{path_normalized} already exists.</error>")
+            self.line(f"<error>{path_normalized} already exists.</error>")
+            return 0
 
         with open(full_path, "w") as fp:
             fp.write(output)
 
         self.info(f"Seed file created: {path_normalized}")
+        return 0

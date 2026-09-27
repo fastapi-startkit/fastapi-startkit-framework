@@ -1,4 +1,5 @@
-from typing import TYPE_CHECKING, Any, Generator, Generic, TypeVar
+from collections.abc import Callable, Generator
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from fastapi_startkit.support.collection import Collection as BaseCollection
 
@@ -10,7 +11,7 @@ class Collection(BaseCollection, Generic[T]):
         # Typing-only element-access overrides so a Collection[User] yields
         # User (not Any) on iteration, indexing, and first(). Runtime behaviour
         # is supplied unchanged by the base class.
-        def first(self, callback=None) -> "T | None": ...
+        def first(self, callback: "Callable[[T], bool] | None" = None) -> "T | None": ...
         def __iter__(self) -> "Generator[T, Any, None]": ...
         def __getitem__(self, item) -> "T": ...
 

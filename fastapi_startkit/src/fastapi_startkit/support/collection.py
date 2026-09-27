@@ -2,14 +2,17 @@ import json
 import operator
 import random
 from functools import reduce
+from typing import Any
 
 
 class Collection:
     """Wraps various data types to make working with them easier."""
 
-    def __init__(self, items=None):
-        self._items = items or []
-        self.__appends__ = []
+    def __init__(self, items: Any = None):
+        # Backed by a list in general, but by a dict after group_by(); each
+        # method assumes the shape it needs, so the storage stays untyped.
+        self._items: Any = items or []
+        self.__appends__: list[Any] = []
 
     def take(self, number: int):
         """Takes a specific number of results from the items.
@@ -254,10 +257,7 @@ class Collection:
         return self
 
     def pluck(self, value, key=None, keep_nulls=True):
-        if key:
-            attributes = {}
-        else:
-            attributes = []
+        attributes: Any = {} if key else []
 
         if isinstance(self._items, dict):
             return Collection([self._items.get(value)])

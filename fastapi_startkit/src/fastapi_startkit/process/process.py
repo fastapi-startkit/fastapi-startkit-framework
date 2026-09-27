@@ -112,7 +112,7 @@ class InvokedProcess:
             stdout="".join(self._stdout_buf),
             stderr="".join(self._stderr_buf),
             returncode=self._process.returncode,
-            args=self._process.args,
+            args=str(self._process.args),
         )
 
 
@@ -221,9 +221,10 @@ class Pool:
             def make_cb(index):
                 if callback is None:
                     return None
+                pool_callback = callback
 
                 def _cb(kind, output):
-                    callback(kind, output, index)
+                    pool_callback(kind, output, index)
 
                 return _cb
 

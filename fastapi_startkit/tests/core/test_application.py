@@ -5,6 +5,7 @@ import os
 import pytest
 
 from fastapi_startkit.application import Application
+from fastapi_startkit.config import AppConfig
 from fastapi_startkit.container.container import Container
 from fastapi_startkit.support import Provider
 
@@ -244,6 +245,33 @@ class TestFastapiLazyLoad:
         a.use_fastapi(custom)
         assert a.fastapi is custom
 
+    def test_head_and_trace_register_routes_on_lazy_fastapi(self, app):
+        app.head("/ping")(lambda: None)
+        app.trace("/ping")(lambda: None)
+
+        methods = {m for route in app.fastapi.routes if getattr(route, "path", None) == "/ping" for m in route.methods}
+        assert {"HEAD", "TRACE"} <= methods
+
+    def test_add_middleware_creates_fastapi_when_unset(self, app):
+        from starlette.middleware.base import BaseHTTPMiddleware
+
+        app.add_middleware(BaseHTTPMiddleware)
+        assert any(m.cls is BaseHTTPMiddleware for m in app.fastapi.user_middleware)
+
+    def test_mount_creates_fastapi_when_unset(self, app):
+        from fastapi import FastAPI
+
+        sub = FastAPI()
+        app.mount("/sub", sub)
+        assert any(getattr(route, "path", None) == "/sub" for route in app.fastapi.routes)
+
+    def test_add_exception_handler_creates_fastapi_when_unset(self, app):
+        async def handler(request, exc):
+            return None
+
+        app.add_exception_handler(ValueError, handler)
+        assert app.fastapi.exception_handlers[ValueError] is handler
+
 
 # ---------------------------------------------------------------------------
 # App config integration
@@ -251,9 +279,8 @@ class TestFastapiLazyLoad:
 
 
 class TestAppConfig:
-    def test_config_property_raises_when_no_config_class_given(self, app):
-        with pytest.raises(RuntimeError, match="Config is not set"):
-            _ = app.config
+    def test_defaults_to_app_config_when_none_given(self, app):
+        assert isinstance(app.config, AppConfig)
 
     def test_config_instantiated_from_class(self, tmp_path):
         from dataclasses import dataclass
@@ -265,8 +292,32 @@ class TestAppConfig:
         a = Application(base_path=tmp_path, env="testing", config=MyConfig)
         assert a.config.name == "test"
 
-    def test_is_debug_false_without_config(self, app):
-        assert app.is_debug() is False
+    def test_explicit_config_class_is_not_replaced_by_default(self, tmp_path):
+        from dataclasses import dataclass
+
+        @dataclass
+        class MyConfig:
+            name: str = "test"
+
+        a = Application(base_path=tmp_path, env="testing", config=MyConfig)
+        assert not isinstance(a.config, AppConfig)
+
+    def test_default_config_reads_app_name_from_env(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("APP_NAME", "Env Named App")
+        a = Application(base_path=tmp_path, env="testing")
+        assert a.config.name == "Env Named App"
+
+    def test_default_config_reads_app_debug_false_from_env(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("APP_DEBUG", "false")
+        a = Application(base_path=tmp_path, env="testing")
+        assert a.config.debug is False
+        assert a.is_debug() is False
+
+    def test_default_config_reads_app_debug_true_from_env(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("APP_DEBUG", "true")
+        a = Application(base_path=tmp_path, env="testing")
+        assert a.config.debug is True
+        assert a.is_debug() is True
 
     def test_is_debug_reflects_config_value(self, tmp_path):
         from dataclasses import dataclass

@@ -1,10 +1,14 @@
+from collections.abc import Callable
+from typing import Any
+
 from fastapi_startkit.masoniteorm.models import registry
 from ..collection import Collection
 from .BaseRelationship import BaseRelationship
 
 
 class MorphToMany(BaseRelationship):
-    def __init__(self, fn, morph_key="record_type", morph_id="record_id"):
+    def __init__(self, fn: Callable[..., Any] | str, morph_key="record_type", morph_id="record_id"):
+        self.fn: Callable[..., Any] | None
         if isinstance(fn, str):
             self.fn = None
             self.morph_key = fn
@@ -16,6 +20,12 @@ class MorphToMany(BaseRelationship):
 
     def get_builder(self):
         return self._related_builder
+
+    def resolver(self) -> Callable[..., Any]:
+        # AttributeError (not ValueError) keeps __getattr__ and hasattr() semantics intact.
+        if self.fn is None:
+            raise AttributeError(f"{self.__class__.__name__} was declared without a relationship callable")
+        return self.fn
 
     def set_keys(self, owner, attribute):
         self.morph_id = self.morph_id or "record_id"
@@ -37,9 +47,10 @@ class MorphToMany(BaseRelationship):
         if instance is None:
             return self
 
-        attribute = self.fn.__name__
+        fn = self.resolver()
+        attribute = fn.__name__
         self._related_builder = instance.get_builder()
-        self.set_keys(owner, self.fn)
+        self.set_keys(owner, fn)
 
         if not instance.is_loaded():
             return self
@@ -50,10 +61,10 @@ class MorphToMany(BaseRelationship):
         return self.apply_query(self._related_builder, instance)
 
     def __getattr__(self, attribute):
-        relationship = self.fn(self)()
+        relationship = self.resolver()(self)()
         return getattr(relationship.builder, attribute)
 
-    def apply_query(self, builder, instance):
+    def apply_query(self, foreign, owner):
         """Apply the query and return a dictionary to be hydrated
 
         Arguments:
@@ -63,8 +74,8 @@ class MorphToMany(BaseRelationship):
         Returns:
             dict -- A dictionary of data which will be hydrated.
         """
-        model = self.morph_map().get(instance.__attributes__[self.morph_key])
-        record = instance.__attributes__[self.morph_id]
+        model = registry.Registry.get_morph_model(owner.__attributes__[self.morph_key])
+        record = owner.__attributes__[self.morph_id]
 
         return model.where(model.__primary_key__, record).first()
 
@@ -83,7 +94,7 @@ class MorphToMany(BaseRelationship):
         if isinstance(relation, Collection):
             relations = Collection()
             for group, items in relation.group_by(self.morph_key).items():
-                morphed_model = self.morph_map().get(group)
+                morphed_model = registry.Registry.get_morph_model(group)
                 relations.merge(
                     await morphed_model.where_in(
                         f"{morphed_model.__table__}.{morphed_model.__primary_key__}",
@@ -97,7 +108,7 @@ class MorphToMany(BaseRelationship):
                 return await model.find(getattr(relation, self.morph_id))
 
     def register_related(self, key, model, collection):
-        morphed_model = self.morph_map().get(getattr(model, self.morph_key))
+        morphed_model = registry.Registry.get_morph_model(getattr(model, self.morph_key))
 
         related = collection.where(morphed_model.__primary_key__, getattr(model, self.morph_id))
 

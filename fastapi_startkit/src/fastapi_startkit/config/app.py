@@ -7,5 +7,5 @@ from fastapi_startkit.environment.environment import env
 class AppConfig:
     name: str = field(default_factory=lambda: os.getenv("APP_NAME", "FastAPI starter kit"))
     env: str = field(default_factory=lambda: os.getenv("APP_ENV", "development"))
-    debug: bool = field(default_factory=lambda: env("APP_DEBUG", "true"))
+    debug: bool = field(default_factory=lambda: env("APP_DEBUG", True))
     timezone: str = field(default_factory=lambda: os.getenv("APP_TIMEZONE", "UTC"))

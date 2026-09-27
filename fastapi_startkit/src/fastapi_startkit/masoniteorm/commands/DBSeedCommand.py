@@ -40,10 +40,11 @@ class DBSeedCommand(Command):
         ),
     ]
 
-    def handle(self):
+    def handle(self) -> int:
         import asyncio
 
-        return asyncio.run(self.handle_async())
+        asyncio.run(self.handle_async())
+        return 0
 
     async def handle_async(self):
         from ..seeders import Seeder
