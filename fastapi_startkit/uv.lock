@@ -539,7 +539,7 @@ wheels = [
 
 [[package]]
 name = "fastapi-startkit"
-version = "0.56.0"
+version = "0.59.0"
 source = { editable = "." }
 dependencies = [
     { name = "cleo" },

@@ -11,6 +11,9 @@ from fastapi_startkit.support import Uri, Uriable
 if TYPE_CHECKING:
     from fastapi_startkit.application import Application
 
+# Values accepted by uvicorn's `ws` setting.
+WS_BACKENDS = ("auto", "none", "websockets", "websockets-sansio", "wsproto")
+
 
 class ServeCommand(Command):
     name = "serve"
@@ -45,6 +48,13 @@ class ServeCommand(Command):
             default=None,
             description="The application to serve (overrides fastapi config)",
         ),
+        option(
+            "ws",
+            None,
+            flag=False,
+            default=None,
+            description=f"The uvicorn WebSocket backend: {', '.join(WS_BACKENDS)} (overrides fastapi config)",
+        ),
     ]
 
     def config_value(self, key: str) -> Any:
@@ -72,10 +82,19 @@ class ServeCommand(Command):
 
         return uri.with_port(port) if port else uri
 
+    def resolve_ws(self) -> str:
+        """CLI flag > fastapi config > FastAPIConfig default ('auto')."""
+        return str(self.option("ws") or self.config_value("ws"))
+
     def handle(self) -> int:
         import uvicorn
 
         from fastapi_startkit.container import Container
+
+        ws = self.resolve_ws()
+        if ws not in WS_BACKENDS:
+            self.line_error(f"Invalid --ws backend '{ws}'. Allowed values: {', '.join(WS_BACKENDS)}.", style="error")
+            return 1
 
         url = self.resolve_url()
         reload = self.resolve_option("reload")
@@ -85,7 +104,7 @@ class ServeCommand(Command):
             "host": url.host(),
             "port": url.port(),
             "reload": reload,
-            "ws": "websockets-sansio",
+            "ws": ws,
         }
 
         if self.is_app_exist(app):
