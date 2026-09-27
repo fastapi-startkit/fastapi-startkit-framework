@@ -1,5 +1,6 @@
 from typing import Optional, Dict, Any
 from pydantic.dataclasses import dataclass
+from pydantic.fields import Field
 from fastapi_startkit.environment.environment import env
 
 
@@ -8,6 +9,7 @@ class SQLiteConfig:
     driver: str = "sqlite"
     url: Optional[str] = env("DB_URL", None, cast=False)
     database: str = env("DB_DATABASE", "database.sqlite")
+    echo: bool = Field(default_factory=lambda: env("DB_ECHO", False))
     options: Optional[Dict[str, Any]] = None
 
 
@@ -23,6 +25,7 @@ class MySQLConfig:
     unix_socket: str = env("DB_SOCKET", "", cast=False)
     charset: str = env("DB_CHARSET", "utf8mb4")
     collation: str = env("DB_COLLATION", "utf8mb4_unicode_ci")
+    echo: bool = Field(default_factory=lambda: env("DB_ECHO", False))
     options: Optional[Dict[str, Any]] = None
 
 
@@ -37,4 +40,5 @@ class PostgresConfig:
     password: str = env("DB_PASSWORD", "", cast=False)
     charset: str = env("DB_CHARSET", "utf8")
     sslmode: str = env("DB_SSLMODE", "prefer")
+    echo: bool = Field(default_factory=lambda: env("DB_ECHO", False))
     options: Optional[Dict[str, Any]] = None

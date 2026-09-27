@@ -64,7 +64,7 @@ class ConnectionFactory:
     @classmethod
     def create_engine(cls, cfg: dict) -> AsyncEngine:
         url = cls.build_url(cfg)
-        kwargs: dict[str, Any] = {"echo": True}
+        kwargs: dict[str, Any] = {"echo": bool(cfg.get("echo", False))}
         from fastapi_startkit.application import app
 
         if cast("Application", app()).is_testing():
