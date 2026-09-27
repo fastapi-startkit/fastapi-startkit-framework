@@ -21,6 +21,8 @@ from fastapi_startkit.masoniteorm.models.relationship import Relationship
 from fastapi_startkit.masoniteorm.observers import ObservesEvents
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable
+
     from fastapi_startkit.masoniteorm.models.builder import QueryBuilder, WhereGroup
 
 
@@ -67,7 +69,7 @@ class Model(Attribute, Relationship, ObservesEvents):
     created_at: Carbon = CreatedAtField(fmt="%Y-%m-%d %H:%M:%S", tz="UTC")  # pyright: ignore[reportAssignmentType]
     updated_at: Carbon = UpdatedAtField(fmt="%Y-%m-%d %H:%M:%S", tz="UTC")  # pyright: ignore[reportAssignmentType]
 
-    def __init__(self, attributes: dict | None = None, **kwargs):
+    def __init__(self, attributes: dict[str, Any] | None = None, **kwargs: Any):
         super().__init__(attributes, **kwargs)
         self.connection = getattr(self.__class__, "__connection__", "default")
         self._global_scopes = {}
@@ -87,14 +89,14 @@ class Model(Attribute, Relationship, ObservesEvents):
         """Returns True if this model has been persisted to the database."""
         return self._exists
 
-    def all_attributes(self) -> dict:
+    def all_attributes(self) -> dict[str, Any]:
         """Returns all model attributes (original + dirty)."""
         return self.get_attributes()
 
-    def get_builder(self):
+    def get_builder(self) -> "QueryBuilder[Self]":
         return self.new_query()
 
-    def add_relation(self, data: dict):
+    def add_relation(self, data: dict[str, Any]):
         self._relationship.update(data)
 
     @property
@@ -106,7 +108,7 @@ class Model(Attribute, Relationship, ObservesEvents):
         return getattr(self.__class__, key)
 
     @classmethod
-    def with_(cls, *eagers) -> "QueryBuilder":
+    def with_(cls, *eagers) -> "QueryBuilder[Self]":
         return cls.query().with_(*eagers)
 
     @overload
@@ -134,135 +136,135 @@ class Model(Attribute, Relationship, ObservesEvents):
         return cls.query().where(column, *args)
 
     @classmethod
-    def or_where(cls, column, *args) -> "QueryBuilder":
+    def or_where(cls, column: str, *args: Any) -> "QueryBuilder[Self]":
         return cls.query().or_where(column, *args)
 
     @classmethod
-    def where_null(cls, column: str) -> "QueryBuilder":
+    def where_null(cls, column: str) -> "QueryBuilder[Self]":
         return cls.query().where_null(column)
 
     @classmethod
-    def where_not_null(cls, column: str) -> "QueryBuilder":
+    def where_not_null(cls, column: str) -> "QueryBuilder[Self]":
         return cls.query().where_not_null(column)
 
     @classmethod
-    def or_where_null(cls, column: str) -> "QueryBuilder":
+    def or_where_null(cls, column: str) -> "QueryBuilder[Self]":
         return cls.query().or_where_null(column)
 
     @classmethod
-    def or_where_not_null(cls, column: str) -> "QueryBuilder":
+    def or_where_not_null(cls, column: str) -> "QueryBuilder[Self]":
         return cls.query().or_where_not_null(column)
 
     @classmethod
-    def where_raw(cls, expression: str, bindings=()) -> "QueryBuilder":
+    def where_raw(cls, expression: str, bindings: tuple[Any, ...] = ()) -> "QueryBuilder[Self]":
         return cls.query().where_raw(expression, bindings)
 
     @classmethod
-    def or_where_raw(cls, expression: str, bindings=()) -> "QueryBuilder":
+    def or_where_raw(cls, expression: str, bindings: tuple[Any, ...] = ()) -> "QueryBuilder[Self]":
         return cls.query().or_where_raw(expression, bindings)
 
     @classmethod
-    def where_in(cls, column: str, values) -> "QueryBuilder":
+    def where_in(cls, column: str, values: Iterable[Any]) -> "QueryBuilder[Self]":
         return cls.query().where_in(column, values)
 
     @classmethod
-    def where_not_in(cls, column: str, values) -> "QueryBuilder":
+    def where_not_in(cls, column: str, values: Iterable[Any]) -> "QueryBuilder[Self]":
         return cls.query().where_not_in(column, values)
 
     @classmethod
-    def select(cls, *args) -> "QueryBuilder":
+    def select(cls, *args: str | list[str]) -> "QueryBuilder[Self]":
         return cls.query().select(*args)
 
     @classmethod
-    def limit(cls, limit: int) -> "QueryBuilder":
+    def limit(cls, limit: int) -> "QueryBuilder[Self]":
         return cls.query().limit(limit)
 
     @classmethod
-    def offset(cls, offset: int) -> "QueryBuilder":
+    def offset(cls, offset: int) -> "QueryBuilder[Self]":
         return cls.query().offset(offset)
 
     @classmethod
-    def order_by(cls, column: str, direction: str = "asc") -> "QueryBuilder":
+    def order_by(cls, column: str, direction: str = "asc") -> "QueryBuilder[Self]":
         return cls.query().order_by(column, direction)
 
     @classmethod
-    def order_by_raw(cls, expression: str) -> "QueryBuilder":
+    def order_by_raw(cls, expression: str) -> "QueryBuilder[Self]":
         return cls.query().order_by_raw(expression)
 
     @classmethod
-    def latest(cls, column: str = "created_at") -> "QueryBuilder":
+    def latest(cls, column: str = "created_at") -> "QueryBuilder[Self]":
         return cls.query().latest(column)
 
     @classmethod
-    def oldest(cls, column: str = "created_at") -> "QueryBuilder":
+    def oldest(cls, column: str = "created_at") -> "QueryBuilder[Self]":
         return cls.query().oldest(column)
 
     @classmethod
-    def group_by(cls, column: str) -> "QueryBuilder":
+    def group_by(cls, column: str) -> "QueryBuilder[Self]":
         return cls.query().group_by(column)
 
     @classmethod
-    def group_by_raw(cls, expression: str) -> "QueryBuilder":
+    def group_by_raw(cls, expression: str) -> "QueryBuilder[Self]":
         return cls.query().group_by_raw(expression)
 
     @classmethod
-    def having(cls, column: str, equality: str, value) -> "QueryBuilder":
+    def having(cls, column: str, equality: str, value: Any) -> "QueryBuilder[Self]":
         return cls.query().having(column, equality, value)
 
     @classmethod
-    def between(cls, column: str, low, high) -> "QueryBuilder":
+    def between(cls, column: str, low: Any, high: Any) -> "QueryBuilder[Self]":
         return cls.query().between(column, low, high)
 
     @classmethod
-    def not_between(cls, column: str, low, high) -> "QueryBuilder":
+    def not_between(cls, column: str, low: Any, high: Any) -> "QueryBuilder[Self]":
         return cls.query().not_between(column, low, high)
 
     @classmethod
-    def distinct(cls) -> "QueryBuilder":
+    def distinct(cls) -> "QueryBuilder[Self]":
         return cls.query().distinct()
 
     @classmethod
-    def join(cls, table: str, column1: str, equality: str, column2: str, clause: str = "join") -> "QueryBuilder":
+    def join(cls, table: str, column1: str, equality: str, column2: str, clause: str = "join") -> "QueryBuilder[Self]":
         return cls.query().join(table, column1, equality, column2, clause)
 
     @classmethod
-    def left_join(cls, table: str, column1: str, equality: str, column2: str) -> "QueryBuilder":
+    def left_join(cls, table: str, column1: str, equality: str, column2: str) -> "QueryBuilder[Self]":
         return cls.query().left_join(table, column1, equality, column2)
 
     @classmethod
-    def right_join(cls, table: str, column1: str, equality: str, column2: str) -> "QueryBuilder":
+    def right_join(cls, table: str, column1: str, equality: str, column2: str) -> "QueryBuilder[Self]":
         return cls.query().right_join(table, column1, equality, column2)
 
     @classmethod
-    def where_column(cls, column1: str, column2: str) -> "QueryBuilder":
+    def where_column(cls, column1: str, column2: str) -> "QueryBuilder[Self]":
         return cls.query().where_column(column1, column2)
 
     @classmethod
-    def when(cls, condition, callback) -> "QueryBuilder":
+    def when(cls, condition: Any, callback: Callable[["QueryBuilder[Self]"], Any]) -> "QueryBuilder[Self]":
         return cls.query().when(condition, callback)
 
     @classmethod
-    def where_exists(cls, builder: "QueryBuilder") -> "QueryBuilder":
+    def where_exists(cls, builder: "QueryBuilder[Any]") -> "QueryBuilder[Self]":
         return cls.query().where_exists(builder)
 
     @classmethod
-    def or_where_exists(cls, builder: "QueryBuilder") -> "QueryBuilder":
+    def or_where_exists(cls, builder: "QueryBuilder[Any]") -> "QueryBuilder[Self]":
         return cls.query().or_where_exists(builder)
 
     @classmethod
-    def where_has(cls, relation: str, callback=None) -> "QueryBuilder":
+    def where_has(cls, relation: str, callback: Callable[..., Any] | None = None) -> "QueryBuilder[Self]":
         return cls.query().where_has(relation, callback)
 
     @classmethod
-    def or_where_has(cls, relation: str, callback=None) -> "QueryBuilder":
+    def or_where_has(cls, relation: str, callback: Callable[..., Any] | None = None) -> "QueryBuilder[Self]":
         return cls.query().or_where_has(relation, callback)
 
     @classmethod
-    async def find(cls, primary_key: str | int, columns=None):
+    async def find(cls, primary_key: str | int, columns: list[str] | str | None = None) -> Self | None:
         return await cls.query().find(primary_key, columns)
 
     @classmethod
-    async def find_or_fail(cls, primary_key: str | int, columns=None) -> Self:
+    async def find_or_fail(cls, primary_key: str | int, columns: list[str] | str | None = None) -> Self:
         """Fetch the record matching ``primary_key``.
 
         Raises:
@@ -271,11 +273,11 @@ class Model(Attribute, Relationship, ObservesEvents):
         return await cls.query().find_or_fail(primary_key, columns)
 
     @classmethod
-    async def first_or_fail(cls, columns=None):
+    async def first_or_fail(cls, columns: list[str] | str | None = None) -> Self:
         return await cls.query().first_or_fail(columns)
 
     @classmethod
-    async def first(cls, columns=None):
+    async def first(cls, columns: list[str] | str | None = None) -> Self | None:
         return await cls.query().first(columns)
 
     @classmethod
@@ -322,7 +324,7 @@ class Model(Attribute, Relationship, ObservesEvents):
     def get_connection_name(self):
         return self.connection
 
-    def new_model_instance(self, attributes=None, exists=False):
+    def new_model_instance(self, attributes: dict[str, Any] | None = None, exists: bool = False) -> Self:
         if attributes is None:
             attributes = {}
         model = self.__class__()
@@ -340,22 +342,22 @@ class Model(Attribute, Relationship, ObservesEvents):
     def new_query(self) -> "QueryBuilder[Self]":
         return self.resolve_db_manager().connection(self.connection).query().set_model(self)
 
-    def hydrate(self, items):
+    def hydrate(self, items: Iterable[dict[str, Any]]) -> Collection[Self]:
         instance = self.new_model_instance()
 
-        items = [instance.new_from_builder(item) for item in items]
+        models = [instance.new_from_builder(item) for item in items]
 
-        return instance.new_collection(items)
+        return instance.new_collection(models)
 
-    def new_collection(self, models: list):
+    def new_collection(self, models: list[Self]) -> Collection[Self]:
         collection = Collection(items=models)
 
         collection.with_relationship_autoloading()
 
         return collection
 
-    def new_from_builder(self, attributes: dict, connection: str | None = None):
-        model = self.new_model_instance([], exists=True)
+    def new_from_builder(self, attributes: dict[str, Any], connection: str | None = None) -> Self:
+        model = self.new_model_instance({}, exists=True)
         model.set_raw_attributes(attributes, True)
 
         model.set_connection(connection or self.get_connection_name())
@@ -363,7 +365,7 @@ class Model(Attribute, Relationship, ObservesEvents):
 
         return model
 
-    def __getattr__(self, attribute):
+    def __getattr__(self, attribute: str) -> Any:
         return self.get_attribute(attribute)
 
     @classmethod
@@ -371,25 +373,25 @@ class Model(Attribute, Relationship, ObservesEvents):
         return cls().new_query()
 
     @classmethod
-    async def first_or_create(cls, search: dict, attributes: dict | None = None) -> "Model":
+    async def first_or_create(cls, search: dict[str, Any], attributes: dict[str, Any] | None = None) -> Self:
         return await cls.query().first_or_create(search, attributes)
 
     @classmethod
-    async def update_or_create(cls, search: dict, attributes: dict | None = None) -> "Model":
+    async def update_or_create(cls, search: dict[str, Any], attributes: dict[str, Any] | None = None) -> Self:
         return await cls.query().update_or_create(search, attributes)
 
     @classmethod
-    async def create(cls, attributes: dict):
+    async def create(cls, attributes: dict[str, Any]) -> Self:
         instance = cls().new_model_instance(attributes)
         await instance.save()
 
         return instance
 
     @classmethod
-    async def insert(cls, values: dict | list) -> int | None:
+    async def insert(cls, values: dict[str, Any] | list[dict[str, Any]]) -> int | None:
         return await cls.query().insert(values)
 
-    async def update(self, attributes: dict) -> bool:
+    async def update(self, attributes: dict[str, Any]) -> bool:
         if not self._exists:
             return False
 
@@ -418,13 +420,13 @@ class Model(Attribute, Relationship, ObservesEvents):
 
         return True
 
-    def fill(self, attributes: dict) -> "Model":
+    def fill(self, attributes: dict[str, Any]) -> Self:
         for key, value in attributes.items():
             if key in self.__fillable__:
                 self.set_attribute(key, value)
         return self
 
-    async def save(self, options: dict | None = None):
+    async def save(self, options: dict[str, Any] | None = None) -> bool:
         query = self.new_query()
 
         self.observe_events(self, "saving")
@@ -439,11 +441,11 @@ class Model(Attribute, Relationship, ObservesEvents):
 
         return saved
 
-    def finish_saving(self, options: dict | None = None):
+    def finish_saving(self, options: dict[str, Any] | None = None) -> None:
         self.observe_events(self, "saved")
         self.sync_original()
 
-    async def perform_insert(self, query) -> bool:
+    async def perform_insert(self, query: "QueryBuilder[Self]") -> bool:
         attributes = self.get_attributes_for_insert()
 
         """if the model set auto incrementing, we need to set back the primary key to the inserted id."""
@@ -460,7 +462,7 @@ class Model(Attribute, Relationship, ObservesEvents):
         self.observe_events(self, "created")
         return True
 
-    async def perform_update(self, query) -> bool:
+    async def perform_update(self, query: "QueryBuilder[Self]") -> bool:
         dirty = self.get_dirty()
         if not dirty:
             return True
@@ -476,10 +478,10 @@ class Model(Attribute, Relationship, ObservesEvents):
         self._dirty_attributes = {}
         self._original = dict(self._attributes)
 
-    def get_attributes(self) -> dict:
+    def get_attributes(self) -> dict[str, Any]:
         return {**self._attributes, **self._dirty_attributes}
 
-    def serialize(self) -> dict:
+    def serialize(self) -> dict[str, Any]:
         return self.get_attributes()
 
     def get_table_name(self):
