@@ -160,11 +160,17 @@ class InertiaResponse(Response):
 
     async def _render_ssr(self, page: dict) -> Optional[dict]:
         """Ask the configured Inertia Node server to render this page."""
+        ssr_url = self.ssr_url
+        if ssr_url is None:
+            return None
+
         def request_ssr():
-            body = json.dumps({"url": page["url"], "page": page}).encode("utf-8")
+            body = json.dumps(page).encode("utf-8")
             req = urllib.request.Request(
-                self.ssr_url.rstrip("/") + "/render", data=body,
-                headers={"Content-Type": "application/json"}, method="POST",
+                ssr_url.rstrip("/") + "/render",
+                data=body,
+                headers={"Content-Type": "application/json"},
+                method="POST",
             )
             with urllib.request.urlopen(req, timeout=self.ssr_timeout) as response:
                 result = json.loads(response.read().decode("utf-8"))

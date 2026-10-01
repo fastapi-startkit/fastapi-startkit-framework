@@ -116,14 +116,16 @@ class TestInertiaResponse(unittest.IsolatedAsyncioTestCase):
         response = InertiaResponse("Dashboard", {}, {}, ssr_url="http://127.0.0.1:13714/")
         page = {"component": "Dashboard", "url": "/", "props": {}}
         http_response = MagicMock()
-        http_response.__enter__.return_value.read.return_value = b'{"head":["<title>Home</title>"],"body":"<main>SSR</main>"}'
+        http_response.__enter__.return_value.read.return_value = (
+            b'{"head":["<title>Home</title>"],"body":"<main>SSR</main>"}'
+        )
 
         with patch("fastapi_startkit.inertia.inertia.urllib.request.urlopen", return_value=http_response) as urlopen:
             rendered = await response._render_ssr(page)
 
         request = urlopen.call_args.args[0]
         self.assertEqual(request.full_url, "http://127.0.0.1:13714/render")
-        self.assertEqual(json.loads(request.data), {"url": "/", "page": page})
+        self.assertEqual(json.loads(request.data), page)
         self.assertEqual(rendered, {"head": ["<title>Home</title>"], "body": "<main>SSR</main>"})
 
     async def test_ssr_failure_falls_back_to_client_rendering(self):
