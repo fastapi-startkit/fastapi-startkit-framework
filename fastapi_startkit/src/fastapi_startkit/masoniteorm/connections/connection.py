@@ -95,7 +95,7 @@ class Transaction:
             self.owner._finish_transaction(self.connection, self.transaction, False)
             raise
         callbacks = self.owner._finish_transaction(self.connection, self.transaction, True)
-        if not self.connection.in_transaction():
+        if self._owns_connection and not self.connection.in_transaction():
             await self.owner._release_connection(self.connection)
         await self.owner._run_callbacks(callbacks)
 
@@ -121,7 +121,6 @@ class Connection:
     def connection(self) -> AsyncConnection | None:
         connection = self._connection_context.get()
         if connection is not None and connection.closed:
-            self._connection_context.set(None)
             return None
         return connection
 
@@ -170,9 +169,12 @@ class Connection:
             await self._run_callbacks([callback])
             return
         frames = self._callback_frames(connection)
-        frame = frames[transaction]
+        frame = frames.get(transaction)
+        if frame is None:
+            await self._run_callbacks([callback])
+            return
         root = frame
-        while root.parent is not None:
+        while root.parent in frames:
             root = frames[root.parent]
         frame.callbacks.append((root.next_order, callback))
         root.next_order += 1
@@ -206,7 +208,7 @@ class Connection:
             if not frames:
                 self._transaction_callbacks.pop(connection, None)
             return []
-        if frame.parent is not None:
+        if frame.parent in frames:
             frames[frame.parent].callbacks.extend(callbacks)
             return []
         self._transaction_callbacks.pop(connection, None)

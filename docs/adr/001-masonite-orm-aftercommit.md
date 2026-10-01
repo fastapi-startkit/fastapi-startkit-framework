@@ -5,25 +5,33 @@ Status: Accepted
 
 ## Problem
 
-Applications need to send notifications or perform other follow-up work only after database changes have committed. Model `created`, `updated`, and `saved` observers run during the model operation and can therefore run before a transaction commits. The ORM currently exposes both explicit transactions and transaction context managers but has no commit callback API.
+Applications often need to run follow-up work, such as sending a notification, only once a database change is durable. Model observers (`created`, `updated`, `saved`) fire while the model operation is still running, so they can fire before the surrounding transaction commits. The ORM offers explicit transactions and transaction context managers, but no way to hook into a commit.
 
-Repository conventions are moving from the previous guide into `AGENTS.md`. Server configuration belongs in `.mcp.json`, so repository guidance should describe contribution practices without embedding MCP endpoints or tool instructions. ADRs need a valid, concise index.
+Repository conventions are also moving into `AGENTS.md`, and ADRs need a concise index.
 
 ## Alternatives
 
-- Run model observers after commit: this would change existing observer timing and would not cover raw queries.
-- Attach SQLAlchemy events: engine commit events run before the commit completes and cannot directly await asynchronous callbacks.
-- Track callbacks in the ORM transaction lifecycle: this covers the public transaction APIs and can await callbacks after a successful commit. This is the chosen design.
+- **Fire model observers after commit.** This changes the timing of existing observers and does not cover raw queries.
+- **Use SQLAlchemy engine events.** Commit events fire before the commit completes and cannot await asynchronous callbacks.
+- **Track callbacks in the ORM transaction lifecycle (chosen).** This covers every public transaction API and can await callbacks once the commit has succeeded.
 
-## Decision and API
+## Decision
 
-Expose `await connection.after_commit(callback)` and `await DB.after_commit(callback, name=None)`. Callbacks take no arguments and may return an awaitable. Callers can capture arguments in a closure or `functools.partial`.
+Add `await connection.after_commit(callback)` and `await DB.after_commit(callback, name=None)`. A callback takes no arguments and may be synchronous or return an awaitable. Callers bind arguments with a closure or `functools.partial`. Non-callables are rejected at registration.
 
-Registration queues the callable when a transaction is active. Without an active transaction, registration invokes and awaits the callback immediately. Reject non-callables at registration.
+Behaviour:
 
-Run callbacks sequentially in registration order after a successful outermost commit. A nested commit merges its callbacks into its parent rather than running them. A nested rollback discards only callbacks registered in that scope; an outer rollback discards all callbacks. Close, reconnect, cancellation, and failed commits must not retain callbacks for later transactions.
+- **Active transaction:** the callback is queued.
+- **No transaction (or one the ORM did not start):** the callback runs and is awaited immediately.
+- **Outermost commit:** queued callbacks run sequentially in registration order.
+- **Nested commit (savepoint):** callbacks merge into the parent and do not run yet.
+- **Rollback:** a nested rollback discards only that scope's callbacks; an outer rollback discards everything.
+- **Close, reconnect, cancellation, failed commit:** no callbacks survive into later transactions.
+- **Callback errors:** the error propagates to the caller. The commit stays durable, remaining callbacks are skipped, and the queue is already cleared.
 
-Release the root connection before invoking callbacks so they can query committed data or open a fresh transaction, including with a pool of one connection. Callback errors propagate to the caller; the commit remains durable, remaining callbacks do not run, and the queue is already cleared. This API is an in-process hook, not a durable delivery guarantee; applications needing reliable external delivery should use an outbox.
+The root connection is released before callbacks run, so they can read committed data or open a new transaction, even with a pool of one connection.
+
+This is an in-process hook, not a durable delivery guarantee. Work that must not be lost should use an outbox.
 
 ## Usage
 
@@ -35,16 +43,26 @@ async with DB.connection().transaction():
     await DB.after_commit(lambda: send_confirmation(user_id))
 ```
 
-The confirmation callback runs after the transaction exits successfully. Rollback skips it.
+`send_confirmation` runs after the transaction exits successfully and is skipped on rollback.
 
 ## Implementation
 
-Store callback frames in the ORM connection, keyed by the active SQLAlchemy connection wrapper and transaction, with an explicit parent link captured when entering each transaction or savepoint. This follows existing ContextVar connection propagation: inherited tasks share the current transaction, while independent tasks and named connections use separate physical connections and callback queues. Avoid SQLAlchemy `connection.info` for this state because accessing it during connection invalidation can require DBAPI reconnection and prevent cleanup. Remove each root batch and closed connection from the registry.
+The ORM `Connection` keeps a registry of callback frames, keyed by the SQLAlchemy connection and transaction, with each frame linking to its parent. This follows the existing ContextVar connection propagation: tasks that inherit the context share the current transaction, while independent tasks and named connections use separate physical connections and queues. SQLAlchemy's `connection.info` is avoided because reading it during invalidation can force a DBAPI reconnect and block cleanup.
 
-Wire frame creation, commit merging, and rollback removal into `Connection.begin_transaction`, `Connection.commit_transaction`, `Connection.rollback`, and `Transaction` enter, exit, commit, and rollback. Detach root callback batches before execution and clear connection state on close. Direct transaction manipulation through a raw SQLAlchemy connection is outside this API.
+A transaction the ORM did not register (for example one begun directly on the raw SQLAlchemy connection) is treated as untracked: callbacks registered inside it run immediately, and an ORM savepoint inside it acts as its own root.
 
-Carry the supplied repository guidance into `AGENTS.md`, correct its wording and stale test paths, replace the prior guide, and format `docs/adr/AGENTS.md` as an index. Preserve unrelated local changes such as the dependency lockfile.
+Frames are created, merged and discarded in `Connection.begin_transaction`, `commit_transaction` and `rollback`, and in the `Transaction` enter, exit, commit and rollback paths. Root batches are detached before they run, and closing a connection clears its frames.
+
+Repository guidance moves into `AGENTS.md` with corrected wording and test paths, and `docs/adr/AGENTS.md` becomes the ADR index.
 
 ## Validation
 
-Use real SQLite integration tests to cover synchronous and asynchronous callbacks, committed data visibility, manual and context transactions, explicit transaction-object methods, nested commit and rollback, multiple nested levels, mixed transaction APIs, errors, cancellation, close and reconnect, task isolation, invalidated connections, named facade connections, registration order, and callbacks that start new transactions. Run existing SQLite transaction tests, Ruff checks on modified Python files, and the framework type checker.
+Real SQLite integration tests cover:
+
+- sync and async callbacks, registration order, and visibility of committed data
+- manual, context-manager and transaction-object APIs, including mixed use
+- nested and deeply nested savepoints, commit and rollback
+- callback errors, failed commits, cancellation, close and reconnect, and invalidated connections
+- task isolation, named facade connections, callbacks that start new transactions, and untracked transactions
+
+Existing SQLite transaction tests, Ruff, and the framework type checker also run.

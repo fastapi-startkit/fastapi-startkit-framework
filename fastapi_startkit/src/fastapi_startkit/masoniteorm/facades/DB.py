@@ -3,8 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from fastapi_startkit.masoniteorm.connections.connection import AfterCommitCallback
-    from fastapi_startkit.masoniteorm.connections.connection import Connection
+    from fastapi_startkit.masoniteorm.connections.connection import AfterCommitCallback, Connection
     from fastapi_startkit.masoniteorm.connections.manager import DatabaseManager
     from fastapi_startkit.masoniteorm.models.builder import QueryBuilder
 

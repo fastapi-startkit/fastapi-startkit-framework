@@ -354,3 +354,35 @@ async def test_invalidated_connection_discards_callbacks_and_can_be_closed(conne
     async with connection.transaction():
         await connection.after_commit(partial(called.append, "next"))
     assert called == ["next"]
+
+
+async def test_unregistered_transaction_runs_callback_immediately(connection):
+    called = []
+    raw = await connection.engine.connect()
+    connection._connection_context.set(raw)
+    await raw.begin()
+    await connection.after_commit(partial(called.append, "immediate"))
+    assert called == ["immediate"]
+    await connection.close()
+
+
+async def test_savepoint_in_unregistered_transaction_does_not_raise(connection):
+    called = []
+    raw = await connection.engine.connect()
+    connection._connection_context.set(raw)
+    await raw.begin()
+    async with connection.transaction():
+        await connection.after_commit(partial(called.append, "savepoint"))
+    assert called == ["savepoint"]
+    await connection.close()
+
+
+async def test_nested_rollback_then_new_registration_keeps_order(connection):
+    called = []
+    async with connection.transaction():
+        await connection.after_commit(partial(called.append, 1))
+        await connection.begin_transaction()
+        await connection.after_commit(partial(called.append, "discard"))
+        await connection.rollback()
+        await connection.after_commit(partial(called.append, 2))
+    assert called == [1, 2]

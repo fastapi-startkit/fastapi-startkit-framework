@@ -1,6 +1,6 @@
 # Repository Guidelines
 
-This file provides repository conventions for contributors. MCP server configuration belongs in `.mcp.json`; keep connection details out of this guide.
+This file provides repository conventions for contributors.
 
 ## Project Overview
 This is a **monorepo** for the FastAPI Startkit ecosystem — a modular, provider-driven framework for building Python applications with FastAPI. It contains four main components:

@@ -7,4 +7,4 @@ Read this index first, then open the records relevant to the change. Before impl
 
 | Index | Date | Title | Abstract |
 | --- | --- | --- | --- |
-| [001](001-masonite-orm-aftercommit.md) | 2026-10-01 | ORM after-commit callbacks | Queue sync and async callbacks on the active database transaction, defer nested callbacks until the outer commit, and discard callbacks on rollback. Keep server connection configuration in `.mcp.json` and repository conventions in `AGENTS.md`. |
+| [001](001-masonite-orm-aftercommit.md) | 2026-10-01 | ORM after-commit callbacks | Queue sync and async callbacks on the active database transaction, defer nested callbacks until the outer commit, and discard callbacks on rollback. |
