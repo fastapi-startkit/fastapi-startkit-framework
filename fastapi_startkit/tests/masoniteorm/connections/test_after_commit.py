@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 from sqlalchemy.exc import PendingRollbackError
-from sqlalchemy.ext.asyncio import AsyncTransaction, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncTransaction, create_async_engine
 
 from fastapi_startkit.masoniteorm.connections.sqlite_connection import SQliteConnection
 from fastapi_startkit.masoniteorm.facades.DB import DB
@@ -386,3 +386,37 @@ async def test_nested_rollback_then_new_registration_keeps_order(connection):
         await connection.rollback()
         await connection.after_commit(partial(called.append, 2))
     assert called == [1, 2]
+
+
+@pytest.mark.parametrize("mode", ["manual", "context"])
+async def test_failed_begin_releases_owned_connection(connection, mode):
+    with patch.object(AsyncConnection, "begin", side_effect=RuntimeError("begin failed")):
+        with pytest.raises(RuntimeError, match="begin failed"):
+            if mode == "manual":
+                await connection.begin_transaction()
+            else:
+                async with connection.transaction():
+                    pass
+    assert connection.connection is None
+    async with connection.transaction():
+        await connection.after_commit(lambda: None)
+
+
+async def test_commit_and_rollback_require_active_transaction(connection):
+    with pytest.raises(RuntimeError, match="No active transaction to commit"):
+        await connection.commit_transaction()
+    with pytest.raises(RuntimeError, match="No active transaction to rollback"):
+        await connection.rollback()
+
+
+async def test_rollback_failure_clears_callbacks(connection):
+    called = []
+    await connection.begin_transaction()
+    await connection.after_commit(partial(called.append, "discard"))
+    with patch.object(AsyncTransaction, "rollback", side_effect=RuntimeError("rollback failed")):
+        with pytest.raises(RuntimeError, match="rollback failed"):
+            await connection.rollback()
+    await connection.close()
+    async with connection.transaction():
+        await connection.after_commit(partial(called.append, "next"))
+    assert called == ["next"]

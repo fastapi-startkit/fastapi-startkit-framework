@@ -174,7 +174,7 @@ class Connection:
             await self._run_callbacks([callback])
             return
         root = frame
-        while root.parent in frames:
+        while root.parent is not None and root.parent in frames:
             root = frames[root.parent]
         frame.callbacks.append((root.next_order, callback))
         root.next_order += 1
@@ -208,7 +208,7 @@ class Connection:
             if not frames:
                 self._transaction_callbacks.pop(connection, None)
             return []
-        if frame.parent in frames:
+        if frame.parent is not None and frame.parent in frames:
             frames[frame.parent].callbacks.extend(callbacks)
             return []
         self._transaction_callbacks.pop(connection, None)
