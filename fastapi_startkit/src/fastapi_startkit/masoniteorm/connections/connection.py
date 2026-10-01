@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from contextvars import ContextVar, Token
+from dataclasses import dataclass, field
+from inspect import isawaitable
 from types import TracebackType
 from typing import TYPE_CHECKING
 
@@ -14,6 +17,16 @@ if TYPE_CHECKING:
 
     from fastapi_startkit.masoniteorm.query.grammars.BaseGrammar import BaseGrammar
     from fastapi_startkit.masoniteorm.schema.platforms.Platform import Platform
+
+
+AfterCommitCallback = Callable[[], object]
+
+
+@dataclass
+class _CallbackFrame:
+    parent: AsyncTransaction | None
+    callbacks: list[tuple[int, AfterCommitCallback]] = field(default_factory=list)
+    next_order: int = 0
 
 
 class Transaction:
@@ -32,11 +45,13 @@ class Transaction:
         self.connection = connection
         self._token = self.owner._connection_context.set(connection)
 
+        parent = connection.get_nested_transaction() or connection.get_transaction()
         try:
             if connection.in_transaction():
                 self.transaction = await connection.begin_nested()
             else:
                 self.transaction = await connection.begin()
+            self.owner._register_transaction(connection, self.transaction, parent)
         except BaseException:
             self.owner._connection_context.reset(self._token)
             if self._owns_connection:
@@ -53,33 +68,62 @@ class Transaction:
         assert self.connection is not None
         assert self.transaction is not None
         assert self._token is not None
+        callbacks: list[AfterCommitCallback] = []
+        was_active = self.transaction.is_active
         try:
             await self.transaction.__aexit__(exc_type, exc_value, traceback)
+            if was_active:
+                callbacks = self.owner._finish_transaction(self.connection, self.transaction, exc_type is None)
+        except BaseException:
+            self.owner._finish_transaction(self.connection, self.transaction, False)
+            raise
         finally:
+            current = self.owner.connection
             self.owner._connection_context.reset(self._token)
+            if current is not None and current is not self.connection:
+                self.owner._connection_context.set(current)
             if self._owns_connection:
-                await self.connection.close()
+                await self.owner._release_connection(self.connection)
+        await self.owner._run_callbacks(callbacks)
 
     async def commit(self) -> None:
+        assert self.connection is not None
         assert self.transaction is not None
-        await self.transaction.commit()
+        try:
+            await self.transaction.commit()
+        except BaseException:
+            self.owner._finish_transaction(self.connection, self.transaction, False)
+            raise
+        callbacks = self.owner._finish_transaction(self.connection, self.transaction, True)
+        if not self.connection.in_transaction():
+            await self.owner._release_connection(self.connection)
+        await self.owner._run_callbacks(callbacks)
 
     async def rollback(self) -> None:
+        assert self.connection is not None
         assert self.transaction is not None
-        await self.transaction.rollback()
+        try:
+            await self.transaction.rollback()
+        finally:
+            self.owner._finish_transaction(self.connection, self.transaction, False)
 
 
 class Connection:
     def __init__(self, engine: AsyncEngine, config: dict):
         self.config = config
         self.engine: AsyncEngine = engine
+        self._transaction_callbacks: dict[AsyncConnection, dict[AsyncTransaction, _CallbackFrame]] = {}
         self._connection_context: ContextVar[AsyncConnection | None] = ContextVar(
             f"masoniteorm_connection_{id(self)}", default=None
         )
 
     @property
     def connection(self) -> AsyncConnection | None:
-        return self._connection_context.get()
+        connection = self._connection_context.get()
+        if connection is not None and connection.closed:
+            self._connection_context.set(None)
+            return None
+        return connection
 
     @property
     def transactions(self) -> list[AsyncTransaction]:
@@ -115,52 +159,122 @@ class Connection:
     def get_default_platform(cls) -> type[Platform]:
         raise NotImplementedError
 
+    async def after_commit(self, callback: AfterCommitCallback) -> None:
+        if not callable(callback):
+            raise TypeError("after_commit requires a callable")
+        connection = self.connection
+        transaction = None
+        if connection is not None:
+            transaction = connection.get_nested_transaction() or connection.get_transaction()
+        if connection is None or transaction is None:
+            await self._run_callbacks([callback])
+            return
+        frames = self._callback_frames(connection)
+        frame = frames[transaction]
+        root = frame
+        while root.parent is not None:
+            root = frames[root.parent]
+        frame.callbacks.append((root.next_order, callback))
+        root.next_order += 1
+
+    def _callback_frames(self, connection: AsyncConnection) -> dict[AsyncTransaction, _CallbackFrame]:
+        return self._transaction_callbacks.setdefault(connection, {})
+
+    def _register_transaction(
+        self, connection: AsyncConnection, transaction: AsyncTransaction, parent: AsyncTransaction | None
+    ) -> None:
+        frames = self._callback_frames(connection)
+        if parent is None:
+            frames.clear()
+        frames[transaction] = _CallbackFrame(parent)
+
+    def _finish_transaction(
+        self, connection: AsyncConnection, transaction: AsyncTransaction, committed: bool
+    ) -> list[AfterCommitCallback]:
+        frames = self._transaction_callbacks.get(connection, {})
+        frame = frames.pop(transaction, None)
+        if frame is None:
+            return []
+        descendants = {transaction}
+        callbacks = frame.callbacks
+        for child, child_frame in list(frames.items()):
+            if child_frame.parent in descendants:
+                descendants.add(child)
+                callbacks.extend(child_frame.callbacks)
+                del frames[child]
+        if not committed:
+            if not frames:
+                self._transaction_callbacks.pop(connection, None)
+            return []
+        if frame.parent is not None:
+            frames[frame.parent].callbacks.extend(callbacks)
+            return []
+        self._transaction_callbacks.pop(connection, None)
+        return [callback for _, callback in sorted(callbacks, key=lambda item: item[0])]
+
+    @staticmethod
+    async def _run_callbacks(callbacks: list[AfterCommitCallback]) -> None:
+        for callback in callbacks:
+            result = callback()
+            if isawaitable(result):
+                await result
+
     async def begin_transaction(self) -> None:
         connection = self.connection
+        owns_connection = connection is None
         if connection is None:
             connection = await self.engine.connect()
             self._connection_context.set(connection)
-        if connection.in_transaction():
-            await connection.begin_nested()
-        else:
-            await connection.begin()
+        parent = connection.get_nested_transaction() or connection.get_transaction()
+        try:
+            transaction = await connection.begin_nested() if parent is not None else await connection.begin()
+            self._register_transaction(connection, transaction, parent)
+        except BaseException:
+            if owns_connection:
+                await self._release_connection(connection)
+            raise
 
     async def commit_transaction(self) -> None:
         connection = self.connection
         if connection is None or not connection.in_transaction():
             raise RuntimeError("No active transaction to commit")
-        nested = connection.get_nested_transaction()
-        if nested is not None:
-            await nested.commit()
-        else:
-            transaction = connection.get_transaction()
-            assert transaction is not None
+        transaction = connection.get_nested_transaction() or connection.get_transaction()
+        assert transaction is not None
+        try:
             await transaction.commit()
+        except BaseException:
+            self._finish_transaction(connection, transaction, False)
+            raise
+        callbacks = self._finish_transaction(connection, transaction, True)
+        if not connection.in_transaction():
             await self._release_connection(connection)
+        await self._run_callbacks(callbacks)
 
     async def rollback(self) -> None:
         connection = self.connection
         if connection is None or not connection.in_transaction():
             raise RuntimeError("No active transaction to rollback")
-        nested = connection.get_nested_transaction()
-        if nested is not None:
-            await nested.rollback()
-        else:
-            transaction = connection.get_transaction()
-            assert transaction is not None
+        transaction = connection.get_nested_transaction() or connection.get_transaction()
+        assert transaction is not None
+        try:
             await transaction.rollback()
-            await self._release_connection(connection)
+        finally:
+            self._finish_transaction(connection, transaction, False)
+            if not connection.in_transaction():
+                await self._release_connection(connection)
 
     async def _release_connection(self, connection: AsyncConnection) -> None:
-        await connection.close()
-        if self.connection is connection:
-            self._connection_context.set(None)
+        self._transaction_callbacks.pop(connection, None)
+        try:
+            await connection.close()
+        finally:
+            if self.connection is connection:
+                self._connection_context.set(None)
 
     async def close(self) -> None:
         connection = self.connection
         if connection is not None:
-            await connection.close()
-            self._connection_context.set(None)
+            await self._release_connection(connection)
 
     async def reconnect(self) -> None:
         await self.close()

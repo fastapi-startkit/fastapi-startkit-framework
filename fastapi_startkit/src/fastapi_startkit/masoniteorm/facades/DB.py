@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from fastapi_startkit.masoniteorm.connections.connection import AfterCommitCallback
     from fastapi_startkit.masoniteorm.connections.connection import Connection
     from fastapi_startkit.masoniteorm.connections.manager import DatabaseManager
     from fastapi_startkit.masoniteorm.models.builder import QueryBuilder
@@ -64,3 +65,7 @@ class DB:
     @classmethod
     async def rollback(cls, name: str | None = None) -> None:
         await cls.instance().connection(name).rollback()
+
+    @classmethod
+    async def after_commit(cls, callback: AfterCommitCallback, name: str | None = None) -> None:
+        await cls.instance().connection(name).after_commit(callback)
