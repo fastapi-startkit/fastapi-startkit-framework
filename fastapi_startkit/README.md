@@ -37,6 +37,22 @@ fastapi-startkit[vite]       # Jinja2 for Vite integration
 Full documentation is available at
 [fastapi-startkit.github.io](https://fastapi-startkit.github.io).
 
+### Inertia server-side rendering
+
+When an Inertia SSR server is running, enable it during application setup:
+
+```python
+from fastapi_startkit.inertia import Inertia
+
+Inertia.ssr("http://127.0.0.1:13714")
+```
+
+Only initial HTML visits are sent to the server. If the SSR process is unavailable or times out,
+the regular client-rendered page is returned. To place server-rendered `<Head>` elements in the
+document head, add `{{ inertia_head(page) }}` to the root template's `<head>`; `{{ inertia(page) }}`
+embeds the rendered page body and the serialized Inertia page data. Configure the Vite plugin's
+`ssr` entry and build/run the corresponding Inertia SSR server separately.
+
 ## Development
 
 ```bash

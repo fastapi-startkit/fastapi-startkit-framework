@@ -1,4 +1,7 @@
 import inspect
+import asyncio
+import json
+import urllib.request
 from typing import Any, Dict, Optional, Union
 from urllib.parse import urlparse
 
@@ -19,6 +22,8 @@ class ResponseFactory:
         self.root_view: str = "index.html"
         self.shared_props: dict = {}
         self.version = None
+        self.ssr_url: Optional[str] = None
+        self.ssr_timeout: float = 1.0
 
     def set_root_view(self, view: str):
         self.root_view = view
@@ -36,6 +41,11 @@ class ResponseFactory:
         v = self.version() if callable(self.version) else self.version
         return str(v) if v is not None else None
 
+    def set_ssr(self, url: Optional[str], timeout: float = 1.0):
+        """Configure the Inertia SSR server endpoint. Pass None to disable SSR."""
+        self.ssr_url = url.rstrip("/") if url else None
+        self.ssr_timeout = timeout
+
     def render(self, component: str, props: dict) -> "InertiaResponse":
         return InertiaResponse(
             component=component,
@@ -43,6 +53,8 @@ class ResponseFactory:
             props=props,
             root_view=self.root_view,
             version=self.get_version() or "",
+            ssr_url=self.ssr_url,
+            ssr_timeout=self.ssr_timeout,
         )
 
 
@@ -54,6 +66,8 @@ class InertiaResponse(Response):
         props: dict,
         root_view: str = "index.html",
         version: str = "",
+        ssr_url: Optional[str] = None,
+        ssr_timeout: float = 1.0,
     ):
         # Do not call supper().__init__() — body is built lazily in __call__
         self.background = None  # required by FastAPI's response handling
@@ -62,6 +76,8 @@ class InertiaResponse(Response):
         self.props = props
         self.root_view = root_view
         self.version = version
+        self.ssr_url = ssr_url
+        self.ssr_timeout = ssr_timeout
 
     def with_(self, key: Union[str, Dict[str, Any]], value: Any = None) -> "InertiaResponse":
         if isinstance(key, dict):
@@ -114,6 +130,13 @@ class InertiaResponse(Response):
             "version": self.version,
         }
 
+        # SSR is used only for the initial HTML response. Inertia XHR requests
+        # continue returning the regular page JSON and never contact Node.
+        if not request.headers.get(Header.INERTIA) and self.ssr_url:
+            rendered = await self._render_ssr(page)
+            if rendered:
+                page["ssr"] = rendered
+
         if request.headers.get(Header.INERTIA):
             return JSONResponse(
                 content=page,
@@ -134,6 +157,27 @@ class InertiaResponse(Response):
                 {"page": page},
             )
         )
+
+    async def _render_ssr(self, page: dict) -> Optional[dict]:
+        """Ask the configured Inertia Node server to render this page."""
+        def request_ssr():
+            body = json.dumps({"url": page["url"], "page": page}).encode("utf-8")
+            req = urllib.request.Request(
+                self.ssr_url.rstrip("/") + "/render", data=body,
+                headers={"Content-Type": "application/json"}, method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=self.ssr_timeout) as response:
+                result = json.loads(response.read().decode("utf-8"))
+            if not isinstance(result, dict) or not isinstance(result.get("body"), str):
+                raise ValueError("Invalid Inertia SSR response")
+            return {"body": result["body"], "head": result.get("head", [])}
+
+        try:
+            return await asyncio.to_thread(request_ssr)
+        except Exception:
+            # SSR is an enhancement: if its process is unavailable, send the
+            # normal page shell so the client can still hydrate it.
+            return None
 
     def _get_url(self, request: Request) -> str:
         parsed = urlparse(str(request.url))
@@ -173,6 +217,11 @@ class Inertia:
     @staticmethod
     def version(version):
         Inertia.instance().set_version(version)
+
+    @staticmethod
+    def ssr(url: Optional[str] = "http://127.0.0.1:13714", timeout: float = 1.0):
+        """Enable SSR through the standard Inertia SSR server endpoint."""
+        Inertia.instance().set_ssr(url, timeout)
 
     @staticmethod
     def get_version() -> Optional[str]:
