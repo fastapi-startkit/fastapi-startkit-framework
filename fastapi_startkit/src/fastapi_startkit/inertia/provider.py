@@ -18,10 +18,19 @@ class InertiaProvider(Provider):
             templates = self.app.make("templates")
 
             def inertia_helper(page):
-                encoded_page = json.dumps(page)
+                client_page = {key: value for key, value in page.items() if key != "ssr"}
+                encoded_page = json.dumps(client_page).replace("<", "\\u003c")
+                ssr_body = page.get("ssr", {}).get("body", "")
                 return Markup(
-                    f'<script data-page="app" type="application/json">{encoded_page}</script><div id="app"></div>'
+                    f'<script data-page="app" type="application/json">{encoded_page}</script><div id="app">{ssr_body}</div>'
                 )
 
+            def inertia_head(page):
+                head = page.get("ssr", {}).get("head", [])
+                if isinstance(head, str):
+                    head = [head]
+                return Markup("".join(str(item) for item in head))
+
             templates.env.globals["inertia"] = inertia_helper
+            templates.env.globals["inertia_head"] = inertia_head
             templates.env.globals["Inertia"] = self.app.make("inertia")

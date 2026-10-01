@@ -17,7 +17,9 @@ interface PluginConfig {
     publicDirectory?: string,
     buildDirectory?: string,
     hotFile?: string,
+    /** Entry point passed to `vite build --ssr`. Defaults to the client input. */
     ssr?: Rolldown.InputOption,
+    /** Output directory for the SSR bundle, relative to the project root. */
     ssrOutputDirectory?: string,
     refresh?: boolean | string | string[] | RefreshConfig | RefreshConfig[],
     transformOnServe?: (code: string, url: DevServerUrl) => string,

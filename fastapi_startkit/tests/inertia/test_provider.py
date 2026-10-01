@@ -56,3 +56,50 @@ class TestBoot:
         assert json.dumps(page) in html
         assert 'data-page="app"' in html
         assert 'id="app"' in html
+
+    def test_inertia_helper_renders_ssr_body(self):
+        templates = make_templates()
+        app = MagicMock()
+        app.has.return_value = True
+        app.make.side_effect = lambda key: {"templates": templates, "inertia": "INERTIA"}[key]
+
+        InertiaProvider(app).boot()
+        helper = templates.env.globals["inertia"]
+
+        html = str(helper({"component": "Dashboard", "props": {}, "ssr": {"body": "<main>SSR</main>"}}))
+
+        assert '<div id="app"><main>SSR</main></div>' in html
+
+    def test_inertia_head_renders_ssr_head_entries(self):
+        templates = make_templates()
+        app = MagicMock()
+        app.has.return_value = True
+        app.make.side_effect = lambda key: {"templates": templates, "inertia": "INERTIA"}[key]
+
+        InertiaProvider(app).boot()
+        helper = templates.env.globals["inertia_head"]
+
+        head = helper({"ssr": {"head": ["<title>Dashboard</title>", '<meta name="description" content="Home">']}})
+
+        assert str(head) == '<title>Dashboard</title><meta name="description" content="Home">'
+        assert str(helper({"ssr": {"head": "<title>Single entry</title>"}})) == "<title>Single entry</title>"
+
+    def test_inertia_helper_omits_ssr_data_from_client_page_json(self):
+        templates = make_templates()
+        app = MagicMock()
+        app.has.return_value = True
+        app.make.side_effect = lambda key: {"templates": templates, "inertia": "INERTIA"}[key]
+
+        InertiaProvider(app).boot()
+        helper = templates.env.globals["inertia"]
+
+        page = {
+            "component": "Dashboard",
+            "props": {"count": 3, "content": "<script>"},
+            "ssr": {"head": ["<title>Dashboard</title>"], "body": "<main>SSR</main>"},
+        }
+        html = str(helper(page))
+        client_json = html.split(">", 1)[1].split("</script>", 1)[0]
+
+        assert json.loads(client_json) == {"component": "Dashboard", "props": {"count": 3, "content": "<script>"}}
+        assert "\\u003cscript>" in client_json
