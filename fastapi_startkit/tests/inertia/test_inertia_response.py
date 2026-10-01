@@ -132,3 +132,39 @@ class TestInertiaResponse(unittest.IsolatedAsyncioTestCase):
         response = InertiaResponse("Dashboard", {}, {}, ssr_url="http://127.0.0.1:13714")
         with patch("fastapi_startkit.inertia.inertia.urllib.request.urlopen", side_effect=OSError):
             self.assertIsNone(await response._render_ssr({"url": "/", "component": "Dashboard"}))
+
+    async def test_ssr_without_url_returns_none(self):
+        response = InertiaResponse("Dashboard", {}, {})
+
+        self.assertIsNone(await response._render_ssr({"url": "/", "component": "Dashboard"}))
+
+    async def test_ssr_rejects_response_without_string_body(self):
+        response = InertiaResponse("Dashboard", {}, {}, ssr_url="http://127.0.0.1:13714")
+        http_response = MagicMock()
+        http_response.__enter__.return_value.read.return_value = b'{"body": null}'
+
+        with patch("fastapi_startkit.inertia.inertia.urllib.request.urlopen", return_value=http_response):
+            self.assertIsNone(await response._render_ssr({"url": "/", "component": "Dashboard"}))
+
+    async def test_initial_response_includes_successful_ssr_render(self):
+        response = InertiaResponse("Dashboard", {}, {}, ssr_url="http://127.0.0.1:13714")
+        http_response = MagicMock()
+        http_response.__enter__.return_value.read.return_value = (
+            b'{"head":["<title>Home</title>"],"body":"<main>SSR</main>"}'
+        )
+        templates = MagicMock()
+        expected_response = MagicMock()
+        templates.TemplateResponse.return_value = expected_response
+
+        with (
+            patch("fastapi_startkit.inertia.inertia.urllib.request.urlopen", return_value=http_response),
+            patch("fastapi_startkit.application.app") as container,
+        ):
+            container.return_value.has.return_value = True
+            container.return_value.make.return_value = templates
+
+            actual_response = await response.to_response(self.mock_request)
+
+        self.assertIs(actual_response, expected_response)
+        page = templates.TemplateResponse.call_args.args[2]["page"]
+        self.assertEqual(page["ssr"], {"head": ["<title>Home</title>"], "body": "<main>SSR</main>"})

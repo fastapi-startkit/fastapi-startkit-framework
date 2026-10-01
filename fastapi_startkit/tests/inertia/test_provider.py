@@ -82,6 +82,7 @@ class TestBoot:
         head = helper({"ssr": {"head": ["<title>Dashboard</title>", '<meta name="description" content="Home">']}})
 
         assert str(head) == '<title>Dashboard</title><meta name="description" content="Home">'
+        assert str(helper({"ssr": {"head": "<title>Single entry</title>"}})) == "<title>Single entry</title>"
 
     def test_inertia_helper_omits_ssr_data_from_client_page_json(self):
         templates = make_templates()
@@ -94,10 +95,11 @@ class TestBoot:
 
         page = {
             "component": "Dashboard",
-            "props": {"count": 3},
+            "props": {"count": 3, "content": "<script>"},
             "ssr": {"head": ["<title>Dashboard</title>"], "body": "<main>SSR</main>"},
         }
         html = str(helper(page))
         client_json = html.split(">", 1)[1].split("</script>", 1)[0]
 
-        assert json.loads(client_json) == {"component": "Dashboard", "props": {"count": 3}}
+        assert json.loads(client_json) == {"component": "Dashboard", "props": {"count": 3, "content": "<script>"}}
+        assert "\\u003cscript>" in client_json

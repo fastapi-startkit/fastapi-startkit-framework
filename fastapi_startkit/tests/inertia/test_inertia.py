@@ -38,6 +38,17 @@ class TestInertia(unittest.TestCase):
         self.assertEqual(response.props, {"count": 10})
         self.assertEqual(response.shared_props, {"auth": {"user": None}})
 
+    def test_factory_ssr_configuration_is_forwarded_to_response(self):
+        factory = ResponseFactory()
+        factory.set_ssr("http://localhost:13714/", timeout=2.5)
+
+        response = factory.render("Dashboard", {})
+
+        self.assertEqual(factory.ssr_url, "http://localhost:13714")
+        self.assertEqual(factory.ssr_timeout, 2.5)
+        self.assertEqual(response.ssr_url, "http://localhost:13714")
+        self.assertEqual(response.ssr_timeout, 2.5)
+
     def test_facade_singleton(self):
         instance1 = Inertia.instance()
         instance2 = Inertia.instance()
@@ -52,3 +63,9 @@ class TestInertia(unittest.TestCase):
 
         Inertia.set_root_view("app.html")
         self.assertEqual(Inertia.instance().root_view, "app.html")
+
+    def test_facade_ssr_configures_instance(self):
+        Inertia.ssr("http://localhost:13714/", timeout=3.0)
+
+        self.assertEqual(Inertia.instance().ssr_url, "http://localhost:13714")
+        self.assertEqual(Inertia.instance().ssr_timeout, 3.0)
