@@ -225,10 +225,10 @@ class Application(Container, Generic[TConfig]):
     def add_commands(self, commands: List):
         self.commands.extend(commands)
 
-    def handle_command(self):
+    def handle_command(self) -> int:
         from fastapi_startkit.console import ConsoleApplication
 
-        ConsoleApplication(self).handle()
+        return ConsoleApplication(self).handle()
 
     def run(self, command: str, args: "str | list[str] | None" = None) -> int:
         from cleo.io.inputs.string_input import StringInput
