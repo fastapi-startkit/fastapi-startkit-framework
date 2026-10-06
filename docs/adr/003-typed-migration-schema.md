@@ -9,7 +9,7 @@ date: 2026-10-06
 
 ## How
 
-- `Migration` declares `connection: str` and `schema: Schema` at class level; the constructor is unchanged, so the `Migrator` still injects both at runtime.
+- `Migration.__init__` is typed `(connection: str, schema: Schema)`; both are now required. A `None` default would keep `self.schema` Optional, and the `Migrator` always passes both by keyword.
 - Public `Blueprint` methods annotate their parameters (`column: str`, `length: int`, `nullable: bool`, `index: str | list[str]`, ...).
 - `Column.name` is declared `str` so `unique`/`index`/`primary`/`fulltext` narrow cleanly; the loop variable in `morphs` was renamed to stop shadowing the typed `column` parameter.
 - Annotating `foreign_uuid(column: str)` exposed `foreign_id_for` passing the possibly-`None` `column` instead of the resolved `clm`; it now passes `clm`, matching the integer-key branch.

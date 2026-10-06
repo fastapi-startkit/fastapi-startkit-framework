@@ -7,10 +7,7 @@ if TYPE_CHECKING:
 
 
 class Migration:
-    connection: str
-    schema: Schema
-
-    def __init__(self, connection=None, schema=None):
+    def __init__(self, connection: str, schema: Schema):
         self.connection = connection
 
         self.schema = schema
