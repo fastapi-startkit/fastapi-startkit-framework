@@ -13,6 +13,8 @@ date: 2026-10-06
 - Public `Blueprint` methods annotate their parameters (`column: str`, `length: int`, `nullable: bool`, `index: str | list[str]`, ...).
 - `Column.name` is declared `str` so `unique`/`index`/`primary`/`fulltext` narrow cleanly; the loop variable in `morphs` was renamed to stop shadowing the typed `column` parameter.
 - Annotating `foreign_uuid(column: str)` exposed `foreign_id_for` passing the possibly-`None` `column` instead of the resolved `clm`; it now passes `clm`, matching the integer-key branch.
+- `Schema.drop(table: str)` is annotated as returning `Coroutine[Any, Any, None]` (it stays a plain method delegating to `drop_table`, so runtime is unchanged); it was `*args, **kwargs`, which left `await self.schema.drop(...)` in the `make:migration` stub unknown. `get_all_tables` returns `list[Any]`.
+- `test_blueprint.py` gains `foreign_id_for` regression tests for int/uuid primary keys with explicit and implicit column names.
 - The `database-app` example `create_users.down` now awaits `schema.drop("users")` (it was a sync, un-awaited call on the wrong table, surfaced by the new types).
 
 ## Verification

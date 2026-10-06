@@ -18,6 +18,45 @@ def alter_blueprint():
     return Blueprint(grammar=None, table=TableDiff("users"), platform=SQLitePlatform, dry=True)
 
 
+class IntKeyModel:
+    @staticmethod
+    def get_primary_key_type():
+        return "int"
+
+    @staticmethod
+    def get_foreign_key():
+        return "team_id"
+
+
+class UuidKeyModel:
+    @staticmethod
+    def get_primary_key_type():
+        return "uuid"
+
+    @staticmethod
+    def get_foreign_key():
+        return "team_id"
+
+
+class TestForeignIdFor:
+    @pytest.mark.parametrize(
+        ("model", "column", "expected_column", "expected_type"),
+        [
+            (IntKeyModel, None, "team_id", "big_integer"),
+            (IntKeyModel, "owner_id", "owner_id", "big_integer"),
+            (UuidKeyModel, None, "team_id", "uuid"),
+            (UuidKeyModel, "owner_id", "owner_id", "uuid"),
+        ],
+    )
+    def test_column_and_foreign_key_use_resolved_name(self, model, column, expected_column, expected_type):
+        blueprint = create_blueprint()
+        blueprint.foreign_id_for(model, column)
+
+        assert list(blueprint.table.added_columns) == [expected_column]
+        assert blueprint.table.added_columns[expected_column].column_type == expected_type
+        assert list(blueprint.table.added_foreign_keys) == [expected_column]
+
+
 class TestColumnModifiers:
     def test_modifiers_apply_to_last_column(self):
         blueprint = create_blueprint()
