@@ -17,8 +17,8 @@ class CreateUsers(Migration):
 
             table.timestamps()
 
-    def down(self):
+    async def down(self):
         """
         Revert the migrations.
         """
-        self.schema.drop("create_users")
+        await self.schema.drop("users")

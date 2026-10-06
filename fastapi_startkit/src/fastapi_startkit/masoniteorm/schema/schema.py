@@ -1,3 +1,6 @@
+from collections.abc import Coroutine
+from typing import Any
+
 from fastapi_startkit.masoniteorm.schema.Blueprint import Blueprint
 from fastapi_startkit.masoniteorm.schema.Table import Table
 from fastapi_startkit.masoniteorm.schema.TableDiff import TableDiff
@@ -105,8 +108,8 @@ class Schema:
         sql = self.platform().compile_drop_table(table)
         await self.get_connection().statement(sql, ())
 
-    def drop(self, *args, **kwargs):
-        return self.drop_table(*args, **kwargs)
+    def drop(self, table: str) -> Coroutine[Any, Any, None]:
+        return self.drop_table(table)
 
     async def drop_table_if_exists(self, table: str) -> None:
         if self._connection is None:
@@ -155,7 +158,7 @@ class Schema:
         sql = connection.get_default_platform()().enable_foreign_key_constraints()
         await connection.statement(sql, ())
 
-    async def get_all_tables(self):
+    async def get_all_tables(self) -> list[Any]:
         """Gets all tables in the database."""
         connection = self.get_connection()
         platform = connection.get_default_platform()()
