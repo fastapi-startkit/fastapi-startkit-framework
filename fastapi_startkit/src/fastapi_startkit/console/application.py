@@ -26,5 +26,5 @@ class ConsoleApplication(BaseApplication):
         self.app.exception_manager.report(error)
         super().render_error(error, io)
 
-    def handle(self):
-        self.run()
+    def handle(self) -> int:
+        return self.run()
