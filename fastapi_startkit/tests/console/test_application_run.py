@@ -100,3 +100,20 @@ class ApplicationRunTest(unittest.TestCase):
 
         self.assertEqual(self.app.run("dummy:do", "second --force"), 0)
         self.assertEqual(DummyCommand.received, {"name": "second", "force": True})
+
+
+class HandleCommandTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self._previous = Container._instance
+        self.app = Application(env="testing")
+
+    def tearDown(self) -> None:
+        Container.set_instance(self._previous)
+
+    def test_returns_exit_code_from_console_run(self):
+        from unittest.mock import patch
+
+        from fastapi_startkit.console import ConsoleApplication
+
+        with patch.object(ConsoleApplication, "run", return_value=7):
+            self.assertEqual(self.app.handle_command(), 7)
