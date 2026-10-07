@@ -25,6 +25,32 @@ def test_prefixes_key_positions(args, expected):
     assert prefix_command("p:", args) == expected
 
 
+@pytest.mark.parametrize(
+    ("args", "expected"),
+    [
+        (
+            ("XREAD", "COUNT", 1, "STREAMS", "a", "b", "0", "0"),
+            ("XREAD", "COUNT", 1, "STREAMS", "p:a", "p:b", "0", "0"),
+        ),
+        (
+            ("XREADGROUP", "GROUP", "g", "c", b"STREAMS", "a", ">"),
+            ("XREADGROUP", "GROUP", "g", "c", b"STREAMS", "p:a", ">"),
+        ),
+        (("XREAD", "COUNT", 1), ("XREAD", "COUNT", 1)),
+        (("XGROUP CREATE", "s", "g", "0"), ("XGROUP CREATE", "p:s", "g", "0")),
+        (("XGROUP", "CREATE", "s", "g", "0"), ("XGROUP", "CREATE", "p:s", "g", "0")),
+        (("XGROUP", "HELP"), ("XGROUP", "HELP")),
+        (("XINFO STREAM", "s"), ("XINFO STREAM", "p:s")),
+        (("MEMORY USAGE", "k"), ("MEMORY USAGE", "p:k")),
+        (("HTTL", "h", "FIELDS", 1, "f"), ("HTTL", "p:h", "FIELDS", 1, "f")),
+        (("SUBSTR", "k", 0, 1), ("SUBSTR", "p:k", 0, 1)),
+        ((b"GET", "a"), (b"GET", "p:a")),
+    ],
+)
+def test_prefixes_streams_and_subcommands(args, expected):
+    assert prefix_command("p:", args) == expected
+
+
 def test_prefixes_bytes_and_non_string_keys():
     assert prefix_command("p:", ("GET", b"a")) == ("GET", b"p:a")
     assert prefix_command("p:", ("GET", 7)) == ("GET", "p:7")

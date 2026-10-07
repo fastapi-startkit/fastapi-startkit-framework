@@ -1,4 +1,7 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 from fastapi_startkit.support import Provider
 
@@ -18,6 +21,19 @@ class RedisProvider(Provider):
         self.publishes({Path(__file__).resolve().parent / "config.py": "config/redis.py"})
 
         try:
-            self.app.add_event_handler("shutdown", self.app.make("redis").disconnect)
+            router = self.app.fastapi.router
         except RuntimeError:
             return
+
+        manager: RedisManager = self.app.make("redis")
+        lifespan = router.lifespan_context
+
+        @asynccontextmanager
+        async def disconnecting_lifespan(app: Any) -> AsyncIterator[Any]:
+            try:
+                async with lifespan(app) as state:
+                    yield state
+            finally:
+                await manager.disconnect()
+
+        router.lifespan_context = disconnecting_lifespan

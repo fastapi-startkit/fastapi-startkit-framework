@@ -131,6 +131,29 @@ def test_connect_prefers_url_over_parameters():
     assert (kwargs["host"], kwargs["port"], kwargs["db"]) == ("cache.internal", 6381, 5)
 
 
+def test_unix_socket_url_drops_tcp_parameters():
+    config = make_config(client="redis", prefix="")
+    config["connections"]["default"].update(
+        {"url": "unix:///tmp/redis.sock", "username": "user", "password": "secret", "database": 2}
+    )
+
+    kwargs = RedisManager(config).connection().client.connection_pool.connection_kwargs
+
+    assert kwargs["path"] == "/tmp/redis.sock"
+    assert kwargs["db"] == 2
+    assert "host" not in kwargs and "port" not in kwargs
+    assert kwargs.get("username") is None and kwargs.get("password") is None
+
+
+def test_url_credentials_are_authoritative():
+    config = make_config(client="redis", prefix="")
+    config["connections"]["default"].update({"url": "redis://:fromurl@cache.internal:6381", "password": "ignored"})
+
+    kwargs = RedisManager(config).connection().client.connection_pool.connection_kwargs
+
+    assert (kwargs["host"], kwargs["port"], kwargs["password"]) == ("cache.internal", 6381, "fromurl")
+
+
 def test_missing_redis_package_raises_helpful_error(monkeypatch):
     monkeypatch.setitem(sys.modules, "redis.asyncio", None)
 

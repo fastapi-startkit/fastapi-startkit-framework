@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 import fakeredis
 
 from fastapi_startkit.application import Application
@@ -58,12 +60,39 @@ async def test_shutdown_disconnects_connections(tmp_path):
     assert manager.connections() == {}
 
 
+async def test_shutdown_disconnects_with_custom_lifespan(tmp_path):
+    events = []
+
+    @asynccontextmanager
+    async def lifespan(app):
+        events.append("startup")
+        yield {"ready": True}
+        events.append("shutdown")
+
+    app = Application(base_path=tmp_path, env="testing", providers=[])
+    app.fastapi.router.lifespan_context = lifespan
+    provider = RedisProvider(app, config=make_config())
+    provider.register()
+    provider.boot()
+    manager = app.make("redis")
+    manager.extend("fake", lambda parameters: fakeredis.FakeAsyncRedis(**parameters))
+    manager.connection()
+
+    async with app.fastapi.router.lifespan_context(app.fastapi) as state:
+        assert state == {"ready": True}
+
+    assert events == ["startup", "shutdown"]
+    assert manager.connections() == {}
+
+
 def test_boot_skips_shutdown_hook_without_fastapi(tmp_path, monkeypatch):
     app = make_app(tmp_path)
     provider = RedisProvider(app)
 
-    def missing_fastapi(*args, **kwargs):
+    def missing_fastapi(self):
         raise RuntimeError("FastAPI is not installed")
 
-    monkeypatch.setattr(app, "add_event_handler", missing_fastapi)
+    monkeypatch.setattr(Application, "fastapi", property(missing_fastapi))
     provider.boot()
+
+    assert "config/redis.py" in app.published_resources["redis"].values()
