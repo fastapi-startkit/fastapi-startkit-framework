@@ -61,6 +61,6 @@ class RedisManager:
         if "database" in config:
             config["db"] = config.pop("database")
         if config.get("url"):
-            for key in ("host", "port", "username", "password"):
+            for key in ("host", "port"):
                 config.pop(key, None)
         return {"decode_responses": True, **{key: value for key, value in config.items() if value is not None}}

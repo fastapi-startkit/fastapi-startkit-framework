@@ -44,12 +44,20 @@ def destination_then_numkeys(params: Sequence[Any]) -> list[int]:
     return [0, *numkeys_second(params)]
 
 
+STREAM_OPTION_ARITY = {"group": 2, "count": 1, "block": 1, "claim": 1, "noack": 0}
+
+
 def streams(params: Sequence[Any]) -> range:
-    markers = [index for index, param in enumerate(params) if command_name(param) == "streams"]
-    if not markers:
-        return range(0)
-    start = markers[-1] + 1
-    return range(start, start + (len(params) - start) // 2)
+    index = 0
+    while index < len(params):
+        option = command_name(params[index])
+        if option == "streams":
+            start = index + 1
+            return range(start, start + (len(params) - start) // 2)
+        if option not in STREAM_OPTION_ARITY:
+            break
+        index += 1 + STREAM_OPTION_ARITY[option]
+    return range(0)
 
 
 SUBCOMMANDS = [

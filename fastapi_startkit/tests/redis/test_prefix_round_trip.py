@@ -20,6 +20,25 @@ async def test_xread_with_count_and_multiple_streams(manager):
     assert [stream for stream, _ in result] == ["app_one", "app_two"]
 
 
+async def test_xread_stream_named_streams(manager, raw):
+    await manager.xadd("a", {"a": "1"})
+    await manager.xadd("streams", {"s": "1"})
+
+    result = await manager.xread({"a": "0", "streams": "0"}, count=5, block=10)
+
+    assert [stream for stream, _ in result] == ["app_a", "app_streams"]
+    assert sorted(await raw.keys("*")) == ["app_a", "app_streams"]
+
+
+async def test_xreadgroup_with_options_and_stream_named_streams(manager):
+    entry = await manager.xadd("streams", {"job": "send"})
+    await manager.xgroup_create("streams", "workers", id="0")
+
+    result = await manager.xreadgroup("workers", "worker-1", {"streams": ">"}, count=5, block=10, noack=True)
+
+    assert result == [["app_streams", [(entry, {"job": "send"})]]]
+
+
 async def test_xgroup_create_and_xreadgroup(manager):
     entry = await manager.xadd("jobs", {"job": "send"})
 

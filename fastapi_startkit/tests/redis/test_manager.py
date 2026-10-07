@@ -142,10 +142,19 @@ def test_unix_socket_url_drops_tcp_parameters():
     assert kwargs["path"] == "/tmp/redis.sock"
     assert kwargs["db"] == 2
     assert "host" not in kwargs and "port" not in kwargs
-    assert kwargs.get("username") is None and kwargs.get("password") is None
+    assert (kwargs["username"], kwargs["password"]) == ("user", "secret")
 
 
-def test_url_credentials_are_authoritative():
+def test_configured_password_applies_when_url_has_none():
+    config = make_config(client="redis", prefix="")
+    config["connections"]["default"].update({"url": "redis://redis:6379", "password": "secret"})
+
+    kwargs = RedisManager(config).connection().client.connection_pool.connection_kwargs
+
+    assert (kwargs["host"], kwargs["port"], kwargs["password"]) == ("redis", 6379, "secret")
+
+
+def test_url_credentials_override_configured_ones():
     config = make_config(client="redis", prefix="")
     config["connections"]["default"].update({"url": "redis://:fromurl@cache.internal:6381", "password": "ignored"})
 
