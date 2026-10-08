@@ -3,6 +3,8 @@ title: Architectural Decision Records
 description: This file contains the index of ADR along with the date with the implementation detail in abstract. So that agent can only read these index without need of reading the whole file.
 ---
 
+Read this index first, then open the records relevant to the change. Before implementation, add or update an ADR explaining the problem, alternatives, decision, implementation, and validation. Keep this index current.
+
 | Index | Date | Title | Abstract (Explain how and why) |
 |-------|------|-------|--------------------------------|
 | [001](001-explicit-config-exports.md) | 2026-10-06 | Explicit re-export of AppConfig | `py.typed` makes implicit re-exports private, triggering basedpyright `reportPrivateImportUsage`; `config/__init__.py` now declares `__all__ = ["AppConfig"]`. |
@@ -10,3 +12,4 @@ description: This file contains the index of ADR along with the date with the im
 | [003](003-typed-migration-schema.md) | 2026-10-06 | Typed Migration.schema and Blueprint params | `Migration.schema` was inferred as `None`, so `self.schema.create(...)` and chained `table.*` calls were unknown under basedpyright; `Migration.__init__` takes required `connection: str, schema: Schema`, public `Blueprint` params and `Column.name` are annotated, and `foreign_id_for` now passes the resolved column to `foreign_uuid`. |
 | [004](004-auth-docs-auto-toc.md) | 2026-10-07 | Generated outline and Digging Deeper placement for Authentication docs | The Authentication docs page had a hand-written Contents list that duplicates headings; it is removed so VitePress's generated outline (`outline: deep`, already in frontmatter) provides the TOC, and the sidebar entry moves from Guide to Digging Deeper (the page has no Digging Deeper section of its own). |
 | [005](005-laravel-style-redis.md) | 2026-10-07 | Laravel-style Redis component | New `fastapi_startkit.redis` (optional extra `redis`, lazy `redis.asyncio` import) mirrors Laravel: `RedisConfig` with `client`/`options.prefix`/named `default`+`cache` connections from `REDIS_*` env, `RedisManager` caching named `Connection`s with `extend`, `RedisProvider` binding `redis` and disconnecting via a wrapped router lifespan, `Redis` facade proxying commands plus `connection`/`command`/`pipeline`/`transaction`/`subscribe`/`psubscribe`; key prefix applied by wrapping `execute_command` with a per-command key-position table (incl. STREAMS and multi-word subcommands; option-embedded keys and returned keys are not rewritten). |
+| [006](006-masonite-orm-aftercommit.md) | 2026-10-01 | ORM after-commit callbacks | Queue sync and async callbacks on the active database transaction, defer nested callbacks until the outer commit, and discard callbacks on rollback. |
