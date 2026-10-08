@@ -15,3 +15,4 @@ from .Dump import Dump
 from .Queue import Queue
 from .Cache import Cache
 from .RateLimiter import RateLimiter
+from .Redis import Redis
