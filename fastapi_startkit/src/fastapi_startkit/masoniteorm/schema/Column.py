@@ -15,7 +15,7 @@ class Column:
     ):
         self.column_type = column_type
         self.column_python_type = column_python_type
-        self.name = name
+        self.name: str = name
         self.length = length
         self.values = values or []
         self.is_null = nullable

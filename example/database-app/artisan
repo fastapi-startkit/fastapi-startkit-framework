@@ -5,5 +5,4 @@ print("Artisan starting...")
 from bootstrap.application import app
 
 if __name__ == "__main__":
-    status = app.handle_command()
-    sys.exit(status if isinstance(status, int) else 0)
+    sys.exit(app.handle_command())

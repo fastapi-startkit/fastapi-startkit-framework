@@ -1,4 +1,4 @@
-# 001: ORM after-commit callbacks
+# 006: ORM after-commit callbacks
 
 Date: 2026-10-01
 Status: Accepted
