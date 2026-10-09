@@ -1,4 +1,4 @@
-# 007: Inertia prop resolution pipeline
+# 008: Inertia prop resolution pipeline
 
 Date: 2026-10-09
 Status: Accepted
