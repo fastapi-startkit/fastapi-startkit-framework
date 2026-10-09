@@ -408,12 +408,12 @@ def test_scroll_metadata_pages_bounds():
     assert ScrollMetadata.pages("page", 3, 3).next_page is None
 
 
-def test_props_leading_to_a_requested_path_do_not_announce_metadata(container):
+def test_props_leading_to_a_requested_path_announce_merge_on_the_requested_child(container):
     client = client_for(lambda: {"auth": Inertia.merge({"user": "taylor", "teams": []}).once()})
 
     page = partial(client, only="auth.user")
     assert page["props"] == {"auth": {"user": "taylor"}}
-    assert "mergeProps" not in page
+    assert page["mergeProps"] == ["auth.user"]
     assert "onceProps" not in page
 
 
@@ -424,3 +424,96 @@ def test_scroll_props_without_metadata_skip_scroll_props(container):
     assert page["props"]["items"] == [1, 2]
     assert "scrollProps" not in page
     assert page["mergeProps"] == ["items.data"]
+
+
+def test_dot_keys_merge_into_shared_parents_without_resolving_them_eagerly(container):
+    calls = Calls()
+
+    def share_and_render():
+        Inertia.share(
+            {
+                "auth": Prop(calls.returning("auth", {"user": "taylor"})),
+                "settings": calls.returning("settings", {"theme": "dark"}),
+                "team": {"name": "core"},
+                "stats": Inertia.defer(lambda: {"visits": 1}),
+            }
+        )
+        return {"auth.extra": 1, "settings.locale": "en", "team.size": 3, "stats.users": 2}
+
+    client = client_for(share_and_render)
+    page = visit(client)
+    assert page["props"] == {
+        "auth": {"user": "taylor", "extra": 1},
+        "settings": {"theme": "dark", "locale": "en"},
+        "team": {"name": "core", "size": 3},
+    }
+    assert page["deferredProps"] == {"default": ["stats"]}
+
+    calls.names.clear()
+    assert partial(client, only="stats")["props"] == {"stats": {"visits": 1, "users": 2}}
+    assert calls.names == []
+
+
+def test_dot_keys_under_a_non_mapping_parent_raise(container):
+    def share_and_render():
+        Inertia.share({"app": "Startkit"})
+        return {"app.name": "Other"}
+
+    with pytest.raises(TypeError, match="'app' is not a mapping"):
+        visit(client_for(share_and_render))
+
+
+def test_callables_returning_props_are_resolved_recursively(container):
+    client = client_for(
+        lambda: {
+            "user": lambda: Prop(lambda: {"name": Prop("taylor"), "team": lambda: {"id": 1}}),
+            "count": lambda: Prop(3),
+        }
+    )
+
+    assert visit(client)["props"] == {"user": {"name": "taylor", "team": {"id": 1}}, "count": 3}
+
+
+def test_wrapper_before_scroll_is_honoured(container):
+    client = client_for(
+        lambda: {"feed": Prop(lambda: {"items": [1]}).wrapper("items").scroll(ScrollMetadata.pages("feed", 1, 1))}
+    )
+
+    assert visit(client)["mergeProps"] == ["feed.items"]
+
+
+def test_partial_reload_of_a_merge_prop_child_emits_the_child_path(container):
+    client = client_for(
+        lambda: {
+            "posts": Inertia.merge(lambda: {"data": [1], "meta": {"page": 1}}),
+            "comments": Prop(lambda: {"data": [1], "meta": {}}).append_at("data"),
+            "users": Inertia.scroll([1], ScrollMetadata.pages("users", 1, 1)),
+        }
+    )
+
+    assert partial(client, only="posts.data")["mergeProps"] == ["posts.data"]
+    assert partial(client, only="comments")["mergeProps"] == ["comments.data"]
+    assert partial(client, only="comments.data")["mergeProps"] == ["comments.data"]
+    assert "mergeProps" not in partial(client, only="comments.meta")
+    assert partial(client, only="users.data")["mergeProps"] == ["users.data"]
+
+
+def test_except_only_partial_reload_skips_already_loaded_once_props(container):
+    calls = Calls()
+    client = client_for(
+        lambda: {
+            "plans": Prop(calls.returning("plans", [1])).once(),
+            "fresh": Prop(calls.returning("fresh", [2])).once().fresh(),
+            "other": 1,
+        }
+    )
+    loaded = {Header.INERTIA_EXCEPT_ONCE_PROPS: "plans,fresh"}
+
+    page = partial(client, except_="other", **loaded)
+    assert page["props"] == {"fresh": [2]}
+    assert calls.names == ["fresh"]
+    assert page["onceProps"]["plans"]["prop"] == "plans"
+
+    calls.names.clear()
+    assert partial(client, only="plans", **loaded)["props"] == {"plans": [1]}
+    assert calls.names == ["plans"]

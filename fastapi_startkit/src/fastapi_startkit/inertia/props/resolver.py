@@ -1,6 +1,8 @@
+import copy
 import inspect
 import logging
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from typing import Any, Optional
 
@@ -44,7 +46,15 @@ class Metadata:
 class Resolved:
     value: Any
     nested: bool = False
+    computed: bool = False
     scroll: Optional[ScrollMetadata] = None
+
+
+async def invoke(callback: Any, request: Request) -> Any:
+    value = callback(request) if inspect.signature(callback).parameters else callback()
+    if inspect.isawaitable(value):
+        value = await value
+    return value
 
 
 def header_list(request: Request, name: str) -> Optional[list[str]]:
@@ -58,18 +68,36 @@ def is_within(path: str, ancestor: str) -> bool:
 
 
 def unpack_dot_keys(props: dict) -> dict:
-    unpacked = dict(props)
+    unpacked = {key: value for key, value in props.items() if "." not in key}
     for key in [key for key in props if "." in key]:
-        value = unpacked.pop(key)
-        *parents, last = key.split(".")
-        target = unpacked
-        for segment in parents:
-            child = target.get(segment)
-            child = dict(child) if isinstance(child, dict) else {}
-            target[segment] = child
-            target = child
-        target[last] = value
+        unpacked = set_path(unpacked, key.split("."), props[key], "")
     return unpacked
+
+
+def set_path(container: Mapping, segments: list[str], value: Any, prefix: str) -> dict:
+    first, *rest = segments
+    path = f"{prefix}.{first}" if prefix else first
+    updated = dict(container)
+    updated[first] = merge_into(updated.get(first), rest, value, path) if rest else value
+    return updated
+
+
+def merge_into(parent: Any, segments: list[str], value: Any, path: str) -> Any:
+    if parent is None:
+        return set_path({}, segments, value, path)
+    if isinstance(parent, Mapping):
+        return set_path(parent, segments, value, path)
+    if isinstance(parent, Prop):
+        combined = copy.copy(parent)
+        combined.value = merge_into(parent.value, segments, value, path)
+        return combined
+    if callable(parent):
+
+        async def resolve_then_merge(request: Request) -> Any:
+            return merge_into(await invoke(parent, request), segments, value, path)
+
+        return resolve_then_merge
+    raise TypeError(f"Cannot set Inertia prop '{path}.{'.'.join(segments)}': '{path}' is not a mapping")
 
 
 class PropsResolver:
@@ -95,7 +123,7 @@ class PropsResolver:
         resolved = await self._resolve_level(unpack_dot_keys({**shared, **props}), "", False)
         return resolved, self.metadata.to_dict()
 
-    async def _resolve_level(self, props: dict, prefix: str, parent_was_resolved: bool) -> dict:
+    async def _resolve_level(self, props: Mapping, prefix: str, parent_was_resolved: bool) -> dict:
         resolved = {}
         for key, value in props.items():
             prop = value if isinstance(value, Prop) else Prop(value)
@@ -104,7 +132,7 @@ class PropsResolver:
             if not self._is_included_in_partial_reload(prop, path, parent_was_resolved):
                 continue
 
-            if not self.is_partial and self._is_excluded_from_full_visit(prop, path):
+            if self._is_excluded(prop, path):
                 self._collect_excluded_metadata(prop, path)
                 continue
 
@@ -120,25 +148,35 @@ class PropsResolver:
             self._collect_metadata(prop, path, result.scroll)
 
             if result.nested:
-                resolved[key] = await self._resolve_level(result.value, path, parent_was_resolved or prop.is_always)
+                resolved[key] = await self._resolve_level(
+                    result.value, path, parent_was_resolved or prop.is_always or result.computed
+                )
             else:
                 resolved[key] = result.value
         return resolved
 
     async def _compute(self, prop: Prop) -> Resolved:
         value = prop.value
-        if isinstance(value, dict):
+        if isinstance(value, Mapping):
             return Resolved(value, nested=True)
 
-        if callable(value):
-            value = value(self.request) if inspect.signature(value).parameters else value()
-            if inspect.isawaitable(value):
-                value = await value
+        computed = callable(value)
+        if computed:
+            value = await self._call(value)
 
-        if prop.scroll_options is None:
-            return Resolved(value)
-        scroll = prop.scroll_options.metadata or scroll_metadata_of(value)
-        return Resolved(serialize_page(value), scroll=scroll)
+        scroll = None
+        if prop.scroll_options is not None:
+            scroll = prop.scroll_options.metadata or scroll_metadata_of(value)
+            value = serialize_page(value)
+            computed = True
+
+        return Resolved(value, nested=computed and isinstance(value, Mapping), computed=computed, scroll=scroll)
+
+    async def _call(self, callback: Any) -> Any:
+        value = await invoke(callback, self.request)
+        while isinstance(value, Prop):
+            value = await invoke(value.value, self.request) if callable(value.value) else value.value
+        return value
 
     def _is_included_in_partial_reload(self, prop: Prop, path: str, parent_was_resolved: bool) -> bool:
         return not self.is_partial or prop.is_always or parent_was_resolved or self._matches_partial_reload(path)
@@ -149,14 +187,19 @@ class PropsResolver:
         return not self._is_excepted(path)
 
     def _contributes_partial_metadata(self, path: str) -> bool:
-        if self.only is not None and not any(is_within(path, only) for only in self.only):
+        if self.only is not None and not self._is_requested(path):
             return False
         return not self._is_excepted(path)
+
+    def _is_requested(self, path: str) -> bool:
+        return self.only is not None and any(is_within(path, only) for only in self.only)
 
     def _is_excepted(self, path: str) -> bool:
         return self.except_ is not None and any(is_within(path, excepted) for excepted in self.except_)
 
-    def _is_excluded_from_full_visit(self, prop: Prop, path: str) -> bool:
+    def _is_excluded(self, prop: Prop, path: str) -> bool:
+        if self.is_partial:
+            return self._was_already_loaded(prop, path) and not self._is_requested(path)
         return prop.loading != Loading.EAGER or (self.is_inertia and self._was_already_loaded(prop, path))
 
     def _was_already_loaded(self, prop: Prop, path: str) -> bool:
@@ -186,24 +229,39 @@ class PropsResolver:
     def _effective_merge(self, prop: Prop, merge: MergeOptions) -> MergeOptions:
         if prop.scroll_options is None:
             return merge
-        wrapper = prop.scroll_options.wrapper
         if self.prepends_scroll:
-            return replace(merge, prepends_at=[*merge.prepends_at, wrapper])
-        return replace(merge, appends_at=[*merge.appends_at, wrapper])
+            return replace(merge, prepends_at=[*merge.prepends_at, prop.wrapper_key])
+        return replace(merge, appends_at=[*merge.appends_at, prop.wrapper_key])
 
     def _collect_merge_metadata(self, merge: MergeOptions, path: str) -> None:
-        if path in self.reset or (self.is_partial and not self._contributes_partial_metadata(path)):
+        if path in self.reset:
             return
 
         if merge.deep:
-            self.metadata.deep_merge_props.append(path)
+            targets = [(self.metadata.deep_merge_props, path)]
         elif merge.merges_at_root():
-            (self.metadata.merge_props if merge.append else self.metadata.prepend_props).append(path)
+            targets = [(self.metadata.merge_props if merge.append else self.metadata.prepend_props, path)]
         else:
-            self.metadata.merge_props.extend(f"{path}.{at}" for at in merge.appends_at)
-            self.metadata.prepend_props.extend(f"{path}.{at}" for at in merge.prepends_at)
+            targets = [(self.metadata.merge_props, f"{path}.{at}") for at in merge.appends_at]
+            targets += [(self.metadata.prepend_props, f"{path}.{at}") for at in merge.prepends_at]
 
-        self.metadata.match_props_on.extend(f"{path}.{key}" for key in merge.match_on)
+        emitted = False
+        for paths, target in targets:
+            merged_paths = self._merge_paths_in_response(target)
+            paths.extend(merged_paths)
+            emitted = emitted or bool(merged_paths)
+
+        if emitted:
+            self.metadata.match_props_on.extend(f"{path}.{key}" for key in merge.match_on)
+
+    def _merge_paths_in_response(self, target: str) -> list[str]:
+        if not self.is_partial:
+            return [target]
+        if self._is_excepted(target):
+            return []
+        if self.only is None or self._is_requested(target):
+            return [target]
+        return [only for only in self.only if is_within(only, target) and not self._is_excepted(only)]
 
     def _collect_once_metadata(self, once: OnceOptions, path: str) -> None:
         if self.is_partial and not self._contributes_partial_metadata(path):

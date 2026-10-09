@@ -27,17 +27,17 @@ The resolver handles each level of the props tree in order:
 
 1. Build each prop's dot path (`auth.user`).
 2. Partial filter. On a partial reload of the same component, a prop survives only if (a) it is `always`, (b) its parent was always or computed, or (c) it matches the request. A prop matches when it leads to or sits within an `X-Inertia-Partial-Data` path, and is not within an `X-Inertia-Partial-Except` path. Except wins over only.
-3. First-visit exclusion. Outside partial reloads, optional and deferred props are skipped without running their callbacks. On Inertia visits, once props already listed in `X-Inertia-Except-Once-Props` are skipped too, unless `fresh()`. Skipped props still announce `deferredProps`, `mergeProps` (when non-eager) and `onceProps`.
-4. Resolve. A dict recurses as nested props. A callable is called and awaited, and its output is final: it is not filtered or recursed into. An exception fails the response, unless the prop is `rescue()`d; then the prop is dropped, logged, and listed in `rescuedProps`.
+3. Exclusion. Outside partial reloads, optional and deferred props are skipped without running their callbacks. On Inertia visits, once props already listed in `X-Inertia-Except-Once-Props` are skipped too, unless `fresh()`. On partial reloads, already-loaded once props are skipped unless they sit within an `X-Inertia-Partial-Data` path, so an except-only reload does not re-run them. Skipped props still announce `deferredProps`, `mergeProps` (when non-eager) and `onceProps`.
+4. Resolve. A dict recurses as nested props. A callable is called and awaited. If it returns a `Prop`, that prop's value is unwrapped (and called) until a plain value remains; the outer prop's options govern. A returned dict recurses as computed props: its children are resolved but not partially filtered. An exception fails the response, unless the prop is `rescue()`d; then the prop is dropped, logged, and listed in `rescuedProps`.
 5. Collect metadata for included props:
-   - Merge, prepend and deep-merge paths. These are skipped for keys in `X-Inertia-Reset`, and on partial reloads for props outside the requested paths.
+   - Merge, prepend and deep-merge paths. These are skipped for keys in `X-Inertia-Reset`. On partial reloads a merge target is emitted when it sits within a requested path; otherwise the requested paths inside the target are emitted (`only=posts.data` on merge prop `posts` emits `posts.data`). Excepted paths are never emitted.
    - `matchPropsOn` as `path.key`.
    - `scrollProps`, with `reset` taken from `X-Inertia-Reset`.
    - `onceProps` as `{key: {prop, expiresAt}}`, where `expiresAt` is in epoch milliseconds (second precision) or `null`.
 
-Scroll props are merge props. On included scroll props the wrapper key (default `data`) is appended, or prepended when `X-Inertia-Infinite-Scroll-Merge-Intent: prepend`. The wrapper is applied per request, so a shared `Prop` is never mutated.
+Scroll props are merge props. On included scroll props the wrapper key (default `data`) is appended, or prepended when `X-Inertia-Infinite-Scroll-Merge-Intent: prepend`. The wrapper is applied per request, so a shared `Prop` is never mutated. `wrapper()` and `scroll()` can be chained in either order.
 
-Top-level dotted keys (`"auth.user": ...`) are unpacked into nested dicts before resolution. Containers are copied, so shared props are never mutated.
+Top-level dotted keys (`"auth.user": ...`) are unpacked into nested dicts before resolution, merging into an existing parent as Laravel does. A dict parent is copied and extended. A `Prop` parent is copied with its options kept, and a callable parent is wrapped so it still resolves lazily and the dotted value is merged into its result. A parent that is not a mapping raises `TypeError` naming the path. Containers and props are copied, so shared props are never mutated.
 
 `sharedProps` lists the top-level shared keys. It is on by default, as in omega and the Laravel adapter, and can be disabled with `Inertia.expose_shared_prop_keys(False)`. Empty metadata keys are omitted from the page.
 

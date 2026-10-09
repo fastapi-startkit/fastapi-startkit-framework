@@ -33,7 +33,6 @@ class OnceOptions:
 
 @dataclass
 class ScrollOptions:
-    wrapper: str = "data"
     metadata: Optional[ScrollMetadata] = None
 
 
@@ -47,6 +46,7 @@ class Prop:
         self.merge_options: Optional[MergeOptions] = None
         self.once_options: Optional[OnceOptions] = None
         self.scroll_options: Optional[ScrollOptions] = None
+        self.wrapper_key = "data"
 
     def optional(self) -> Self:
         self.loading = Loading.OPTIONAL
@@ -113,8 +113,7 @@ class Prop:
         return self
 
     def wrapper(self, key: str) -> Self:
-        if self.scroll_options is not None:
-            self.scroll_options.wrapper = key
+        self.wrapper_key = key
         return self
 
     def scroll(self, metadata: Optional[ScrollMetadata] = None) -> Self:
