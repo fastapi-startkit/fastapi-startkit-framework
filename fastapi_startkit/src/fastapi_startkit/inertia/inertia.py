@@ -11,7 +11,8 @@ from starlette.responses import RedirectResponse, Response
 
 from fastapi_startkit.inertia import session
 from fastapi_startkit.inertia.errors import ErrorsInput
-from fastapi_startkit.inertia.redirect import InertiaRedirect, same_origin_referer
+from fastapi_startkit.fastapi.referer import same_origin_referer
+from fastapi_startkit.inertia.redirect import InertiaRedirect
 
 from fastapi_startkit.inertia.props.props import OptionalProp
 from fastapi_startkit.inertia.constant import Header

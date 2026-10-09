@@ -5,7 +5,7 @@ from fastapi_startkit.inertia import session
 from fastapi_startkit.inertia.constant import Header
 from fastapi_startkit.inertia.inertia import Inertia
 from fastapi_startkit.inertia.context import InertiaRequestState, current_request, current_state
-from fastapi_startkit.inertia.redirect import same_origin_referer
+from fastapi_startkit.fastapi.referer import same_origin_referer
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
@@ -30,7 +30,7 @@ class InertiaMiddleware(BaseHTTPMiddleware):
     def share(cls, request: Request) -> dict:
         """Define props that are shared on every response."""
         return {
-            "errors": cls.resolve_validation_errors(request),
+            "errors": lambda: cls.resolve_validation_errors(request),
         }
 
     @classmethod

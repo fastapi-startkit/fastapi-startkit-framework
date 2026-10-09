@@ -10,9 +10,10 @@ from fastapi.testclient import TestClient
 from pydantic import BaseModel, ValidationError
 from starlette.responses import Response
 
-from fastapi_startkit.inertia import ArraySessionMiddleware, Inertia, InertiaMiddleware, ValidationErrors
+from fastapi_startkit.inertia import Inertia, InertiaMiddleware, ValidationErrors
 from fastapi_startkit.inertia.constant import Header
 from fastapi_startkit.inertia.redirect import InertiaRedirect
+from fastapi_startkit.inertia.testing import FakeSessionMiddleware
 
 INERTIA = {Header.INERTIA: "true"}
 
@@ -38,7 +39,7 @@ def make_app(session: dict | None = None, middleware: type[InertiaMiddleware] = 
     app = FastAPI()
     app.add_middleware(middleware)
     if session is not None:
-        app.add_middleware(ArraySessionMiddleware, session=session)
+        app.add_middleware(FakeSessionMiddleware, session=session)
 
     @app.get("/page")
     async def page():
@@ -163,6 +164,37 @@ def test_flash_survives_converted_redirects():
     assert after_empty["flash"] == {"saved": True}
     assert fragment.status_code == 409
     assert after_fragment["flash"] == {"anchored": True}
+
+
+def test_errors_survive_a_redirect_hop():
+    app = make_app({})
+
+    @app.post("/invalid")
+    async def invalid():
+        return Inertia.back_with_errors({"email": "Required"})
+
+    @app.get("/hop")
+    async def hop():
+        return Inertia.redirect("/page")
+
+    client = TestClient(app)
+    client.post("/invalid", headers={**INERTIA, "referer": "/hop"}, follow_redirects=False)
+    hop = client.get("/hop", headers=INERTIA, follow_redirects=False)
+    page = client.get("/page", headers=INERTIA).json()
+
+    assert hop.status_code == 302
+    assert page["props"]["errors"] == {"email": "Required"}
+
+
+def test_errors_set_during_the_request_render_on_that_page():
+    app = make_app({})
+
+    @app.get("/form")
+    async def form():
+        Inertia.with_errors({"email": "Required"})
+        return Inertia.render("Form")
+
+    assert TestClient(app).get("/form", headers=INERTIA).json()["props"]["errors"] == {"email": "Required"}
 
 
 def test_redirect_uses_given_status():
@@ -381,7 +413,7 @@ def test_clear_history_and_preserve_fragment_apply_to_next_page_only():
     assert third["flash"] == {"bye": True}
 
 
-def test_array_session_is_shared_between_requests():
+def test_fake_session_is_shared_between_requests():
     session: dict = {}
     app = make_app(session)
 
@@ -393,4 +425,4 @@ def test_array_session_is_shared_between_requests():
     TestClient(app).post("/remember")
 
     assert session["user"] == 1
-    assert ArraySessionMiddleware(app).session == {}
+    assert FakeSessionMiddleware(app).session == {}

@@ -1,9 +1,8 @@
 import logging
 from collections.abc import MutableMapping
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Union
 
 from starlette.requests import Request
-from starlette.types import ASGIApp, Receive, Scope, Send
 
 from fastapi_startkit.inertia.context import current_request, current_state
 from fastapi_startkit.inertia.errors import ErrorsInput, ValidationErrors
@@ -16,17 +15,6 @@ PRESERVE_FRAGMENT = "_inertia_preserve_fragment"
 DEFAULT_BAG = "default"
 
 logger = logging.getLogger("fastapi_startkit.inertia")
-
-
-class ArraySessionMiddleware:
-    def __init__(self, app: ASGIApp, session: Optional[dict] = None):
-        self.app = app
-        self.session = session if session is not None else {}
-
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] in ("http", "websocket"):
-            scope["session"] = self.session
-        await self.app(scope, receive, send)
 
 
 def has_session(request: Request) -> bool:
