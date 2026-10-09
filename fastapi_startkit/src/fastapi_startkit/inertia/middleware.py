@@ -1,9 +1,11 @@
 from typing import Optional
 
 from fastapi import status
+from fastapi_startkit.inertia import session
 from fastapi_startkit.inertia.constant import Header
 from fastapi_startkit.inertia.inertia import Inertia
 from fastapi_startkit.inertia.context import InertiaRequestState, current_request, current_state
+from fastapi_startkit.inertia.redirect import same_origin_referer
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
@@ -13,6 +15,7 @@ REDIRECT_STATUSES = (301, 302, 303, 307, 308)
 
 class InertiaMiddleware(BaseHTTPMiddleware):
     _root_view: Optional[str] = None
+    with_all_errors: bool = False
 
     @staticmethod
     def version(request: Request) -> Optional[str]:
@@ -23,11 +26,11 @@ class InertiaMiddleware(BaseHTTPMiddleware):
             return container().make("vite").manifest_hash()
         return None
 
-    @staticmethod
-    def share(request: Request) -> dict:
+    @classmethod
+    def share(cls, request: Request) -> dict:
         """Define props that are shared on every response."""
         return {
-            "errors": InertiaMiddleware.resolve_validation_errors(request),
+            "errors": cls.resolve_validation_errors(request),
         }
 
     @classmethod
@@ -55,9 +58,6 @@ class InertiaMiddleware(BaseHTTPMiddleware):
         return response
 
     def handle_response(self, request: Request, response: Response) -> Response:
-        if response.status_code in REDIRECT_STATUSES:
-            self.reflash(request)
-
         if not request.headers.get(Header.INERTIA):
             return response
 
@@ -96,9 +96,8 @@ class InertiaMiddleware(BaseHTTPMiddleware):
             values.append(Header.INERTIA)
         response.headers["Vary"] = ", ".join(values)
 
-    @classmethod
-    def on_version_change(cls, request: Request) -> Response:
-        cls.reflash(request)
+    @staticmethod
+    def on_version_change(request: Request) -> Response:
         return Response(
             status_code=status.HTTP_409_CONFLICT,
             headers={
@@ -109,8 +108,7 @@ class InertiaMiddleware(BaseHTTPMiddleware):
 
     @staticmethod
     def on_empty_response(request: Request, response: Response) -> Response:
-        referer = request.headers.get("referer", "/")
-        return RedirectResponse(url=referer, status_code=302)
+        return RedirectResponse(url=same_origin_referer(request), status_code=302)
 
     @staticmethod
     def on_redirect_with_fragment(request: Request, response: Response) -> Response:
@@ -119,17 +117,13 @@ class InertiaMiddleware(BaseHTTPMiddleware):
             headers={Header.INERTIA_REDIRECT: response.headers.get("location", "/")},
         )
 
-    @staticmethod
-    def resolve_validation_errors(request: Request) -> dict:
-        if "session" not in request.scope:
-            return {}
-        return request.session.pop("errors", {})
-
-    @staticmethod
-    def reflash(request: Request) -> None:
-        """Re-flash session data so it survives the redirect."""
-        if "session" not in request.scope:
-            return
-        flash = request.session.get("_flash", {})
-        if flash:
-            request.session["_flash"] = flash
+    @classmethod
+    def resolve_validation_errors(cls, request: Request) -> dict:
+        bags = {
+            name: errors.all() if cls.with_all_errors else errors.firsts()
+            for name, errors in session.pull_error_bags(request).items()
+        }
+        if session.DEFAULT_BAG not in bags:
+            return bags
+        bag = request.headers.get(Header.ERROR_BAG)
+        return {bag: bags[session.DEFAULT_BAG]} if bag else bags[session.DEFAULT_BAG]
