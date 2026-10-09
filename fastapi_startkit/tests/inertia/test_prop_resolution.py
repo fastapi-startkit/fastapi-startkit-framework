@@ -517,3 +517,33 @@ def test_except_only_partial_reload_skips_already_loaded_once_props(container):
     calls.names.clear()
     assert partial(client, only="plans", **loaded)["props"] == {"plans": [1]}
     assert calls.names == ["plans"]
+
+
+def test_requesting_a_child_of_an_already_loaded_once_prop_reloads_it(container):
+    calls = Calls()
+    client = client_for(lambda: {"settings": Prop(calls.returning("settings", {"theme": "dark"})).once()})
+
+    page = partial(client, only="settings.theme", **{Header.INERTIA_EXCEPT_ONCE_PROPS: "settings"})
+    assert page["props"] == {"settings": {"theme": "dark"}}
+    assert calls.names == ["settings"]
+
+
+def test_self_referencing_returned_props_raise(container):
+    looping = Prop()
+    looping.value = lambda: looping
+    first, second = Prop(), Prop()
+    first.value, second.value = lambda: second, lambda: first
+
+    with pytest.raises(ValueError, match="'loop' resolves to a Prop that references itself"):
+        visit(client_for(lambda: {"loop": lambda: looping}))
+    with pytest.raises(ValueError, match="'pair' resolves to a Prop that references itself"):
+        visit(client_for(lambda: {"pair": lambda: first}))
+
+
+def test_options_on_returned_props_are_ignored_with_a_warning(container):
+    client = client_for(lambda: {"user": lambda: Prop([1]).merge(), "plain": lambda: Prop([2])})
+
+    with pytest.warns(UserWarning, match="'user' returned a Prop with options"):
+        page = visit(client)
+    assert page["props"] == {"user": [1], "plain": [2]}
+    assert "mergeProps" not in page

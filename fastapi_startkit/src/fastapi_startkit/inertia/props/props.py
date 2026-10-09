@@ -121,6 +121,17 @@ class Prop:
         self.scroll_options = ScrollOptions(metadata=metadata)
         return self
 
+    def has_options(self) -> bool:
+        return (
+            self.loading != Loading.EAGER
+            or self.is_always
+            or self.is_rescued
+            or self.merge_options is not None
+            or self.once_options is not None
+            or self.scroll_options is not None
+            or self.wrapper_key != "data"
+        )
+
     def _merge(self) -> MergeOptions:
         if self.merge_options is None:
             self.merge_options = MergeOptions()

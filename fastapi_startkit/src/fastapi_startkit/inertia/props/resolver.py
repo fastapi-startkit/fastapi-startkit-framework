@@ -2,6 +2,7 @@ import copy
 import inspect
 import logging
 import time
+import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from typing import Any, Optional
@@ -137,7 +138,7 @@ class PropsResolver:
                 continue
 
             try:
-                result = await self._compute(prop)
+                result = await self._compute(prop, path)
             except Exception:
                 if not prop.is_rescued:
                     raise
@@ -155,14 +156,14 @@ class PropsResolver:
                 resolved[key] = result.value
         return resolved
 
-    async def _compute(self, prop: Prop) -> Resolved:
+    async def _compute(self, prop: Prop, path: str) -> Resolved:
         value = prop.value
         if isinstance(value, Mapping):
             return Resolved(value, nested=True)
 
         computed = callable(value)
         if computed:
-            value = await self._call(value)
+            value = await self._call(value, path)
 
         scroll = None
         if prop.scroll_options is not None:
@@ -172,9 +173,19 @@ class PropsResolver:
 
         return Resolved(value, nested=computed and isinstance(value, Mapping), computed=computed, scroll=scroll)
 
-    async def _call(self, callback: Any) -> Any:
+    async def _call(self, callback: Any, path: str) -> Any:
         value = await invoke(callback, self.request)
+        seen: set[int] = set()
         while isinstance(value, Prop):
+            if id(value) in seen:
+                raise ValueError(f"Inertia prop '{path}' resolves to a Prop that references itself")
+            seen.add(id(value))
+            if value.has_options():
+                warnings.warn(
+                    f"Inertia prop '{path}' returned a Prop with options; they are ignored, "
+                    "set them on the outer prop instead",
+                    stacklevel=2,
+                )
             value = await invoke(value.value, self.request) if callable(value.value) else value.value
         return value
 
@@ -182,7 +193,7 @@ class PropsResolver:
         return not self.is_partial or prop.is_always or parent_was_resolved or self._matches_partial_reload(path)
 
     def _matches_partial_reload(self, path: str) -> bool:
-        if self.only is not None and not any(is_within(path, only) or is_within(only, path) for only in self.only):
+        if self.only is not None and not self._is_on_requested_path(path):
             return False
         return not self._is_excepted(path)
 
@@ -194,12 +205,15 @@ class PropsResolver:
     def _is_requested(self, path: str) -> bool:
         return self.only is not None and any(is_within(path, only) for only in self.only)
 
+    def _is_on_requested_path(self, path: str) -> bool:
+        return self.only is not None and any(is_within(path, only) or is_within(only, path) for only in self.only)
+
     def _is_excepted(self, path: str) -> bool:
         return self.except_ is not None and any(is_within(path, excepted) for excepted in self.except_)
 
     def _is_excluded(self, prop: Prop, path: str) -> bool:
         if self.is_partial:
-            return self._was_already_loaded(prop, path) and not self._is_requested(path)
+            return self._was_already_loaded(prop, path) and not self._is_on_requested_path(path)
         return prop.loading != Loading.EAGER or (self.is_inertia and self._was_already_loaded(prop, path))
 
     def _was_already_loaded(self, prop: Prop, path: str) -> bool:
