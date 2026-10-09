@@ -5,3 +5,4 @@ class Header:
     INERTIA_LOCATION = "X-Inertia-Location"
     INERTIA_REDIRECT = "X-Inertia-Redirect"
     ERROR_BAG = "X-Inertia-Error-Bag"
+    PURPOSE = "Purpose"

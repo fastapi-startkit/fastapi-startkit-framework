@@ -102,4 +102,4 @@ class TestBoot:
         client_json = html.split(">", 1)[1].split("</script>", 1)[0]
 
         assert json.loads(client_json) == {"component": "Dashboard", "props": {"count": 3, "content": "<script>"}}
-        assert "\\u003cscript>" in client_json
+        assert "\\u003cscript\\u003e" in client_json

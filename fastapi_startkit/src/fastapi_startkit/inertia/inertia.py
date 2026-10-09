@@ -12,7 +12,7 @@ from starlette.responses import Response
 
 from fastapi_startkit.inertia.props.props import OptionalProp
 from fastapi_startkit.inertia.constant import Header
-from fastapi_startkit.inertia.context import current_request
+from fastapi_startkit.inertia.context import current_request, current_state
 
 
 class ResponseFactory:
@@ -29,17 +29,40 @@ class ResponseFactory:
         self.root_view = view
 
     def share(self, key: Union[str, Dict[str, Any]], value: Any = None):
+        state = current_state.get()
+        props = state.shared_props if state is not None else self.shared_props
         if isinstance(key, dict):
-            self.shared_props = {**self.shared_props, **key}
+            props.update(key)
         else:
-            self.shared_props[key] = value
+            props[key] = value
+
+    def shared(self) -> dict:
+        state = current_state.get()
+        request_props = state.shared_props if state is not None else {}
+        return {**self.shared_props, **request_props}
 
     def set_version(self, version):
         self.version = version
 
     def get_version(self) -> Optional[str]:
-        v = self.version() if callable(self.version) else self.version
+        state = current_state.get()
+        if state is None:
+            return self.resolve_version(self.version)
+        if not state.version_resolved:
+            state.resolved_version = self.resolve_version(self.version if self.version is not None else state.version)
+            state.version_resolved = True
+        return state.resolved_version
+
+    @staticmethod
+    def resolve_version(version) -> Optional[str]:
+        v = version() if callable(version) else version
         return str(v) if v is not None else None
+
+    def get_root_view(self) -> str:
+        state = current_state.get()
+        if state is not None and state.root_view:
+            return state.root_view
+        return self.root_view
 
     def set_ssr(self, url: Optional[str], timeout: float = 1.0):
         """Configure the Inertia SSR server endpoint. Pass None to disable SSR."""
@@ -49,9 +72,9 @@ class ResponseFactory:
     def render(self, component: str, props: dict) -> "InertiaResponse":
         return InertiaResponse(
             component=component,
-            shared_props=self.shared_props,
+            shared_props=self.shared(),
             props=props,
-            root_view=self.root_view,
+            root_view=self.get_root_view(),
             version=self.get_version() or "",
             ssr_url=self.ssr_url,
             ssr_timeout=self.ssr_timeout,
@@ -219,6 +242,10 @@ class Inertia:
     @staticmethod
     def share(key: Union[str, Dict[str, Any]], value: Any = None):
         Inertia.instance().share(key, value)
+
+    @staticmethod
+    def shared() -> dict:
+        return Inertia.instance().shared()
 
     @staticmethod
     def version(version):
