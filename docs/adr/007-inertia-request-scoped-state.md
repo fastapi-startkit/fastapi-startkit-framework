@@ -33,14 +33,14 @@ The `inertia()` template helper escaped only `<` in the page JSON.
 `inertia/context.py` adds `InertiaRequestState(shared_props, root_view, version)` and a `current_state` context variable. The middleware sets the context variable for the duration of each request.
 
 - **Sharing:** `ResponseFactory.share()` writes to the request state while a request is active. Outside a request, such as in a provider's `boot()`, it writes to the global props. `ResponseFactory.shared()` / `Inertia.shared()` return the global props merged with the request props. `render()` saves a snapshot of these merged props, and props passed to `render()` still override them.
-- **Version:** a configured `Inertia.version()` value or callable wins. A callable is evaluated each time the version is read. Without a configured version, the request state uses `InertiaMiddleware.version(request)`, which returns the Vite manifest hash.
+- **Version:** a configured `Inertia.version()` value or callable wins. A callable is evaluated at most once per request: the first read caches the result on the request state, so the 409 check and `page.version` always agree. Outside a request, a callable is evaluated on every read. Without a configured version, the request state uses `InertiaMiddleware.version(request)`, which returns the Vite manifest hash.
 - **Root view:** `InertiaMiddleware._root_view` defaults to `None`. A subclass that sets `_root_view` or overrides `root_view()` provides a value for that request. Otherwise the factory uses `Inertia.set_root_view()`, with `index.html` as the default. `InertiaResponse.with_root_view()` still wins for its own response.
 - **Order of steps in the middleware:** set the context variables, then check the version. On a GET Inertia request with a different version, it reflashes the session and returns 409 with `X-Inertia-Location` and `X-Inertia-Version`. Otherwise it shares the request props and calls the handler. After the handler, it reflashes on redirects. For Inertia requests it then handles:
   - an empty 200 (`Content-Length: 0`), which becomes a redirect back to the Referer or `/`
   - a 302 after PUT/PATCH/DELETE, which becomes a 303
   - a fragment redirect (3xx, or 201 with a Location header), which becomes a 409 with `X-Inertia-Redirect`, except when the request has `Purpose: prefetch`.
 - **Vary:** the middleware appends `X-Inertia` to any existing `Vary` values and skips it if it is already listed (case-insensitive).
-- **HTML-safe JSON:** `inertia/encoding.py` provides `html_safe_json()`, which escapes `<`, `>`, `&`, U+2028 and U+2029 as `\uXXXX`. The `inertia()` helper uses it.
+- **HTML-safe JSON:** `inertia/encoding.py` provides `html_safe_json()`, which escapes `<`, `>` and `&` as `\uXXXX`. U+2028 and U+2029 are already escaped by `json.dumps(ensure_ascii=True)`, and a test covers them. The `inertia()` helper uses it.
 
 `on_version_change(request)` no longer takes a `response`, because it runs before the handler.
 

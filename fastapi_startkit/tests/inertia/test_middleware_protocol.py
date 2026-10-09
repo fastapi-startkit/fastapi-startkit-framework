@@ -207,11 +207,12 @@ def test_with_root_view_wins_for_its_response(container):
 
 
 def test_unsafe_props_render_inertly_and_round_trip():
-    value = {"html": "</script><script>alert(1)</script>", "amp": "a & b > c", "separators": "  "}
+    value = {"html": "</script><script>alert(1)</script>", "amp": "a & b > c", "separators": "\u2028\u2029"}
 
     encoded = html_safe_json(value)
 
-    assert not set("<>&  ") & set(encoded)
+    assert not set("<>&\u2028\u2029") & set(encoded)
+    assert "\\u2028\\u2029" in encoded
     assert json.loads(encoded) == value
 
 
