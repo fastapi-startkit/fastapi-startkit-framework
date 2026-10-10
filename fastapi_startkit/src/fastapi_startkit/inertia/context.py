@@ -14,6 +14,8 @@ class InertiaRequestState:
     version: Optional[Callable[[], Optional[str]]] = None
     resolved_version: Optional[str] = None
     version_resolved: bool = False
+    encrypt_history: Optional[bool] = None
+    session: dict[str, Any] = field(default_factory=dict)
 
 
 current_state: ContextVar[Optional[InertiaRequestState]] = ContextVar("inertia_state", default=None)

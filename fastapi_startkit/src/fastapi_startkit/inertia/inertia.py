@@ -7,8 +7,12 @@ from urllib.parse import urlparse
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
-from starlette.responses import Response
+from starlette.responses import RedirectResponse, Response
 
+from fastapi_startkit.inertia import session
+from fastapi_startkit.inertia.errors import ErrorsInput
+from fastapi_startkit.fastapi.referer import same_origin_referer
+from fastapi_startkit.inertia.redirect import InertiaRedirect
 
 from fastapi_startkit.inertia.props.props import OptionalProp
 from fastapi_startkit.inertia.constant import Header
@@ -24,6 +28,7 @@ class ResponseFactory:
         self.version = None
         self.ssr_url: Optional[str] = None
         self.ssr_timeout: float = 1.0
+        self.encrypt_history_enabled: bool = False
 
     def set_root_view(self, view: str):
         self.root_view = view
@@ -64,6 +69,19 @@ class ResponseFactory:
             return state.root_view
         return self.root_view
 
+    def set_encrypt_history(self, enabled: bool = True):
+        state = current_state.get()
+        if state is not None:
+            state.encrypt_history = enabled
+        else:
+            self.encrypt_history_enabled = enabled
+
+    def should_encrypt_history(self) -> bool:
+        state = current_state.get()
+        if state is not None and state.encrypt_history is not None:
+            return state.encrypt_history
+        return self.encrypt_history_enabled
+
     def set_ssr(self, url: Optional[str], timeout: float = 1.0):
         """Configure the Inertia SSR server endpoint. Pass None to disable SSR."""
         self.ssr_url = url.rstrip("/") if url else None
@@ -78,6 +96,7 @@ class ResponseFactory:
             version=self.get_version() or "",
             ssr_url=self.ssr_url,
             ssr_timeout=self.ssr_timeout,
+            encrypt_history=self.should_encrypt_history(),
         )
 
 
@@ -91,6 +110,7 @@ class InertiaResponse(Response):
         version: str = "",
         ssr_url: Optional[str] = None,
         ssr_timeout: float = 1.0,
+        encrypt_history: bool = False,
     ):
         # Do not call supper().__init__() — body is built lazily in __call__
         self.background = None  # required by FastAPI's response handling
@@ -101,6 +121,8 @@ class InertiaResponse(Response):
         self.version = version
         self.ssr_url = ssr_url
         self.ssr_timeout = ssr_timeout
+        self.encrypt_history_enabled = encrypt_history
+        self.flash_data: dict = {}
 
     def with_(self, key: Union[str, Dict[str, Any]], value: Any = None) -> "InertiaResponse":
         if isinstance(key, dict):
@@ -112,6 +134,26 @@ class InertiaResponse(Response):
     def with_root_view(self, root_view: str) -> "InertiaResponse":
         self.root_view = root_view
         return self
+
+    def flash(self, key: Union[str, Dict[str, Any]], value: Any = None) -> "InertiaResponse":
+        self.flash_data.update(key if isinstance(key, dict) else {key: value})
+        return self
+
+    def encrypt_history(self, enabled: bool = True) -> "InertiaResponse":
+        self.encrypt_history_enabled = enabled
+        return self
+
+    def session_metadata(self, request: Request) -> dict:
+        flash = {**(session.pull(request, session.FLASH) or {}), **self.flash_data}
+        metadata: dict = {
+            "encryptHistory": self.encrypt_history_enabled,
+            "clearHistory": bool(session.pull(request, session.CLEAR_HISTORY, False)),
+        }
+        if session.pull(request, session.PRESERVE_FRAGMENT, False):
+            metadata["preserveFragment"] = True
+        if flash:
+            metadata["flash"] = flash
+        return metadata
 
     async def to_response(self, request: Request):
         # Determine partial reload scope
@@ -152,6 +194,7 @@ class InertiaResponse(Response):
             "url": self._get_url(request),
             "version": self.version,
         }
+        page.update(self.session_metadata(request))
 
         # SSR is used only for the initial HTML response. Inertia XHR requests
         # continue returning the regular page JSON and never contact Node.
@@ -255,6 +298,49 @@ class Inertia:
     def ssr(url: Optional[str] = "http://127.0.0.1:13714", timeout: float = 1.0):
         """Enable SSR through the standard Inertia SSR server endpoint."""
         Inertia.instance().set_ssr(url, timeout)
+
+    @staticmethod
+    def encrypt_history(enabled: bool = True):
+        Inertia.instance().set_encrypt_history(enabled)
+
+    @staticmethod
+    def clear_history():
+        session.clear_history()
+
+    @staticmethod
+    def preserve_fragment():
+        session.preserve_fragment()
+
+    @staticmethod
+    def flash(key: Union[str, Dict[str, Any]], value: Any = None):
+        session.flash(key, value)
+
+    @staticmethod
+    def with_errors(errors: ErrorsInput):
+        session.with_errors(errors)
+
+    @staticmethod
+    def with_errors_in(bag: str, errors: ErrorsInput):
+        session.with_errors(errors, bag)
+
+    @staticmethod
+    def location(url: str) -> Response:
+        request = current_request.get()
+        if request is not None and request.headers.get(Header.INERTIA):
+            return Response(status_code=409, headers={Header.INERTIA_LOCATION: url})
+        return RedirectResponse(url, status_code=302)
+
+    @staticmethod
+    def redirect(url: str, status_code: int = 302) -> InertiaRedirect:
+        return InertiaRedirect(url, status_code=status_code)
+
+    @staticmethod
+    def back(status_code: int = 302) -> InertiaRedirect:
+        return InertiaRedirect(same_origin_referer(current_request.get()), status_code=status_code)
+
+    @staticmethod
+    def back_with_errors(errors: ErrorsInput, bag: Optional[str] = None) -> InertiaRedirect:
+        return Inertia.back().with_errors_in(bag or session.DEFAULT_BAG, errors)
 
     @staticmethod
     def get_version() -> Optional[str]:

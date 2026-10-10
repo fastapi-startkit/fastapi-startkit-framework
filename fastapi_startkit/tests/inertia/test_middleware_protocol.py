@@ -166,18 +166,6 @@ def test_version_conflict_sends_location_and_version_and_keeps_flash(container):
     assert SessionFromHeader.last == session
 
 
-def test_version_conflict_reflashes_session(container):
-    Inertia.version("v2")
-    session = {"_flash": {"success": "Saved"}}
-
-    with patch.object(InertiaMiddleware, "reflash") as reflash:
-        TestClient(make_app()).get(
-            "/page", headers={**INERTIA, Header.INERTIA_VERSION: "v1", **session_header(session)}
-        )
-
-    reflash.assert_called_once()
-
-
 def test_boot_root_view_is_used_for_first_visit(container):
     Inertia.set_root_view("app.html")
 
