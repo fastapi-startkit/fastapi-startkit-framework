@@ -6,3 +6,8 @@ class Header:
     INERTIA_REDIRECT = "X-Inertia-Redirect"
     ERROR_BAG = "X-Inertia-Error-Bag"
     PURPOSE = "Purpose"
+    INERTIA_PARTIAL_DATA = "X-Inertia-Partial-Data"
+    INERTIA_PARTIAL_EXCEPT = "X-Inertia-Partial-Except"
+    INERTIA_RESET = "X-Inertia-Reset"
+    INERTIA_EXCEPT_ONCE_PROPS = "X-Inertia-Except-Once-Props"
+    INERTIA_INFINITE_SCROLL_MERGE_INTENT = "X-Inertia-Infinite-Scroll-Merge-Intent"
