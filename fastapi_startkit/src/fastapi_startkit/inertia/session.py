@@ -10,6 +10,7 @@ from fastapi_startkit.inertia.errors import ErrorsInput, ValidationErrors
 FLASH = "_flash"
 ERRORS = "_inertia_errors"
 LEGACY_ERRORS = "errors"
+PAGE_ERRORS = "_inertia_page_errors"
 CLEAR_HISTORY = "_inertia_clear_history"
 PRESERVE_FRAGMENT = "_inertia_preserve_fragment"
 DEFAULT_BAG = "default"
@@ -72,3 +73,12 @@ def pull_error_bags(request: Request) -> dict[str, ValidationErrors]:
     if legacy:
         bags[DEFAULT_BAG] = bags.get(DEFAULT_BAG, ValidationErrors()).merge(legacy)
     return bags
+
+
+def page_error_bags(request: Request, *, partial: bool) -> dict[str, ValidationErrors]:
+    flashed = pull_error_bags(request)
+    if flashed:
+        store(request)[PAGE_ERRORS] = {name: bag.all() for name, bag in flashed.items()}
+    elif not partial:
+        pull(request, PAGE_ERRORS)
+    return {name: ValidationErrors(messages) for name, messages in (store(request).get(PAGE_ERRORS) or {}).items()}

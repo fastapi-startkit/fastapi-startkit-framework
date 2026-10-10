@@ -94,7 +94,7 @@ class TestInertiaMiddleware(unittest.IsolatedAsyncioTestCase):
         def check_errors(request: Request):
             # Middleware should have shared the errors from the session
             # We access the singleton via the facade
-            return Inertia.shared()["errors"]()
+            return Inertia.shared()["errors"].value()
 
         # Mock container for version check (avoiding 409)
         mock_container = MagicMock()

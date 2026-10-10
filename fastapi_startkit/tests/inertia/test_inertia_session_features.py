@@ -186,6 +186,38 @@ def test_errors_survive_a_redirect_hop():
     assert page["props"]["errors"] == {"email": "Required"}
 
 
+def test_errors_stay_on_partial_reloads_that_do_not_request_them():
+    app = make_app({})
+
+    @app.post("/invalid")
+    async def invalid():
+        return Inertia.back_with_errors({"email": "Required"})
+
+    client = TestClient(app)
+    client.post("/invalid", headers={**INERTIA, "referer": "/page"}, follow_redirects=False)
+    client.get("/page", headers=INERTIA)
+    partial = client.get(
+        "/page",
+        headers={**INERTIA, Header.INERTIA_PARTIAL_COMPONENT: "Page", Header.INERTIA_PARTIAL_DATA: "other"},
+    ).json()
+
+    assert partial["props"]["errors"] == {"email": "Required"}
+
+
+def test_errors_clear_on_a_full_visit_without_new_errors():
+    app = make_app({})
+
+    @app.post("/invalid")
+    async def invalid():
+        return Inertia.back_with_errors({"email": "Required"})
+
+    client = TestClient(app)
+    client.post("/invalid", headers={**INERTIA, "referer": "/page"}, follow_redirects=False)
+    client.get("/page", headers=INERTIA)
+
+    assert client.get("/page", headers=INERTIA).json()["props"]["errors"] == {}
+
+
 def test_errors_set_during_the_request_render_on_that_page():
     app = make_app({})
 

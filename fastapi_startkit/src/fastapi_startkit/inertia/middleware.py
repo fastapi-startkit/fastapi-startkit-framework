@@ -30,7 +30,7 @@ class InertiaMiddleware(BaseHTTPMiddleware):
     def share(cls, request: Request) -> dict:
         """Define props that are shared on every response."""
         return {
-            "errors": lambda: cls.resolve_validation_errors(request),
+            "errors": Inertia.always(lambda: cls.resolve_validation_errors(request)),
         }
 
     @classmethod
@@ -119,9 +119,10 @@ class InertiaMiddleware(BaseHTTPMiddleware):
 
     @classmethod
     def resolve_validation_errors(cls, request: Request) -> dict:
+        partial = bool(request.headers.get(Header.INERTIA_PARTIAL_COMPONENT))
         bags = {
             name: errors.all() if cls.with_all_errors else errors.firsts()
-            for name, errors in session.pull_error_bags(request).items()
+            for name, errors in session.page_error_bags(request, partial=partial).items()
         }
         if session.DEFAULT_BAG not in bags:
             return bags
