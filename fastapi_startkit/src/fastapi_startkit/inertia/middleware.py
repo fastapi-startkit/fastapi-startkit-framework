@@ -117,12 +117,20 @@ class InertiaMiddleware(BaseHTTPMiddleware):
             headers={Header.INERTIA_REDIRECT: response.headers.get("location", "/")},
         )
 
+    @staticmethod
+    def is_partial_for_other_component(request: Request) -> bool:
+        partial_component = request.headers.get(Header.INERTIA_PARTIAL_COMPONENT)
+        state = current_state.get()
+        rendered = state.component if state is not None else None
+        return bool(partial_component) and rendered is not None and partial_component != rendered
+
     @classmethod
     def resolve_validation_errors(cls, request: Request) -> dict:
-        partial = bool(request.headers.get(Header.INERTIA_PARTIAL_COMPONENT))
+        if cls.is_partial_for_other_component(request):
+            return {}
         bags = {
             name: errors.all() if cls.with_all_errors else errors.firsts()
-            for name, errors in session.page_error_bags(request, partial=partial).items()
+            for name, errors in session.pull_error_bags(request).items()
         }
         if session.DEFAULT_BAG not in bags:
             return bags

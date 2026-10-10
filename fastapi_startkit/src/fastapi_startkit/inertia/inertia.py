@@ -161,6 +161,9 @@ class InertiaResponse(Response):
         return metadata
 
     async def to_response(self, request: Request):
+        state = current_state.get()
+        if state is not None:
+            state.component = self.component
         props, metadata = await PropsResolver(request, self.component).resolve(
             self.shared_props, self.props, self.expose_shared_prop_keys
         )
