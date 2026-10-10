@@ -1,4 +1,3 @@
-import inspect
 import asyncio
 import json
 import urllib.request
@@ -14,7 +13,9 @@ from fastapi_startkit.inertia.errors import ErrorsInput
 from fastapi_startkit.fastapi.referer import same_origin_referer
 from fastapi_startkit.inertia.redirect import InertiaRedirect
 
-from fastapi_startkit.inertia.props.props import OptionalProp
+from fastapi_startkit.inertia.props.props import OptionalProp, Prop
+from fastapi_startkit.inertia.props.resolver import PropsResolver
+from fastapi_startkit.inertia.props.scroll import ScrollMetadata
 from fastapi_startkit.inertia.constant import Header
 from fastapi_startkit.inertia.context import current_request, current_state
 
@@ -29,6 +30,7 @@ class ResponseFactory:
         self.ssr_url: Optional[str] = None
         self.ssr_timeout: float = 1.0
         self.encrypt_history_enabled: bool = False
+        self.expose_shared_prop_keys: bool = True
 
     def set_root_view(self, view: str):
         self.root_view = view
@@ -97,6 +99,7 @@ class ResponseFactory:
             ssr_url=self.ssr_url,
             ssr_timeout=self.ssr_timeout,
             encrypt_history=self.should_encrypt_history(),
+            expose_shared_prop_keys=self.expose_shared_prop_keys,
         )
 
 
@@ -111,6 +114,7 @@ class InertiaResponse(Response):
         ssr_url: Optional[str] = None,
         ssr_timeout: float = 1.0,
         encrypt_history: bool = False,
+        expose_shared_prop_keys: bool = True,
     ):
         # Do not call supper().__init__() — body is built lazily in __call__
         self.background = None  # required by FastAPI's response handling
@@ -123,6 +127,7 @@ class InertiaResponse(Response):
         self.ssr_timeout = ssr_timeout
         self.encrypt_history_enabled = encrypt_history
         self.flash_data: dict = {}
+        self.expose_shared_prop_keys = expose_shared_prop_keys
 
     def with_(self, key: Union[str, Dict[str, Any]], value: Any = None) -> "InertiaResponse":
         if isinstance(key, dict):
@@ -156,43 +161,16 @@ class InertiaResponse(Response):
         return metadata
 
     async def to_response(self, request: Request):
-        # Determine partial reload scope
-        partial_component = request.headers.get(Header.INERTIA_PARTIAL_COMPONENT)
-        is_partial = partial_component == self.component
-        partial_keys: set = set()
-        if is_partial:
-            raw = request.headers.get("X-Inertia-Partial-Data", "")
-            partial_keys = set(filter(None, raw.split(",")))
-
-        all_props = {**self.shared_props, **self.props}
-
-        resolved: dict = {}
-        for k, v in all_props.items():
-            # OptionalProp: only include when explicitly requested in a partial reload
-            if isinstance(v, OptionalProp):
-                if not is_partial or k not in partial_keys:
-                    continue
-                v = v.callback
-
-            # Skip keys aren't requested in partial reload
-            if is_partial and partial_keys and k not in partial_keys:
-                continue
-
-            # Resolve callables — support both sync and async
-            if callable(v):
-                sig = inspect.signature(v)
-                result = v(request) if len(sig.parameters) > 0 else v()
-                if inspect.isawaitable(result):
-                    result = await result
-                resolved[k] = result
-            else:
-                resolved[k] = v
+        props, metadata = await PropsResolver(request, self.component).resolve(
+            self.shared_props, self.props, self.expose_shared_prop_keys
+        )
 
         page = {
             "component": self.component,
-            "props": resolved,
+            "props": props,
             "url": self._get_url(request),
             "version": self.version,
+            **metadata,
         }
         page.update(self.session_metadata(request))
 
@@ -347,8 +325,44 @@ class Inertia:
         return Inertia.instance().get_version()
 
     @staticmethod
+    def expose_shared_prop_keys(expose: bool = True):
+        Inertia.instance().expose_shared_prop_keys = expose
+
+    @staticmethod
     def optional(callback) -> OptionalProp:
         return OptionalProp(callback)
+
+    @staticmethod
+    def lazy(callback) -> Prop:
+        return Prop(callback)
+
+    @staticmethod
+    def defer(callback, group: str = "default") -> Prop:
+        return Prop(callback).defer(group)
+
+    @staticmethod
+    def always(value) -> Prop:
+        return Prop(value).always()
+
+    @staticmethod
+    def merge(value) -> Prop:
+        return Prop(value).merge()
+
+    @staticmethod
+    def deep_merge(value) -> Prop:
+        return Prop(value).deep_merge()
+
+    @staticmethod
+    def once(callback) -> Prop:
+        return Prop(callback).once()
+
+    @staticmethod
+    def scroll(page, metadata: Optional[ScrollMetadata] = None) -> Prop:
+        return Prop(page).scroll(metadata)
+
+    @staticmethod
+    def scroll_with(callback) -> Prop:
+        return Prop(callback).scroll()
 
     @staticmethod
     def render(component: str, props: Optional[Dict[str, Any]] = None) -> InertiaResponse:

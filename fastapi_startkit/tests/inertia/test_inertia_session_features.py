@@ -16,6 +16,7 @@ from fastapi_startkit.inertia.redirect import InertiaRedirect
 from fastapi_startkit.inertia.testing import FakeSessionMiddleware
 
 INERTIA = {Header.INERTIA: "true"}
+PARTIAL_PAGE_ONLY_OTHER = {**INERTIA, Header.INERTIA_PARTIAL_COMPONENT: "Page", Header.INERTIA_PARTIAL_DATA: "other"}
 
 
 class FakeTemplates:
@@ -184,6 +185,75 @@ def test_errors_survive_a_redirect_hop():
 
     assert hop.status_code == 302
     assert page["props"]["errors"] == {"email": "Required"}
+
+
+def test_partial_reload_without_new_errors_returns_empty_errors():
+    app = make_app({})
+
+    @app.post("/invalid")
+    async def invalid():
+        return Inertia.back_with_errors({"email": "Required"})
+
+    client = TestClient(app)
+    client.post("/invalid", headers={**INERTIA, "referer": "/page"}, follow_redirects=False)
+    client.get("/page", headers=INERTIA)
+    partial = client.get("/page", headers=PARTIAL_PAGE_ONLY_OTHER).json()
+
+    assert partial["props"]["errors"] == {}
+
+
+def test_partial_resubmit_clears_previous_errors():
+    app = make_app({})
+
+    @app.post("/invalid")
+    async def invalid():
+        return Inertia.back_with_errors({"email": "Required"})
+
+    @app.post("/save")
+    async def save():
+        return Inertia.redirect("/page")
+
+    client = TestClient(app)
+    client.post("/invalid", headers={**INERTIA, "referer": "/page"}, follow_redirects=False)
+    assert client.get("/page", headers=INERTIA).json()["props"]["errors"] == {"email": "Required"}
+
+    client.post("/save", headers=PARTIAL_PAGE_ONLY_OTHER, follow_redirects=False)
+    partial = client.get("/page", headers=PARTIAL_PAGE_ONLY_OTHER).json()
+
+    assert partial["props"]["errors"] == {}
+
+
+def test_mismatched_component_render_receives_errors_without_leaking_them():
+    app = make_app({})
+
+    @app.post("/invalid")
+    async def invalid():
+        return Inertia.back_with_errors({"email": "Required"})
+
+    @app.get("/other")
+    async def other():
+        return Inertia.render("Other")
+
+    client = TestClient(app)
+    client.post("/invalid", headers={**INERTIA, "referer": "/other"}, follow_redirects=False)
+    mismatched = client.get("/other", headers=PARTIAL_PAGE_ONLY_OTHER).json()
+
+    assert mismatched["props"]["errors"] == {"email": "Required"}
+    assert client.get("/page", headers=INERTIA).json()["props"]["errors"] == {}
+
+
+def test_errors_clear_on_a_full_visit_without_new_errors():
+    app = make_app({})
+
+    @app.post("/invalid")
+    async def invalid():
+        return Inertia.back_with_errors({"email": "Required"})
+
+    client = TestClient(app)
+    client.post("/invalid", headers={**INERTIA, "referer": "/page"}, follow_redirects=False)
+    client.get("/page", headers=INERTIA)
+
+    assert client.get("/page", headers=INERTIA).json()["props"]["errors"] == {}
 
 
 def test_errors_set_during_the_request_render_on_that_page():

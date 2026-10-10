@@ -30,7 +30,7 @@ class InertiaMiddleware(BaseHTTPMiddleware):
     def share(cls, request: Request) -> dict:
         """Define props that are shared on every response."""
         return {
-            "errors": lambda: cls.resolve_validation_errors(request),
+            "errors": Inertia.always(lambda: cls.resolve_validation_errors(request)),
         }
 
     @classmethod
