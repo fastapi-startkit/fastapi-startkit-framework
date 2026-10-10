@@ -27,6 +27,7 @@ def _raised(message: str) -> Exception:
 
 class FakeRequest:
     def __init__(self, headers=None, scope=None, session=None):
+        self.base_url = "http://testserver/"
         self.headers = headers or {}
         self.scope = scope or {}
         self.session = session if session is not None else {}
@@ -115,4 +116,12 @@ class TestValidationExceptionHandler:
         response = await ValidationExceptionHandler().render(request, exc)
 
         assert response.status_code == 303
+        assert response.headers["location"] == "/"
+
+    async def test_non_json_ignores_cross_origin_referer(self):
+        exc = FakeValidationError([{"loc": ("body", "name"), "msg": "required"}])
+        request = FakeRequest(headers={"accept": "text/html", "referer": "https://evil.example/phish"})
+
+        response = await ValidationExceptionHandler().render(request, exc)
+
         assert response.headers["location"] == "/"

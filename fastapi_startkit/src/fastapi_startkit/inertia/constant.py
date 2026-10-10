@@ -5,6 +5,7 @@ class Header:
     INERTIA_LOCATION = "X-Inertia-Location"
     INERTIA_REDIRECT = "X-Inertia-Redirect"
     ERROR_BAG = "X-Inertia-Error-Bag"
+    PURPOSE = "Purpose"
     INERTIA_PARTIAL_DATA = "X-Inertia-Partial-Data"
     INERTIA_PARTIAL_EXCEPT = "X-Inertia-Partial-Except"
     INERTIA_RESET = "X-Inertia-Reset"
