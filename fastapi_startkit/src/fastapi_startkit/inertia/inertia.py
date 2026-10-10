@@ -1,18 +1,39 @@
 import inspect
-import asyncio
-import json
-import urllib.request
-from typing import Any, Dict, Optional, Union
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 from urllib.parse import urlparse
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
-from starlette.responses import Response
+from starlette.responses import RedirectResponse, Response
 
 
+from fastapi_startkit.inertia.bigint import encode_big_integers
 from fastapi_startkit.inertia.props.props import OptionalProp
 from fastapi_startkit.inertia.constant import Header
 from fastapi_startkit.inertia.context import current_request
+from fastapi_startkit.inertia.errors import (
+    Bags,
+    ValidationErrors,
+    flash_errors,
+    merge_error_bag,
+    resolve_error_bag,
+    shape_error_bags,
+)
+from fastapi_startkit.inertia.session import session_for_queue
+from fastapi_startkit.inertia.ssr import HttpSSRGateway, SSRGateway, ViteHotFileGateway, is_excepted
+
+PRESERVE_FRAGMENT_KEY = "preserveFragment"
+UrlResolver = Callable[[Request], str]
+
+
+def _current_request() -> Request:
+    request = current_request.get()
+    if request is None:
+        raise RuntimeError(
+            "Inertia requires InertiaMiddleware to be registered. "
+            "Add app.add_middleware(InertiaMiddleware) to your bootstrap."
+        )
+    return request
 
 
 class ResponseFactory:
@@ -22,8 +43,12 @@ class ResponseFactory:
         self.root_view: str = "index.html"
         self.shared_props: dict = {}
         self.version = None
-        self.ssr_url: Optional[str] = None
-        self.ssr_timeout: float = 1.0
+        self.ssr_gateway: Optional[SSRGateway] = None
+        self.ssr_enabled: bool = True
+        self.ssr_except_paths: Tuple[str, ...] = ()
+        self.with_all_errors: bool = False
+        self.url_resolver: Optional[UrlResolver] = None
+        self.preserve_big_integers: bool = False
 
     def set_root_view(self, view: str):
         self.root_view = view
@@ -41,10 +66,13 @@ class ResponseFactory:
         v = self.version() if callable(self.version) else self.version
         return str(v) if v is not None else None
 
-    def set_ssr(self, url: Optional[str], timeout: float = 1.0):
-        """Configure the Inertia SSR server endpoint. Pass None to disable SSR."""
-        self.ssr_url = url.rstrip("/") if url else None
-        self.ssr_timeout = timeout
+    def set_ssr(self, gateway: Optional[SSRGateway], *, enabled: bool = True, except_paths: Sequence[str] = ()):
+        self.ssr_gateway = gateway
+        self.ssr_enabled = enabled
+        self.ssr_except_paths = tuple(except_paths)
+
+    async def ssr_healthy(self) -> bool:
+        return self.ssr_gateway is not None and await self.ssr_gateway.healthy()
 
     def render(self, component: str, props: dict) -> "InertiaResponse":
         return InertiaResponse(
@@ -53,8 +81,11 @@ class ResponseFactory:
             props=props,
             root_view=self.root_view,
             version=self.get_version() or "",
-            ssr_url=self.ssr_url,
-            ssr_timeout=self.ssr_timeout,
+            ssr_gateway=self.ssr_gateway if self.ssr_enabled else None,
+            ssr_except_paths=self.ssr_except_paths,
+            with_all_errors=self.with_all_errors,
+            url_resolver=self.url_resolver,
+            preserve_big_integers=self.preserve_big_integers,
         )
 
 
@@ -66,8 +97,11 @@ class InertiaResponse(Response):
         props: dict,
         root_view: str = "index.html",
         version: str = "",
-        ssr_url: Optional[str] = None,
-        ssr_timeout: float = 1.0,
+        ssr_gateway: Optional[SSRGateway] = None,
+        ssr_except_paths: Sequence[str] = (),
+        with_all_errors: bool = False,
+        url_resolver: Optional[UrlResolver] = None,
+        preserve_big_integers: bool = False,
     ):
         # Do not call supper().__init__() — body is built lazily in __call__
         self.background = None  # required by FastAPI's response handling
@@ -76,14 +110,30 @@ class InertiaResponse(Response):
         self.props = props
         self.root_view = root_view
         self.version = version
-        self.ssr_url = ssr_url
-        self.ssr_timeout = ssr_timeout
+        self.ssr_gateway = ssr_gateway
+        self.ssr_except_paths = tuple(ssr_except_paths)
+        self.with_all_errors = with_all_errors
+        self.url_resolver = url_resolver
+        self.big_integers = preserve_big_integers
+        self.pending_errors: List[Tuple[Optional[str], ValidationErrors]] = []
+
+    def preserve_big_integers(self, enabled: bool = True) -> "InertiaResponse":
+        self.big_integers = enabled
+        return self
 
     def with_(self, key: Union[str, Dict[str, Any]], value: Any = None) -> "InertiaResponse":
         if isinstance(key, dict):
             self.props = {**self.props, **key}
         else:
             self.props[key] = value
+        return self
+
+    def with_errors(self, errors: Union[ValidationErrors, Mapping[str, Any]]) -> "InertiaResponse":
+        self.pending_errors.append((None, ValidationErrors.of(errors)))
+        return self
+
+    def with_errors_in(self, bag: str, errors: Union[ValidationErrors, Mapping[str, Any]]) -> "InertiaResponse":
+        self.pending_errors.append((bag, ValidationErrors.of(errors)))
         return self
 
     def with_root_view(self, root_view: str) -> "InertiaResponse":
@@ -100,6 +150,8 @@ class InertiaResponse(Response):
             partial_keys = set(filter(None, raw.split(",")))
 
         all_props = {**self.shared_props, **self.props}
+        if self.pending_errors:
+            all_props["errors"] = {**all_props.get("errors", {}), **self._page_errors(request)}
 
         resolved: dict = {}
         for k, v in all_props.items():
@@ -123,17 +175,26 @@ class InertiaResponse(Response):
             else:
                 resolved[k] = v
 
+        if self.big_integers:
+            resolved = encode_big_integers(resolved)
+
+        session = request.scope.get("session")
+        preserve_fragment = bool(session.pop(PRESERVE_FRAGMENT_KEY, False)) if session is not None else False
+
         page = {
             "component": self.component,
             "props": resolved,
-            "url": self._get_url(request),
+            "url": self._page_url(request),
             "version": self.version,
+            "preserveBigIntegers": self.big_integers,
+            "preserveFragment": preserve_fragment,
         }
 
         # SSR is used only for the initial HTML response. Inertia XHR requests
         # continue returning the regular page JSON and never contact Node.
-        if not request.headers.get(Header.INERTIA) and self.ssr_url:
-            rendered = await self._render_ssr(page)
+        gateway = self._ssr_gateway_for(request)
+        if gateway is not None:
+            rendered = await gateway.render(page)
             if rendered:
                 page["ssr"] = rendered
 
@@ -158,32 +219,23 @@ class InertiaResponse(Response):
             )
         )
 
-    async def _render_ssr(self, page: dict) -> Optional[dict]:
-        """Ask the configured Inertia Node server to render this page."""
-        ssr_url = self.ssr_url
-        if ssr_url is None:
-            return None
+    def _page_errors(self, request: Request) -> dict:
+        bags: Bags = {}
+        for bag, errors in self.pending_errors:
+            bags = merge_error_bag(bags, resolve_error_bag(request, bag), errors)
+        return shape_error_bags(bags, self.with_all_errors)
 
-        def request_ssr():
-            body = json.dumps(page).encode("utf-8")
-            req = urllib.request.Request(
-                ssr_url.rstrip("/") + "/render",
-                data=body,
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=self.ssr_timeout) as response:
-                result = json.loads(response.read().decode("utf-8"))
-            if not isinstance(result, dict) or not isinstance(result.get("body"), str):
-                raise ValueError("Invalid Inertia SSR response")
-            return {"body": result["body"], "head": result.get("head", [])}
-
-        try:
-            return await asyncio.to_thread(request_ssr)
-        except Exception:
-            # SSR is an enhancement: if its process is unavailable, send the
-            # normal page shell so the client can still hydrate it.
+    def _ssr_gateway_for(self, request: Request) -> Optional[SSRGateway]:
+        if request.headers.get(Header.INERTIA) or self.ssr_gateway is None:
             return None
+        if is_excepted(urlparse(str(request.url)).path, self.ssr_except_paths):
+            return None
+        return self.ssr_gateway
+
+    def _page_url(self, request: Request) -> str:
+        if self.url_resolver is not None:
+            return self.url_resolver(request)
+        return self._get_url(request)
 
     def _get_url(self, request: Request) -> str:
         parsed = urlparse(str(request.url))
@@ -225,13 +277,51 @@ class Inertia:
         Inertia.instance().set_version(version)
 
     @staticmethod
-    def ssr(url: Optional[str] = "http://127.0.0.1:13714", timeout: float = 1.0):
-        """Enable SSR through the standard Inertia SSR server endpoint."""
-        Inertia.instance().set_ssr(url, timeout)
+    def ssr(
+        url: Optional[str] = "http://127.0.0.1:13714",
+        timeout: float = 1.0,
+        *,
+        enabled: bool = True,
+        except_paths: Sequence[str] = (),
+    ):
+        gateway = HttpSSRGateway(url, timeout) if url else None
+        Inertia.instance().set_ssr(gateway, enabled=enabled, except_paths=except_paths)
+
+    @staticmethod
+    def ssr_hot(
+        hot_file: str,
+        timeout: float = 1.0,
+        *,
+        enabled: bool = True,
+        except_paths: Sequence[str] = (),
+    ):
+        Inertia.instance().set_ssr(ViteHotFileGateway(hot_file, timeout), enabled=enabled, except_paths=except_paths)
+
+    @staticmethod
+    async def ssr_healthy() -> bool:
+        return await Inertia.instance().ssr_healthy()
 
     @staticmethod
     def get_version() -> Optional[str]:
         return Inertia.instance().get_version()
+
+    @staticmethod
+    def with_all_errors(enabled: bool = True):
+        Inertia.instance().with_all_errors = enabled
+
+    @staticmethod
+    def url_resolver(resolver: Optional[UrlResolver]):
+        Inertia.instance().url_resolver = resolver
+
+    @staticmethod
+    def preserve_big_integers(enabled: bool = True):
+        Inertia.instance().preserve_big_integers = enabled
+
+    @staticmethod
+    def preserve_fragment():
+        session = session_for_queue(_current_request(), "preserved fragment")
+        if session is not None:
+            session[PRESERVE_FRAGMENT_KEY] = True
 
     @staticmethod
     def optional(callback) -> OptionalProp:
@@ -240,3 +330,18 @@ class Inertia:
     @staticmethod
     def render(component: str, props: Optional[Dict[str, Any]] = None) -> InertiaResponse:
         return Inertia.instance().render(component, props or {})
+
+    @staticmethod
+    def back() -> RedirectResponse:
+        return RedirectResponse(url=_current_request().headers.get("referer", "/"), status_code=302)
+
+    @staticmethod
+    def back_with_errors(
+        errors: Union[ValidationErrors, Mapping[str, Any]],
+        bag: Optional[str] = None,
+    ) -> RedirectResponse:
+        request = _current_request()
+        session = session_for_queue(request, "validation errors")
+        if session is not None:
+            flash_errors(session, resolve_error_bag(request, bag), ValidationErrors.of(errors))
+        return RedirectResponse(url=request.headers.get("referer", "/"), status_code=302)

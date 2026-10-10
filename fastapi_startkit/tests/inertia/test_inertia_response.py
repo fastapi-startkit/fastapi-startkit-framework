@@ -1,6 +1,6 @@
 import json
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi import Request
 from fastapi_startkit.inertia.inertia import InertiaResponse, OptionalProp
 from fastapi_startkit.inertia.constant import Header
@@ -9,6 +9,7 @@ from fastapi_startkit.inertia.constant import Header
 class TestInertiaResponse(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.mock_request = MagicMock(spec=Request)
+        self.mock_request.scope = {}
         self.mock_request.headers = {}
         self.mock_request.url = "http://localhost/test"
 
@@ -112,54 +113,15 @@ class TestInertiaResponse(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(RuntimeError, "Inertia requires 'templates' to be bound"):
             await response.to_response(self.mock_request)
 
-    async def test_ssr_posts_page_to_standard_render_endpoint(self):
-        response = InertiaResponse("Dashboard", {}, {}, ssr_url="http://127.0.0.1:13714/")
-        page = {"component": "Dashboard", "url": "/", "props": {}}
-        http_response = MagicMock()
-        http_response.__enter__.return_value.read.return_value = (
-            b'{"head":["<title>Home</title>"],"body":"<main>SSR</main>"}'
-        )
-
-        with patch("fastapi_startkit.inertia.inertia.urllib.request.urlopen", return_value=http_response) as urlopen:
-            rendered = await response._render_ssr(page)
-
-        request = urlopen.call_args.args[0]
-        self.assertEqual(request.full_url, "http://127.0.0.1:13714/render")
-        self.assertEqual(json.loads(request.data), page)
-        self.assertEqual(rendered, {"head": ["<title>Home</title>"], "body": "<main>SSR</main>"})
-
-    async def test_ssr_failure_falls_back_to_client_rendering(self):
-        response = InertiaResponse("Dashboard", {}, {}, ssr_url="http://127.0.0.1:13714")
-        with patch("fastapi_startkit.inertia.inertia.urllib.request.urlopen", side_effect=OSError):
-            self.assertIsNone(await response._render_ssr({"url": "/", "component": "Dashboard"}))
-
-    async def test_ssr_without_url_returns_none(self):
-        response = InertiaResponse("Dashboard", {}, {})
-
-        self.assertIsNone(await response._render_ssr({"url": "/", "component": "Dashboard"}))
-
-    async def test_ssr_rejects_response_without_string_body(self):
-        response = InertiaResponse("Dashboard", {}, {}, ssr_url="http://127.0.0.1:13714")
-        http_response = MagicMock()
-        http_response.__enter__.return_value.read.return_value = b'{"body": null}'
-
-        with patch("fastapi_startkit.inertia.inertia.urllib.request.urlopen", return_value=http_response):
-            self.assertIsNone(await response._render_ssr({"url": "/", "component": "Dashboard"}))
-
     async def test_initial_response_includes_successful_ssr_render(self):
-        response = InertiaResponse("Dashboard", {}, {}, ssr_url="http://127.0.0.1:13714")
-        http_response = MagicMock()
-        http_response.__enter__.return_value.read.return_value = (
-            b'{"head":["<title>Home</title>"],"body":"<main>SSR</main>"}'
-        )
+        gateway = MagicMock()
+        gateway.render = AsyncMock(return_value={"head": ["<title>Home</title>"], "body": "<main>SSR</main>"})
+        response = InertiaResponse("Dashboard", {}, {}, ssr_gateway=gateway)
         templates = MagicMock()
         expected_response = MagicMock()
         templates.TemplateResponse.return_value = expected_response
 
-        with (
-            patch("fastapi_startkit.inertia.inertia.urllib.request.urlopen", return_value=http_response),
-            patch("fastapi_startkit.application.app") as container,
-        ):
+        with patch("fastapi_startkit.application.app") as container:
             container.return_value.has.return_value = True
             container.return_value.make.return_value = templates
 

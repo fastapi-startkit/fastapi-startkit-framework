@@ -39,6 +39,7 @@ class TestOptionalProp(unittest.TestCase):
 class TestEagerProps(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.request = MagicMock(spec=Request)
+        self.request.scope = {}
         self.request.headers = {Header.INERTIA: "true"}
         self.request.url = "http://localhost/page"
 
@@ -95,6 +96,7 @@ class TestEagerProps(unittest.IsolatedAsyncioTestCase):
 class TestSharedPropsmerging(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.request = MagicMock(spec=Request)
+        self.request.scope = {}
         self.request.headers = {Header.INERTIA: "true"}
         self.request.url = "http://localhost/"
 
@@ -140,6 +142,7 @@ class TestSharedPropsmerging(unittest.IsolatedAsyncioTestCase):
 class TestInertiaResponseBuilder(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.request = MagicMock(spec=Request)
+        self.request.scope = {}
         self.request.headers = {Header.INERTIA: "true"}
         self.request.url = "http://localhost/users"
 

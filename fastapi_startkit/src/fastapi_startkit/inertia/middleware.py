@@ -1,9 +1,10 @@
-from typing import Optional
+from typing import MutableMapping, Optional
 
 from fastapi import status
 from fastapi_startkit.inertia.constant import Header
 from fastapi_startkit.inertia.inertia import Inertia
 from fastapi_startkit.inertia.context import current_request
+from fastapi_startkit.inertia.errors import shape_error_bags
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
@@ -11,6 +12,10 @@ from starlette.responses import RedirectResponse, Response
 
 class InertiaMiddleware(BaseHTTPMiddleware):
     _root_view: str = "index.html"
+
+    def __init__(self, app, session: Optional[MutableMapping] = None):
+        super().__init__(app)
+        self._session = session
 
     @staticmethod
     def version(request: Request) -> Optional[str]:
@@ -34,6 +39,8 @@ class InertiaMiddleware(BaseHTTPMiddleware):
         return cls._root_view
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        if self._session is not None and "session" not in request.scope:
+            request.scope["session"] = self._session
         Inertia.version(lambda: self.version(request))
         Inertia.share(self.share(request))
         Inertia.set_root_view(self.root_view(request))
@@ -90,7 +97,8 @@ class InertiaMiddleware(BaseHTTPMiddleware):
     def resolve_validation_errors(request: Request) -> dict:
         if "session" not in request.scope:
             return {}
-        return request.session.pop("errors", {})
+        bags = request.session.pop("errors", {})
+        return shape_error_bags(bags, Inertia.instance().with_all_errors)
 
     @staticmethod
     def reflash(request: Request) -> None:

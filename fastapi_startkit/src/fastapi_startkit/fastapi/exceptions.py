@@ -49,18 +49,17 @@ class ValidationExceptionHandler:
 
         wants_json = "application/json" in accept or content_type.startswith("application/json")
 
-        errors = {}
-        for err in exc.errors():
-            field = ".".join(str(x) for x in err["loc"][1:])
-            errors.setdefault(field, []).append(err["msg"])
+        from fastapi_startkit.inertia.errors import DEFAULT_ERROR_BAG, ValidationErrors, flash_errors
+
+        errors = ValidationErrors.from_validation_error(exc)
 
         if wants_json:
             from fastapi.responses import JSONResponse
 
-            return JSONResponse(status_code=422, content={"errors": errors})
+            return JSONResponse(status_code=422, content={"errors": errors.to_dict()})
 
         if "session" in request.scope:
-            request.session["errors"] = errors
+            flash_errors(request.session, DEFAULT_ERROR_BAG, errors)
 
         from starlette.responses import RedirectResponse
 

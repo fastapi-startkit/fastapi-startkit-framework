@@ -106,7 +106,7 @@ class TestValidationExceptionHandler:
 
         assert response.status_code == 303
         assert response.headers["location"] == "/register"
-        assert request.session["errors"] == {"name": ["required"]}
+        assert request.session["errors"] == {"default": {"name": ["required"]}}
 
     async def test_non_json_without_session_redirects_to_root(self):
         exc = FakeValidationError([{"loc": ("body", "name"), "msg": "required"}])

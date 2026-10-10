@@ -87,7 +87,7 @@ class TestInertiaMiddleware(unittest.IsolatedAsyncioTestCase):
 
         @app.get("/set-errors")
         def set_errors(request: Request):
-            request.session["errors"] = {"email": "Required"}
+            request.session["errors"] = {"default": {"email": ["Required"]}}
             return "ok"
 
         @app.get("/check-errors")
