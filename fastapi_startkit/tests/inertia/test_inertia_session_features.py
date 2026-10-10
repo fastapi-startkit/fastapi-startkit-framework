@@ -223,7 +223,7 @@ def test_partial_resubmit_clears_previous_errors():
     assert partial["props"]["errors"] == {}
 
 
-def test_partial_for_another_component_does_not_consume_errors():
+def test_mismatched_component_render_receives_errors_without_leaking_them():
     app = make_app({})
 
     @app.post("/invalid")
@@ -238,8 +238,8 @@ def test_partial_for_another_component_does_not_consume_errors():
     client.post("/invalid", headers={**INERTIA, "referer": "/other"}, follow_redirects=False)
     mismatched = client.get("/other", headers=PARTIAL_PAGE_ONLY_OTHER).json()
 
-    assert mismatched["props"]["errors"] == {}
-    assert client.get("/other", headers=INERTIA).json()["props"]["errors"] == {"email": "Required"}
+    assert mismatched["props"]["errors"] == {"email": "Required"}
+    assert client.get("/page", headers=INERTIA).json()["props"]["errors"] == {}
 
 
 def test_errors_clear_on_a_full_visit_without_new_errors():

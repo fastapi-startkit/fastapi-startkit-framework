@@ -15,20 +15,18 @@ Status: Accepted
 
 ## Decision
 
-`share()` returns `Inertia.always(...)` for `errors`, so it is included on every response. The value is the flashed errors pulled from the session, shaped by `with_all_errors` and the `X-Inertia-Error-Bag` header. A partial reload with no newly flashed errors returns `{}`. A partial reload whose `X-Inertia-Partial-Component` names a different component than the one being rendered returns `{}` and leaves the flash in the session for the page it was meant for.
+`share()` returns `Inertia.always(...)` for `errors`, so it is included on every response. The value is the flashed errors pulled from the session, shaped by `with_all_errors` and the `X-Inertia-Error-Bag` header. A partial reload with no newly flashed errors returns `{}`.
 
-To make the second rule possible, `InertiaResponse.to_response` records the rendered component on the per-request state (`InertiaRequestState.component`) before resolving props.
+The resolver treats a request whose `X-Inertia-Partial-Component` names another component as a full render, so the errors go to whatever page renders next, which is the page the redirect targeted. No per-component check or request-state field is needed, because nothing is kept between requests except the flash itself.
 
 ## Implementation
 
-- `inertia/middleware.py`: `share()` wraps the errors resolver in `Inertia.always`. `is_partial_for_other_component` compares the partial header with the rendered component.
-- `inertia/inertia.py`: `to_response` stores the component on the request state.
-- `inertia/context.py`: `InertiaRequestState.component`.
+- `inertia/middleware.py`: `share()` wraps the errors resolver in `Inertia.always`, and `resolve_validation_errors` pulls the flashed errors.
 - `inertia/session.py`: unchanged `pull_error_bags`; no sticky store.
 - Tests in `tests/inertia/test_inertia_session_features.py`:
   - a partial reload without new errors returns `{}`;
   - a successful partial resubmit clears previous errors;
-  - a partial reload for another component does not consume the flash, and a later full visit still shows it;
+  - a partial reload for another component is a full render and receives the flashed errors, and the next visit to the other page gets `{}`;
   - a full visit after a redirect shows errors, and a full visit without new errors clears them.
 
 ## Validation
