@@ -52,7 +52,10 @@ def flash(key: Union[str, Dict[str, Any]], value: Any = None) -> None:
 
 
 def with_errors(errors: ErrorsInput, bag: str = DEFAULT_BAG) -> None:
-    request = active_request()
+    put_errors(active_request(), errors, bag)
+
+
+def put_errors(request: Request, errors: ErrorsInput, bag: str = DEFAULT_BAG) -> None:
     bags = dict(store(request).get(ERRORS) or {})
     bags[bag] = ValidationErrors(bags.get(bag)).merge(ValidationErrors.make(errors)).all()
     put(request, ERRORS, bags)

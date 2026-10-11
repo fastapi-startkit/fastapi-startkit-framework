@@ -44,6 +44,8 @@ class ValidationExceptionHandler:
         pass
 
     async def render(self, request, exc):
+        from fastapi_startkit.inertia.constant import Header
+
         accept = request.headers.get("accept", "")
         content_type = request.headers.get("content-type", "")
 
@@ -53,6 +55,9 @@ class ValidationExceptionHandler:
         for err in exc.errors():
             field = ".".join(str(x) for x in err["loc"][1:])
             errors.setdefault(field, []).append(err["msg"])
+
+        if request.headers.get(Header.INERTIA):
+            return self.redirect_back_with_errors(request, errors)
 
         if wants_json:
             from fastapi.responses import JSONResponse
@@ -67,3 +72,13 @@ class ValidationExceptionHandler:
         from fastapi_startkit.fastapi.referer import same_origin_referer
 
         return RedirectResponse(url=same_origin_referer(request), status_code=303)
+
+    @staticmethod
+    def redirect_back_with_errors(request, errors: dict):
+        from fastapi_startkit.fastapi.referer import same_origin_referer
+        from fastapi_startkit.inertia import session
+        from fastapi_startkit.inertia.constant import Header
+        from fastapi_startkit.inertia.redirect import InertiaRedirect
+
+        session.put_errors(request, errors, request.headers.get(Header.ERROR_BAG) or session.DEFAULT_BAG)
+        return InertiaRedirect(same_origin_referer(request), status_code=303)
