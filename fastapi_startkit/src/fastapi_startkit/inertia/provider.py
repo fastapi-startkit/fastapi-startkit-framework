@@ -1,6 +1,6 @@
-import json
 from markupsafe import Markup
 from fastapi_startkit.support import Provider
+from .encoding import html_safe_json
 from .inertia import Inertia
 from .middleware import InertiaMiddleware
 
@@ -19,7 +19,7 @@ class InertiaProvider(Provider):
 
             def inertia_helper(page):
                 client_page = {key: value for key, value in page.items() if key != "ssr"}
-                encoded_page = json.dumps(client_page).replace("<", "\\u003c")
+                encoded_page = html_safe_json(client_page)
                 ssr_body = page.get("ssr", {}).get("body", "")
                 return Markup(
                     f'<script data-page="app" type="application/json">{encoded_page}</script><div id="app">{ssr_body}</div>'

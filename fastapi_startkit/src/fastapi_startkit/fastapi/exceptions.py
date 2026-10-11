@@ -64,7 +64,6 @@ class ValidationExceptionHandler:
 
         from starlette.responses import RedirectResponse
 
-        return RedirectResponse(
-            url=request.headers.get("referer", "/"),
-            status_code=303,
-        )
+        from fastapi_startkit.fastapi.referer import same_origin_referer
+
+        return RedirectResponse(url=same_origin_referer(request), status_code=303)
