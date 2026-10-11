@@ -1,7 +1,5 @@
-import asyncio
-import json
-import urllib.request
-from typing import Any, Dict, Optional, Union
+import logging
+from typing import Any, Dict, Iterable, Optional, Union
 from urllib.parse import urlparse
 
 from fastapi import Request
@@ -12,12 +10,15 @@ from fastapi_startkit.inertia import session
 from fastapi_startkit.inertia.errors import ErrorsInput
 from fastapi_startkit.fastapi.referer import same_origin_referer
 from fastapi_startkit.inertia.redirect import InertiaRedirect
+from fastapi_startkit.inertia.ssr import HttpSSRGateway, SSRGateway, ViteHotFileGateway, is_excepted
 
 from fastapi_startkit.inertia.props.props import OptionalProp, Prop
 from fastapi_startkit.inertia.props.resolver import PropsResolver
 from fastapi_startkit.inertia.props.scroll import ScrollMetadata
 from fastapi_startkit.inertia.constant import Header
 from fastapi_startkit.inertia.context import current_request, current_state
+
+logger = logging.getLogger("fastapi_startkit.inertia")
 
 
 class ResponseFactory:
@@ -27,8 +28,9 @@ class ResponseFactory:
         self.root_view: str = "index.html"
         self.shared_props: dict = {}
         self.version = None
-        self.ssr_url: Optional[str] = None
-        self.ssr_timeout: float = 1.0
+        self.ssr_gateway: Optional[SSRGateway] = None
+        self.ssr_enabled: bool = False
+        self.ssr_except_paths: tuple[str, ...] = ()
         self.encrypt_history_enabled: bool = False
         self.expose_shared_prop_keys: bool = True
 
@@ -84,10 +86,19 @@ class ResponseFactory:
             return state.encrypt_history
         return self.encrypt_history_enabled
 
-    def set_ssr(self, url: Optional[str], timeout: float = 1.0):
-        """Configure the Inertia SSR server endpoint. Pass None to disable SSR."""
-        self.ssr_url = url.rstrip("/") if url else None
-        self.ssr_timeout = timeout
+    def set_ssr(self, url: Optional[str], timeout: float = 1.0, enabled: bool = True, except_paths: Iterable[str] = ()):
+        gateway = HttpSSRGateway(url, timeout) if url else None
+        self.set_ssr_gateway(gateway, enabled, except_paths)
+
+    def set_ssr_gateway(self, gateway: Optional[SSRGateway], enabled: bool = True, except_paths: Iterable[str] = ()):
+        self.ssr_gateway = gateway
+        self.ssr_enabled = enabled and gateway is not None
+        self.ssr_except_paths = tuple(except_paths)
+
+    async def ssr_healthy(self) -> bool:
+        if not self.ssr_enabled or self.ssr_gateway is None:
+            return False
+        return await self.ssr_gateway.healthy()
 
     def render(self, component: str, props: dict) -> "InertiaResponse":
         return InertiaResponse(
@@ -96,8 +107,8 @@ class ResponseFactory:
             props=props,
             root_view=self.get_root_view(),
             version=self.get_version() or "",
-            ssr_url=self.ssr_url,
-            ssr_timeout=self.ssr_timeout,
+            ssr_gateway=self.ssr_gateway if self.ssr_enabled else None,
+            ssr_except_paths=self.ssr_except_paths,
             encrypt_history=self.should_encrypt_history(),
             expose_shared_prop_keys=self.expose_shared_prop_keys,
         )
@@ -111,8 +122,8 @@ class InertiaResponse(Response):
         props: dict,
         root_view: str = "index.html",
         version: str = "",
-        ssr_url: Optional[str] = None,
-        ssr_timeout: float = 1.0,
+        ssr_gateway: Optional[SSRGateway] = None,
+        ssr_except_paths: Iterable[str] = (),
         encrypt_history: bool = False,
         expose_shared_prop_keys: bool = True,
     ):
@@ -123,8 +134,8 @@ class InertiaResponse(Response):
         self.props = props
         self.root_view = root_view
         self.version = version
-        self.ssr_url = ssr_url
-        self.ssr_timeout = ssr_timeout
+        self.ssr_gateway = ssr_gateway
+        self.ssr_except_paths = tuple(ssr_except_paths)
         self.encrypt_history_enabled = encrypt_history
         self.flash_data: dict = {}
         self.expose_shared_prop_keys = expose_shared_prop_keys
@@ -174,10 +185,9 @@ class InertiaResponse(Response):
         }
         page.update(self.session_metadata(request))
 
-        # SSR is used only for the initial HTML response. Inertia XHR requests
-        # continue returning the regular page JSON and never contact Node.
-        if not request.headers.get(Header.INERTIA) and self.ssr_url:
-            rendered = await self._render_ssr(page)
+        gateway = self._ssr_gateway_for(request)
+        if gateway is not None:
+            rendered = await self._render_ssr(gateway, page)
             if rendered:
                 page["ssr"] = rendered
 
@@ -202,31 +212,18 @@ class InertiaResponse(Response):
             )
         )
 
-    async def _render_ssr(self, page: dict) -> Optional[dict]:
-        """Ask the configured Inertia Node server to render this page."""
-        ssr_url = self.ssr_url
-        if ssr_url is None:
+    def _ssr_gateway_for(self, request: Request) -> Optional[SSRGateway]:
+        if request.headers.get(Header.INERTIA):
             return None
+        if is_excepted(urlparse(str(request.url)).path or "/", self.ssr_except_paths):
+            return None
+        return self.ssr_gateway
 
-        def request_ssr():
-            body = json.dumps(page).encode("utf-8")
-            req = urllib.request.Request(
-                ssr_url.rstrip("/") + "/render",
-                data=body,
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=self.ssr_timeout) as response:
-                result = json.loads(response.read().decode("utf-8"))
-            if not isinstance(result, dict) or not isinstance(result.get("body"), str):
-                raise ValueError("Invalid Inertia SSR response")
-            return {"body": result["body"], "head": result.get("head", [])}
-
+    async def _render_ssr(self, gateway: SSRGateway, page: dict) -> Optional[dict]:
         try:
-            return await asyncio.to_thread(request_ssr)
+            return await gateway.render(page)
         except Exception:
-            # SSR is an enhancement: if its process is unavailable, send the
-            # normal page shell so the client can still hydrate it.
+            logger.warning("Inertia SSR failed, falling back to client-side rendering.", exc_info=True)
             return None
 
     def _get_url(self, request: Request) -> str:
@@ -273,9 +270,25 @@ class Inertia:
         Inertia.instance().set_version(version)
 
     @staticmethod
-    def ssr(url: Optional[str] = "http://127.0.0.1:13714", timeout: float = 1.0):
-        """Enable SSR through the standard Inertia SSR server endpoint."""
-        Inertia.instance().set_ssr(url, timeout)
+    def ssr(
+        url: Optional[str] = "http://127.0.0.1:13714",
+        timeout: float = 1.0,
+        enabled: bool = True,
+        except_paths: Iterable[str] = (),
+    ):
+        Inertia.instance().set_ssr(url, timeout, enabled, except_paths)
+
+    @staticmethod
+    def ssr_hot(hot_file: str, timeout: float = 1.0, enabled: bool = True, except_paths: Iterable[str] = ()):
+        Inertia.instance().set_ssr_gateway(ViteHotFileGateway(hot_file, timeout), enabled, except_paths)
+
+    @staticmethod
+    def ssr_gateway(gateway: SSRGateway, enabled: bool = True, except_paths: Iterable[str] = ()):
+        Inertia.instance().set_ssr_gateway(gateway, enabled, except_paths)
+
+    @staticmethod
+    async def ssr_healthy() -> bool:
+        return await Inertia.instance().ssr_healthy()
 
     @staticmethod
     def encrypt_history(enabled: bool = True):

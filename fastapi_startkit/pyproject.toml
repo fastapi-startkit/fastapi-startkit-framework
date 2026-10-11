@@ -56,6 +56,7 @@ Changelog = "https://github.com/fastapi-startkit/fastapi-startkit-framework/rele
 [project.optional-dependencies]
 fastapi = [
     "fastapi[standard]>=0.124.4",
+    "httpx>=0.28.1",
     "itsdangerous>=2.2.0",
 ]
 database = [
