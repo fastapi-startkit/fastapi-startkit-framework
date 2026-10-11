@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, Iterable, Optional, Union
+from typing import Any, Callable, Dict, Iterable, Optional, Union
 from urllib.parse import urlparse
 
 from fastapi import Request
@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from starlette.responses import RedirectResponse, Response
 
 from fastapi_startkit.inertia import session
+from fastapi_startkit.inertia.encoding import encode_big_integers
 from fastapi_startkit.inertia.errors import ErrorsInput
 from fastapi_startkit.fastapi.referer import same_origin_referer
 from fastapi_startkit.inertia.redirect import InertiaRedirect
@@ -19,6 +20,8 @@ from fastapi_startkit.inertia.constant import Header
 from fastapi_startkit.inertia.context import current_request, current_state
 
 logger = logging.getLogger("fastapi_startkit.inertia")
+
+UrlResolver = Callable[[Request], str]
 
 
 class ResponseFactory:
@@ -33,6 +36,9 @@ class ResponseFactory:
         self.ssr_except_paths: tuple[str, ...] = ()
         self.encrypt_history_enabled: bool = False
         self.expose_shared_prop_keys: bool = True
+        self.root_id: str = "app"
+        self.url_resolver: Optional[UrlResolver] = None
+        self.preserve_big_integers_enabled: bool = False
 
     def set_root_view(self, view: str):
         self.root_view = view
@@ -111,6 +117,8 @@ class ResponseFactory:
             ssr_except_paths=self.ssr_except_paths,
             encrypt_history=self.should_encrypt_history(),
             expose_shared_prop_keys=self.expose_shared_prop_keys,
+            url_resolver=self.url_resolver,
+            preserve_big_integers=self.preserve_big_integers_enabled,
         )
 
 
@@ -126,6 +134,8 @@ class InertiaResponse(Response):
         ssr_except_paths: Iterable[str] = (),
         encrypt_history: bool = False,
         expose_shared_prop_keys: bool = True,
+        url_resolver: Optional[UrlResolver] = None,
+        preserve_big_integers: bool = False,
     ):
         # Do not call supper().__init__() — body is built lazily in __call__
         self.background = None  # required by FastAPI's response handling
@@ -139,6 +149,11 @@ class InertiaResponse(Response):
         self.encrypt_history_enabled = encrypt_history
         self.flash_data: dict = {}
         self.expose_shared_prop_keys = expose_shared_prop_keys
+        self.url_resolver = url_resolver
+        self.preserve_big_integers_enabled = preserve_big_integers
+        self.view_data: dict = {}
+        self.extra_headers: dict[str, str] = {}
+        self.ssr_allowed = True
 
     def with_(self, key: Union[str, Dict[str, Any]], value: Any = None) -> "InertiaResponse":
         if isinstance(key, dict):
@@ -149,6 +164,26 @@ class InertiaResponse(Response):
 
     def with_root_view(self, root_view: str) -> "InertiaResponse":
         self.root_view = root_view
+        return self
+
+    def with_view_data(self, key: Union[str, Dict[str, Any]], value: Any = None) -> "InertiaResponse":
+        self.view_data.update(key if isinstance(key, dict) else {key: value})
+        return self
+
+    def with_header(self, name: str, value: str) -> "InertiaResponse":
+        self.extra_headers[name] = value
+        return self
+
+    def with_headers(self, headers: Dict[str, str]) -> "InertiaResponse":
+        self.extra_headers.update(headers)
+        return self
+
+    def without_ssr(self) -> "InertiaResponse":
+        self.ssr_allowed = False
+        return self
+
+    def preserve_big_integers(self, enabled: bool = True) -> "InertiaResponse":
+        self.preserve_big_integers_enabled = enabled
         return self
 
     def flash(self, key: Union[str, Dict[str, Any]], value: Any = None) -> "InertiaResponse":
@@ -184,6 +219,8 @@ class InertiaResponse(Response):
             **metadata,
         }
         page.update(self.session_metadata(request))
+        if self.preserve_big_integers_enabled:
+            self._encode_big_integers(page)
 
         gateway = self._ssr_gateway_for(request)
         if gateway is not None:
@@ -191,6 +228,17 @@ class InertiaResponse(Response):
             if rendered:
                 page["ssr"] = rendered
 
+        response = await self._build_response(request, page)
+        response.headers.update(self.extra_headers)
+        return response
+
+    def _encode_big_integers(self, page: dict) -> None:
+        page["props"] = encode_big_integers(page["props"])
+        if "flash" in page:
+            page["flash"] = encode_big_integers(page["flash"])
+        page["preserveBigIntegers"] = True
+
+    async def _build_response(self, request: Request, page: dict) -> Response:
         if request.headers.get(Header.INERTIA):
             return JSONResponse(
                 content=page,
@@ -208,12 +256,14 @@ class InertiaResponse(Response):
             .TemplateResponse(
                 request,
                 self.root_view,
-                {"page": page},
+                {**self.view_data, "page": page},
             )
         )
 
     def _ssr_gateway_for(self, request: Request) -> Optional[SSRGateway]:
         if request.headers.get(Header.INERTIA):
+            return None
+        if not self.ssr_allowed:
             return None
         if is_excepted(urlparse(str(request.url)).path or "/", self.ssr_except_paths):
             return None
@@ -227,6 +277,8 @@ class InertiaResponse(Response):
             return None
 
     def _get_url(self, request: Request) -> str:
+        if self.url_resolver is not None:
+            return self.url_resolver(request)
         parsed = urlparse(str(request.url))
         url = parsed.path
         if parsed.query:
@@ -332,6 +384,18 @@ class Inertia:
     @staticmethod
     def back_with_errors(errors: ErrorsInput, bag: Optional[str] = None) -> InertiaRedirect:
         return Inertia.back().with_errors_in(bag or session.DEFAULT_BAG, errors)
+
+    @staticmethod
+    def root_id(root_id: str):
+        Inertia.instance().root_id = root_id
+
+    @staticmethod
+    def resolve_url_using(resolver: Optional[UrlResolver]):
+        Inertia.instance().url_resolver = resolver
+
+    @staticmethod
+    def preserve_big_integers(enabled: bool = True):
+        Inertia.instance().preserve_big_integers_enabled = enabled
 
     @staticmethod
     def get_version() -> Optional[str]:
