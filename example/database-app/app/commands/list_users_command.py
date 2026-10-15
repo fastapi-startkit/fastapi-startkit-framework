@@ -1,5 +1,5 @@
 import asyncio
-from cleo.commands.command import Command
+from fastapi_startkit.console import Command
 
 
 class ListUsersCommand(Command):
