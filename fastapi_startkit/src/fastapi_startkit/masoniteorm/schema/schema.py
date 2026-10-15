@@ -163,8 +163,8 @@ class Schema:
         connection = self.get_connection()
         platform = connection.get_default_platform()()
         sql = platform.compile_get_all_tables(
-            database=connection.config.get("database"),
-            schema=connection.config.get("schema"),
+            database=connection.config.database,
+            schema=connection.config.schema,
         )
         result = await connection.select(sql, ())
         return [list(row.values())[0] for row in result] if result else []

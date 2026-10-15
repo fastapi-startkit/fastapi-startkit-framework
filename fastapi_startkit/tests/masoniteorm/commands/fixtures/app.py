@@ -1,3 +1,4 @@
+from fastapi_startkit.masoniteorm import DatabaseConfig, SQLiteConfig
 from pathlib import Path
 
 from fastapi_startkit.application import Application
@@ -14,16 +15,12 @@ def create_app() -> Application:
         providers=[
             (
                 DatabaseProvider,
-                {
-                    "default": "sqlite",
-                    "connections": {
-                        "sqlite": SQLiteConfig(
-                            driver="sqlite",
-                            url=f"sqlite+aiosqlite:///{DB_PATH}",
-                            options=None,
-                        ),
+                DatabaseConfig(
+                    default="sqlite",
+                    connections={
+                        "sqlite": SQLiteConfig(driver="sqlite", url=f"sqlite+aiosqlite:///{DB_PATH}", options=None)
                     },
-                },
+                ),
             ),
         ],
     )

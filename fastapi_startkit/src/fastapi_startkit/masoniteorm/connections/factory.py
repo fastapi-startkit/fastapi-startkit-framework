@@ -1,10 +1,10 @@
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, cast
 
-from sqlalchemy import StaticPool
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.pool import NullPool
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncEngine
 
 from fastapi_startkit.exceptions.exceptions import DriverNotFound
+from fastapi_startkit.masoniteorm.config.config import DBConfig
 from fastapi_startkit.masoniteorm.connections.connection import Connection
 from fastapi_startkit.masoniteorm.connections.sqlite_connection import SQliteConnection
 from fastapi_startkit.masoniteorm.connections.postgres_connection import (
@@ -17,68 +17,42 @@ if TYPE_CHECKING:
 
 
 class ConnectionFactory:
-    DRIVER_URLS = {
-        "sqlite": "sqlite+aiosqlite",
-        "mysql": "mysql+aiomysql",
-        "postgres": "postgresql+asyncpg",
-    }
-
-    # Sensible per-driver defaults so a missing/empty "port" no longer surfaces as a
-    # raw SQLAlchemy `ValueError: invalid literal for int()` at engine-creation time.
-    DEFAULT_PORTS = {
-        "mysql": 3306,
-        "postgres": 5432,
-    }
-
-    CONNECTIONS = {
+    CONNECTIONS: dict[str, type[Connection]] = {
         "sqlite": SQliteConnection,
         "mysql": MySQLConnection,
         "postgres": PostgresConnection,
     }
 
     @classmethod
-    def _unsupported_driver_error(cls, driver: Any) -> DriverNotFound:
-        supported = ", ".join(sorted(cls.DRIVER_URLS))
-        return DriverNotFound(f"Unsupported database driver {driver!r}. Supported drivers are: {supported}.")
+    def _ensure_supported(cls, driver: str) -> None:
+        if driver not in cls.CONNECTIONS:
+            supported = ", ".join(sorted(cls.CONNECTIONS))
+            raise DriverNotFound(f"Unsupported database driver {driver!r}. Supported drivers are: {supported}.")
 
     @classmethod
-    def build_url(cls, config: dict) -> str:
-        if url := config.get("url"):
-            return str(url)
-
-        driver = config["driver"]
-        scheme = cls.DRIVER_URLS.get(driver)
-        if scheme is None:
-            raise cls._unsupported_driver_error(driver)
-        db = config.get("database", "")
-
-        if driver == "sqlite":
-            return f"{scheme}:///{db}"
-
-        user = config.get("username", "")
-        pwd = config.get("password", "")
-        host = config.get("host", "localhost")
-        port = config.get("port") or cls.DEFAULT_PORTS[driver]
-        return f"{scheme}://{user}:{pwd}@{host}:{port}/{db}"
+    def build_url(cls, config: DBConfig) -> str:
+        if not config.url:
+            cls._ensure_supported(config.driver)
+        return config.build_url()
 
     @classmethod
-    def create_engine(cls, cfg: dict) -> AsyncEngine:
-        url = cls.build_url(cfg)
-        kwargs: dict[str, Any] = {"echo": bool(cfg.get("echo", False))}
+    def create_engine(cls, config: DBConfig) -> AsyncEngine:
         from fastapi_startkit.application import app
 
+        cls._ensure_supported(config.driver)
+        options: dict[str, object] = {"echo": config.echo}
         if cast("Application", app()).is_testing():
-            kwargs["poolclass"] = NullPool
-        elif cfg["driver"] == "sqlite":
-            kwargs["connect_args"] = {"check_same_thread": False}
-            kwargs["poolclass"] = StaticPool
-        return create_async_engine(url, **kwargs)
+            options["poolclass"] = NullPool
+        else:
+            options.update(config.engine_options())
+        return create_async_engine(config.build_url(), **options)
 
-    def make(self, config: dict, name: str) -> Connection:
-        driver = config["driver"]
-        connection_class = type(self).CONNECTIONS.get(driver)
-        if connection_class is None:
-            raise type(self)._unsupported_driver_error(driver)
+    @classmethod
+    def create_connection(cls, driver: str, config: DBConfig) -> Connection:
+        cls._ensure_supported(driver)
+        if driver != config.driver:
+            raise ValueError(f"Connection driver {driver!r} does not match configuration driver {config.driver!r}")
+        return cls.CONNECTIONS[driver](cls.create_engine(config), config)
 
-        engine = self.create_engine(config)
-        return connection_class(engine, config)
+    def make(self, config: DBConfig, name: str) -> Connection:
+        return self.create_connection(config.driver, config)

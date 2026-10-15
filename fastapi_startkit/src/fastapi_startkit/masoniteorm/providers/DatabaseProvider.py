@@ -1,4 +1,8 @@
+from dataclasses import fields, is_dataclass
 from pathlib import Path
+from typing import cast
+
+from fastapi_startkit.support.dataclass import Dataclass
 
 from fastapi_startkit.masoniteorm.commands import (
     DBMigrateCommand,
@@ -19,10 +23,22 @@ from fastapi_startkit.support import Provider
 
 class DatabaseProvider(Provider):
     def register(self):
+        from ..config.config import DBConfig
         from ..config.database import DatabaseConfig
 
-        config = self.resolve_config(DatabaseConfig)
-        self.merge_config_from(config, self.provider_key)
+        source = cast(object, self.config)
+        if not source:
+            config = DatabaseConfig()
+        elif isinstance(source, DatabaseConfig):
+            config = source
+        elif is_dataclass(source) and not isinstance(source, type):
+            config = DatabaseConfig(**{field.name: getattr(source, field.name) for field in fields(source)})
+        else:
+            raise TypeError("DatabaseProvider requires a database settings dataclass")
+        for name, connection in cast(dict[str, object], config.connections).items():
+            if not isinstance(connection, DBConfig):
+                raise TypeError(f"Database connection {name!r} requires a database config object")
+        self.merge_config_from(Dataclass.to_dict(config), self.provider_key)
 
         db = DatabaseManager(ConnectionFactory(), config)
 
