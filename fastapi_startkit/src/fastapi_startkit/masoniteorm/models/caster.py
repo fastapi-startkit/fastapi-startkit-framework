@@ -3,6 +3,7 @@ import pendulum
 import datetime
 from decimal import Decimal
 from enum import Enum
+from inspect import get_annotations
 from dataclasses import dataclass, field
 from collections.abc import Callable
 from typing import Any, get_args, get_type_hints, Optional
@@ -208,7 +209,7 @@ class Caster:
         except NameError:
             annotations = {}
             for klass in reversed(model.__mro__):
-                for name, hint in vars(klass).get("__annotations__", {}).items():
+                for name, hint in get_annotations(klass).items():
                     if not isinstance(getattr(model, name, None), BaseRelationship):
                         annotations[name] = hint
 

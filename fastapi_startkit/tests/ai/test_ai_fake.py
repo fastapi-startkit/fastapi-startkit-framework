@@ -11,7 +11,8 @@ model exactly as Ai.build() always has.
 import unittest
 from unittest import mock
 
-import langchain.chat_models as chat_models
+import pytest
+
 from langchain_core.messages import AIMessage, ToolCall
 from langchain_core.tools import tool
 
@@ -19,6 +20,8 @@ from fastapi_startkit.ai import state as ai_state
 from fastapi_startkit.ai.agent import Agent
 from fastapi_startkit.ai.ai import Ai
 from fastapi_startkit.application import app
+
+chat_models = pytest.importorskip("langchain.chat_models")
 
 
 @tool

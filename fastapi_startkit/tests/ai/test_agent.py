@@ -4,7 +4,8 @@ import unittest
 from typing import cast
 from unittest import mock
 
-import langchain.chat_models as chat_models
+import pytest
+
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, AIMessageChunk, ToolCall
 from langchain_core.outputs import ChatGenerationChunk
@@ -16,6 +17,8 @@ from fastapi_startkit.ai.agent import Agent
 from fastapi_startkit.ai.runner import Runner
 from fastapi_startkit.ai.ai import Ai
 from fastapi_startkit.application import app
+
+chat_models = pytest.importorskip("langchain.chat_models")
 
 
 class StreamingToolFake(GenericFakeChatModel):
