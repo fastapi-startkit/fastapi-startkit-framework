@@ -10,19 +10,11 @@ jobs:
     tests:
         name: Pytest (Python ${{ matrix.python-version }})
         runs-on: ubuntu-latest
-        continue-on-error: ${{ matrix.experimental }}
 
         strategy:
             fail-fast: false
             matrix:
                 python-version: [ "3.12", "3.13", "3.14", "3.15" ]
-                experimental: [ false ]
-                include:
-                    -   python-version: "3.16"
-                        experimental: true
-                        pyo3-forward-compat: "1"
-                        sync-args: --no-install-package cffi --no-install-package zstandard
-                        pytest-args: -p no:asyncio
 
         env:
             DB_HOST: 127.0.0.1
@@ -47,13 +39,11 @@ jobs:
 
             -   name: Install dependencies (fastapi_startkit)
                 working-directory: fastapi_startkit
-                env:
-                    PYO3_USE_ABI3_FORWARD_COMPATIBILITY: ${{ matrix.pyo3-forward-compat }}
-                run: uv sync --group dev --extra database --extra sqlite --extra fastapi --extra vite --extra postgres ${{ matrix.sync-args }}
+                run: uv sync --group dev --extra database --extra sqlite --extra fastapi --extra vite --extra postgres
 
             -   name: Run tests (fastapi_startkit)
                 working-directory: fastapi_startkit
-                run: uv run --no-sync python --version && uv run --no-sync pytest tests/ -v --cov --cov-report=xml ${{ matrix.pytest-args }}
+                run: uv run pytest tests/ -v --cov --cov-report=xml
 
             -   name: Upload coverage to Codecov
                 if: matrix.python-version == '3.13'

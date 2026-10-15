@@ -25,7 +25,7 @@ fastapi-startkit[ai]         # LangChain agents
 
 ### Python versions
 
-Python 3.12, 3.13, 3.14 and 3.15 are supported. Python 3.16 is tested experimentally.
+Python 3.12, 3.13, 3.14 and 3.15 are supported.
 
 > [!NOTE]
 > The `ai` extra cannot be installed on Python 3.15 or newer yet. It depends on `langgraph`, which
