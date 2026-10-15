@@ -20,6 +20,9 @@ jobs:
                 include:
                     -   python-version: "3.16"
                         experimental: true
+                        pyo3-forward-compat: "1"
+                        sync-args: --no-install-package cffi --no-install-package zstandard
+                        pytest-args: -p no:asyncio
 
         env:
             DB_HOST: 127.0.0.1
@@ -37,21 +40,20 @@ jobs:
                 uses: astral-sh/setup-uv@v5
 
             -   name: Set up Python
-                uses: actions/setup-python@v5
-                with:
-                    python-version: ${{ matrix.python-version }}
-                    allow-prereleases: ${{ matrix.experimental }}
+                run: uv python install ${{ matrix.python-version }}
 
             -   name: Start MySQL
                 run: docker compose -f docker-compose.yml up -d --wait
 
             -   name: Install dependencies (fastapi_startkit)
                 working-directory: fastapi_startkit
-                run: uv sync --group dev --extra database --extra sqlite --extra fastapi --extra vite --extra postgres
+                env:
+                    PYO3_USE_ABI3_FORWARD_COMPATIBILITY: ${{ matrix.pyo3-forward-compat }}
+                run: uv sync --group dev --extra database --extra sqlite --extra fastapi --extra vite --extra postgres ${{ matrix.sync-args }}
 
             -   name: Run tests (fastapi_startkit)
                 working-directory: fastapi_startkit
-                run: uv run pytest tests/ -v --cov --cov-report=xml
+                run: uv run --no-sync python --version && uv run --no-sync pytest tests/ -v --cov --cov-report=xml ${{ matrix.pytest-args }}
 
             -   name: Upload coverage to Codecov
                 if: matrix.python-version == '3.13'

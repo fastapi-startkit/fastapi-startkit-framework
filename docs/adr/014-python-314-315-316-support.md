@@ -31,7 +31,7 @@ Users on 3.14 and 3.15 get no signal that the package works there, and CI would 
 
 - Keep `requires-python = ">=3.12,<4.0"`, which already admits 3.14–3.16.
 - Add Trove classifiers for 3.14 and 3.15 (final releases). Do not add 3.16 until it reaches final.
-- CI `Pytest` becomes a matrix: 3.12, 3.13, 3.14, 3.15 are required; 3.16 runs with `allow-prereleases` and `continue-on-error`. Example apps move to their own `Examples` job on 3.13, because `example/agents` needs the `ai` extra.
+- CI `Pytest` becomes a matrix: 3.12, 3.13, 3.14, 3.15 are required; 3.16 runs with `continue-on-error`. Interpreters come from `uv python install`, because the `actions/setup-python` manifest has no 3.16 alpha. The 3.16 job builds PyO3 crates with `PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1`, skips installing `cffi` and `zstandard`, and runs pytest with `-p no:asyncio` so the synchronous tests still execute despite the upstream blockers. Example apps move to their own `Examples` job on 3.13, because `example/agents` needs the `ai` extra.
 - `Caster.build_casts` reads own-class annotations through `inspect.get_annotations`.
 - Refresh `uv.lock` for packages that gained cp315 wheels, using targeted `--upgrade-package` to avoid unrelated version churn.
 - Mark `langchain` in the dev group with `python_version < '3.15'`; the four test modules that patch `langchain.chat_models` use `pytest.importorskip`.
@@ -42,7 +42,8 @@ Users on 3.14 and 3.15 get no signal that the package works there, and CI would 
 - `fastapi_startkit/uv.lock`: upgraded asyncpg, cffi, charset-normalizer, greenlet, httptools, markupsafe, orjson, pendulum, pydantic/pydantic-core, rapidfuzz, rignore, typing-extensions, typing-inspection, uvloop, watchfiles, xxhash.
 - `src/fastapi_startkit/masoniteorm/models/caster.py`: `inspect.get_annotations(klass)` in the `NameError` fallback, with a regression test in `tests/masoniteorm/models/test_caster.py`.
 - `tests/ai/test_agent.py`, `test_ai_fake.py`, `test_structured_output.py`, `test_agent_fake.py`: `pytest.importorskip("langchain.chat_models")`.
-- `.github/workflows/test.yml`: `Pytest (Python X)` matrix, with `UV_PYTHON` pinned to the matrix version and coverage uploaded from 3.13 only. Separate `Examples` job.
+- `.github/workflows/test.yml`: `Pytest (Python X)` matrix, with `UV_PYTHON` pinned to the matrix version, `uv run --no-sync` for the test step, and per-entry `pyo3-forward-compat`, `sync-args` and `pytest-args` for 3.16. Coverage is uploaded from 3.13 only. Separate `Examples` job.
+- `readme.md` and `fastapi_startkit/README.md`: supported versions, and a note that the `ai` extra cannot be installed on 3.15+.
 
 ## Upstream blockers
 
@@ -54,6 +55,6 @@ Users on 3.14 and 3.15 get no signal that the package works there, and CI would 
 ## Validation
 
 - `uv run --python 3.X pytest tests/ --ignore=tests/masoniteorm/postgres` on 3.12, 3.13, 3.14 and 3.15. The 3.15 run skips the four langchain-dependent modules and stays above the 80% coverage gate.
-- 3.16.0a1: the runtime extras except `ai` install, and the dev environment and async tests fail on the upstream blockers above.
+- 3.16.0a1 with the experimental job's settings: 2508 passed. The 212 failures and 55 errors are all async tests running without pytest-asyncio.
 - The new caster test fails on 3.14 without the fix and passes on every version with it.
 - `uv lock --check` with the older local uv still reads the refreshed lock.
