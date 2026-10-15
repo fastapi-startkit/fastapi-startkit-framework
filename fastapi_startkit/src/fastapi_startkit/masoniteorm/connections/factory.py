@@ -14,6 +14,7 @@ from fastapi_startkit.masoniteorm.connections.mysql_connection import MySQLConne
 
 if TYPE_CHECKING:
     from fastapi_startkit.application import Application
+    from fastapi_startkit.config import AppConfig
 
 
 class ConnectionFactory:
@@ -41,7 +42,7 @@ class ConnectionFactory:
 
         cls._ensure_supported(config.driver)
         options: dict[str, object] = {"echo": config.echo}
-        if cast("Application", app()).is_testing():
+        if cast("Application[AppConfig]", app()).is_testing():
             options["poolclass"] = NullPool
         else:
             options.update(config.engine_options())

@@ -16,16 +16,15 @@ from fastapi_startkit.masoniteorm.commands import (
 )
 from fastapi_startkit.masoniteorm.connections.factory import ConnectionFactory
 from fastapi_startkit.masoniteorm.connections.manager import DatabaseManager
-from fastapi_startkit.masoniteorm import Migrator
-from fastapi_startkit.masoniteorm import Model
+from fastapi_startkit.masoniteorm.config.config import DBConfig
+from fastapi_startkit.masoniteorm.config.database import DatabaseConfig
+from fastapi_startkit.masoniteorm.migrations.Migrator import Migrator
+from fastapi_startkit.masoniteorm.models import Model
 from fastapi_startkit.support import Provider
 
 
 class DatabaseProvider(Provider):
     def register(self):
-        from ..config.config import DBConfig
-        from ..config.database import DatabaseConfig
-
         source = cast(object, self.config)
         if not source:
             config = DatabaseConfig()

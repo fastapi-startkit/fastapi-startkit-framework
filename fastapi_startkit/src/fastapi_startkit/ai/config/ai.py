@@ -15,7 +15,7 @@ class AIConfig(Config):
     default_audio: str = env("AI_DEFAULT_AUDIO_PROVIDER", "openai")
     default_transcribe: str = env("AI_DEFAULT_TRANSCRIBE_PROVIDER", "openai")
 
-    providers: dict = field(
+    providers: dict[str, Config] = field(
         default_factory=lambda: {
             "google": GoogleConfig(),
             "openai": OpenAIConfig(),

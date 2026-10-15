@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 
-from fastapi_startkit.environment import env, value
+from fastapi_startkit.environment import env
 from fastapi_startkit.masoniteorm import DatabaseConfig as BaseDatabaseConfig
 from fastapi_startkit.masoniteorm import DBConfig, PostgresConfig
 
@@ -15,12 +15,12 @@ class DatabaseConfig(BaseDatabaseConfig):
             # here lines up with the checkpointer's thread_id.
             "postgres": PostgresConfig(
                 driver="postgres",
-                host=value(env("DB_HOST", "localhost")),
-                port=value(env("DB_PORT", 5432)),
-                database=value(env("DB_DATABASE", "agents")),
-                username=value(env("DB_USERNAME", "postgres")),
-                password=value(env("DB_PASSWORD", "postgres")),
-                sslmode=value(env("DB_SSLMODE", "disable")),
+                host=env("DB_HOST", "localhost"),
+                port=env("DB_PORT", 5432),
+                database=env("DB_DATABASE", "agents"),
+                username=env("DB_USERNAME", "postgres"),
+                password=env("DB_PASSWORD", "postgres"),
+                sslmode=env("DB_SSLMODE", "disable"),
             ),
         }
     )

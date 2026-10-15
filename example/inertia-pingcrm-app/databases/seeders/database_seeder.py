@@ -29,6 +29,7 @@ class DatabaseSeeder(Seeder):
 
         # Create 100 organizations
         organizations = await OrganizationFactory.new().count(100).create(account_id=account.id)
+        assert isinstance(organizations, list)
 
         # Create 100 contacts
         for _ in range(100):

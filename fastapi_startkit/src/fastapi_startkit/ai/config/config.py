@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import os
+
 from fastapi_startkit.configuration import Config
 
 from dataclasses import dataclass, field
 
-from fastapi_startkit.environment import env, value
+from fastapi_startkit.environment import env
 
 
 @dataclass
@@ -15,7 +17,7 @@ class AnthropicConfig(Config):
     key: str = env("ANTHROPIC_API_KEY", "", cast=False)
     url: str = env("ANTHROPIC_BASE_URL", "https://api.anthropic.com")
 
-    models: dict = field(
+    models: dict[str, str] = field(
         default_factory=lambda: {
             "default": "claude-sonnet-4-6",
         }
@@ -30,7 +32,7 @@ class OpenAIConfig(Config):
     key: str = env("OPENAI_API_KEY", "", cast=False)
     url: str = env("OPENAI_BASE_URL", "https://api.openai.com/v1")
 
-    models: dict = field(
+    models: dict[str, str] = field(
         default_factory=lambda: {
             "default": "gpt-4o",
             "default_image": "dall-e-3",
@@ -43,13 +45,9 @@ class GoogleConfig(Config):
     """Configuration for the Google / Gemini provider."""
 
     driver: str = "google"
-    key: str = field(
-        default_factory=lambda: (
-            value(env("GEMINI_API_KEY", "", cast=False)) or value(env("GOOGLE_API_KEY", "", cast=False))
-        )
-    )
+    key: str = field(default_factory=lambda: os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "")
 
-    models: dict = field(
+    models: dict[str, str] = field(
         default_factory=lambda: {
             "default": "gemini-2.5-flash-lite",
             "default_image": "imagen-3.0-generate-002",
@@ -64,7 +62,7 @@ class ElevenLabsConfig(Config):
     driver: str = "elevenlabs"
     key: str = env("ELEVENLABS_API_KEY", "", cast=False)
 
-    models: dict = field(
+    models: dict[str, str] = field(
         default_factory=lambda: {
             "default_audio": "eleven_multilingual_v2",
             "default_transcribe": "scribe_v1",

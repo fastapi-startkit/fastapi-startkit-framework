@@ -1,8 +1,7 @@
 from fastapi_startkit.config import AppConfig as BaseConfig
-from pydantic.dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from config.database import DatabaseConfig
-from dataclasses import field
 
 
 @dataclass

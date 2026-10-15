@@ -1,3 +1,4 @@
+from fastapi_startkit.masoniteorm import DatabaseConfig, SQLiteConfig
 import tempfile
 import unittest
 from pathlib import Path
@@ -10,21 +11,12 @@ from fastapi_startkit.masoniteorm.providers import DatabaseProvider
 
 
 class TestDatabaseManagerConnectionLookup(unittest.TestCase):
-    """Regression test for GH issue #6.
-
-    DatabaseProvider.register() binds the *full* resolved config (with
-    top-level ``default``/``connections``/``migrations`` keys) into
-    DatabaseManager, so connection() must look names up under the nested
-    "connections" key rather than treating the whole config as a flat
-    {connection_name: {...}} dict.
-    """
-
-    def test_connection_resolves_from_nested_connections_dict(self):
-        config = {
-            "default": "sqlite",
-            "connections": {"sqlite": {"driver": "sqlite", "url": "sqlite+aiosqlite:///:memory:"}},
-            "migrations": {"table": "migrations", "directory": "databases/migrations"},
-        }
+    def test_connection_resolves_from_named_config_object(self):
+        config = DatabaseConfig(
+            default="sqlite",
+            connections={"sqlite": SQLiteConfig(driver="sqlite", url="sqlite+aiosqlite:///:memory:")},
+            migrations={"table": "migrations", "directory": "databases/migrations"},
+        )
         manager = DatabaseManager(ConnectionFactory(), config)
 
         connection = manager.connection("sqlite")
@@ -32,11 +24,11 @@ class TestDatabaseManagerConnectionLookup(unittest.TestCase):
         self.assertIsNotNone(connection)
 
     def test_default_connection_name_resolved_from_top_level_default(self):
-        config = {
-            "default": "sqlite",
-            "connections": {"sqlite": {"driver": "sqlite", "url": "sqlite+aiosqlite:///:memory:"}},
-            "migrations": {},
-        }
+        config = DatabaseConfig(
+            default="sqlite",
+            connections={"sqlite": SQLiteConfig(driver="sqlite", url="sqlite+aiosqlite:///:memory:")},
+            migrations={},
+        )
         manager = DatabaseManager(ConnectionFactory(), config)
 
         connection = manager.connection()
@@ -45,7 +37,7 @@ class TestDatabaseManagerConnectionLookup(unittest.TestCase):
         self.assertIn("sqlite", manager.connections)
 
     def test_missing_connection_raises_value_error_not_key_error(self):
-        config = {"default": "sqlite", "connections": {}, "migrations": {}}
+        config = DatabaseConfig(default="sqlite", connections={}, migrations={})
         manager = DatabaseManager(ConnectionFactory(), config)
 
         with self.assertRaises(ValueError):
@@ -58,24 +50,23 @@ class TestDatabaseProviderWiring(unittest.TestCase):
     exercises on boot.
     """
 
+    base_path: Path  # pyright: ignore[reportUninitializedInstanceVariable]
+
     def setUp(self):
-        self._tmp_dir = tempfile.TemporaryDirectory()
-        self.addCleanup(self._tmp_dir.cleanup)
-        self.base_path = Path(self._tmp_dir.name)
+        tmp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp_dir.cleanup)
+        self.base_path = Path(tmp_dir.name)
 
     def test_provider_wires_a_resolvable_connection(self):
+        connection_config = SQLiteConfig(url="sqlite+aiosqlite:///:memory:")
+        settings = DatabaseConfig(default="sqlite", connections={"sqlite": connection_config})
         app = Application(
             base_path=self.base_path,
             env="testing",
             providers=[
                 (
                     DatabaseProvider,
-                    {
-                        "default": "sqlite",
-                        "connections": {
-                            "sqlite": SQLiteConfig(driver="sqlite", url="sqlite+aiosqlite:///:memory:"),
-                        },
-                    },
+                    settings,
                 )
             ],
         )
@@ -84,3 +75,14 @@ class TestDatabaseProviderWiring(unittest.TestCase):
         connection = db.connection()
 
         self.assertIsNotNone(connection)
+
+        self.assertIs(db.config, settings)
+        self.assertIs(connection.config, connection_config)
+
+    def test_provider_rejects_dictionary_settings(self):
+        with self.assertRaisesRegex(TypeError, "requires a database settings dataclass"):
+            Application(
+                base_path=self.base_path,
+                env="testing",
+                providers=[(DatabaseProvider, {"default": "sqlite"})],
+            )

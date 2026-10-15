@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from contextvars import ContextVar
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fastapi_startkit.masoniteorm.config.config import DBConfig
 
@@ -28,7 +28,7 @@ class Connection(ManagesTransactions):
             f"masoniteorm_connection_{id(self)}", default=None
         )
 
-    def query(self) -> QueryBuilder:
+    def query(self) -> QueryBuilder[Any]:
         return QueryBuilder(
             connection=self,
             grammar=self.get_query_grammar(),
@@ -59,8 +59,8 @@ class Connection(ManagesTransactions):
         await self.close()
 
     @staticmethod
-    def sql_alchemy_bindings(query: str, bindings: list | None = None):
-        params = {}
+    def sql_alchemy_bindings(query: str, bindings: list[Any] | None = None):
+        params: dict[str, Any] = {}
         if bindings:
             for i, val in enumerate(bindings):
                 name = f"p{i}"
@@ -68,47 +68,47 @@ class Connection(ManagesTransactions):
                 query = query.replace("?", f":{name}", 1)
         return (query, params)
 
-    async def run(self, query: str, bindings: list | None = None):
+    async def run(self, query: str, bindings: list[Any] | None = None):
         query, params = self.sql_alchemy_bindings(query, bindings)
         return await self._execute(query, params)
 
-    async def execute(self, query: str, bindings: list | None = None):
+    async def execute(self, query: str, bindings: list[Any] | None = None):
         query, params = self.sql_alchemy_bindings(query, bindings)
         return await self._execute(query, params)
 
-    async def _execute(self, query: str, bindings: dict):
+    async def _execute(self, query: str, bindings: dict[str, Any]):
         connection = self.connection
         if connection is not None:
             return await connection.execute(text(query), bindings or {})
         async with self.engine.begin() as operation_connection:
             return await operation_connection.execute(text(query), bindings or {})
 
-    async def insert(self, query: str, bindings: list | None = None) -> int | None:
+    async def insert(self, query: str, bindings: list[Any] | None = None) -> int | None:
         result = await self.execute(query, bindings)
         return getattr(result, "lastrowid", None)
 
-    async def insert_get_id(self, query: str, bindings: list | None = None) -> int | None:
+    async def insert_get_id(self, query: str, bindings: list[Any] | None = None) -> int | None:
         result = await self.execute(query, bindings)
         return getattr(result, "lastrowid", None)
 
-    async def update(self, query: str, bindings: list | None = None) -> int:
+    async def update(self, query: str, bindings: list[Any] | None = None) -> int:
         result = await self.execute(query, bindings)
         return result.rowcount  # type: ignore[return-value]
 
-    async def delete(self, query: str, bindings: list | None = None) -> int:
+    async def delete(self, query: str, bindings: list[Any] | None = None) -> int:
         result = await self.execute(query, bindings)
         return result.rowcount  # type: ignore[return-value]
 
-    async def select(self, query: str, bindings: list | None = None) -> list[dict]:
+    async def select(self, query: str, bindings: list[Any] | None = None) -> list[dict[str, Any]]:
         result = await self.run(query, bindings)
         return [dict(row) for row in result.mappings().all()]
 
-    async def select_one(self, query: str, bindings: list | None = None) -> dict | None:
+    async def select_one(self, query: str, bindings: list[Any] | None = None) -> dict[str, Any] | None:
         result = await self.run(query, bindings)
         row = result.fetchone()
         return dict(zip(result.keys(), row)) if row else None
 
-    async def statement(self, query: str, bindings: list | None = None) -> bool:
+    async def statement(self, query: str, bindings: list[Any] | None = None) -> bool:
         query, params = self.sql_alchemy_bindings(query, bindings)
         await self._execute(query, params)
         return True

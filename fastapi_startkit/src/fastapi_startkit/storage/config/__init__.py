@@ -1,9 +1,10 @@
+from fastapi_startkit.configuration import Config
 from dataclasses import dataclass, field
 
 
 @dataclass
-class LocalDiskConfig:
-    driver: str = field(default="local")
+class LocalDiskConfig(Config):
+    driver: str = "local"
     root: str = "storage"
     serve: bool = True
     throw: bool = False
@@ -12,7 +13,7 @@ class LocalDiskConfig:
 
 @dataclass
 class PublicDiskConfig(LocalDiskConfig):
-    driver: str = field(default="local")
+    driver: str = "local"
     serve: bool = True
     throw: bool = False
     report: bool = False
@@ -21,8 +22,8 @@ class PublicDiskConfig(LocalDiskConfig):
 
 
 @dataclass
-class S3Config:
-    driver: str = field(default="s3")
+class S3Config(Config):
+    driver: str = "s3"
     key: str = ""
     secret: str = ""
     region: str = ""

@@ -5,6 +5,7 @@ import re
 import shlex
 import subprocess
 from collections import OrderedDict
+from typing import Any
 
 from fastapi_startkit.console import Command
 from fastapi_startkit.support.dataclass import Dataclass
@@ -68,7 +69,7 @@ class ShellCommand(Command):
             exit(-1)
         return 0
 
-    def get_connection_information(self, database_config: DatabaseConfig, connection: str) -> dict:
+    def get_connection_information(self, database_config: DatabaseConfig, connection: str) -> dict[str, Any]:
         connection_config = database_config.connections.get(connection)
         if connection_config is None:
             return {}

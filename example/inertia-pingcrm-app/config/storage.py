@@ -1,15 +1,15 @@
+from fastapi_startkit.configuration import Config
 from dataclasses import dataclass, field
-from typing import Any, Dict
 
 from fastapi_startkit.environment import env
 from fastapi_startkit.storage import LocalDiskConfig, PublicDiskConfig, S3Config
 
 
 @dataclass
-class StorageConfig:
-    default: str = field(default_factory=lambda: env("FILESYSTEM_DISK", "local"))
+class StorageConfig(Config):
+    default: str = env("FILESYSTEM_DISK", "local")
 
-    disks: dict[str, Dict[str, Any]] = field(
+    disks: dict[str, Config] = field(
         default_factory=lambda: {
             "local": LocalDiskConfig(
                 root=env("FILESYSTEM_DISK_ROOT", "storage"),

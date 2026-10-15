@@ -1,13 +1,12 @@
-from fastapi_startkit.environment import env
-from fastapi_startkit.providers import Provider
+from fastapi_startkit.redis import RedisConnectionConfig
+from fastapi_startkit.support import Provider
 from taskiq_redis import ListQueueBroker, RedisAsyncResultBackend
 
 
 class QueueProvider(Provider):
     def register(self) -> None:
-        redis_host = env("REDIS_HOST", "127.0.0.1")
-        redis_port = env("REDIS_PORT", "6379")
-        redis_url = f"redis://{redis_host}:{redis_port}"
+        redis = RedisConnectionConfig()
+        redis_url = f"redis://{redis.host}:{redis.port}"
 
         broker = ListQueueBroker(redis_url).with_result_backend(
             RedisAsyncResultBackend(redis_url)

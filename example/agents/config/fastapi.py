@@ -10,8 +10,8 @@ class FastAPIConfig(Config):
     app_url: str = env("APP_URL", "http://127.0.0.1:8000")
     app: str = "bootstrap.application:app"
     reload: bool = env("APP_RELOAD", True)
-    reload_dirs: list | None = None
-    reload_excludes: list = field(
+    reload_dirs: list[str] | None = None
+    reload_excludes: list[str] = field(
         default_factory=lambda: [
             "*.log",
             "tests/*",

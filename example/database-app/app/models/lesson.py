@@ -4,8 +4,7 @@ from fastapi_startkit.masoniteorm.models import Model
 from fastapi_startkit.masoniteorm import BelongsTo, MorphMany
 
 if TYPE_CHECKING:
-    from app.models.course import Course
-    from app.models.review import Review
+    pass
 
 
 class Lesson(Model):

@@ -11,6 +11,9 @@ from fastapi_startkit.masoniteorm.connections.manager import DatabaseManager
 
 
 class TestShellCommand(unittest.TestCase):
+    command: ShellCommand  # pyright: ignore[reportUninitializedInstanceVariable]
+    command_tester: CommandTester  # pyright: ignore[reportUninitializedInstanceVariable]
+
     def setUp(self):
         self.command = ShellCommand()
         self.command_tester = CommandTester(self.command)

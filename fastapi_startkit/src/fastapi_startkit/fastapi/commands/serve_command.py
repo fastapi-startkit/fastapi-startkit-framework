@@ -9,6 +9,7 @@ from fastapi_startkit.support import Uri, Uriable
 
 if TYPE_CHECKING:
     from fastapi_startkit.application import Application
+    from fastapi_startkit.config import AppConfig
 
 # Values accepted by uvicorn's `ws` setting.
 WS_BACKENDS = ("auto", "none", "websockets", "websockets-sansio", "wsproto")
@@ -102,7 +103,7 @@ class ServeCommand(Command):
         reload = self.resolve_option("reload")
         app = self.resolve_option("app")
 
-        kwargs = {
+        kwargs: dict[str, Any] = {
             "host": url.host(),
             "port": url.port(),
             "reload": reload,
@@ -130,7 +131,7 @@ class ServeCommand(Command):
 
         else:
             self.line(f"<info>Starting Uvicorn server on {url.host()}:{url.port()}...</info>")
-            kwargs.update({"app": cast("Application", Container.instance()).fastapi, "reload": False})
+            kwargs.update({"app": cast("Application[AppConfig]", Container.instance()).fastapi, "reload": False})
 
         try:
             uvicorn.run(**kwargs)
