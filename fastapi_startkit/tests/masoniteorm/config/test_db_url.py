@@ -36,7 +36,8 @@ def test_build_url(config, expected):
 
 
 @pytest.mark.parametrize("config_type,port", [(MySQLConfig, 3306), (PostgresConfig, 5432)])
-def test_default_port(config_type, port):
+def test_default_port(config_type, port, monkeypatch):
+    monkeypatch.delenv("DB_PORT", raising=False)
     config = config_type(host="localhost", database="app", username="user", password="secret", url=None)
     assert f"localhost:{port}/app" in ConnectionFactory.build_url(config)
 
