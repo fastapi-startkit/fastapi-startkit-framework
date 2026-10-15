@@ -33,6 +33,7 @@ def test_subclass_defaults(monkeypatch):
     @dataclass
     class CustomConfig(DatabaseConfig):
         default: str = env("CUSTOM_DB", "sqlite")
+
     monkeypatch.setenv("CUSTOM_DB", "custom")
     assert CustomConfig.default == "custom"
     assert CustomConfig().default == "custom"
