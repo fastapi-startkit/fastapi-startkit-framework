@@ -1,8 +1,9 @@
-from pydantic.dataclasses import dataclass
+from fastapi_startkit.configuration import Config
+from dataclasses import dataclass
 
 
 @dataclass
-class ViteConfig:
+class ViteConfig(Config):
     public_path: str = "public"
     build_directory: str = "build"
     hot_file: str = "hot"

@@ -4,7 +4,6 @@ from cleo.helpers import option
 
 from fastapi_startkit import Config
 from fastapi_startkit.console.command import Command
-from fastapi_startkit.environment import value as cast_value
 from fastapi_startkit.fastapi.config import FastAPIConfig
 from fastapi_startkit.support import Uri, Uriable
 
@@ -69,7 +68,10 @@ class ServeCommand(Command):
 
     def resolve_option(self, key: str) -> Any:
         """CLI flag > fastapi config > FastAPIConfig default."""
-        return cast_value(self.option(key) or self.config_value(key))
+        selected = self.option(key) or self.config_value(key)
+        if key == "reload" and isinstance(selected, str):
+            return {"true": True, "false": False}.get(selected.lower(), selected)
+        return selected
 
     def resolve_url(self) -> Uriable:
         host = self.option("host") or self.config_value("app_url")

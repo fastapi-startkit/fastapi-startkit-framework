@@ -135,13 +135,13 @@ Hooks (`on_bind`, `on_make`, `on_resolve`) allow intercepting container operatio
 Define config as a dataclass with fields sourced from environment variables via `env()`:
 
 ```python
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from fastapi_startkit.environment import env
 
 @dataclass
 class RedisConfig:
-    host: str = field(default_factory=lambda: env('REDIS_HOST'))
-    port: int = field(default_factory=lambda: env('REDIS_PORT'))
+    host: str = env('REDIS_HOST', 'localhost')
+    port: int = env('REDIS_PORT', 6379)
 ```
 
 `app.load_environment()` applies a two-step merge: `.env` as base, then `.env.{APP_ENV}` on top.

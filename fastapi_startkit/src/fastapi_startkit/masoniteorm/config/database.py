@@ -1,24 +1,21 @@
 from dataclasses import dataclass, field
-from typing import Any
 
+from fastapi_startkit.configuration import Config
 from fastapi_startkit.environment import env
-from fastapi_startkit.masoniteorm.config.config import MySQLConfig, PostgresConfig, SQLiteConfig
+from fastapi_startkit.masoniteorm.config.config import DBConfig, SQLiteConfig
 
 
 @dataclass
-class DatabaseConfig:
-    default: str = field(default_factory=lambda: env("DB_CONNECTION", "pgsql"))
+class DatabaseConfig(Config):
+    default: str = env("DB_CONNECTION", "pgsql")
 
-    connections: dict[str, SQLiteConfig | MySQLConfig | PostgresConfig | dict[str, Any]] = field(
-        default_factory=lambda: {
-            "sqlite": SQLiteConfig(
-                driver="sqlite",
-                database=env("DB_DATABASE", "database.sqlite"),
-                options=None,
-            ),
-        }
+    connections: dict[str, DBConfig] = field(
+        default_factory=lambda: {"sqlite": SQLiteConfig(database=env("DB_DATABASE", "databases/sqlite.db"))}
     )
 
     migrations: dict[str, str] = field(
-        default_factory=lambda: {"table": "migrations", "directory": "databases/migrations"}
+        default_factory=lambda: {
+            "table": "migrations",
+            "directory": "databases/migrations",
+        }
     )

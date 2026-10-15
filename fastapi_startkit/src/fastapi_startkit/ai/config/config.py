@@ -1,17 +1,19 @@
 from __future__ import annotations
 
+from fastapi_startkit.configuration import Config
+
 from dataclasses import dataclass, field
 
-from fastapi_startkit.environment import env
+from fastapi_startkit.environment import env, value
 
 
 @dataclass
-class AnthropicConfig:
+class AnthropicConfig(Config):
     """Configuration for the Anthropic provider."""
 
     driver: str = "anthropic"
-    key: str = field(default_factory=lambda: env("ANTHROPIC_API_KEY", "", cast=False))
-    url: str = field(default_factory=lambda: env("ANTHROPIC_BASE_URL", "https://api.anthropic.com"))
+    key: str = env("ANTHROPIC_API_KEY", "", cast=False)
+    url: str = env("ANTHROPIC_BASE_URL", "https://api.anthropic.com")
 
     models: dict = field(
         default_factory=lambda: {
@@ -21,12 +23,12 @@ class AnthropicConfig:
 
 
 @dataclass
-class OpenAIConfig:
+class OpenAIConfig(Config):
     """Configuration for the OpenAI provider."""
 
     driver: str = "openai"
-    key: str = field(default_factory=lambda: env("OPENAI_API_KEY", "", cast=False))
-    url: str = field(default_factory=lambda: env("OPENAI_BASE_URL", "https://api.openai.com/v1"))
+    key: str = env("OPENAI_API_KEY", "", cast=False)
+    url: str = env("OPENAI_BASE_URL", "https://api.openai.com/v1")
 
     models: dict = field(
         default_factory=lambda: {
@@ -37,12 +39,14 @@ class OpenAIConfig:
 
 
 @dataclass
-class GoogleConfig:
+class GoogleConfig(Config):
     """Configuration for the Google / Gemini provider."""
 
     driver: str = "google"
     key: str = field(
-        default_factory=lambda: env("GEMINI_API_KEY", "", cast=False) or env("GOOGLE_API_KEY", "", cast=False)
+        default_factory=lambda: (
+            value(env("GEMINI_API_KEY", "", cast=False)) or value(env("GOOGLE_API_KEY", "", cast=False))
+        )
     )
 
     models: dict = field(
@@ -54,11 +58,11 @@ class GoogleConfig:
 
 
 @dataclass
-class ElevenLabsConfig:
+class ElevenLabsConfig(Config):
     """Configuration for the ElevenLabs provider."""
 
     driver: str = "elevenlabs"
-    key: str = field(default_factory=lambda: env("ELEVENLABS_API_KEY", "", cast=False))
+    key: str = env("ELEVENLABS_API_KEY", "", cast=False)
 
     models: dict = field(
         default_factory=lambda: {
