@@ -55,6 +55,6 @@ Users on 3.14 and 3.15 get no signal that the package works there, and CI would 
 ## Validation
 
 - `uv run --python 3.X pytest tests/ --ignore=tests/masoniteorm/postgres` on 3.12, 3.13, 3.14 and 3.15. The 3.15 run skips the four langchain-dependent modules and stays above the 80% coverage gate.
-- 3.16.0a1 with the experimental job's settings: 2508 passed. The 212 failures and 55 errors are all async tests running without pytest-asyncio.
+- 3.16.0a1 in the experimental CI job (run 38718007007): 2563 passed. The 219 failures and 55 errors are all async tests running without pytest-asyncio.
 - The new caster test fails on 3.14 without the fix and passes on every version with it.
 - `uv lock --check` with the older local uv still reads the refreshed lock.
