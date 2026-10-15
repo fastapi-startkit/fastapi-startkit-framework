@@ -1,7 +1,7 @@
 import pytest
 
 from fastapi_startkit.masoniteorm import Field, ModelField
-from fastapi_startkit.masoniteorm.models.caster import Caster, DateCast
+from fastapi_startkit.masoniteorm.models.caster import Caster, DateCast, IntCast
 from fastapi_startkit.masoniteorm.models.model import Model
 
 
@@ -38,3 +38,11 @@ def test_value_set_over_null_original_is_dirty():
     profile.nickname = "ace"
 
     assert profile.get_dirty() == {"nickname": "ace"}
+
+
+def test_unresolvable_annotation_keeps_resolvable_casts():
+    class CasterForwardRefProfile(Model):
+        age: int
+        owner: "UndefinedOwner"  # noqa: F821  # pyright: ignore[reportUndefinedVariable]
+
+    assert isinstance(Caster(CasterForwardRefProfile).casts["age"], IntCast)

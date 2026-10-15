@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from unittest import mock
 
+import pytest
 from langchain_core.messages import AIMessage
 
 from fastapi_startkit.ai import state as ai_state
@@ -27,7 +28,7 @@ class TestAgentFake(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ai_state.text(result), "Hello world!")
 
     async def test_fake_does_not_call_provider_build(self):
-        import langchain.chat_models as chat_models
+        chat_models = pytest.importorskip("langchain.chat_models")
 
         def fail_if_called(*args, **kwargs):
             raise AssertionError("init_chat_model must not be called when a fake is registered")

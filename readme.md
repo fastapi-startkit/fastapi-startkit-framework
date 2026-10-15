@@ -6,6 +6,10 @@
 
 A modular, provider-driven framework for building Python applications with FastAPI. Full documentation is available at [fastapi-startkit.github.io](https://fastapi-startkit.github.io).
 
+## Python versions
+
+Python 3.12, 3.13, 3.14 and 3.15 are supported. The `fastapi-startkit[ai]` extra cannot be installed on Python 3.15 or newer yet, because its `langgraph` dependency requires `ormsgpack`, which does not support 3.15. Use Python 3.14 or older for the `ai` extra.
+
 ## Setup
 
 After cloning, activate the git hooks:
