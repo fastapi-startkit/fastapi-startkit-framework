@@ -15,3 +15,18 @@ from .MigrateRollbackCommand import MigrateRollbackCommand
 from .MigrateStatusCommand import MigrateStatusCommand
 from .DBSeedCommand import DBSeedCommand
 from .ShellCommand import ShellCommand
+
+__all__ = [
+    "MakeMigrationCommand",
+    "MakeModelCommand",
+    "MakeObserverCommand",
+    "MakeSeedCommand",
+    "DBMigrateCommand",
+    "MigrateFreshCommand",
+    "MigrateRefreshCommand",
+    "MigrateResetCommand",
+    "MigrateRollbackCommand",
+    "MigrateStatusCommand",
+    "DBSeedCommand",
+    "ShellCommand",
+]
