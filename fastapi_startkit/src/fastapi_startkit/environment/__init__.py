@@ -1,3 +1,3 @@
-from .environment import env, value
+from .environment import env, into, value
 
-__all__ = ["env", "value"]
+__all__ = ["env", "into", "value"]

@@ -1,4 +1,5 @@
-from .config.config import MySQLConfig, PostgresConfig, SQLiteConfig
+from .config.config import DBConfig, MySQLConfig, PostgresConfig, SQLiteConfig
+from .config.database import DatabaseConfig
 from .exceptions import ModelNotFoundException
 from .facades import DB
 from .factory.factory import Factory
@@ -22,6 +23,8 @@ from .relationships import (
 )
 
 __all__ = [
+    "DBConfig",
+    "DatabaseConfig",
     "DatabaseProvider",
     "PostgresConfig",
     "MySQLConfig",

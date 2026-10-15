@@ -1,3 +1,4 @@
+from fastapi_startkit.masoniteorm import DatabaseConfig, PostgresConfig, SQLiteConfig
 import pendulum
 import pytest
 
@@ -13,33 +14,27 @@ from fastapi_startkit.masoniteorm.models.model import Model
 # Shared fixtures
 # ---------------------------------------------------------------------------
 
-SQLITE_CONFIG = {
-    "default": "sqlite",
-    "connections": {
-        "sqlite": {
-            "driver": "sqlite",
-            "url": "sqlite+aiosqlite:///:memory:",
-        },
-    },
-}
+SQLITE_CONFIG = DatabaseConfig(
+    default="sqlite", connections={"sqlite": SQLiteConfig(driver="sqlite", url="sqlite+aiosqlite:///:memory:")}
+)
 
 
 def test_deprecated_model_field_remains_compatible():
     from fastapi_startkit.masoniteorm import ModelField
-    from tests.masoniteorm.fixtures.casts import Address
+    from ..fixtures.casts import Address
 
     with pytest.warns(DeprecationWarning, match="use Field"):
 
         class LegacyUser(Model):
-            address: Address = ModelField()
+            address: Address = ModelField()  # pyright: ignore[reportAssignmentType]
 
-    user = LegacyUser(address={"city": "Sydney"})
+    user = LegacyUser(address={"city": "Sydney"})  # pyright: ignore[reportArgumentType]
     assert isinstance(user.address, Address)
     assert user.address.city == "Sydney"
     assert isinstance(LegacyUser.address, ModelField)
     user.address = Address(city="Melbourne")
     assert user.address.city == "Melbourne"
-    restored = LegacyUser(user.get_attributes())
+    restored = LegacyUser(user.get_attributes())  # pyright: ignore[reportArgumentType]
     assert restored.address.city == "Melbourne"
 
 
@@ -53,8 +48,8 @@ def test_annotation_only_columns_remain_supported(mixed_fields):
             id: int
             name: str
             email: str
-            score = Field[int]()
-            is_admin = Field(default=False)
+            score = Field[int]()  # pyright: ignore[reportGeneralTypeIssues]
+            is_admin = Field(default=False)  # pyright: ignore[reportGeneralTypeIssues]
 
     else:
 
@@ -64,7 +59,7 @@ def test_annotation_only_columns_remain_supported(mixed_fields):
             email: str
 
     # Hydration from raw storage still uses plain annotations for casting.
-    user = CompatibleUser({"id": "42", "name": "Alex", "email": "alex@example.com", "score": "7"})
+    user = CompatibleUser({"id": "42", "name": "Alex", "email": "alex@example.com", "score": "7"})  # pyright: ignore[reportCallIssue]
     assert user.id == 42
     assert isinstance(user.id, int)
     assert user.name == "Alex"
@@ -89,9 +84,9 @@ def test_field_descriptor_assignment_casts_and_tracks_dirty_values():
     from fastapi_startkit.masoniteorm import Field
 
     class DescriptorUser(Model):
-        id = Field[int]()
+        id = Field[int]()  # pyright: ignore[reportGeneralTypeIssues]
 
-    user = DescriptorUser({"id": 1})
+    user = DescriptorUser({"id": 1})  # pyright: ignore[reportCallIssue]
     user.sync_original()
     # Bypass Model.__setattr__ to exercise Python's descriptor protocol.
     object.__setattr__(user, "id", "42")
@@ -104,14 +99,14 @@ def test_legacy_model_field_descriptor_assignment_serializes_pydantic_values():
     import json
 
     from fastapi_startkit.masoniteorm import ModelField
-    from tests.masoniteorm.fixtures.casts import Address
+    from ..fixtures.casts import Address
 
     with pytest.warns(DeprecationWarning, match="removed in 2.x"):
 
         class DescriptorLegacyUser(Model):
-            address: Address = ModelField()
+            address: Address = ModelField()  # pyright: ignore[reportAssignmentType]
 
-    user = DescriptorLegacyUser()
+    user = DescriptorLegacyUser()  # pyright: ignore[reportCallIssue]
     object.__setattr__(user, "address", Address(city="Sydney"))
     assert isinstance(user.address, Address)
     assert user.address.city == "Sydney"
@@ -142,7 +137,7 @@ def UserModel(db):
         id: int
         name: str
         email: str
-        email_verified_at: Carbon = DateTimeField(fmt="%Y-%m-%d %H:%M:%S", tz="UTC")
+        email_verified_at: Carbon = DateTimeField(fmt="%Y-%m-%d %H:%M:%S", tz="UTC")  # pyright: ignore[reportAssignmentType]
 
     User.db_manager = db
     return User
@@ -155,25 +150,20 @@ def UserModel(db):
 
 class TestConnectionFactory:
     def test_build_url_uses_explicit_url(self):
-        url = ConnectionFactory.build_url({"driver": "sqlite", "url": "sqlite+aiosqlite:///test.db"})
+        url = ConnectionFactory.build_url(SQLiteConfig(driver="sqlite", url="sqlite+aiosqlite:///test.db"))
         assert url == "sqlite+aiosqlite:///test.db"
 
     def test_build_url_constructs_from_parts(self):
         url = ConnectionFactory.build_url(
-            {
-                "driver": "postgres",
-                "username": "user",
-                "password": "pass",
-                "host": "localhost",
-                "port": "5432",
-                "database": "mydb",
-            }
+            PostgresConfig(
+                driver="postgres", username="user", password="pass", host="localhost", port=5432, database="mydb"
+            )
         )
         assert url == "postgresql+asyncpg://user:pass@localhost:5432/mydb"
 
     def test_make_returns_sqlite_connection(self):
         factory = ConnectionFactory()
-        conn = factory.make(SQLITE_CONFIG["connections"]["sqlite"], "sqlite")
+        conn = factory.make(SQLITE_CONFIG.connections["sqlite"], "sqlite")
         from fastapi_startkit.masoniteorm.connections.sqlite_connection import SQliteConnection
 
         assert isinstance(conn, SQliteConnection)
@@ -195,12 +185,7 @@ class TestDatabaseManager:
         # unsupported driver fails fast with a friendly framework error rather
         # than a raw KeyError/ValueError from deep inside SQLAlchemy.
         factory = ConnectionFactory()
-        bad_config = {
-            "default": "mssql",
-            "connections": {
-                "mssql": {"driver": "mssql", "host": "localhost", "database": "db"},
-            },
-        }
+        bad_config = DatabaseConfig(default="mssql", connections={"mssql": SQLiteConfig(driver="mssql", database="db")})
         dm = DatabaseManager(factory, bad_config)
         with pytest.raises(DriverNotFound, match="mssql"):
             dm.connection("mssql")

@@ -1,3 +1,4 @@
+from fastapi_startkit.masoniteorm import DatabaseConfig, PostgresConfig, SQLiteConfig
 import subprocess
 import unittest
 from unittest.mock import MagicMock, patch
@@ -10,6 +11,9 @@ from fastapi_startkit.masoniteorm.connections.manager import DatabaseManager
 
 
 class TestShellCommand(unittest.TestCase):
+    command: ShellCommand  # pyright: ignore[reportUninitializedInstanceVariable]
+    command_tester: CommandTester  # pyright: ignore[reportUninitializedInstanceVariable]
+
     def setUp(self):
         self.command = ShellCommand()
         self.command_tester = CommandTester(self.command)
@@ -70,7 +74,7 @@ class TestShellCommand(unittest.TestCase):
         assert command == "sqlcmd -d orm -U root -P secretpostgres -S tcp:db.masonite.com,1234"
 
     def _manager(self, connections, default="dev"):
-        return DatabaseManager(MagicMock(), {"default": default, "connections": connections})
+        return DatabaseManager(MagicMock(), DatabaseConfig(default=default, connections=connections))
 
     def test_running_command_with_sqlite(self):
         manager = self._manager({"dev": SQLiteConfig(database="orm.sqlite3")})
@@ -91,7 +95,7 @@ class TestShellCommand(unittest.TestCase):
         assert "Connection configuration for 'missing' not found" in self.command_tester.io.fetch_output()
 
     def test_running_command_reports_missing_program(self):
-        manager = self._manager({"dev": {"driver": "sqlite", "database": "orm.sqlite3"}})
+        manager = self._manager({"dev": SQLiteConfig(driver="sqlite", database="orm.sqlite3")})
         with patch("fastapi_startkit.masoniteorm.commands.ShellCommand.DB.instance", return_value=manager):
             with patch("subprocess.run", side_effect=FileNotFoundError):
                 with self.assertRaises(SystemExit):
@@ -108,7 +112,8 @@ class TestShellCommand(unittest.TestCase):
 
     def test_connection_information_maps_username_to_user(self):
         config = self.command.get_connection_information(
-            {"connections": {"pg": PostgresConfig(host="db", port=5432, database="orm", username="admin")}}, "pg"
+            DatabaseConfig(connections={"pg": PostgresConfig(host="db", port=5432, database="orm", username="admin")}),
+            "pg",
         )
         assert config["user"] == "admin"
         assert config["options"] == {}

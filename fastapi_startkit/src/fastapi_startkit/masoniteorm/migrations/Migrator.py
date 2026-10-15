@@ -9,7 +9,7 @@ from inflection import camelize
 from ..models.MigrationModel import MigrationModel
 
 if TYPE_CHECKING:
-    from fastapi_startkit.masoniteorm import DatabaseManager
+    from fastapi_startkit.masoniteorm.connections.manager import DatabaseManager
 
 
 class Migrator:

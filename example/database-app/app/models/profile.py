@@ -4,7 +4,7 @@ from fastapi_startkit.masoniteorm.models import Model
 from fastapi_startkit.masoniteorm import BelongsTo
 
 if TYPE_CHECKING:
-    from app.models.user import User
+    pass
 
 
 class Profile(Model):

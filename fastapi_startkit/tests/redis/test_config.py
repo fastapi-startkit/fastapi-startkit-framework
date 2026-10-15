@@ -1,5 +1,5 @@
 from fastapi_startkit.redis import RedisConfig
-from fastapi_startkit.redis.config import default_prefix
+from fastapi_startkit.redis.config import RedisConnectionConfig, RedisOptions, default_prefix
 
 
 def test_defaults_mirror_laravel(monkeypatch):
@@ -10,17 +10,12 @@ def test_defaults_mirror_laravel(monkeypatch):
     config = RedisConfig()
 
     assert config.client == "redis"
-    assert config.options == {"prefix": "my_shop_database_"}
+    assert config.options == RedisOptions(prefix="my_shop_database_")
     assert set(config.connections) == {"default", "cache"}
-    assert config.connections["default"] == {
-        "url": None,
-        "host": "127.0.0.1",
-        "username": None,
-        "password": None,
-        "port": 6379,
-        "database": 0,
-    }
-    assert config.connections["cache"]["database"] == 1
+    assert config.connections["default"] == RedisConnectionConfig(
+        url=None, host="127.0.0.1", username=None, password=None, port=6379, database=0
+    )
+    assert config.connections["cache"].database == 1
 
 
 def test_reads_environment(monkeypatch):
@@ -37,15 +32,15 @@ def test_reads_environment(monkeypatch):
     config = RedisConfig()
 
     assert config.client == "fake"
-    assert config.options["prefix"] == "custom:"
+    assert config.options.prefix == "custom:"
     default = config.connections["default"]
-    assert default["url"] == "redis://cache.internal:6380/2"
-    assert default["host"] == "redis.internal"
-    assert default["username"] == "admin"
-    assert default["password"] == "secret"
-    assert default["port"] == 6390
-    assert default["database"] == 3
-    assert config.connections["cache"]["database"] == 4
+    assert default.url == "redis://cache.internal:6380/2"
+    assert default.host == "redis.internal"
+    assert default.username == "admin"
+    assert default.password == "secret"
+    assert default.port == 6390
+    assert default.database == 3
+    assert config.connections["cache"].database == 4
 
 
 def test_default_prefix_slugs_app_name(monkeypatch):
