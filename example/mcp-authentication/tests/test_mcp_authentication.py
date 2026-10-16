@@ -5,6 +5,7 @@ from fastapi_startkit.fastapi.testing import HttpTestCase
 from fastapi_startkit.masoniteorm.migrations import Migrator
 from fastapi_startkit.masoniteorm.models import Model
 
+from config.auth import OAuthConfig
 from config.mcp import McpConfig
 
 
@@ -55,7 +56,7 @@ class TestMcpAuthentication(HttpTestCase):
             "iat": now,
             "exp": now + 60,
         }
-        return jwt.encode(payload | claims, self.config.oauth2_key, algorithm="HS256")
+        return jwt.encode(payload | claims, OAuthConfig().key, algorithm="HS256")
 
     async def rpc(
         self, method: str, params: dict | None = None, token: str | None = None

@@ -1,3 +1,6 @@
+from dataclasses import dataclass, field
+
+from fastapi_startkit.environment import env
 from fastapi_startkit_auth import OAuth2Config, OAuthClientsConfig, OAuthTokensConfig
 from fastapi_startkit_auth.config import OAuth2Guard
 
@@ -12,15 +15,17 @@ def auth_config() -> dict:
     }
 
 
-def oauth2_config() -> OAuth2Config:
-    mcp = McpConfig()
-    return OAuth2Config(
-        key=mcp.oauth2_key,
-        issuer=mcp.app_url,
-        resources=[mcp.resource],
-        scopes=mcp.scopes,
-        default_scopes=["notes:read"],
-        grant_types=["client_credentials"],
-        tokens=OAuthTokensConfig(store="database"),
-        clients=OAuthClientsConfig(store="database"),
+@dataclass
+class OAuthConfig(OAuth2Config):
+    key: str | None = env("OAUTH2_KEY")
+    issuer: str | None = env("APP_URL", "http://127.0.0.1:8000")
+    resources: list[str] = field(default_factory=lambda: [McpConfig().resource])
+    scopes: dict[str, str] = field(default_factory=lambda: McpConfig().scopes)
+    default_scopes: list[str] = field(default_factory=lambda: ["notes:read"])
+    grant_types: list[str] = field(default_factory=lambda: ["client_credentials"])
+    tokens: OAuthTokensConfig = field(
+        default_factory=lambda: OAuthTokensConfig(store="database")
+    )
+    clients: OAuthClientsConfig = field(
+        default_factory=lambda: OAuthClientsConfig(store="database")
     )
