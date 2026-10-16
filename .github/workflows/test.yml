@@ -146,7 +146,6 @@ jobs:
                 working-directory: example/mcp-authentication
                 run: uv sync
 
-            # The job-level DB_DATABASE names the MySQL schema; this app uses SQLite.
             -   name: Run tests (mcp-authentication)
                 working-directory: example/mcp-authentication
                 env:

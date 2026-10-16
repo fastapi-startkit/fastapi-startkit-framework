@@ -9,7 +9,12 @@ class CreateClientCommand(Command):
     description = "Create a confidential client that can request MCP access tokens."
     options = [
         option("name", description="Client name.", flag=False, default="MCP client"),
-        option("scopes", description="Space-separated scopes the client may request.", flag=False, default="notes:read notes:write"),
+        option(
+            "scopes",
+            description="Space-separated scopes the client may request.",
+            flag=False,
+            default="notes:read notes:write",
+        ),
     ]
 
     def handle(self) -> int:

@@ -1,6 +1,5 @@
-from pydantic import BaseModel
-
 from fastapi_startkit.mcp import Response, Tool
+from pydantic import BaseModel
 
 notes: list[str] = []
 

@@ -9,9 +9,16 @@ from config.mcp import McpConfig
 
 
 class MissingToolScope(InsufficientScope):
-    def __init__(self, tool: type[Tool]) -> None:
-        self.scopes: list[str] = tool.scopes
-        super().__init__(f"The {tool.name} tool requires: {' '.join(tool.scopes)}.")
+    def __init__(self, tool: type[Tool], scopes: list[str]) -> None:
+        self.scopes = scopes
+        super().__init__(f"The {tool.name} tool requires: {' '.join(scopes)}.")
+
+
+class JsonRpcError(Exception):
+    def __init__(self, code: int, message: str) -> None:
+        self.code = code
+        self.message = message
+        super().__init__(message)
 
 
 def protected_resource_router(config: McpConfig) -> APIRouter:
@@ -34,27 +41,57 @@ def bearer_challenge(config: McpConfig):
     async def handler(request: Request, error: AuthError) -> JSONResponse:
         params = [f'resource_metadata="{config.resource_metadata_url}"']
         if isinstance(error, MissingToolScope):
-            params += ['error="insufficient_scope"', f'scope="{" ".join(error.scopes)}"']
+            params += [
+                'error="insufficient_scope"',
+                f'scope="{" ".join(error.scopes)}"',
+            ]
         elif request.headers.get("authorization"):
             params.append('error="invalid_token"')
         return JSONResponse(
             error.to_dict(),
             status_code=error.status_code,
-            headers={"WWW-Authenticate": f"Bearer {', '.join(params)}", "Cache-Control": "no-store"},
+            headers={
+                "WWW-Authenticate": f"Bearer {', '.join(params)}",
+                "Cache-Control": "no-store",
+            },
         )
 
     return handler
 
 
+async def json_rpc_error(request: Request, error: JsonRpcError) -> JSONResponse:
+    return JSONResponse(
+        {
+            "jsonrpc": "2.0",
+            "id": None,
+            "error": {"code": error.code, "message": error.message},
+        },
+        status_code=400,
+    )
+
+
+async def read_message(request: Request) -> dict:
+    try:
+        message = await request.json()
+    except ValueError:
+        raise JsonRpcError(-32700, "Parse error") from None
+    if not isinstance(message, dict):
+        raise JsonRpcError(-32600, "Invalid Request")
+    return message
+
+
 def authorize_tool_call(server: Server):
     tools = {tool.name: tool for tool in server.tools() or []}
 
-    async def dependency(request: Request, context: AuthContext = Depends(current_context)) -> AuthContext:
-        message = await request.json()
-        if isinstance(message, dict) and message.get("method") == "tools/call":
+    async def dependency(
+        request: Request, context: AuthContext = Depends(current_context)
+    ) -> AuthContext:
+        message = await read_message(request)
+        if message.get("method") == "tools/call":
             tool = tools.get((message.get("params") or {}).get("name"))
-            if tool is not None and not context.can_all(tool.scopes):
-                raise MissingToolScope(tool)
+            scopes = getattr(tool, "scopes", [])
+            if tool is not None and not context.can_all(scopes):
+                raise MissingToolScope(tool, scopes)
         return context
 
     return dependency
