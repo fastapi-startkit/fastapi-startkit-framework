@@ -12,6 +12,7 @@ class CreateOauthClientsTable(Migration):
             table.text("grant_types")
             table.boolean("revoked").default(False)
             table.string("provider").nullable()
+            table.text("scopes").nullable()
             table.double("created_at")
 
     async def down(self):

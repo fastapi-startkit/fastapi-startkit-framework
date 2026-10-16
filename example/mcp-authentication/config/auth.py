@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 
 from fastapi_startkit.environment import env
-from fastapi_startkit_auth import OAuth2Config, OAuthClientsConfig, OAuthTokensConfig
+from fastapi_startkit_auth import OAuth2Config, OAuthTokenConfig
 from fastapi_startkit_auth.config import OAuth2Guard
 
 from config.mcp import McpConfig
@@ -28,9 +28,6 @@ class OAuthConfig(OAuth2Config):
     )
     default_scopes: list[str] = field(default_factory=lambda: ["notes:read"])
     grant_types: list[str] = field(default_factory=lambda: ["client_credentials"])
-    tokens: OAuthTokensConfig = field(
-        default_factory=lambda: OAuthTokensConfig(store="database")
-    )
-    clients: OAuthClientsConfig = field(
-        default_factory=lambda: OAuthClientsConfig(store="database")
+    tokens: OAuthTokenConfig = field(
+        default_factory=lambda: OAuthTokenConfig(driver="database")
     )

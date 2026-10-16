@@ -1,6 +1,10 @@
 from fastapi import Depends
 from fastapi_startkit.support import Provider
-from fastapi_startkit_auth import InsufficientScope, InvalidToken
+from fastapi_startkit_auth import (
+    AuthenticationException,
+    InvalidTokenException,
+    MissingScopeException,
+)
 
 from app.commands.create_client import CreateClientCommand
 from app.mcp.auth import (
@@ -25,7 +29,10 @@ class McpServiceProvider(Provider):
             server.router(config.path),
             dependencies=[Depends(authorize_tool_call(server))],
         )
-        self.app.add_exception_handler(InvalidToken, bearer_challenge(config))
-        self.app.add_exception_handler(InsufficientScope, bearer_challenge(config))
+        self.app.add_exception_handler(
+            AuthenticationException, bearer_challenge(config)
+        )
+        self.app.add_exception_handler(InvalidTokenException, bearer_challenge(config))
+        self.app.add_exception_handler(MissingScopeException, bearer_challenge(config))
         self.app.add_exception_handler(JsonRpcError, json_rpc_error)
         self.commands([CreateClientCommand])

@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi-startkit[fastapi,database,sqlite]",
-    "fastapi-startkit-auth[startkit]>=0.6.3",
+    "fastapi-startkit-auth[startkit]>=0.7.0",
 ]
 
 [tool.uv.sources]

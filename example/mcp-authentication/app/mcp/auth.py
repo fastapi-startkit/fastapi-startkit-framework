@@ -1,14 +1,14 @@
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from fastapi_startkit.mcp import Server, Tool
-from fastapi_startkit_auth import AuthError, InsufficientScope
+from fastapi_startkit_auth import AuthException, MissingScopeException
 from fastapi_startkit_auth.dependencies import current_context
 from fastapi_startkit_auth.guards.guard import AuthContext
 
 from config.mcp import McpConfig
 
 
-class MissingToolScope(InsufficientScope):
+class MissingToolScope(MissingScopeException):
     def __init__(self, tool: type[Tool], scopes: list[str]) -> None:
         self.scopes = scopes
         super().__init__(f"The {tool.name} tool requires: {' '.join(scopes)}.")
@@ -38,7 +38,7 @@ def protected_resource_router(config: McpConfig, scopes: list[str]) -> APIRouter
 
 
 def bearer_challenge(config: McpConfig):
-    async def handler(request: Request, error: AuthError) -> JSONResponse:
+    async def handler(request: Request, error: AuthException) -> JSONResponse:
         params = [f'resource_metadata="{config.resource_metadata_url}"']
         if isinstance(error, MissingToolScope):
             params += [

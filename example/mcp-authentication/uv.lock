@@ -519,7 +519,7 @@ dev = [
 
 [[package]]
 name = "fastapi-startkit-auth"
-version = "0.6.3"
+version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bcrypt" },
@@ -528,9 +528,9 @@ dependencies = [
     { name = "pyjwt" },
     { name = "python-multipart" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/9d/31/d1a1b1603ce4e1d4c09605f67718dc43a9e2119dd1d9cfaba9aa39f2f570/fastapi_startkit_auth-0.6.3.tar.gz", hash = "sha256:46fc219d5905c537260e37b2d9d7f29ec3716a87d31428489cababd5bae922a2", size = 126073, upload-time = "2026-10-05T19:54:11.593Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1e/a6/fdf82cf30efde1e7b3ce7c0323039abd83fdb9c4f0899d0c406871f28588/fastapi_startkit_auth-0.7.0.tar.gz", hash = "sha256:5710f3efc3c333b424aa8517c45f24e194704e43126e80ceeca811ade6627d3c", size = 117980, upload-time = "2026-10-16T20:57:49.944Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a8/30/dd3f1aa08937439abc96ee6c2e5cc4c063410d9222634874f8246192cf60/fastapi_startkit_auth-0.6.3-py3-none-any.whl", hash = "sha256:bb355a7169ce98011f93996a7b2978f3312dbd01e775b358a7a85f3159198d2c", size = 97268, upload-time = "2026-10-05T19:54:10.05Z" },
+    { url = "https://files.pythonhosted.org/packages/39/39/c2fdcf9ef28dd4c74ce6ffb1b09d3ad69ee07fabf570216639d7fd865701/fastapi_startkit_auth-0.7.0-py3-none-any.whl", hash = "sha256:a714980266fed86fdf06487576230d758541bc0b6d850dde09e841c8e2aa0143", size = 92499, upload-time = "2026-10-16T20:57:48.837Z" },
 ]
 
 [package.optional-dependencies]
@@ -1035,7 +1035,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi-startkit", extras = ["fastapi", "database", "sqlite"], editable = "../../fastapi_startkit" },
-    { name = "fastapi-startkit-auth", extras = ["startkit"], specifier = ">=0.6.3" },
+    { name = "fastapi-startkit-auth", extras = ["startkit"], specifier = ">=0.7.0" },
 ]
 
 [package.metadata.requires-dev]

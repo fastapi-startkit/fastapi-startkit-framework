@@ -8,6 +8,7 @@ class CreateOauthAuthCodesTable(Migration):
             table.string("client_id")
             table.text("user_id").nullable()
             table.text("scopes")
+            table.text("resource").nullable()
             table.text("redirect_uri").nullable()
             table.string("code_challenge").nullable()
             table.string("code_challenge_method", 32).nullable()
