@@ -8,7 +8,7 @@ from fastapi_startkit_auth import (
 
 from app.commands.create_client import CreateClientCommand
 from app.mcp.auth import (
-    JsonRpcError,
+    McpServerException,
     authorize_tool_call,
     bearer_challenge,
     json_rpc_error,
@@ -37,5 +37,5 @@ class McpServiceProvider(Provider):
             MissingScopeException,
         ):
             self.app.add_exception_handler(exception, challenge)
-        self.app.add_exception_handler(JsonRpcError, json_rpc_error)
+        self.app.add_exception_handler(McpServerException, json_rpc_error)
         self.commands([CreateClientCommand])

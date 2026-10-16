@@ -14,7 +14,7 @@ class MissingToolScope(MissingScopeException):
         super().__init__(f"The {tool.name} tool requires: {' '.join(scopes)}.")
 
 
-class JsonRpcError(Exception):
+class McpServerException(Exception):
     code: int
     message: str
 
@@ -26,12 +26,12 @@ class JsonRpcError(Exception):
         }
 
 
-class ParseError(JsonRpcError):
+class ParseError(McpServerException):
     code = -32700
     message = "Parse error"
 
 
-class InvalidRequest(JsonRpcError):
+class InvalidRequest(McpServerException):
     code = -32600
     message = "Invalid Request"
 
@@ -73,7 +73,7 @@ def bearer_challenge(config: McpConfig):
     return handler
 
 
-async def json_rpc_error(request: Request, error: JsonRpcError) -> JSONResponse:
+async def json_rpc_error(request: Request, error: McpServerException) -> JSONResponse:
     return JSONResponse(error.to_dict(), status_code=400)
 
 
