@@ -74,8 +74,11 @@ class McpOAuthExceptionHandler:
         )
 
 
-async def json_rpc_error(request: Request, error: McpServerException) -> JSONResponse:
-    return JSONResponse(error.to_dict(), status_code=400)
+class McpServerExceptionHandler:
+    async def __call__(
+        self, request: Request, error: McpServerException
+    ) -> JSONResponse:
+        return JSONResponse(error.to_dict(), status_code=400)
 
 
 async def read_message(request: Request) -> dict:

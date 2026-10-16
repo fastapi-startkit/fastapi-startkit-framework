@@ -10,8 +10,8 @@ from app.commands.create_client import CreateClientCommand
 from app.mcp.auth import (
     McpOAuthExceptionHandler,
     McpServerException,
+    McpServerExceptionHandler,
     authorize_tool_call,
-    json_rpc_error,
     protected_resource_router,
 )
 from app.mcp.server import NotesServer
@@ -37,5 +37,5 @@ class McpServiceProvider(Provider):
             MissingScopeException,
         ):
             self.app.add_exception_handler(exception, handler)
-        self.app.add_exception_handler(McpServerException, json_rpc_error)
+        self.app.add_exception_handler(McpServerException, McpServerExceptionHandler())
         self.commands([CreateClientCommand])
