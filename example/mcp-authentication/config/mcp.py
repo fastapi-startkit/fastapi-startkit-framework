@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from fastapi_startkit.configuration import Config
 from fastapi_startkit.environment import env
@@ -8,12 +8,6 @@ from fastapi_startkit.environment import env
 class McpConfig(Config):
     app_url: str = env("APP_URL", "http://127.0.0.1:8000")
     path: str = "/mcp"
-    scopes: dict[str, str] = field(
-        default_factory=lambda: {
-            "notes:read": "Read your notes",
-            "notes:write": "Create notes",
-        }
-    )
 
     @property
     def resource(self) -> str:

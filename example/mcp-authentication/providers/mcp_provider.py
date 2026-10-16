@@ -17,9 +17,10 @@ from config.mcp import McpConfig
 class McpServiceProvider(Provider):
     def boot(self) -> None:
         config: McpConfig = self.config
+        oauth2 = self.app.make("auth_manager").oauth2_config
         server = NotesServer()
 
-        self.app.include_router(protected_resource_router(config))
+        self.app.include_router(protected_resource_router(config, list(oauth2.scopes)))
         self.app.include_router(
             server.router(config.path),
             dependencies=[Depends(authorize_tool_call(server))],

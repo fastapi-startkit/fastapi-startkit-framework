@@ -20,7 +20,12 @@ class OAuthConfig(OAuth2Config):
     key: str | None = env("OAUTH2_KEY")
     issuer: str | None = env("APP_URL", "http://127.0.0.1:8000")
     resources: list[str] = field(default_factory=lambda: [McpConfig().resource])
-    scopes: dict[str, str] = field(default_factory=lambda: McpConfig().scopes)
+    scopes: dict[str, str] = field(
+        default_factory=lambda: {
+            "notes:read": "Read your notes",
+            "notes:write": "Create notes",
+        }
+    )
     default_scopes: list[str] = field(default_factory=lambda: ["notes:read"])
     grant_types: list[str] = field(default_factory=lambda: ["client_credentials"])
     tokens: OAuthTokensConfig = field(

@@ -21,7 +21,7 @@ class JsonRpcError(Exception):
         super().__init__(message)
 
 
-def protected_resource_router(config: McpConfig) -> APIRouter:
+def protected_resource_router(config: McpConfig, scopes: list[str]) -> APIRouter:
     router = APIRouter()
 
     @router.get("/.well-known/oauth-protected-resource")
@@ -30,7 +30,7 @@ def protected_resource_router(config: McpConfig) -> APIRouter:
         return {
             "resource": config.resource,
             "authorization_servers": [config.app_url],
-            "scopes_supported": list(config.scopes),
+            "scopes_supported": scopes,
             "bearer_methods_supported": ["header"],
         }
 
