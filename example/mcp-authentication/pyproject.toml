@@ -1,0 +1,19 @@
+[project]
+name = "mcp-authentication"
+version = "0.1.0"
+description = "An MCP server protected by fastapi-startkit-auth"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi-startkit[fastapi,database,sqlite]",
+    "fastapi-startkit-auth[startkit]>=0.6.3",
+]
+
+[tool.uv.sources]
+fastapi-startkit = { path = "../../fastapi_startkit", editable = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.3.0",
+]
