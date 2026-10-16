@@ -7,12 +7,11 @@ from fastapi_startkit_auth import (
 )
 
 from app.commands.create_client import CreateClientCommand
-from app.mcp.auth import (
+from app.mcp.auth import authorize_tool_call, protected_resource_router
+from app.mcp.exceptions import (
     McpOAuthExceptionHandler,
     McpServerException,
     McpServerExceptionHandler,
-    authorize_tool_call,
-    protected_resource_router,
 )
 from app.mcp.server import NotesServer
 from config.mcp import McpConfig

@@ -10,7 +10,7 @@ An MCP server whose tools require an OAuth2 bearer token issued by `fastapi-star
 | 2. Configure the environment | `.env.example`, `.env.testing`, `.gitignore`, `config/mcp.py` |
 | 3. Configure the OAuth2 server and the guard | `config/auth.py` |
 | 4. Create the MCP server and its tools | `app/mcp/tools.py`, `app/mcp/server.py` |
-| 5. Protect the MCP endpoint | `app/mcp/auth.py`, `providers/mcp_provider.py`, `bootstrap/application.py`, `artisan` |
+| 5. Protect the MCP endpoint | `app/mcp/exceptions.py`, `app/mcp/auth.py`, `providers/mcp_provider.py`, `bootstrap/application.py`, `artisan` |
 | 6. Create a client and issue a token | `app/commands/create_client.py`, `databases/migrations/` |
 | 7. Connect a client | — |
 | 8. Test it | `pytest.ini`, `tests/test_mcp_authentication.py` |
