@@ -3,7 +3,6 @@ from pathlib import Path
 from fastapi_startkit import Application
 from fastapi_startkit.fastapi import FastAPIProvider
 from fastapi_startkit.masoniteorm.providers import DatabaseProvider
-from fastapi_startkit.mcp import McpProvider
 from fastapi_startkit_auth import AuthOAuth2Provider, AuthProvider
 
 from config.auth import AuthConfig, OAuthConfig
@@ -17,7 +16,6 @@ app: Application = Application(
         FastAPIProvider,
         (AuthProvider, AuthConfig),
         (AuthOAuth2Provider, OAuthConfig),
-        McpProvider,
         (McpServiceProvider, McpConfig),
     ],
 )
