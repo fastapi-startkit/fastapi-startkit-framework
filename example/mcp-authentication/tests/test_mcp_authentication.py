@@ -2,31 +2,20 @@ import time
 
 import jwt
 from fastapi_startkit.fastapi.testing import HttpTestCase
-from fastapi_startkit.masoniteorm.migrations import Migrator
-from fastapi_startkit.masoniteorm.models import Model
+from fastapi_startkit.masoniteorm.testing import RefreshDatabase
 
 from config.auth import OAuthConfig
 from config.mcp import McpConfig
 
 
-class TestMcpAuthentication(HttpTestCase):
-    migrated = False
-
+class TestMcpAuthentication(HttpTestCase, RefreshDatabase):
     def get_application(self):
         from bootstrap.application import app
 
         return app
 
     async def asyncSetUp(self):
-        for connection in list(Model.db_manager.connections.values()):
-            await connection.engine.dispose()
-        Model.db_manager.connections.clear()
         await super().asyncSetUp()
-        if not TestMcpAuthentication.migrated:
-            await Migrator(migration_directory="databases/migrations").fresh(
-                ignore_fk=True
-            )
-            TestMcpAuthentication.migrated = True
         self.config = McpConfig()
 
     async def issue_token(self, scopes: str, resource: str | None = None) -> str:
