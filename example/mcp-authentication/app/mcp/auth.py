@@ -15,10 +15,25 @@ class MissingToolScope(MissingScopeException):
 
 
 class JsonRpcError(Exception):
-    def __init__(self, code: int, message: str) -> None:
-        self.code = code
-        self.message = message
-        super().__init__(message)
+    code: int
+    message: str
+
+    def to_dict(self) -> dict:
+        return {
+            "jsonrpc": "2.0",
+            "id": None,
+            "error": {"code": self.code, "message": self.message},
+        }
+
+
+class ParseError(JsonRpcError):
+    code = -32700
+    message = "Parse error"
+
+
+class InvalidRequest(JsonRpcError):
+    code = -32600
+    message = "Invalid Request"
 
 
 def protected_resource_router(config: McpConfig, scopes: list[str]) -> APIRouter:
@@ -39,19 +54,18 @@ def protected_resource_router(config: McpConfig, scopes: list[str]) -> APIRouter
 
 def bearer_challenge(config: McpConfig):
     async def handler(request: Request, error: AuthException) -> JSONResponse:
-        params = [f'resource_metadata="{config.resource_metadata_url}"']
+        params = {"resource_metadata": config.resource_metadata_url}
         if isinstance(error, MissingToolScope):
-            params += [
-                'error="insufficient_scope"',
-                f'scope="{" ".join(error.scopes)}"',
-            ]
+            params |= {"error": "insufficient_scope", "scope": " ".join(error.scopes)}
         elif request.headers.get("authorization"):
-            params.append('error="invalid_token"')
+            params |= {"error": "invalid_token"}
+
+        challenge = ", ".join(f'{name}="{value}"' for name, value in params.items())
         return JSONResponse(
             error.to_dict(),
             status_code=error.status_code,
             headers={
-                "WWW-Authenticate": f"Bearer {', '.join(params)}",
+                "WWW-Authenticate": f"Bearer {challenge}",
                 "Cache-Control": "no-store",
             },
         )
@@ -60,24 +74,23 @@ def bearer_challenge(config: McpConfig):
 
 
 async def json_rpc_error(request: Request, error: JsonRpcError) -> JSONResponse:
-    return JSONResponse(
-        {
-            "jsonrpc": "2.0",
-            "id": None,
-            "error": {"code": error.code, "message": error.message},
-        },
-        status_code=400,
-    )
+    return JSONResponse(error.to_dict(), status_code=400)
 
 
 async def read_message(request: Request) -> dict:
     try:
         message = await request.json()
     except ValueError:
-        raise JsonRpcError(-32700, "Parse error") from None
+        raise ParseError from None
     if not isinstance(message, dict):
-        raise JsonRpcError(-32600, "Invalid Request")
+        raise InvalidRequest
     return message
+
+
+def called_tool(message: dict, tools: dict[str, type[Tool]]) -> type[Tool] | None:
+    if message.get("method") != "tools/call":
+        return None
+    return tools.get((message.get("params") or {}).get("name"))
 
 
 def authorize_tool_call(server: Server):
@@ -86,12 +99,10 @@ def authorize_tool_call(server: Server):
     async def dependency(
         request: Request, context: AuthContext = Depends(current_context)
     ) -> AuthContext:
-        message = await read_message(request)
-        if message.get("method") == "tools/call":
-            tool = tools.get((message.get("params") or {}).get("name"))
-            scopes = getattr(tool, "scopes", [])
-            if tool is not None and not context.can_all(scopes):
-                raise MissingToolScope(tool, scopes)
+        tool = called_tool(await read_message(request), tools)
+        scopes = getattr(tool, "scopes", [])
+        if tool is not None and not context.can_all(scopes):
+            raise MissingToolScope(tool, scopes)
         return context
 
     return dependency
