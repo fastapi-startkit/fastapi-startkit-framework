@@ -52,9 +52,12 @@ def protected_resource_router(config: McpConfig, scopes: list[str]) -> APIRouter
     return router
 
 
-def bearer_challenge(config: McpConfig):
-    async def handler(request: Request, error: AuthException) -> JSONResponse:
-        params = {"resource_metadata": config.resource_metadata_url}
+class McpOAuthExceptionHandler:
+    def __init__(self, config: McpConfig) -> None:
+        self.config = config
+
+    async def __call__(self, request: Request, error: AuthException) -> JSONResponse:
+        params = {"resource_metadata": self.config.resource_metadata_url}
         if isinstance(error, MissingToolScope):
             params |= {"error": "insufficient_scope", "scope": " ".join(error.scopes)}
         elif request.headers.get("authorization"):
@@ -69,8 +72,6 @@ def bearer_challenge(config: McpConfig):
                 "Cache-Control": "no-store",
             },
         )
-
-    return handler
 
 
 async def json_rpc_error(request: Request, error: McpServerException) -> JSONResponse:

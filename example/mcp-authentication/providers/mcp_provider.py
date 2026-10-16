@@ -8,9 +8,9 @@ from fastapi_startkit_auth import (
 
 from app.commands.create_client import CreateClientCommand
 from app.mcp.auth import (
+    McpOAuthExceptionHandler,
     McpServerException,
     authorize_tool_call,
-    bearer_challenge,
     json_rpc_error,
     protected_resource_router,
 )
@@ -30,12 +30,12 @@ class McpServiceProvider(Provider):
             dependencies=[Depends(authorize_tool_call(server))],
         )
 
-        challenge = bearer_challenge(config)
+        handler = McpOAuthExceptionHandler(config)
         for exception in (
             AuthenticationException,
             InvalidTokenException,
             MissingScopeException,
         ):
-            self.app.add_exception_handler(exception, challenge)
+            self.app.add_exception_handler(exception, handler)
         self.app.add_exception_handler(McpServerException, json_rpc_error)
         self.commands([CreateClientCommand])
