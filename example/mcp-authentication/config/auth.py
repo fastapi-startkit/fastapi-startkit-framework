@@ -2,13 +2,14 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from fastapi_startkit.environment import env
-from fastapi_startkit_auth import AuthConfig, OAuth2Config, OAuthTokenConfig
+from fastapi_startkit_auth import AuthConfig as BaseAuthConfig
+from fastapi_startkit_auth import OAuth2Config, OAuthTokenConfig
 from fastapi_startkit_auth.config import OAuth2Guard
 
 from config.mcp import McpConfig
 
 
-class McpAuthConfig(AuthConfig):
+class AuthConfig(BaseAuthConfig):
     default = {"guard": "mcp"}
     providers = {"users": {"driver": "memory"}}
 
