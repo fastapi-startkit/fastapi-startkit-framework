@@ -141,6 +141,17 @@ jobs:
                     DB_PORT: 15432
                 run: uv run pytest tests/ -v
 
+            # ── example/mcp-authentication ────────────────────────────────────────
+            -   name: Install dependencies (mcp-authentication)
+                working-directory: example/mcp-authentication
+                run: uv sync
+
+            -   name: Run tests (mcp-authentication)
+                working-directory: example/mcp-authentication
+                env:
+                    DB_DATABASE: databases/testing.db
+                run: uv run pytest tests/ -v
+
             -   name: Stop MySQL
                 if: always()
                 run: docker compose -f docker-compose.yml down
