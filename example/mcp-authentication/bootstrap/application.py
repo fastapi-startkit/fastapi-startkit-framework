@@ -6,7 +6,7 @@ from fastapi_startkit.masoniteorm.providers import DatabaseProvider
 from fastapi_startkit.mcp import McpProvider
 from fastapi_startkit_auth import AuthOAuth2Provider, AuthProvider
 
-from config.auth import OAuthConfig, auth_config
+from config.auth import McpAuthConfig, OAuthConfig
 from config.mcp import McpConfig
 from providers.mcp_provider import McpServiceProvider
 
@@ -15,7 +15,7 @@ app: Application = Application(
     providers=[
         DatabaseProvider,
         FastAPIProvider,
-        (AuthProvider, auth_config),
+        (AuthProvider, McpAuthConfig),
         (AuthOAuth2Provider, OAuthConfig),
         McpProvider,
         (McpServiceProvider, McpConfig),

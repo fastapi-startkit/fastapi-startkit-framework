@@ -1,18 +1,22 @@
 from dataclasses import dataclass, field
+from typing import Any
 
 from fastapi_startkit.environment import env
-from fastapi_startkit_auth import OAuth2Config, OAuthTokenConfig
+from fastapi_startkit_auth import AuthConfig, OAuth2Config, OAuthTokenConfig
 from fastapi_startkit_auth.config import OAuth2Guard
 
 from config.mcp import McpConfig
 
 
-def auth_config() -> dict:
-    return {
-        "default": {"guard": "mcp"},
-        "guards": {"mcp": OAuth2Guard(provider="users", audience=McpConfig().resource)},
-        "providers": {"users": {"driver": "memory"}},
-    }
+class McpAuthConfig(AuthConfig):
+    default = {"guard": "mcp"}
+    providers = {"users": {"driver": "memory"}}
+
+    @classmethod
+    def get(cls, name: str, default: Any = None) -> Any:
+        if name == "guards":
+            return {"mcp": OAuth2Guard(provider="users", audience=McpConfig().resource)}
+        return super().get(name, default)
 
 
 @dataclass
