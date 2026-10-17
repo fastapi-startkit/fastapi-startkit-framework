@@ -1,8 +1,8 @@
-from .BaseRelationship import BaseRelationship
+from .BaseRelationship import BaseRelationship, ManyResult, TModel
 from ..collection import Collection
 
 
-class HasMany(BaseRelationship):
+class HasMany(BaseRelationship[TModel, ManyResult[TModel]]):
     """Has Many Relationship Class."""
 
     def apply_query(self, foreign, owner):

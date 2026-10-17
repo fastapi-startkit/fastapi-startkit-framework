@@ -1,9 +1,9 @@
 from ..collection import Collection
-from .BaseRelationship import BaseRelationship
+from .BaseRelationship import BaseRelationship, SingleResult, TModel
 from fastapi_startkit.masoniteorm.models import registry
 
 
-class HasOne(BaseRelationship):
+class HasOne(BaseRelationship[TModel, SingleResult[TModel]]):
     """Has One Relationship Class."""
 
     def __init__(self, fn: str, foreign_key=None, local_key=None):

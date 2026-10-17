@@ -1,7 +1,21 @@
+from typing import TYPE_CHECKING, Any, Generic, Self, overload
+
+from typing_extensions import TypeVar
+
 from fastapi_startkit.masoniteorm.models import registry
+from ..collection import Collection
+
+if TYPE_CHECKING:
+    from ..models.model import Model
+
+TModel = TypeVar("TModel", bound="Model", default="Model")
+TResult = TypeVar("TResult", default=Any)
+
+type SingleResult[T] = T | None
+type ManyResult[T] = Collection[T]
 
 
-class BaseRelationship:
+class BaseRelationship(Generic[TModel, TResult]):
     def __init__(self, fn: str | list[str], local_key=None, foreign_key=None):
         if not isinstance(fn, str):
             raise TypeError(f"Relationship {self.__class__.__name__} expects a string as the first argument")
@@ -19,7 +33,16 @@ class BaseRelationship:
     def get_builder(self):
         return self.fn()().get_builder()
 
-    def __get__(self, instance, owner):
+    @overload
+    def __get__(self, instance: None, owner: Any) -> Self: ...
+    @overload
+    def __get__(self: "BaseRelationship[Model, Any]", instance: object, owner: Any) -> Any: ...
+    @overload
+    def __get__(self, instance: object, owner: Any) -> TResult: ...
+    def __get__(self, instance, owner) -> Any:
+        return self.access(instance, owner)
+
+    def access(self, instance, owner):
         """
         This method is called when the decorated method is accessed.
 

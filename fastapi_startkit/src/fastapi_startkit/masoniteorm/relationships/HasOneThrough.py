@@ -1,9 +1,9 @@
 from ..collection import Collection
-from .BaseRelationship import BaseRelationship
+from .BaseRelationship import BaseRelationship, SingleResult, TModel
 from fastapi_startkit.masoniteorm.models import registry
 
 
-class HasOneThrough(BaseRelationship):
+class HasOneThrough(BaseRelationship[TModel, SingleResult[TModel]]):
     """HasOneThrough Relationship Class."""
 
     def __init__(
@@ -43,7 +43,7 @@ class HasOneThrough(BaseRelationship):
         self.other_owner_key = self.other_owner_key or "id"
         return self
 
-    def __get__(self, instance, owner):
+    def access(self, instance, owner):
         self.set_keys(self.attribute)
 
         if instance is None or not instance.is_loaded():

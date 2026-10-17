@@ -1,9 +1,9 @@
 from fastapi_startkit.masoniteorm.models import registry
-from .BaseRelationship import BaseRelationship
+from .BaseRelationship import BaseRelationship, ManyResult, TModel
 from ..collection import Collection
 
 
-class HasManyThrough(BaseRelationship):
+class HasManyThrough(BaseRelationship[TModel, ManyResult[TModel]]):
     """HasManyThrough Relationship Class."""
 
     def __init__(
@@ -43,7 +43,7 @@ class HasManyThrough(BaseRelationship):
         self.other_owner_key = self.other_owner_key or "id"
         return self
 
-    def __get__(self, instance, owner):
+    def access(self, instance, owner):
         if instance is None or not instance.is_loaded():
             return self
 

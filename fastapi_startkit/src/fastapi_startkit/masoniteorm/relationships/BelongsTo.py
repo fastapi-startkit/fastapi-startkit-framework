@@ -1,11 +1,11 @@
 from typing import cast
 
 from ..collection import Collection
-from . import BaseRelationship
+from .BaseRelationship import BaseRelationship, SingleResult, TModel
 from fastapi_startkit.masoniteorm.models import registry
 
 
-class BelongsTo(BaseRelationship):
+class BelongsTo(BaseRelationship[TModel, SingleResult[TModel]]):
     """Belongs To Relationship Class."""
 
     def __init__(self, fn: str, local_key=None, foreign_key=None):

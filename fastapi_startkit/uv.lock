@@ -647,6 +647,7 @@ dependencies = [
     { name = "pendulum" },
     { name = "pydantic" },
     { name = "requests" },
+    { name = "typing-extensions" },
 ]
 
 [package.optional-dependencies]
@@ -732,6 +733,7 @@ requires-dist = [
     { name = "redis", marker = "extra == 'redis'", specifier = ">=5.0.1" },
     { name = "requests", specifier = ">=2.32.5,<3.0.0" },
     { name = "sqlalchemy", extras = ["asyncio"], marker = "extra == 'database'", specifier = ">=2.0.38" },
+    { name = "typing-extensions", specifier = ">=4.12.0" },
 ]
 provides-extras = ["fastapi", "database", "sqlite", "postgres", "mysql", "vite", "inertia", "ai", "redis"]
 

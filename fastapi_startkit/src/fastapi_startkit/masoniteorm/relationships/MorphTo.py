@@ -1,9 +1,9 @@
 from fastapi_startkit.masoniteorm.models import registry
-from .BaseRelationship import BaseRelationship
+from .BaseRelationship import BaseRelationship, SingleResult, TModel
 from ..collection import Collection
 
 
-class MorphTo(BaseRelationship):
+class MorphTo(BaseRelationship[TModel, SingleResult[TModel]]):
     def __init__(self, fn: str, morph_key="record_type", morph_id="record_id"):
         self.fn = fn
         self.morph_id = morph_id
@@ -21,7 +21,7 @@ class MorphTo(BaseRelationship):
         self.morph_key = self.morph_key or "record_type"
         return self
 
-    def __get__(self, instance, owner):
+    def access(self, instance, owner):
         self.set_keys()
 
         if instance is None or not instance.is_loaded():

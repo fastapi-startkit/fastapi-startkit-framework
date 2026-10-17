@@ -2,12 +2,12 @@ import pendulum
 from inflection import singularize
 
 from fastapi_startkit.masoniteorm.models import registry
-from .BaseRelationship import BaseRelationship
+from .BaseRelationship import BaseRelationship, ManyResult, TModel
 from ..collection import Collection
 from ..models.pivot import Pivot
 
 
-class BelongsToMany(BaseRelationship):
+class BelongsToMany(BaseRelationship[TModel, ManyResult[TModel]]):
     """Has Many Relationship Class."""
 
     def __init__(
