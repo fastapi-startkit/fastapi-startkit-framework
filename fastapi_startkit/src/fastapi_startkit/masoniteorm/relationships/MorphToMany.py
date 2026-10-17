@@ -3,6 +3,7 @@ from typing import Any
 
 from fastapi_startkit.masoniteorm.models import registry
 from ..collection import Collection
+from ..exceptions import LazyLoadingViolation
 from .BaseRelationship import BaseRelationship, ManyResult, TModel
 
 
@@ -58,7 +59,7 @@ class MorphToMany(BaseRelationship[TModel, ManyResult[TModel]]):
         if attribute in instance._relationships:
             return instance._relationships[attribute]
 
-        return self.apply_query(self._related_builder, instance)
+        raise LazyLoadingViolation(instance, attribute)
 
     def __getattr__(self, attribute):
         relationship = self.resolver()(self)()
@@ -106,6 +107,9 @@ class MorphToMany(BaseRelationship[TModel, ManyResult[TModel]]):
             model = self.morph_map().get(getattr(relation, self.morph_key))
             if model:
                 return await model.find(getattr(relation, self.morph_id))
+
+    def map_related(self, related_result):
+        return related_result
 
     def register_related(self, key, model, collection):
         morphed_model = registry.Registry.get_morph_model(getattr(model, self.morph_key))

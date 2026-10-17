@@ -51,6 +51,26 @@ At runtime, instance access returns the stored value when the relationship is ea
 
 Unsubscripted relationships are `Any`, exactly as loose as before.
 
+### Lazy loading is disabled (breaking change)
+
+Option A types `word.lexeme` as the loaded value, so the lazy path (`await word.lexeme`) would be a type error that still works at runtime. Rather than typing a path the framework does not want used, lazy loading is removed: accessing a relationship on a loaded model that was not eager-loaded raises `LazyLoadingViolation`. Its message names the model and the relationship and points to `with_()` and `load()`. Enforcement is the default, not an opt-in, because an opt-in would leave every non-opted application with types that disagree with runtime.
+
+Supporting changes:
+
+- `Model.load(*relations) -> Self` eager-loads relationships onto one model (it delegates to `Collection.load`), so `(await word.load("lexeme")).lexeme` is typed.
+- `Collection.load` and eager loading register relationships that have no related records: `None` for single relationships and an empty `Collection` for many relationships. Previously these were left unregistered, which would now raise, or set to `None`, which contradicts `Collection[T]`.
+- `Collection.load` passes the owner's builder to `get_related`, which `BelongsToMany` needs to resolve its pivot table; `MorphToMany` gains `map_related` so it can be loaded.
+
+Migration:
+
+| Before | After |
+|---|---|
+| `lexeme = await word.lexeme` | `await word.load("lexeme")` then `word.lexeme` |
+| `for word in words: await word.lexeme` | `words = await Word.with_("lexeme").get()` or `await words.load("lexeme")` |
+| empty eager-loaded many relationship is `None` | it is an empty `Collection` |
+
+Query-side relationship APIs are unchanged: class access (`Word.lexeme.attach(...)`, `where_has`, `with_`) still works, and `apply_query`/`get_related` remain available for explicit queries.
+
 ### Linters
 
 Ruff's F401 only reads strings in annotation positions, so an import used only by `BelongsTo["Lexeme"]` is reported as unused and `ruff --fix` would delete it. Such `TYPE_CHECKING` imports carry `# noqa: F401`.
@@ -61,6 +81,9 @@ Ruff's F401 only reads strings in annotation positions, so an import used only b
 - `BelongsTo`, `HasOne`, `HasOneThrough`, `MorphOne`, `MorphTo`: `BaseRelationship[TModel, SingleResult[TModel]]`.
 - `HasMany`, `BelongsToMany`, `HasManyThrough`, `MorphMany`, `MorphToMany`: `BaseRelationship[TModel, ManyResult[TModel]]`.
 - Through and morph relations rename `__get__` to `access`.
+- `exceptions.py`: `LazyLoadingViolation`; `access` raises it instead of returning a query.
+- `Model.load`, `Collection.load`, `EagerLoadMixin._register_relationships_to_model`, `MorphToMany.map_related`.
+- In-repo `await model.relation` usages (framework tests) migrated to `load()`; `example/` has none.
 - `pyproject.toml`: `typing-extensions` runtime dependency.
 
 ## Validation
@@ -68,4 +91,5 @@ Ruff's F401 only reads strings in annotation positions, so an import used only b
 - `tests/masoniteorm/fixtures/typed/`: two model modules that reference each other only under `TYPE_CHECKING`.
 - `tests/masoniteorm/sqlite/relationships/test_generic_relationships.py`: subscripted `BelongsTo`, `HasOne`, `HasMany`, `BelongsToMany` on sqlite: module import succeeds, the string argument still resolves the model, eager load with `with_`, `where_has`, and unsubscripted relations stay `Any`.
 - The same file uses `assert_type` for class access and instance access and is checked with `uv run pyright` and `uv run basedpyright`.
+- The same file covers `LazyLoadingViolation` and its message, typed `load()`, and empty relationships registered through `load()`, `with_().get()` and `with_().first()`.
 - Full suite: `uv run pytest --ignore=tests/masoniteorm/postgres --cov` stays above `fail_under`.

@@ -3,6 +3,7 @@ from typing import Any
 
 from fastapi_startkit.masoniteorm.models import registry
 from ..collection import Collection
+from ..exceptions import LazyLoadingViolation
 from .BaseRelationship import BaseRelationship, SingleResult, TModel
 
 
@@ -59,7 +60,7 @@ class MorphOne(BaseRelationship[TModel, SingleResult[TModel]]):
         if attribute in instance._relationships:
             return instance._relationships[attribute]
 
-        return self.apply_query(self._related_builder, instance)
+        raise LazyLoadingViolation(instance, attribute)
 
     def __getattr__(self, attribute):
         relationship = self.resolver()(self)()

@@ -30,7 +30,8 @@ class TestHasManyThroughRelationship(TestCase):
 
     async def test_has_many_through_can_get_related(self):
         user = await User.where("email", "admin@admin.com").first()
-        logos = await user.logos
+        await user.load("logos")
+        logos = user.logos
 
         assert isinstance(logos, Collection)
         assert isinstance(logos.first(), Logo)

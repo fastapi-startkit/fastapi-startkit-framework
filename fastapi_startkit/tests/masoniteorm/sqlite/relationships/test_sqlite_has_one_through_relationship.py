@@ -35,7 +35,8 @@ class TestHasOneThroughRelationship(TestCase):
 
     async def test_has_one_through_can_get_related(self):
         shipment = await IncomingShipment.where("name", "Milk").first()
-        country = await shipment.from_country
+        await shipment.load("from_country")
+        country = shipment.from_country
         assert isinstance(country, Country)
         assert country.country_id == 10
 

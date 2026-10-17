@@ -12,7 +12,8 @@ class TestBelongsToManyRelationship(TestCase):
     async def test_attach_creates_pivot_record(self):
         await Store.products.attach(self.store, self.product1)
         store = await Store.where("id", self.store.id).first()
-        products = await store.products
+        await store.load("products")
+        products = store.products
         self.assertEqual(len(products), 1)
         self.assertEqual(products[0].name, "Widget")
 
@@ -20,7 +21,8 @@ class TestBelongsToManyRelationship(TestCase):
         await Store.products.attach(self.store, self.product1)
         await Store.products.attach(self.store, self.product2)
         store = await Store.where("id", self.store.id).first()
-        products = await store.products
+        await store.load("products")
+        products = store.products
         self.assertEqual(len(products), 2)
 
     async def test_detach_removes_pivot_record(self):
@@ -28,7 +30,8 @@ class TestBelongsToManyRelationship(TestCase):
         await Store.products.attach(self.store, self.product2)
         await Store.products.detach(self.store, self.product1)
         store = await Store.where("id", self.store.id).first()
-        products = await store.products
+        await store.load("products")
+        products = store.products
         self.assertEqual(len(products), 1)
         self.assertEqual(products[0].name, "Gadget")
 
@@ -43,8 +46,7 @@ class TestBelongsToManyRelationship(TestCase):
         stores = await Store.with_("products").get()
         store = stores.where("id", self.store.id).first()
         self.assertIsNotNone(store)
-        # Empty BelongsToMany eager load returns None (consistent with other relationships)
-        self.assertIsNone(store.products)
+        self.assertTrue(store.products.is_empty())
 
     async def test_pivot_access_after_eager_load(self):
         await Store.products.attach(self.store, self.product1)
@@ -66,20 +68,23 @@ class TestBelongsToManyRelationship(TestCase):
         # Store.products_table uses table="product_table"
         await Store.products_table.attach(self.store, self.product1)
         store = await Store.where("id", self.store.id).first()
-        products = await store.products_table
+        await store.load("products_table")
+        products = store.products_table
         self.assertEqual(len(products), 1)
 
     async def test_attach_related_creates_pivot_record(self):
         await Store.products.attach_related(self.store, self.product1)
         store = await Store.where("id", self.store.id).first()
-        products = await store.products
+        await store.load("products")
+        products = store.products
         self.assertEqual(len(products), 1)
 
     async def test_detach_related_removes_pivot_record(self):
         await Store.products.attach_related(self.store, self.product1)
         await Store.products.detach_related(self.store, self.product1)
         store = await Store.where("id", self.store.id).first()
-        products = await store.products
+        await store.load("products")
+        products = store.products
         self.assertEqual(len(products), 0)
 
     async def test_get_pivot_table_name(self):

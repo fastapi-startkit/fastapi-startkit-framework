@@ -2,6 +2,7 @@ from typing import Any, assert_type
 
 from fastapi_startkit.masoniteorm import BelongsTo, BelongsToMany, HasMany, HasOne
 from fastapi_startkit.masoniteorm.collection import Collection
+from fastapi_startkit.masoniteorm.exceptions import LazyLoadingViolation
 
 from ...fixtures.typed.owners import TypedStore, TypedUser
 from ...fixtures.typed.related import TypedArticle, TypedProduct, TypedProfile
@@ -65,3 +66,42 @@ class TestGenericRelationships(TestCase):
 
         assert_type(user.untyped_profile, Any)
         assert isinstance(user.untyped_profile, TypedProfile)
+
+    async def test_unloaded_relationship_raises_lazy_loading_violation(self):
+        user = await TypedUser.where("email", "admin@admin.com").first_or_fail()
+
+        with self.assertRaises(LazyLoadingViolation) as raised:
+            user.profile
+
+        message = str(raised.exception)
+        assert "[profile]" in message
+        assert "[TypedUser]" in message
+        assert 'TypedUser.with_("profile")' in message
+        assert 'load("profile")' in message
+
+    async def test_load_eager_loads_onto_the_model(self):
+        user = await TypedUser.where("email", "admin@admin.com").first_or_fail()
+
+        loaded = await user.load("profile", "articles")
+
+        assert_type(loaded, TypedUser)
+        assert_type(loaded.profile, TypedProfile | None)
+        assert isinstance(loaded.profile, TypedProfile)
+        assert [article.title for article in loaded.articles] == ["Masonite ORM"]
+
+    async def test_relationships_without_records_are_registered_as_empty(self):
+        user = await TypedUser.create({"name": "Lonely", "email": "lonely@example.com"})
+
+        await user.load("profile", "articles")
+
+        assert user.profile is None
+        assert user.articles.is_empty()
+
+        eager = await TypedUser.with_("profile", "articles").where("id", user.id).get()
+
+        assert eager[0].profile is None
+        assert eager[0].articles.is_empty()
+
+        first = await TypedUser.with_("articles").where("id", user.id).first_or_fail()
+
+        assert first.articles.is_empty()

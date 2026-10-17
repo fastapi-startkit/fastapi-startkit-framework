@@ -1,4 +1,5 @@
 from fastapi_startkit.masoniteorm.models import registry
+from ..exceptions import LazyLoadingViolation
 from .BaseRelationship import BaseRelationship, SingleResult, TModel
 from ..collection import Collection
 
@@ -32,7 +33,7 @@ class MorphTo(BaseRelationship[TModel, SingleResult[TModel]]):
         if instance.relationship_loaded(self.attribute):
             return instance.get_relationship(self.attribute)
 
-        return self.apply_query(self._related_builder, instance)
+        raise LazyLoadingViolation(instance, self.attribute)
 
     def __getattr__(self, attribute):
         relationship = registry.Registry.resolve(self.fn)()

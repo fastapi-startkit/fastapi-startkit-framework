@@ -50,13 +50,15 @@ class TestMorphManyRelationship(TestCase):
     async def test_apply_query_returns_likes_for_article(self):
         await Like.create({"likeable_type": "article", "likeable_id": self.article.id})
         article = await ArticleModel.where("id", self.article.id).first()
-        likes_result = await article.likes
+        await article.load("likes")
+        likes_result = article.likes
         self.assertEqual(len(likes_result), 1)
 
     async def test_apply_query_returns_empty_for_article_without_likes(self):
         # Don't create any likes for this article
         article = await ArticleModel.where("id", self.article.id).first()
-        likes_result = await article.likes
+        await article.load("likes")
+        likes_result = article.likes
         self.assertEqual(len(likes_result), 0)
 
     async def test_eager_load_morph_many(self):

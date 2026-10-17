@@ -128,5 +128,7 @@ class TestMorphToManyRelationship(TestCase):
         like = await LikeModelMorphToMany.create({"likeable_type": "article_m2m", "likeable_id": self.article.id})
         like_loaded = await LikeModelMorphToMany.where("id", like.id).first()
 
-        resolved = await like_loaded.record
+        await like_loaded.load("record")
+
+        resolved = like_loaded.record.first()
         self.assertIsInstance(resolved, Articles)

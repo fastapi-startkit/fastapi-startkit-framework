@@ -1,4 +1,5 @@
 from ..collection import Collection
+from ..exceptions import LazyLoadingViolation
 from .BaseRelationship import BaseRelationship, SingleResult, TModel
 from fastapi_startkit.masoniteorm.models import registry
 
@@ -52,11 +53,7 @@ class HasOneThrough(BaseRelationship[TModel, SingleResult[TModel]]):
         if instance.relationship_loaded(self.attribute):
             return instance.get_relationship(self.attribute)
 
-        return self.apply_relation_query(
-            distant_builder=self.get_distance_builder(),
-            intermediary_builder=self.get_intermediary_builder(),
-            owner=instance,
-        )
+        raise LazyLoadingViolation(instance, self.attribute)
 
     def apply_relation_query(self, distant_builder, intermediary_builder, owner):
         dist_table = distant_builder.get_table_name()

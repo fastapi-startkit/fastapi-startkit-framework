@@ -4,6 +4,7 @@ from typing_extensions import TypeVar
 
 from fastapi_startkit.masoniteorm.models import registry
 from ..collection import Collection
+from ..exceptions import LazyLoadingViolation
 
 if TYPE_CHECKING:
     from ..models.model import Model
@@ -66,7 +67,7 @@ class BaseRelationship(Generic[TModel, TResult]):
         if self.attribute in instance._relationships:
             return instance._relationships[self.attribute]
 
-        return self.apply_query(self.get_builder(), instance)
+        raise LazyLoadingViolation(instance, self.attribute)
 
     def __getattr__(self, attribute):
         return getattr(self.get_builder(), attribute)

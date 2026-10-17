@@ -53,15 +53,21 @@ class EagerLoadMixin:
                     )
 
     async def _register_relationships_to_model(self, related, related_result, models, relation_key):
-        if related_result and isinstance(models, Collection):
-            map_related = self._map_related(related_result, related)
+        if not isinstance(models, Collection):
+            models.add_relation({relation_key: related_result})
+            return self
+
+        if not related_result and not isinstance(related_result, Collection):
             for model in models:
-                if isinstance(related_result, Collection):
-                    related.register_related(relation_key, model, map_related)
-                else:
-                    model.add_relation({relation_key: map_related or None})
-        else:
-            models.add_relation({relation_key: related_result or None})
+                model.add_relation({relation_key: None})
+            return self
+
+        map_related = self._map_related(related_result, related)
+        for model in models:
+            if isinstance(related_result, Collection):
+                related.register_related(relation_key, model, map_related)
+            else:
+                model.add_relation({relation_key: map_related or None})
         return self
 
     def _map_related(self, related_result, related):
