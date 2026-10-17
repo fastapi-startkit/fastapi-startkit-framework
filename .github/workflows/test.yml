@@ -103,6 +103,16 @@ jobs:
                 working-directory: example/config-app
                 run: uv run pytest tests/ -v
 
+            # ── example/console-app ───────────────────────────────────────────────
+            -   name: Smoke test (console-app)
+                working-directory: example/console-app
+                env:
+                    APP_ENV: testing
+                run: |
+                    uv sync
+                    uv run python artisan list
+                    uv run python artisan hello World
+
             # ── example/database-app ──────────────────────────────────────────────
             -   name: Install dependencies (database-app)
                 working-directory: example/database-app
