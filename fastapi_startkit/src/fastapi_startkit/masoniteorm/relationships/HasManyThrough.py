@@ -93,11 +93,11 @@ class HasManyThrough(BaseRelationship[TModel, ManyResult[TModel]]):
         return builder
 
     def register_related(self, key, model, collection):
-        related = collection.get(getattr(model, self.local_owner_key), None)
-        if related and not isinstance(related, Collection):
+        related = collection.get(getattr(model, self.local_owner_key)) or Collection()
+        if not isinstance(related, Collection):
             related = Collection(related)
 
-        model.add_relation({key: related if related else None})
+        model.add_relation({key: related})
 
     async def get_related(self, query, relation, eagers=None, callback=None):
         distant_builder = self.get_distance_builder()

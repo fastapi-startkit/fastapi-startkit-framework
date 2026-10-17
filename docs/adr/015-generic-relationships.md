@@ -51,6 +51,8 @@ At runtime, instance access returns the stored value when the relationship is ea
 
 Unsubscripted relationships are `Any`, exactly as loose as before.
 
+An explicit `BelongsTo["Model"]` (or any relationship subscripted with the base `Model`) is indistinguishable from an unsubscripted one: `TModel` is the same `Model` the default fills in, so overload 2 matches and instance access is `Any`. Subscript with the concrete related model to get a typed result.
+
 ### Lazy loading is disabled (breaking change)
 
 Option A types `word.lexeme` as the loaded value, so the lazy path (`await word.lexeme`) would be a type error that still works at runtime. Rather than typing a path the framework does not want used, lazy loading is removed: accessing a relationship on a loaded model that was not eager-loaded raises `LazyLoadingViolation`. Its message names the model and the relationship and points to `with_()` and `load()`. Enforcement is the default, not an opt-in, because an opt-in would leave every non-opted application with types that disagree with runtime.
@@ -92,4 +94,5 @@ Ruff's F401 only reads strings in annotation positions, so an import used only b
 - `tests/masoniteorm/sqlite/relationships/test_generic_relationships.py`: subscripted `BelongsTo`, `HasOne`, `HasMany`, `BelongsToMany` on sqlite: module import succeeds, the string argument still resolves the model, eager load with `with_`, `where_has`, and unsubscripted relations stay `Any`.
 - The same file uses `assert_type` for class access and instance access and is checked with `uv run pyright` and `uv run basedpyright`.
 - The same file covers `LazyLoadingViolation` and its message, typed `load()`, and empty relationships registered through `load()`, `with_().get()` and `with_().first()`.
+- Each many relationship (`HasMany`, `HasManyThrough`, `BelongsToMany`, `MorphMany`, `MorphToMany`) has sqlite tests asserting that an empty relation is an empty `Collection` through `load()`, `with_().get()` and `with_().first()`.
 - Full suite: `uv run pytest --ignore=tests/masoniteorm/postgres --cov` stays above `fail_under`.

@@ -1,3 +1,4 @@
+from fastapi_startkit.masoniteorm.collection import Collection
 from ...fixtures.model import Product, Store
 from ..test_case import TestCase
 
@@ -46,6 +47,17 @@ class TestBelongsToManyRelationship(TestCase):
         stores = await Store.with_("products").get()
         store = stores.where("id", self.store.id).first()
         self.assertIsNotNone(store)
+        self.assertTrue(store.products.is_empty())
+
+    async def test_eager_load_first_empty_relationship(self):
+        store = await Store.with_("products").where("id", self.store.id).first()
+        self.assertIsInstance(store.products, Collection)
+        self.assertTrue(store.products.is_empty())
+
+    async def test_load_empty_relationship(self):
+        store = await Store.where("id", self.store.id).first()
+        await store.load("products")
+        self.assertIsInstance(store.products, Collection)
         self.assertTrue(store.products.is_empty())
 
     async def test_pivot_access_after_eager_load(self):

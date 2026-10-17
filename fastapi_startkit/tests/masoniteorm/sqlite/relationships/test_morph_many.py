@@ -1,3 +1,4 @@
+from fastapi_startkit.masoniteorm.collection import Collection
 from fastapi_startkit.masoniteorm import Model
 from fastapi_startkit.masoniteorm.models.registry import Registry
 from fastapi_startkit.masoniteorm.relationships import MorphMany
@@ -60,6 +61,17 @@ class TestMorphManyRelationship(TestCase):
         await article.load("likes")
         likes_result = article.likes
         self.assertEqual(len(likes_result), 0)
+        self.assertIsInstance(likes_result, Collection)
+
+    async def test_eager_load_empty_morph_many(self):
+        articles = await ArticleModel.with_("likes").where("id", self.article.id).get()
+        self.assertIsInstance(articles.first().likes, Collection)
+        self.assertTrue(articles.first().likes.is_empty())
+
+    async def test_eager_load_first_empty_morph_many(self):
+        article = await ArticleModel.with_("likes").where("id", self.article.id).first()
+        self.assertIsInstance(article.likes, Collection)
+        self.assertTrue(article.likes.is_empty())
 
     async def test_eager_load_morph_many(self):
         await Like.create({"likeable_type": "article", "likeable_id": self.article.id})
