@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Generic, Self, overload
+from typing import TYPE_CHECKING, Any, ForwardRef, Generic, Self, get_args, overload
 
 from typing_extensions import TypeVar
 
@@ -17,11 +17,8 @@ type ManyResult[T] = Collection[T]
 
 
 class BaseRelationship(Generic[TModel, TResult]):
-    def __init__(self, fn: str | list[str], local_key=None, foreign_key=None):
-        if not isinstance(fn, str):
-            raise TypeError(f"Relationship {self.__class__.__name__} expects a string as the first argument")
-        fn_str: str = fn  # For type checking
-        self.fn = lambda: registry.Registry.resolve(fn_str)
+    def __init__(self, fn: str | None = None, local_key=None, foreign_key=None):
+        self.bind_model(fn)
 
         self.local_key = local_key
         self.foreign_key = foreign_key
@@ -30,6 +27,34 @@ class BaseRelationship(Generic[TModel, TResult]):
     def __set_name__(self, cls, name):
         self.attribute = name
         self.owner_class = cls
+        if "_model_name" in self.__dict__:
+            self.model_reference()
+
+    def bind_model(self, fn: str | None) -> None:
+        if fn is not None and not isinstance(fn, str):
+            raise TypeError(f"Relationship {self.__class__.__name__} expects a string as the first argument")
+        self._model_name = fn
+        self.fn = self.related_model
+
+    def related_model(self) -> type:
+        model = self.model_reference()
+        return registry.Registry.resolve(model) if isinstance(model, str) else model
+
+    def model_reference(self) -> str | type:
+        if self._model_name is not None:
+            return self._model_name
+
+        alias = self.__dict__.get("__orig_class__")
+        if alias is None:
+            klass = self.__class__.__name__
+            owner = getattr(self.__dict__.get("owner_class"), "__name__", "?")
+            raise TypeError(
+                f"{owner}.{self.__dict__.get('attribute')} needs its related model: "
+                f'declare it as {klass}["Model"](...) or pass it as {klass}("Model", ...)'
+            )
+
+        model = get_args(alias)[0]
+        return model.__forward_arg__ if isinstance(model, ForwardRef) else model
 
     def get_builder(self):
         return self.fn()().get_builder()

@@ -1,7 +1,6 @@
 import pendulum
 from inflection import singularize
 
-from fastapi_startkit.masoniteorm.models import registry
 from .BaseRelationship import BaseRelationship, ManyResult, TModel
 from ..collection import Collection
 from ..models.pivot import Pivot
@@ -12,7 +11,7 @@ class BelongsToMany(BaseRelationship[TModel, ManyResult[TModel]]):
 
     def __init__(
         self,
-        fn: str,
+        fn: str | None = None,
         local_foreign_key=None,
         other_foreign_key=None,
         local_owner_key=None,
@@ -23,7 +22,7 @@ class BelongsToMany(BaseRelationship[TModel, ManyResult[TModel]]):
         attribute="pivot",
         with_fields=[],
     ):
-        self.fn = lambda: registry.Registry.resolve(fn)
+        self.bind_model(fn)
 
         self.local_key = local_foreign_key
         self.foreign_key = other_foreign_key
