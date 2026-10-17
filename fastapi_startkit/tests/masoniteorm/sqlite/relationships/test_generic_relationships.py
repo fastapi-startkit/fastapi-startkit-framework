@@ -54,6 +54,7 @@ class TestGenericRelationships(TestCase):
         loaded = await TypedStore.with_("products").where("id", store.id).first_or_fail()
 
         assert_type(loaded.products, Collection[TypedProduct])
+        assert isinstance(loaded.products, Collection)
         assert [item.name for item in loaded.products] == ["Typed Widget"]
 
     async def test_where_has_uses_subscripted_relationships(self):
@@ -105,3 +106,14 @@ class TestGenericRelationships(TestCase):
         first = await TypedUser.with_("articles").where("id", user.id).first_or_fail()
 
         assert first.articles.is_empty()
+
+    async def test_non_empty_has_many_on_a_single_model_is_a_collection(self):
+        first = await TypedUser.with_("articles").where("email", "admin@admin.com").first_or_fail()
+        first_or_none = await TypedUser.with_("articles").where("email", "admin@admin.com").first()
+        found = await TypedUser.with_("articles").find(first.id)
+        assert first_or_none is not None
+        assert found is not None
+
+        for user in (first, first_or_none, found):
+            assert isinstance(user.articles, Collection)
+            assert not user.articles.is_empty()

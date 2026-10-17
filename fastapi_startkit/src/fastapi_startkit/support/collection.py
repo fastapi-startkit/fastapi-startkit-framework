@@ -393,7 +393,9 @@ class Collection:
         for k, v in groupby(self._items, key=lambda x: self.val(x, key)):
             new_dict.update({k: list(v)})
 
-        return Collection(new_dict)
+        grouped = Collection()
+        grouped._items = new_dict
+        return grouped
 
     def transform(self, callback):
         self._check_is_callable(callback)

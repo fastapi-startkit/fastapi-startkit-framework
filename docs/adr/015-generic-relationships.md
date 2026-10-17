@@ -61,6 +61,7 @@ Supporting changes:
 
 - `Model.load(*relations) -> Self` eager-loads relationships onto one model (it delegates to `Collection.load`), so `(await word.load("lexeme")).lexeme` is typed.
 - `Collection.load` and eager loading register relationships that have no related records: `None` for single relationships and an empty `Collection` for many relationships. Previously these were left unregistered, which would now raise, or set to `None`, which contradicts `Collection[T]`.
+- `Collection.group_by` returns a dict-backed collection even when there is nothing to group, so a lookup on an empty result (including a `NULL` foreign key) misses instead of indexing a list. `HasMany` wraps each group in a `Collection`, so a non-empty many relationship is a `Collection` rather than a `list`.
 - `Collection.load` passes the owner's builder to `get_related`, which `BelongsToMany` needs to resolve its pivot table; `MorphToMany` gains `map_related` so it can be loaded.
 
 Migration:
@@ -94,5 +95,6 @@ Ruff's F401 only reads strings in annotation positions, so an import used only b
 - `tests/masoniteorm/sqlite/relationships/test_generic_relationships.py`: subscripted `BelongsTo`, `HasOne`, `HasMany`, `BelongsToMany` on sqlite: module import succeeds, the string argument still resolves the model, eager load with `with_`, `where_has`, and unsubscripted relations stay `Any`.
 - The same file uses `assert_type` for class access and instance access and is checked with `uv run pyright` and `uv run basedpyright`.
 - The same file covers `LazyLoadingViolation` and its message, typed `load()`, and empty relationships registered through `load()`, `with_().get()` and `with_().first()`.
+- `test_belongs_to_null_foreign_key.py` covers a `BelongsTo` whose foreign keys are all `NULL`, and mixed with resolvable keys, through `load()`, `Collection.load()`, `with_().get()` and `with_().first()`.
 - Each many relationship (`HasMany`, `HasManyThrough`, `BelongsToMany`, `MorphMany`, `MorphToMany`) has sqlite tests asserting that an empty relation is an empty `Collection` through `load()`, `with_().get()` and `with_().first()`.
 - Full suite: `uv run pytest --ignore=tests/masoniteorm/postgres --cov` stays above `fail_under`.

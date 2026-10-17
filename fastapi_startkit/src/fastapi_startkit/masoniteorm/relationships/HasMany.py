@@ -26,7 +26,7 @@ class HasMany(BaseRelationship[TModel, ManyResult[TModel]]):
         return self
 
     def register_related(self, key, model, collection):
-        model.add_relation({key: collection.get(getattr(model, self.local_key)) or Collection()})
+        model.add_relation({key: Collection(collection.get(getattr(model, self.local_key)) or [])})
 
     def map_related(self, related_result):
         return related_result.group_by(self.foreign_key)
