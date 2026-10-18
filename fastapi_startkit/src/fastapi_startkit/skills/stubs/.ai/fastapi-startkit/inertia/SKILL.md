@@ -28,7 +28,8 @@ Use the `Inertia` facade. `Inertia.render(component, props)` returns an
 
 ```python
 # app/http/controllers/projects_controller.py
-from fastapi_startkit.inertia import Inertia, InertiaResponse
+from fastapi_startkit.inertia import Inertia
+from fastapi_startkit.inertia.inertia import InertiaResponse
 
 from app.models import Project
 from app.http.resources.project_resource import ProjectResource
@@ -56,7 +57,8 @@ expects a 303 redirect after `store`/`update`/`destroy`, not a JSON body).
 # app/http/controllers/projects_controller.py
 from fastapi import Request
 from fastapi.responses import RedirectResponse
-from fastapi_startkit.inertia import Inertia, InertiaResponse
+from fastapi_startkit.inertia import Inertia
+from fastapi_startkit.inertia.inertia import InertiaResponse
 
 from app.models import Project
 from app.http.resources.project_resource import ProjectResource
@@ -119,8 +121,9 @@ router.resource("projects", projects_controller)
 
 ## Request validation (Pydantic)
 
-Type-hint a `RequestModel` parameter on a write method and FastAPI validates
-the submitted form before your controller runs. `RequestModel` is a Pydantic
+Bind a `RequestModel` parameter with `Depends()` on a write method and FastAPI
+validates the submitted form fields before your controller runs. A bare
+`RequestModel` annotation is read as a JSON body, not as form data. `RequestModel` is a Pydantic
 model, so use Pydantic types and `Field(...)` constraints — `EmailStr` for
 emails, constrained `str`, `int`, optional/mixed fields, etc. Invalid input
 raises a `ValidationError` (422) that Inertia surfaces back to the form's
@@ -144,13 +147,14 @@ class ProjectStoreRequest(RequestModel):
 
 ```python
 # app/http/controllers/projects_controller.py
+from fastapi import Depends
 from fastapi.responses import RedirectResponse
 
 from app.models import Project
 from app.http.requests.project_store_request import ProjectStoreRequest
 
 
-async def store(request: ProjectStoreRequest):
+async def store(request: ProjectStoreRequest = Depends()):
     await Project.create(request.model_dump())
     return RedirectResponse(url="/projects", status_code=303)
 ```
