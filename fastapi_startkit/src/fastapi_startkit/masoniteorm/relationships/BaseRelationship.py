@@ -1,3 +1,6 @@
+import os
+import typing
+import warnings
 from typing import TYPE_CHECKING, Any, ForwardRef, Generic, Self, get_args, overload
 
 from typing_extensions import TypeVar
@@ -33,6 +36,14 @@ class BaseRelationship(Generic[TModel, TResult]):
     def bind_model(self, fn: str | None) -> None:
         if fn is not None and not isinstance(fn, str):
             raise TypeError(f"Relationship {self.__class__.__name__} expects a string as the first argument")
+        if fn is not None:
+            klass = self.__class__.__name__
+            warnings.warn(
+                f'Passing the related model as {klass}("{fn}", ...) is deprecated and will be removed in 1.x; '
+                f'declare it as {klass}["{fn}"](...) instead.',
+                DeprecationWarning,
+                skip_file_prefixes=(os.path.dirname(__file__), typing.__file__),
+            )
         self._model_name = fn
         self.fn = self.related_model
 

@@ -4,7 +4,7 @@ from fastapi_startkit.masoniteorm.models import Model
 from fastapi_startkit.masoniteorm import HasMany, HasManyThrough
 
 if TYPE_CHECKING:
-    pass
+    from .course import Course  # noqa: F401
 
 
 class Category(Model):
@@ -13,5 +13,5 @@ class Category(Model):
     name: str
     description: str | None
 
-    courses = HasMany("Course")
+    courses = HasMany["Course"]()
     lessons = HasManyThrough(["Lesson", "Course"], "category_id", "course_id")

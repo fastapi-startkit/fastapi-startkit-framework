@@ -4,7 +4,8 @@ from fastapi_startkit.masoniteorm.models import Model
 from fastapi_startkit.masoniteorm import HasOne, BelongsToMany
 
 if TYPE_CHECKING:
-    pass
+    from .course import Course  # noqa: F401
+    from .profile import Profile  # noqa: F401
 
 
 class User(Model):
@@ -14,9 +15,8 @@ class User(Model):
     email: str
     role: str
 
-    profile = HasOne("Profile")
-    courses = BelongsToMany(
-        "Course",
+    profile = HasOne["Profile"]()
+    courses = BelongsToMany["Course"](
         local_foreign_key="user_id",
         other_foreign_key="course_id",
         table="course_user",

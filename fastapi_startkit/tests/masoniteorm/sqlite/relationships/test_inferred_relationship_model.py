@@ -1,4 +1,4 @@
-from typing import assert_type
+from typing import Any, assert_type
 
 import pytest
 
@@ -79,9 +79,30 @@ class TestInferredRelationshipModel(TestCase):
         assert isinstance(user.first_article, InferredArticle)
 
     def test_an_explicit_model_argument_wins_over_the_subscript(self):
-        relationship = BelongsTo["InferredProfile"]("InferredUser", local_key="user_id", foreign_key="id")
+        with pytest.warns(DeprecationWarning):
+            relationship = BelongsTo["InferredProfile"]("InferredUser", local_key="user_id", foreign_key="id")
 
         assert relationship.related_model() is InferredUser
+
+    def test_passing_the_model_as_an_argument_is_deprecated(self):
+        with pytest.warns(DeprecationWarning, match=r"removed in 1\.x") as caught:
+            HasOne("InferredProfile", "user_id", "id")
+
+        assert 'HasOne["InferredProfile"](...)' in str(caught[0].message)
+        assert caught[0].filename == __file__
+
+    async def test_a_model_argument_without_a_subscript_still_resolves_untyped(self):
+        with pytest.warns(DeprecationWarning):
+
+            class LegacyUser(Model):
+                __table__ = "users"
+
+                profile = HasOne("InferredProfile", "user_id", "id")
+
+        user = await LegacyUser.with_("profile").where("email", "admin@admin.com").first_or_fail()
+
+        assert_type(user.profile, Any)
+        assert isinstance(user.profile, InferredProfile)
 
     def test_a_relationship_without_a_model_fails_at_class_creation(self):
         with pytest.raises(TypeError, match="Orphan.owner"):

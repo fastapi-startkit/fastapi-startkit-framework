@@ -4,7 +4,9 @@ from fastapi_startkit.masoniteorm.models import Model
 from fastapi_startkit.masoniteorm import BelongsTo, HasMany, BelongsToMany, MorphMany
 
 if TYPE_CHECKING:
-    pass
+    from .category import Category  # noqa: F401
+    from .lesson import Lesson  # noqa: F401
+    from .user import User  # noqa: F401
 
 
 class Course(Model):
@@ -14,10 +16,9 @@ class Course(Model):
     description: str | None
     price: int
 
-    category = BelongsTo("Category")
-    lessons = HasMany("Lesson")
-    students = BelongsToMany(
-        "User",
+    category = BelongsTo["Category"]()
+    lessons = HasMany["Lesson"]()
+    students = BelongsToMany["User"](
         local_foreign_key="course_id",
         other_foreign_key="user_id",
         table="course_user",

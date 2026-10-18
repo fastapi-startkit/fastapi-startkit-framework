@@ -7,7 +7,7 @@ class Bottle(Model):
     __table__ = "bottles"
     __timestamps__ = False
 
-    lid: "BottleLid" = HasOne("BottleLid", "bottle_id", "id")
+    lid: "BottleLid" = HasOne["BottleLid"](foreign_key="bottle_id", local_key="id")
 
 
 class BottleLid(Model):
@@ -16,7 +16,7 @@ class BottleLid(Model):
 
     colour: str
     bottle_id: int | None
-    bottle: "Bottle" = BelongsTo("Bottle", "id", "bottle_id")
+    bottle: "Bottle" = BelongsTo["Bottle"](local_key="id", foreign_key="bottle_id")
 
 
 class TestAttachDetach(TestCase):

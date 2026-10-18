@@ -8,7 +8,7 @@ class Review(Model):
     __table__ = "reviews"
     __timestamps__ = False
 
-    user = BelongsTo["TypedUser"]("TypedUser", "user_id", "id")
+    user = BelongsTo["TypedUser"](local_key="user_id", foreign_key="id")
 
 
 class TestBelongsToNullForeignKey(TestCase):

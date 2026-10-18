@@ -1,5 +1,10 @@
+from typing import TYPE_CHECKING
+
 from fastapi_startkit.masoniteorm import HasMany
 from fastapi_startkit.masoniteorm.models import Model
+
+if TYPE_CHECKING:
+    from .message import Message  # noqa: F401
 
 
 class Thread(Model):
@@ -10,4 +15,4 @@ class Thread(Model):
     id: str
     title: str | None
 
-    messages = HasMany("Message", local_key="id", foreign_key="thread_id")
+    messages = HasMany["Message"](local_key="id", foreign_key="thread_id")

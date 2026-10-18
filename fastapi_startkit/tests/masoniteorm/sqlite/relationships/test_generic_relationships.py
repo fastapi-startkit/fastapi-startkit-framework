@@ -1,4 +1,4 @@
-from typing import Any, assert_type
+from typing import assert_type
 
 from fastapi_startkit.masoniteorm import BelongsTo, BelongsToMany, HasMany, HasOne
 from fastapi_startkit.masoniteorm.collection import Collection
@@ -11,7 +11,7 @@ from ..test_case import TestCase
 
 class TestGenericRelationships(TestCase):
     def test_subscript_keeps_the_string_forward_reference(self):
-        relationship = BelongsTo["TypedUser"]("TypedUser", local_key="user_id", foreign_key="id")
+        relationship = BelongsTo["TypedUser"](local_key="user_id", foreign_key="id")
 
         assert isinstance(relationship, BelongsTo)
         assert relationship.get_builder().get_table_name() == "users"
@@ -61,12 +61,6 @@ class TestGenericRelationships(TestCase):
         users = await TypedUser.where_has("articles", lambda query: query.where("title", "Masonite ORM")).get()
 
         assert [user.email for user in users] == ["admin@admin.com"]
-
-    async def test_unsubscripted_relationship_stays_untyped(self):
-        user = await TypedUser.with_("untyped_profile").where("email", "admin@admin.com").first_or_fail()
-
-        assert_type(user.untyped_profile, Any)
-        assert isinstance(user.untyped_profile, TypedProfile)
 
     async def test_unloaded_relationship_raises_lazy_loading_violation(self):
         user = await TypedUser.where("email", "admin@admin.com").first_or_fail()
