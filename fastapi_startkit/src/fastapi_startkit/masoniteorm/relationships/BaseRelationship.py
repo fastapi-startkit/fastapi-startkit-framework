@@ -58,11 +58,9 @@ class BaseRelationship(Generic[TModel, TResult]):
         alias = self.__dict__.get("__orig_class__")
         if alias is None:
             klass = self.__class__.__name__
-            owner = getattr(self.__dict__.get("owner_class"), "__name__", "?")
-            raise TypeError(
-                f"{owner}.{self.__dict__.get('attribute')} needs its related model: "
-                f'declare it as {klass}["Model"](...) or pass it as {klass}("Model", ...)'
-            )
+            owner = self.__dict__.get("owner_class")
+            subject = f"{owner.__name__}.{self.__dict__.get('attribute')}" if owner else klass
+            raise TypeError(f'{subject} needs its related model: declare it as {klass}["Model"](...)')
 
         model = get_args(alias)[0]
         return model.__forward_arg__ if isinstance(model, ForwardRef) else model

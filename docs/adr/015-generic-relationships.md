@@ -99,7 +99,7 @@ Alternatives considered:
 Rules:
 
 - A quoted subscript (`ForwardRef`) resolves through `Registry`. A real class is used as is.
-- A relationship with neither a subscript nor a model argument raises `TypeError` when the owning class is created. The error names the relationship.
+- A relationship with neither a subscript nor a model argument raises `TypeError` when the owning class is created. The error names the relationship (`Owner.attribute`, or just the relationship class when it is used outside a class body) and suggests only the subscript form.
 - Keys are passed by keyword. `BelongsTo["Lexeme"]("word_id")` would read `"word_id"` as the model.
 - Morph and through relationships are unchanged. Their first argument is a morph key or a pair of models, which one type parameter cannot express.
 

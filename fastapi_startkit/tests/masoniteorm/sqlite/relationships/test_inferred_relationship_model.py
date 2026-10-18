@@ -108,8 +108,18 @@ class TestInferredRelationshipModel(TestCase):
         with pytest.raises(TypeError, match="expects a string"):
             HasOne(InferredProfile, "user_id", "id")  # pyright: ignore[reportArgumentType]
 
+    def test_a_relationship_without_a_model_outside_a_class_names_the_relationship_type(self):
+        relationship = BelongsTo(local_key="owner_id", foreign_key="id")
+
+        with pytest.raises(TypeError) as raised:
+            relationship.related_model()
+
+        assert str(raised.value) == 'BelongsTo needs its related model: declare it as BelongsTo["Model"](...)'
+
     def test_a_relationship_without_a_model_fails_at_class_creation(self):
-        with pytest.raises(TypeError, match="Orphan.owner"):
+        with pytest.raises(TypeError) as raised:
 
             class Orphan(Model):
                 owner = BelongsTo(local_key="owner_id", foreign_key="id")
+
+        assert str(raised.value) == 'Orphan.owner needs its related model: declare it as BelongsTo["Model"](...)'
