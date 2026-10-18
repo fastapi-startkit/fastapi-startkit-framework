@@ -8,6 +8,9 @@ class EagerLoadMixin:
         self._eager_relation = EagerRelations()
 
     async def _load_eagers(self, models, model):
+        if not models:
+            return
+
         for eager_load in self._eager_relation.get_eagers():
             if isinstance(eager_load, dict):
                 # Nested or callback eagers
