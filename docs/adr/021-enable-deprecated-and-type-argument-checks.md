@@ -30,5 +30,5 @@ Fix every hit in the seven files outside `mcp/` with the most hits: `fastapi/rou
 
 ## Validation
 
-- `uv run basedpyright`: the seven files report 0 hits. Package totals drop to 142 `reportDeprecated` and 294 `reportMissingTypeArgument` (112 and 262 outside `mcp/`), all warnings, with no new errors.
+- `uv run basedpyright`: the seven files report 0 hits. Package totals drop to 112 `reportDeprecated` and 262 `reportMissingTypeArgument` now that ADR 020 is merged, all warnings, with no new errors.
 - `ruff check .` and `ruff format --check .` pass. The full suite passes with `--cov`.
