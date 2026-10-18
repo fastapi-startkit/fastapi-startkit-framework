@@ -8,13 +8,6 @@ from .response import Response
 
 
 class Prompt(ABC):
-    """Base class for MCP prompts.
-
-    Subclasses must set ``name`` and implement ``handle()``.
-    Override ``arguments()`` to declare accepted arguments.
-    Override ``should_register()`` to conditionally skip registration.
-    """
-
     name: str
     description: str | None = None
     title: str | None = None
