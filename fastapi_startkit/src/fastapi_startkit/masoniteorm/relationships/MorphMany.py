@@ -1,9 +1,10 @@
 from fastapi_startkit.masoniteorm.models import registry
-from .BaseRelationship import BaseRelationship
+from ..exceptions import LazyLoadingViolation
+from .BaseRelationship import BaseRelationship, ManyResult, TModel
 from ..collection import Collection
 
 
-class MorphMany(BaseRelationship):
+class MorphMany(BaseRelationship[TModel, ManyResult[TModel]]):
     def __init__(self, fn, morph_key="record_type", morph_id="record_id"):
         self.fn = fn
         self.morph_id = morph_id
@@ -17,7 +18,7 @@ class MorphMany(BaseRelationship):
         self.morph_key = self.morph_key or "record_type"
         return self
 
-    def __get__(self, instance, owner):
+    def access(self, instance, owner):
         if instance is None:
             return self
 
@@ -31,7 +32,7 @@ class MorphMany(BaseRelationship):
         if self.attribute in instance._relationships:
             return instance._relationships[self.attribute]
 
-        return self.apply_query(self._related_builder, instance)
+        raise LazyLoadingViolation(instance, self.attribute)
 
     def __getattr__(self, attribute):
         relationship = self.fn(self)()

@@ -27,8 +27,8 @@ class User(Model):
     preferences: dict
     address = Field[Address]()
 
-    profile: "Profile" = HasOne("Profile", "user_id", "id")
-    articles: "Articles" = HasMany("Articles", "id", "user_id")
+    profile: "Profile" = HasOne["Profile"](foreign_key="user_id", local_key="id")
+    articles: "Articles" = HasMany["Articles"](local_key="id", foreign_key="user_id")
     logos: "Logo" = HasManyThrough(
         ["Logo", "Articles"],
         "user_id",  # FK on Articles → User  (intermediate.local_key, used in WHERE)
@@ -58,20 +58,32 @@ class Articles(Model):
     __timestamps__ = None
     published_date: Carbon = Field(json_schema_extra={"format": "YYYY-MM-DD HH:mm:ss"})
 
-    logo: "Logo" = BelongsTo("Logo", "id", "article_id")
-    likes: "Like" = HasMany("Like", "id", "likeable_id")
+    logo: "Logo" = BelongsTo["Logo"](local_key="id", foreign_key="article_id")
+    likes: "Like" = HasMany["Like"](local_key="id", foreign_key="likeable_id")
 
 
 class Store(Model):
-    products: "Product" = BelongsToMany("Product", "store_id", "product_id", "id", "id", with_timestamps=True)
-    products_table: "Product" = BelongsToMany("Product", "store_id", "product_id", "id", "id", table="product_table")
-    store_products: "Product" = BelongsToMany("Product")
+    products: "Product" = BelongsToMany["Product"](
+        local_foreign_key="store_id",
+        other_foreign_key="product_id",
+        local_owner_key="id",
+        other_owner_key="id",
+        with_timestamps=True,
+    )
+    products_table: "Product" = BelongsToMany["Product"](
+        local_foreign_key="store_id",
+        other_foreign_key="product_id",
+        local_owner_key="id",
+        other_owner_key="id",
+        table="product_table",
+    )
+    store_products: "Product" = BelongsToMany["Product"]()
 
 
 class Product(Model):
     __table__ = "products"
 
-    likes: "Like" = HasMany("Like", "id", "likeable_id")
+    likes: "Like" = HasMany["Like"](local_key="id", foreign_key="likeable_id")
 
 
 class Like(Model):

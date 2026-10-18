@@ -3,10 +3,11 @@ from typing import Any
 
 from fastapi_startkit.masoniteorm.models import registry
 from ..collection import Collection
-from .BaseRelationship import BaseRelationship
+from ..exceptions import LazyLoadingViolation
+from .BaseRelationship import BaseRelationship, SingleResult, TModel
 
 
-class MorphOne(BaseRelationship):
+class MorphOne(BaseRelationship[TModel, SingleResult[TModel]]):
     def __init__(self, fn: Callable[..., Any] | str, morph_key="record_type", morph_id="record_id"):
         self.fn: Callable[..., Any] | None
         if isinstance(fn, str):
@@ -32,7 +33,7 @@ class MorphOne(BaseRelationship):
         self.morph_key = self.morph_key or "record_type"
         return self
 
-    def __get__(self, instance, owner):
+    def access(self, instance, owner):
         """This method is called when the decorated method is accessed.
 
         Arguments:
@@ -59,7 +60,7 @@ class MorphOne(BaseRelationship):
         if attribute in instance._relationships:
             return instance._relationships[attribute]
 
-        return self.apply_query(self._related_builder, instance)
+        raise LazyLoadingViolation(instance, attribute)
 
     def __getattr__(self, attribute):
         relationship = self.resolver()(self)()

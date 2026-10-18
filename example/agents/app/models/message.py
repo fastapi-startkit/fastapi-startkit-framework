@@ -1,5 +1,10 @@
+from typing import TYPE_CHECKING
+
 from fastapi_startkit.masoniteorm import BelongsTo
 from fastapi_startkit.masoniteorm.models import Model
+
+if TYPE_CHECKING:
+    from .thread import Thread  # noqa: F401
 
 
 class Message(Model):
@@ -17,4 +22,4 @@ class Message(Model):
     meta: dict  # per-message extras: latency, model, node
     attachments: dict  # documents sent with the message
 
-    thread = BelongsTo("Thread", local_key="thread_id", foreign_key="id")
+    thread = BelongsTo["Thread"](local_key="thread_id", foreign_key="id")

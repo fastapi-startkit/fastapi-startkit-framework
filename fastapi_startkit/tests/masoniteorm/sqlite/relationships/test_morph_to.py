@@ -1,4 +1,5 @@
 from fastapi_startkit.masoniteorm.models.registry import Registry
+from fastapi_startkit.masoniteorm.exceptions import LazyLoadingViolation
 from ...fixtures.model import Articles, Like, Product
 from ..test_case import TestCase
 
@@ -38,6 +39,12 @@ class TestMorphToRelationship(TestCase):
 
         with self.assertRaisesRegex(ValueError, "unknown_type"):
             Like.record.apply_query(None, like)
+
+    async def test_unloaded_morph_to_raises_lazy_loading_violation(self):
+        like = await self._like_for("article", self.article.id)
+
+        with self.assertRaisesRegex(LazyLoadingViolation, "record"):
+            like.record
 
 
 class TestRegistryGetMorphModel(TestCase):

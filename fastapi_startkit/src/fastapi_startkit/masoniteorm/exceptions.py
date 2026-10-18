@@ -10,3 +10,13 @@ class ModelNotFoundException(Exception):
 
     def get_status(self):
         return 404
+
+
+class LazyLoadingViolation(Exception):
+    def __init__(self, model: object, relation: str | None):
+        self.model = type(model).__name__
+        self.relation = relation
+        super().__init__(
+            f"Attempted to lazy load [{relation}] on model [{self.model}]. "
+            f'Eager load it with {self.model}.with_("{relation}") or await the model\'s load("{relation}") first.'
+        )

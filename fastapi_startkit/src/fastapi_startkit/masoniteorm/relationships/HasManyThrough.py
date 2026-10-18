@@ -1,9 +1,10 @@
 from fastapi_startkit.masoniteorm.models import registry
-from .BaseRelationship import BaseRelationship
+from ..exceptions import LazyLoadingViolation
+from .BaseRelationship import BaseRelationship, ManyResult, TModel
 from ..collection import Collection
 
 
-class HasManyThrough(BaseRelationship):
+class HasManyThrough(BaseRelationship[TModel, ManyResult[TModel]]):
     """HasManyThrough Relationship Class."""
 
     def __init__(
@@ -43,18 +44,14 @@ class HasManyThrough(BaseRelationship):
         self.other_owner_key = self.other_owner_key or "id"
         return self
 
-    def __get__(self, instance, owner):
+    def access(self, instance, owner):
         if instance is None or not instance.is_loaded():
             return self
 
         if instance.relationship_loaded(self.attribute):
             return instance.get_relationship(self.attribute)
 
-        return self.apply_related_query(
-            distant_builder=self.get_distance_builder(),
-            intermediary_builder=self.get_intermediary_builder(),
-            owner=instance,
-        )
+        raise LazyLoadingViolation(instance, self.attribute)
 
     def apply_related_query(self, distant_builder, intermediary_builder, owner):
         distant_table = distant_builder.get_table_name()
@@ -96,11 +93,11 @@ class HasManyThrough(BaseRelationship):
         return builder
 
     def register_related(self, key, model, collection):
-        related = collection.get(getattr(model, self.local_owner_key), None)
-        if related and not isinstance(related, Collection):
+        related = collection.get(getattr(model, self.local_owner_key)) or Collection()
+        if not isinstance(related, Collection):
             related = Collection(related)
 
-        model.add_relation({key: related if related else None})
+        model.add_relation({key: related})
 
     async def get_related(self, query, relation, eagers=None, callback=None):
         distant_builder = self.get_distance_builder()

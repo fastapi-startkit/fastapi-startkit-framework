@@ -25,9 +25,8 @@ class User(Model):
     email: str
     role: str
 
-    profile = HasOne("Profile")
-    courses = BelongsToMany(
-        "Course",
+    profile = HasOne["Profile"]()
+    courses = BelongsToMany["Course"](
         local_foreign_key="user_id",
         other_foreign_key="course_id",
         table="course_user",
@@ -38,7 +37,31 @@ class User(Model):
 
 Relationships available: `HasOne`, `HasMany`, `BelongsTo`, `BelongsToMany`,
 `HasManyThrough`, and `MorphMany`. Reference the related model by class name as a
-string to avoid circular imports.
+string to avoid circular imports. Subscript the relationship with the related model
+to type it; import that model only under `TYPE_CHECKING`:
+
+```python
+from typing import TYPE_CHECKING
+
+from fastapi_startkit.masoniteorm import BelongsTo, Model
+
+if TYPE_CHECKING:
+    from app.models.lexeme import Lexeme  # noqa: F401
+
+
+class Word(Model):
+    lexeme = BelongsTo["Lexeme"](local_key="word_id", foreign_key="id")
+```
+
+`Word.lexeme` is typed as `BelongsTo[Lexeme]`; `word.lexeme` is `Lexeme | None`
+(`Collection[Lexeme]` for many relationships).
+
+The related model comes from the subscript, so pass the keys by keyword. Use
+`BelongsTo[Lexeme]` with a real import when there is no import cycle.
+
+The positional form `BelongsTo("Lexeme", ...)` is deprecated and will be removed
+in 1.x; use `BelongsTo["Lexeme"](local_key=..., foreign_key=...)`. If both are
+given, the positional argument wins.
 
 ## Query builder
 
@@ -59,6 +82,15 @@ Eager-load relationships to avoid N+1 queries:
 
 ```python
 courses = await Course.with_("category", "lessons").get()
+```
+
+Lazy loading is disabled. Accessing a relationship that was not loaded raises
+`LazyLoadingViolation`; load it first with `with_()` or `load()`:
+
+```python
+course = await Course.find(1)
+await course.load("lessons")
+course.lessons
 ```
 
 ## Migrations

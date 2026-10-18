@@ -33,14 +33,13 @@ class Collection(BaseCollection, Generic[T]):
         first = self._items[0]
         for relation in relations:
             relationship = getattr(first.__class__, relation)
-            result_set = await relationship.get_related(None, self)
-            if result_set:
-                map_related = relationship.map_related(result_set)
-                for model in self._items:
-                    if isinstance(result_set, Collection):
-                        relationship.register_related(relation, model, map_related)
-                    else:
-                        # load() only runs on model collections; T is generic.
-                        model.add_relation({relation: map_related or None})  # type: ignore
+            result_set = await relationship.get_related(first.get_builder(), self)
+            map_related = relationship.map_related(result_set)
+            for model in self._items:
+                if isinstance(result_set, Collection):
+                    relationship.register_related(relation, model, map_related)
+                else:
+                    # load() only runs on model collections; T is generic.
+                    model.add_relation({relation: map_related or None})  # type: ignore
 
         return self

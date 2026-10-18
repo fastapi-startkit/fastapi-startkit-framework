@@ -1,16 +1,14 @@
 from typing import cast
 
 from ..collection import Collection
-from . import BaseRelationship
-from fastapi_startkit.masoniteorm.models import registry
+from .BaseRelationship import BaseRelationship, SingleResult, TModel
 
 
-class BelongsTo(BaseRelationship):
+class BelongsTo(BaseRelationship[TModel, SingleResult[TModel]]):
     """Belongs To Relationship Class."""
 
-    def __init__(self, fn: str, local_key=None, foreign_key=None):
-        # If user provides string instead of Model, we will resolve it here
-        self.fn = lambda: registry.Registry.resolve(fn)
+    def __init__(self, fn: str | None = None, local_key=None, foreign_key=None):
+        self.bind_model(fn)
 
         self.local_key = local_key or "id"
         self.foreign_key = foreign_key

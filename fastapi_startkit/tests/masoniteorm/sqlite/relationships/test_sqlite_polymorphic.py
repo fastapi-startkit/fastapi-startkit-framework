@@ -9,7 +9,8 @@ class TestRelationships(TestCase):
     async def test_can_get_polymorphic_relation(self):
         likes = await Like.get()
         for like in likes:
-            record = await like.record
+            await like.load("record")
+            record = like.record
             assert isinstance(record, (Articles, Product))
 
     async def test_can_get_eager_load_polymorphic_relation(self):

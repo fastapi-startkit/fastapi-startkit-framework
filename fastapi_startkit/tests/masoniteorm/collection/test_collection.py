@@ -48,14 +48,12 @@ class TestCollection(TestCase):
         self.assertIn("articles", admin._relationships)
 
     async def test_load_without_matching_related_records(self):
-        # Jane (id 2) has no articles, so get_related returns an empty
-        # collection and no relation is registered.
         users = await User.where("id", 2).get()
 
         result = await users.load("articles")
 
         self.assertIs(result, users)
-        self.assertNotIn("articles", users.first()._relationships)
+        self.assertTrue(users.first().articles.is_empty())
 
     async def test_load_on_empty_collection_returns_self(self):
         users = await User.where("id", 9999).get()

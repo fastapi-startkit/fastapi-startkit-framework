@@ -6,25 +6,30 @@ from ..test_case import TestCase
 class TestRelationships(TestCase):
     async def test_can_access_relationship(self):
         for user in await User.where("id", 1).get():
-            profile = await user.profile
+            await user.load("profile")
+            profile = user.profile
             self.assertIsInstance(profile, Profile)
 
     async def test_can_access_has_many_relationship(self):
         user = await User.where("email", "admin@admin.com").first()
-        articles = await user.articles
+        await user.load("articles")
+        articles = user.articles
         self.assertEqual(len(articles), 1)
 
     async def test_can_access_relationship_multiple_times(self):
         user = await User.where("id", 1).first()
-        articles = await user.articles
+        await user.load("articles")
+        articles = user.articles
         self.assertEqual(len(articles), 1)
-        articles = await user.articles
+        await user.load("articles")
+        articles = user.articles
         self.assertEqual(len(articles), 1)
 
     async def test_can_access_relationship_date(self):
         user = await User.with_("articles").where("email", "admin@admin.com").first()
         for article in user.articles:
-            logo = await article.logo
+            await article.load("logo")
+            logo = article.logo
             self.assertTrue(logo.published_date)
 
     async def test_loading(self):

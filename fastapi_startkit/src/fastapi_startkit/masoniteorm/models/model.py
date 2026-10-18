@@ -107,6 +107,10 @@ class Model(Attribute, Relationship, ObservesEvents):
     def get_related(self, key: str):
         return getattr(self.__class__, key)
 
+    async def load(self, *relations: str) -> Self:
+        await self.new_collection([self]).load(*relations)
+        return self
+
     @classmethod
     def with_(cls, *eagers) -> "QueryBuilder[Self]":
         return cls.query().with_(*eagers)

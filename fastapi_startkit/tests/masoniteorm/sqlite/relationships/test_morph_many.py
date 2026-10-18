@@ -1,6 +1,8 @@
+from fastapi_startkit.masoniteorm.collection import Collection
 from fastapi_startkit.masoniteorm import Model
 from fastapi_startkit.masoniteorm.models.registry import Registry
 from fastapi_startkit.masoniteorm.relationships import MorphMany
+from fastapi_startkit.masoniteorm.exceptions import LazyLoadingViolation
 from ...fixtures.model import Like, Product
 from ..test_case import TestCase
 
@@ -50,14 +52,27 @@ class TestMorphManyRelationship(TestCase):
     async def test_apply_query_returns_likes_for_article(self):
         await Like.create({"likeable_type": "article", "likeable_id": self.article.id})
         article = await ArticleModel.where("id", self.article.id).first()
-        likes_result = await article.likes
+        await article.load("likes")
+        likes_result = article.likes
         self.assertEqual(len(likes_result), 1)
 
     async def test_apply_query_returns_empty_for_article_without_likes(self):
         # Don't create any likes for this article
         article = await ArticleModel.where("id", self.article.id).first()
-        likes_result = await article.likes
+        await article.load("likes")
+        likes_result = article.likes
         self.assertEqual(len(likes_result), 0)
+        self.assertIsInstance(likes_result, Collection)
+
+    async def test_eager_load_empty_morph_many(self):
+        articles = await ArticleModel.with_("likes").where("id", self.article.id).get()
+        self.assertIsInstance(articles.first().likes, Collection)
+        self.assertTrue(articles.first().likes.is_empty())
+
+    async def test_eager_load_first_empty_morph_many(self):
+        article = await ArticleModel.with_("likes").where("id", self.article.id).first()
+        self.assertIsInstance(article.likes, Collection)
+        self.assertTrue(article.likes.is_empty())
 
     async def test_eager_load_morph_many(self):
         await Like.create({"likeable_type": "article", "likeable_id": self.article.id})
@@ -127,3 +142,9 @@ class TestMorphManyRelationship(TestCase):
         # Only likes for this article type are included
         for like in article_likes:
             self.assertEqual(like.likeable_type, "article")
+
+    async def test_unloaded_morph_many_raises_lazy_loading_violation(self):
+        article = await ArticleModel.where("id", self.article.id).first()
+
+        with self.assertRaisesRegex(LazyLoadingViolation, "likes"):
+            article.likes
