@@ -59,6 +59,10 @@ class Word(Model):
 The related model comes from the subscript, so pass the keys by keyword. Use
 `BelongsTo[Lexeme]` with a real import when there is no import cycle.
 
+The positional form `BelongsTo("Lexeme", ...)` is deprecated and will be removed
+in 1.x; use `BelongsTo["Lexeme"](local_key=..., foreign_key=...)`. If both are
+given, the positional argument wins.
+
 ## Query builder
 
 All queries are awaited:
