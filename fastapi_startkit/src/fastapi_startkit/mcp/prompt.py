@@ -1,23 +1,16 @@
 """Abstract base class for MCP prompts."""
 
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Any
 
 from .argument import Argument
 from .response import Response
 
 
 class Prompt(ABC):
-    """Base class for MCP prompts.
-
-    Subclasses must set ``name`` and implement ``handle()``.
-    Override ``arguments()`` to declare accepted arguments.
-    Override ``should_register()`` to conditionally skip registration.
-    """
-
     name: str
-    description: Optional[str] = None
-    title: Optional[str] = None
+    description: str | None = None
+    title: str | None = None
 
     def arguments(self) -> list[Argument]:
         """Return the list of arguments this prompt accepts."""
@@ -28,13 +21,13 @@ class Prompt(ABC):
         return True
 
     @abstractmethod
-    async def handle(self, arguments: dict) -> Response:
+    async def handle(self, arguments: dict[str, Any]) -> Response:
         """Render the prompt with the given arguments and return a Response."""
         raise NotImplementedError
 
-    def to_json(self) -> dict:
+    def to_json(self) -> dict[str, Any]:
         """Serialise to the MCP prompts/list format."""
-        data: dict = {"name": self.name}
+        data: dict[str, Any] = {"name": self.name}
         if self.description is not None:
             data["description"] = self.description
         if self.title is not None:

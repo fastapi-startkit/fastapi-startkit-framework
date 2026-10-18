@@ -1,7 +1,7 @@
 """Abstract base class for MCP resources."""
 
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Any
 
 
 class Resource(ABC):
@@ -12,7 +12,7 @@ class Resource(ABC):
 
     uri: str
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     mime_type: str = "text/plain"
 
     @abstractmethod
@@ -20,9 +20,9 @@ class Resource(ABC):
         """Return the resource content as a string."""
         raise NotImplementedError
 
-    def to_json(self) -> dict:
+    def to_json(self) -> dict[str, Any]:
         """Serialise to the MCP resources/list format."""
-        data: dict = {
+        data: dict[str, Any] = {
             "uri": self.uri,
             "name": self.name,
             "mimeType": self.mime_type,

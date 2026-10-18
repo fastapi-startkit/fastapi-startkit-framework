@@ -7,7 +7,7 @@ from typing import Any
 class Response:
     """Wraps tool/prompt output into MCP content format."""
 
-    def __init__(self, content: list[dict]) -> None:
+    def __init__(self, content: list[dict[str, Any]]) -> None:
         self._content = content
 
     @classmethod
@@ -25,6 +25,6 @@ class Response:
         """Create an empty response with no content."""
         return cls([])
 
-    def to_content(self) -> list[dict]:
+    def to_content(self) -> list[dict[str, Any]]:
         """Return the raw content list."""
         return self._content
