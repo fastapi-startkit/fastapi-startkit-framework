@@ -5,7 +5,8 @@ import os
 import subprocess
 import threading
 import time
-from typing import Callable, Optional, Union
+from collections.abc import Callable
+from typing import Any
 
 from .exception import ProcessFailedException, ProcessTimedOutException  # noqa: F401
 from .fake import FakeProcessDescription
@@ -20,9 +21,9 @@ from .result import ProcessResult
 class InvokedProcess:
     def __init__(
         self,
-        process: subprocess.Popen,
+        process: subprocess.Popen[str],
         timeout: float | None = None,
-        callback: Callable | None = None,
+        callback: Callable[[str, str], Any] | None = None,
     ) -> None:
         self._process = process
         self._timeout = timeout
@@ -31,8 +32,8 @@ class InvokedProcess:
         self._start_time = time.monotonic()
         self._stdout_buf: list[str] = []
         self._stderr_buf: list[str] = []
-        self._stdout_thread: Optional[threading.Thread] = None
-        self._stderr_thread: Optional[threading.Thread] = None
+        self._stdout_thread: threading.Thread | None = None
+        self._stderr_thread: threading.Thread | None = None
         self._start_reader_threads()
 
     def _start_reader_threads(self) -> None:
@@ -185,7 +186,7 @@ class _PoolEntry:
 
 
 class Pool:
-    def __init__(self, env: dict | None = None, timeout: float | None = None) -> None:
+    def __init__(self, env: dict[str, str] | None = None, timeout: float | None = None) -> None:
         self._entries: list[_PoolEntry] = []
         self._env = env
         self._timeout = timeout
@@ -204,7 +205,7 @@ class Pool:
         self._entries.append(entry)
         return self
 
-    def start(self, callback: Callable | None = None) -> "Pool":
+    def start(self, callback: Callable[[str, str, int], Any] | None = None) -> "Pool":
         """Start all pooled processes concurrently."""
         for i, entry in enumerate(self._entries):
             command: str = entry._command or ""
@@ -247,8 +248,8 @@ class Pool:
 
 class ProcessFake:
     def __init__(self) -> None:
-        self._fakes: dict[str, Union[FakeProcessDescription, ProcessResult]] = {}
-        self._recorded: list[tuple] = []  # (command, pending, result)
+        self._fakes: dict[str, FakeProcessDescription | ProcessResult] = {}
+        self._recorded: list[tuple[str, PendingProcess, ProcessResult]] = []
 
     def _handle(self, command: str, pending: "PendingProcess") -> ProcessResult:
         result = self._resolve(command)
@@ -307,7 +308,7 @@ class PendingProcess:
         self._timeout: float | None = 60
         self._quiet = False
         self._tty = False
-        self._env: dict | None = None
+        self._env: dict[str, str] | None = None
         self._cwd: str | None = None
         self._input: str | None = None
 
@@ -334,7 +335,7 @@ class PendingProcess:
         self._tty = enabled
         return self
 
-    def env(self, env: dict) -> "PendingProcess":
+    def env(self, env: dict[str, str]) -> "PendingProcess":
         self._env = {**os.environ, **env}
         return self
 
@@ -351,7 +352,7 @@ class PendingProcess:
     # Async execution (primary API)
     # ------------------------------------------------------------------
 
-    async def run(self, command: str, callback: Callable | None = None) -> ProcessResult:
+    async def run(self, command: str, callback: Callable[[str, str], Any] | None = None) -> ProcessResult:
         """Run a process asynchronously via asyncio and return a ProcessResult."""
         if self._fake is not None:
             return self._fake._handle(command, self)
@@ -406,7 +407,7 @@ class PendingProcess:
     async def pipe(
         self,
         callback: Callable[["Pipe"], None],
-        output_callback: Callable | None = None,
+        output_callback: Callable[[str, str], Any] | None = None,
     ) -> ProcessResult:
         """Build a pipeline of commands and run them asynchronously."""
         p = Pipe()
@@ -417,7 +418,7 @@ class PendingProcess:
     # Sync execution (for scripts / CLI without an event loop)
     # ------------------------------------------------------------------
 
-    def run_sync(self, command: str, callback: Callable | None = None) -> ProcessResult:
+    def run_sync(self, command: str, callback: Callable[[str, str], Any] | None = None) -> ProcessResult:
         """Run a process synchronously and return a ProcessResult."""
         if self._fake is not None:
             return self._fake._handle(command, self)
@@ -483,7 +484,7 @@ class PendingProcess:
     def pipe_sync(
         self,
         callback: Callable[["Pipe"], None],
-        output_callback: Callable | None = None,
+        output_callback: Callable[[str, str], Any] | None = None,
     ) -> ProcessResult:
         """Build a pipeline of commands and run them synchronously."""
         p = Pipe()
@@ -494,7 +495,7 @@ class PendingProcess:
     # Background execution
     # ------------------------------------------------------------------
 
-    def start(self, command: str, callback: Callable | None = None) -> InvokedProcess:
+    def start(self, command: str, callback: Callable[[str, str], Any] | None = None) -> InvokedProcess:
         """Start a process in the background and return an InvokedProcess."""
         if self._fake is not None:
             raise NotImplementedError("Fake background processes are not yet supported. Use run() in tests.")
@@ -574,7 +575,7 @@ class Process:
     @classmethod
     def fake(
         cls,
-        fakes: dict[str, Union[FakeProcessDescription, ProcessResult]] | None = None,
+        fakes: dict[str, FakeProcessDescription | ProcessResult] | None = None,
     ) -> ProcessFake:
         """Enable fake mode. Optionally supply per-command fakes."""
         fake = ProcessFake()
@@ -619,7 +620,7 @@ class Process:
         return cls._pending().tty(enabled)
 
     @classmethod
-    def env(cls, env: dict) -> PendingProcess:
+    def env(cls, env: dict[str, str]) -> PendingProcess:
         return cls._pending().env(env)
 
     @classmethod
@@ -635,7 +636,7 @@ class Process:
     # ------------------------------------------------------------------
 
     @classmethod
-    async def run(cls, command: str, callback: Callable | None = None) -> ProcessResult:
+    async def run(cls, command: str, callback: Callable[[str, str], Any] | None = None) -> ProcessResult:
         """Run a command asynchronously (primary API)."""
         return await cls._pending().run(command, callback)
 
@@ -643,7 +644,7 @@ class Process:
     async def pipe(
         cls,
         callback: Callable[["Pipe"], None],
-        output_callback: Callable | None = None,
+        output_callback: Callable[[str, str], Any] | None = None,
     ) -> ProcessResult:
         """Build a pipeline of commands and run them asynchronously."""
         return await cls._pending().pipe(callback, output_callback)
@@ -653,7 +654,7 @@ class Process:
     # ------------------------------------------------------------------
 
     @classmethod
-    def run_sync(cls, command: str, callback: Callable | None = None) -> ProcessResult:
+    def run_sync(cls, command: str, callback: Callable[[str, str], Any] | None = None) -> ProcessResult:
         """Run a command synchronously (for scripts / CLI without an event loop)."""
         return cls._pending().run_sync(command, callback)
 
@@ -661,7 +662,7 @@ class Process:
     def pipe_sync(
         cls,
         callback: Callable[["Pipe"], None],
-        output_callback: Callable | None = None,
+        output_callback: Callable[[str, str], Any] | None = None,
     ) -> ProcessResult:
         """Build a pipeline of commands and run them synchronously."""
         return cls._pending().pipe_sync(callback, output_callback)
@@ -671,7 +672,7 @@ class Process:
     # ------------------------------------------------------------------
 
     @classmethod
-    def start(cls, command: str, callback: Callable | None = None) -> InvokedProcess:
+    def start(cls, command: str, callback: Callable[[str, str], Any] | None = None) -> InvokedProcess:
         """Start a command in the background, returning an InvokedProcess."""
         return cls._pending().start(command, callback)
 

@@ -144,6 +144,9 @@ exclude = [
 ]
 typeCheckingMode = "standard"
 pythonVersion = "3.12"
+deprecateTypingAliases = true
+reportDeprecated = "warning"
+reportMissingTypeArgument = "warning"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
