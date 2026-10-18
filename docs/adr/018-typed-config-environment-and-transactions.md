@@ -1,4 +1,4 @@
-# ADR 013: Typed configuration, deferred env() defaults, config-owned database URLs and transaction management
+# ADR 018: Typed configuration, deferred env() defaults, config-owned database URLs and transaction management
 
 Date: 2026-10-15
 Status: Accepted
