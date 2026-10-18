@@ -1,6 +1,6 @@
 """Internal JSON-RPC 2.0 dispatcher for MCP."""
 
-from typing import Any, Optional, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .server import Server
@@ -29,7 +29,7 @@ class Protocol:
     # Public dispatch entry point
     # ------------------------------------------------------------------
 
-    async def dispatch(self, method: str, params: Optional[dict], request_id: Any) -> dict:
+    async def dispatch(self, method: str, params: dict[str, Any] | None, request_id: Any) -> dict[str, Any]:
         """Dispatch a JSON-RPC method and return a full JSON-RPC response dict."""
         handler = {
             "initialize": self._initialize,
@@ -54,9 +54,9 @@ class Protocol:
     # Handlers
     # ------------------------------------------------------------------
 
-    async def _initialize(self, params: dict) -> dict:
+    async def _initialize(self, params: dict[str, Any]) -> dict[str, Any]:
         server = self._server
-        result: dict = {
+        result: dict[str, Any] = {
             "protocolVersion": MCP_PROTOCOL_VERSION,
             "serverInfo": {"name": server.name, "version": "1.0"},
             "capabilities": {
@@ -71,11 +71,11 @@ class Protocol:
             result["instructions"] = server.instructions
         return result
 
-    async def _tools_list(self, params: dict) -> dict:
+    async def _tools_list(self, params: dict[str, Any]) -> dict[str, Any]:
         tools = self._server.tools() or []
         return {"tools": [t().to_json() for t in tools]}
 
-    async def _tools_call(self, params: dict) -> dict:
+    async def _tools_call(self, params: dict[str, Any]) -> dict[str, Any]:
         name = params.get("name")
         arguments = params.get("arguments") or {}
         tools = self._server.tools() or []
@@ -86,12 +86,12 @@ class Protocol:
                 return {"content": response.to_content()}
         return self._error_result(-32602, f"Tool not found: {name}")
 
-    async def _prompts_list(self, params: dict) -> dict:
+    async def _prompts_list(self, params: dict[str, Any]) -> dict[str, Any]:
         prompts = self._server.prompts() or []
         registered = [p().to_json() for p in prompts if p().should_register()]
         return {"prompts": registered}
 
-    async def _prompts_get(self, params: dict) -> dict:
+    async def _prompts_get(self, params: dict[str, Any]) -> dict[str, Any]:
         name = params.get("name")
         arguments = params.get("arguments") or {}
         prompts = self._server.prompts() or []
@@ -103,11 +103,11 @@ class Protocol:
                 return {"messages": messages}
         return self._error_result(-32602, f"Prompt not found: {name}")
 
-    async def _resources_list(self, params: dict) -> dict:
+    async def _resources_list(self, params: dict[str, Any]) -> dict[str, Any]:
         resources = self._server.resources() or []
         return {"resources": [r().to_json() for r in resources]}
 
-    async def _resources_read(self, params: dict) -> dict:
+    async def _resources_read(self, params: dict[str, Any]) -> dict[str, Any]:
         uri = params.get("uri")
         resources = self._server.resources() or []
         for resource_cls in resources:
@@ -130,7 +130,7 @@ class Protocol:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _error(request_id: Any, code: int, message: str) -> dict:
+    def _error(request_id: Any, code: int, message: str) -> dict[str, Any]:
         return {
             "jsonrpc": "2.0",
             "id": request_id,
@@ -138,6 +138,6 @@ class Protocol:
         }
 
     @staticmethod
-    def _error_result(code: int, message: str) -> dict:
+    def _error_result(code: int, message: str) -> dict[str, Any]:
         """Return an error payload as a *result* (for tool/prompt/resource not found)."""
         return {"error": {"code": code, "message": message}}

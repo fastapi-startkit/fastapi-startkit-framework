@@ -1,7 +1,5 @@
 """MCP Server base class."""
 
-from typing import Optional, Type
-
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response as StarletteResponse
 
@@ -31,18 +29,18 @@ class Server:
     """
 
     name: str
-    description: Optional[str] = None
-    instructions: Optional[str] = None
+    description: str | None = None
+    instructions: str | None = None
 
-    def tools(self) -> Optional[list[Type[Tool]]]:
+    def tools(self) -> list[type[Tool]] | None:
         """Return a list of Tool classes to register, or None."""
         return None
 
-    def prompts(self) -> Optional[list[Type[Prompt]]]:
+    def prompts(self) -> list[type[Prompt]] | None:
         """Return a list of Prompt classes to register, or None."""
         return None
 
-    def resources(self) -> Optional[list[Type[Resource]]]:
+    def resources(self) -> list[type[Resource]] | None:
         """Return a list of Resource classes to register, or None."""
         return None
 

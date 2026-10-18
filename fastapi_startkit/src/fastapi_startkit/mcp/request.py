@@ -1,6 +1,6 @@
 """JSON-RPC 2.0 request model."""
 
-from typing import Any, Optional, Union
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -10,8 +10,8 @@ class JsonRpcRequest(BaseModel):
 
     jsonrpc: str = "2.0"
     method: str
-    params: Optional[dict[str, Any]] = None
-    id: Optional[Union[str, int]] = None
+    params: dict[str, Any] | None = None
+    id: str | int | None = None
 
     @property
     def is_notification(self) -> bool:
