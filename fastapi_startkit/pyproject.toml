@@ -1,6 +1,6 @@
 [project]
 name = "fastapi-startkit"
-version = "0.61.0"
+version = "0.63.0"
 description = "A modular, provider-driven framework for building async Python web applications with FastAPI — bundling a service container, configuration system, an async-first ORM, facades, and a Cleo-powered console."
 readme = "README.md"
 keywords = [
@@ -34,6 +34,8 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
     "Topic :: Software Development :: Libraries :: Application Frameworks",
 ]
 dependencies = [
@@ -56,6 +58,7 @@ Changelog = "https://github.com/fastapi-startkit/fastapi-startkit-framework/rele
 [project.optional-dependencies]
 fastapi = [
     "fastapi[standard]>=0.124.4",
+    "httpx>=0.28.1",
     "itsdangerous>=2.2.0",
 ]
 database = [
@@ -108,7 +111,7 @@ dev = [
     "sqlalchemy[asyncio]>=2.0.38",
     "fastapi[standard]>=0.124.4",
     "faker>=40.13.0",
-    "langchain>=1.0.0",
+    "langchain>=1.0.0; python_version < '3.15'",
     "langchain-core>=1.0.0",
     "basedpyright>=1.31.4",
     "pyright>=1.1.411",

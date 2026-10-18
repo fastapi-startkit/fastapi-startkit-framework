@@ -1,4 +1,4 @@
-# ADR 012: Inertia AssertablePage test helpers and validation redirects
+# ADR 017: Inertia AssertablePage test helpers and validation redirects
 
 Date: 2026-10-10
 Status: Accepted

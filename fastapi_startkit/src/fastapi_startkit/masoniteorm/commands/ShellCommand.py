@@ -1,13 +1,14 @@
+from fastapi_startkit.masoniteorm.config.database import DatabaseConfig
 from cleo.helpers import option
 import os
 import re
 import shlex
 import subprocess
 from collections import OrderedDict
-from dataclasses import asdict, is_dataclass
 from typing import Any
 
 from fastapi_startkit.console import Command
+from fastapi_startkit.support.dataclass import Dataclass
 from fastapi_startkit.masoniteorm.facades.DB import DB
 
 
@@ -68,15 +69,11 @@ class ShellCommand(Command):
             exit(-1)
         return 0
 
-    def get_connection_information(self, database_config: dict, connection: str) -> dict:
-        connection_config = database_config.get("connections", {}).get(connection)
-        details: dict[str, Any]
-        if isinstance(connection_config, dict):
-            details = connection_config
-        elif is_dataclass(connection_config) and not isinstance(connection_config, type):
-            details = asdict(connection_config)
-        else:
+    def get_connection_information(self, database_config: DatabaseConfig, connection: str) -> dict[str, Any]:
+        connection_config = database_config.connections.get(connection)
+        if connection_config is None:
             return {}
+        details = Dataclass.to_dict(connection_config)
         return {
             **details,
             "user": details.get("user", details.get("username")),

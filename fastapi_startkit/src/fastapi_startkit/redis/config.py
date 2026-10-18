@@ -1,42 +1,40 @@
+import os
 import re
 from dataclasses import dataclass, field
-from typing import Any
 
+from fastapi_startkit.configuration import Config
 from fastapi_startkit.environment import env
 
 
 def default_prefix() -> str:
-    app_name = str(env("APP_NAME", "fastapi", cast=False))
+    app_name = os.getenv("APP_NAME") or "fastapi"
     return re.sub(r"[^a-z0-9]+", "_", app_name.lower()).strip("_") + "_database_"
 
 
 @dataclass
-class RedisConfig:
-    client: str = field(default_factory=lambda: env("REDIS_CLIENT", "redis"))
+class RedisOptions(Config):
+    prefix: str = field(default_factory=lambda: os.getenv("REDIS_PREFIX") or default_prefix())
 
-    options: dict[str, Any] = field(
-        default_factory=lambda: {
-            "prefix": env("REDIS_PREFIX", default_prefix(), cast=False),
-        }
-    )
 
-    connections: dict[str, dict[str, Any]] = field(
+@dataclass
+class RedisConnectionConfig(Config):
+    url: str | None = env("REDIS_URL", None, cast=False)
+    host: str = env("REDIS_HOST", "127.0.0.1")
+    username: str | None = env("REDIS_USERNAME", None, cast=False)
+    password: str | None = env("REDIS_PASSWORD", None, cast=False)
+    port: int = env("REDIS_PORT", 6379)
+    database: int = env("REDIS_DB", 0)
+
+
+@dataclass
+class RedisConfig(Config):
+    client: str = env("REDIS_CLIENT", "redis")
+
+    options: RedisOptions = field(default_factory=RedisOptions)
+
+    connections: dict[str, RedisConnectionConfig] = field(
         default_factory=lambda: {
-            "default": {
-                "url": env("REDIS_URL", None, cast=False),
-                "host": env("REDIS_HOST", "127.0.0.1"),
-                "username": env("REDIS_USERNAME", None, cast=False),
-                "password": env("REDIS_PASSWORD", None, cast=False),
-                "port": env("REDIS_PORT", 6379),
-                "database": env("REDIS_DB", 0),
-            },
-            "cache": {
-                "url": env("REDIS_URL", None, cast=False),
-                "host": env("REDIS_HOST", "127.0.0.1"),
-                "username": env("REDIS_USERNAME", None, cast=False),
-                "password": env("REDIS_PASSWORD", None, cast=False),
-                "port": env("REDIS_PORT", 6379),
-                "database": env("REDIS_CACHE_DB", 1),
-            },
+            "default": RedisConnectionConfig(),
+            "cache": RedisConnectionConfig(database=env("REDIS_CACHE_DB", 1)),
         }
     )

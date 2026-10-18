@@ -1,6 +1,6 @@
-from cleo.commands.command import Command
 from cleo.helpers import argument
 
+from fastapi_startkit.console import Command
 from fastapi_startkit.logging import Logger
 
 

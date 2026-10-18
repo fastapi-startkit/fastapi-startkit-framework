@@ -1,3 +1,4 @@
+from fastapi_startkit.masoniteorm import SQLiteConfig
 import asyncio
 from contextvars import Context
 from tempfile import NamedTemporaryFile
@@ -33,7 +34,7 @@ class TestQueryBuilderTransaction(TestCase):
     async def test_transaction_context_returns_connection_when_cancelled(self):
         with NamedTemporaryFile(suffix=".sqlite3") as database:
             engine = create_async_engine(f"sqlite+aiosqlite:///{database.name}", pool_size=1, max_overflow=0)
-            connection = SQliteConnection(engine, {"driver": "sqlite"})
+            connection = SQliteConnection(engine, SQLiteConfig(driver="sqlite"))
             started = asyncio.Event()
 
             async def cancelled_transaction():
@@ -123,7 +124,7 @@ class TestQueryBuilderTransaction(TestCase):
     async def test_transaction_enter_failure_releases_owned_connection(self):
         with NamedTemporaryFile(suffix=".sqlite3") as database:
             engine = create_async_engine(f"sqlite+aiosqlite:///{database.name}", pool_size=1, max_overflow=0)
-            connection = SQliteConnection(engine, {"driver": "sqlite"})
+            connection = SQliteConnection(engine, SQLiteConfig(driver="sqlite"))
             with mock.patch.object(AsyncConnection, "begin", side_effect=RuntimeError("begin failed")):
                 with self.assertRaises(RuntimeError):
                     async with connection.transaction():
@@ -171,7 +172,7 @@ class TestQueryBuilderTransaction(TestCase):
     async def test_reconnect_releases_context_connection(self):
         with NamedTemporaryFile(suffix=".sqlite3") as database:
             engine = create_async_engine(f"sqlite+aiosqlite:///{database.name}", pool_size=1, max_overflow=0)
-            connection = SQliteConnection(engine, {"driver": "sqlite"})
+            connection = SQliteConnection(engine, SQLiteConfig(driver="sqlite"))
             await connection.begin_transaction()
             self.assertIsNotNone(connection.connection)
             await connection.reconnect()

@@ -1,3 +1,4 @@
+from fastapi_startkit.masoniteorm import SQLiteConfig
 import asyncio
 from contextvars import Context
 from functools import partial
@@ -14,7 +15,7 @@ from fastapi_startkit.masoniteorm.facades.DB import DB
 @pytest.fixture
 async def connection(tmp_path):
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'callbacks.sqlite3'}", pool_size=1, max_overflow=0)
-    conn = SQliteConnection(engine, {"driver": "sqlite"})
+    conn = SQliteConnection(engine, SQLiteConfig(driver="sqlite"))
     await conn.statement("CREATE TABLE records (id INTEGER)")
     try:
         yield conn
@@ -258,7 +259,7 @@ async def test_inherited_task_joins_parent_and_clean_context_is_isolated(connect
 
 async def test_independent_tasks_have_separate_callback_queues(tmp_path):
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'tasks.sqlite3'}", pool_size=2)
-    connection = SQliteConnection(engine, {"driver": "sqlite"})
+    connection = SQliteConnection(engine, SQLiteConfig(driver="sqlite"))
     ready = asyncio.Event()
     committed = asyncio.Event()
     called = []
@@ -287,7 +288,7 @@ async def test_independent_tasks_have_separate_callback_queues(tmp_path):
 
 async def test_facade_default_and_named_connections(connection, tmp_path):
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'other.sqlite3'}")
-    other = SQliteConnection(engine, {"driver": "sqlite"})
+    other = SQliteConnection(engine, SQLiteConfig(driver="sqlite"))
     called = []
     with patch.object(DB, "instance") as instance:
         instance.return_value.connection.side_effect = lambda name=None: other if name == "other" else connection

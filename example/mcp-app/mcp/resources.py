@@ -1,7 +1,7 @@
 import json
 import os
 
-from fastapi_startkit.mcp import Resource, Response
+from fastapi_startkit.mcp import Resource
 
 
 class EnvResource(Resource):

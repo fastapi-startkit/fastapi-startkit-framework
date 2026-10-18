@@ -1,8 +1,6 @@
 from fastapi_startkit.masoniteorm.seeders import Seeder
 from app.models.Account import Account
 from app.models.User import User
-from app.models.Organization import Organization
-from app.models.Contact import Contact
 from databases.factories.UserFactory import UserFactory
 from databases.factories.OrganizationFactory import OrganizationFactory
 from databases.factories.ContactFactory import ContactFactory
@@ -31,6 +29,7 @@ class DatabaseSeeder(Seeder):
 
         # Create 100 organizations
         organizations = await OrganizationFactory.new().count(100).create(account_id=account.id)
+        assert isinstance(organizations, list)
 
         # Create 100 contacts
         for _ in range(100):

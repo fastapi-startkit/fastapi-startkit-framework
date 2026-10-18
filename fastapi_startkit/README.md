@@ -20,7 +20,17 @@ Optional extras enable additional capabilities:
 fastapi-startkit[fastapi]    # FastAPI + Starlette
 fastapi-startkit[database]   # SQLAlchemy async ORM
 fastapi-startkit[vite]       # Jinja2 for Vite integration
+fastapi-startkit[ai]         # LangChain agents
 ```
+
+### Python versions
+
+Python 3.12, 3.13, 3.14 and 3.15 are supported.
+
+> [!NOTE]
+> The `ai` extra cannot be installed on Python 3.15 or newer yet. It depends on `langgraph`, which
+> requires `ormsgpack`, and `ormsgpack` does not support Python 3.15 yet. Use Python 3.14 or older for the
+> `ai` extra. Every other extra works on 3.15.
 
 ## Features
 

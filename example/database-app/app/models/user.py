@@ -1,11 +1,10 @@
 from typing import TYPE_CHECKING
 
 from fastapi_startkit.masoniteorm.models import Model
-from fastapi_startkit.masoniteorm import HasMany, HasOne, BelongsToMany
+from fastapi_startkit.masoniteorm import HasOne, BelongsToMany
 
 if TYPE_CHECKING:
-    from app.models.profile import Profile
-    from app.models.course import Course
+    pass
 
 
 class User(Model):

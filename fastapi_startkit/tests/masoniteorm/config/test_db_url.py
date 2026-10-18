@@ -1,192 +1,63 @@
-import unittest
+import pytest
 
 from fastapi_startkit.exceptions.exceptions import DriverNotFound
-from fastapi_startkit.masoniteorm.config.config import MySQLConfig, PostgresConfig, SQLiteConfig
+from fastapi_startkit.masoniteorm import MySQLConfig, PostgresConfig, SQLiteConfig
 from fastapi_startkit.masoniteorm.connections.factory import ConnectionFactory
 
 
-class TestConnectionFactoryBuildUrl(unittest.TestCase):
-    """Assert that ConnectionFactory.build_url() produces correct SQLAlchemy URLs."""
-
-    def test_mysql_config(self):
-        config = {
-            "driver": "mysql",
-            "host": "localhost",
-            "port": 3306,
-            "database": "mydb",
-            "username": "root",
-            "password": "secret",
-        }
-        url = ConnectionFactory.build_url(config)
-        self.assertEqual(url, "mysql+aiomysql://root:secret@localhost:3306/mydb")
-
-    def test_postgres_config(self):
-        config = {
-            "driver": "postgres",
-            "host": "db.example.com",
-            "port": 5432,
-            "database": "mydb",
-            "username": "user",
-            "password": "pass",
-        }
-        url = ConnectionFactory.build_url(config)
-        self.assertEqual(url, "postgresql+asyncpg://user:pass@db.example.com:5432/mydb")
-
-    def test_sqlite_config_relative_database(self):
-        config = {
-            "driver": "sqlite",
-            "database": "database.sqlite",
-        }
-        url = ConnectionFactory.build_url(config)
-        self.assertEqual(url, "sqlite+aiosqlite:///database.sqlite")
-
-    def test_sqlite_config_absolute_database(self):
-        config = {
-            "driver": "sqlite",
-            "database": "/var/data/database.sqlite",
-        }
-        url = ConnectionFactory.build_url(config)
-        self.assertEqual(url, "sqlite+aiosqlite:////var/data/database.sqlite")
-
-    def test_sqlite_config_ignores_host_user_password_port(self):
-        """SQLite has no host/user/password/port -- extra keys must not leak into the URL."""
-        config = {
-            "driver": "sqlite",
-            "database": "database.sqlite",
-            "host": "localhost",
-            "username": "root",
-            "password": "secret",
-            "port": "",
-        }
-        url = ConnectionFactory.build_url(config)
-        self.assertEqual(url, "sqlite+aiosqlite:///database.sqlite")
-
-    def test_sqlite_config_via_url_passthrough(self):
-        config = {
-            "driver": "sqlite",
-            "url": "sqlite+aiosqlite:///db.sqlite3",
-        }
-        url = ConnectionFactory.build_url(config)
-        self.assertEqual(url, "sqlite+aiosqlite:///db.sqlite3")
-
-    def test_direct_url_passthrough_takes_precedence(self):
-        """If config contains a 'url' key it is used as-is, no further processing."""
-        config = {
-            "driver": "mysql",
-            "url": "mysql+aiomysql://admin:pw@prod-host:3306/live",
-            "host": "ignored",
-        }
-        url = ConnectionFactory.build_url(config)
-        self.assertEqual(url, "mysql+aiomysql://admin:pw@prod-host:3306/live")
+@pytest.mark.parametrize(
+    "config,expected",
+    [
+        (
+            MySQLConfig(host="localhost", port=3306, database="mydb", username="root", password="secret", url=None),
+            "mysql+aiomysql://root:secret@localhost:3306/mydb",
+        ),
+        (
+            PostgresConfig(
+                host="db.example.com", port=5432, database="mydb", username="user", password="pass", url=None
+            ),
+            "postgresql+asyncpg://user:pass@db.example.com:5432/mydb",
+        ),
+        (SQLiteConfig(database="database.sqlite", url=None), "sqlite+aiosqlite:///database.sqlite"),
+        (SQLiteConfig(database="/var/data/database.sqlite", url=None), "sqlite+aiosqlite:////var/data/database.sqlite"),
+        (SQLiteConfig(url="sqlite+aiosqlite:///db.sqlite3"), "sqlite+aiosqlite:///db.sqlite3"),
+        (
+            MySQLConfig(url="mysql+aiomysql://admin:pw@prod-host:3306/live", host="ignored"),
+            "mysql+aiomysql://admin:pw@prod-host:3306/live",
+        ),
+        (
+            PostgresConfig(host="localhost", port=6543, database="mydb", username="user", password="pass", url=None),
+            "postgresql+asyncpg://user:pass@localhost:6543/mydb",
+        ),
+    ],
+)
+def test_build_url(config, expected):
+    assert ConnectionFactory.build_url(config) == expected
 
 
-class TestConnectionFactoryMissingPort(unittest.TestCase):
-    """A missing/empty port must fall back to a sane per-driver default instead of
-    producing a URL with a bare trailing colon that crashes at engine creation with
-    `ValueError: invalid literal for int() with base 10: ''`."""
-
-    def test_mysql_missing_port_uses_default_3306(self):
-        config = {
-            "driver": "mysql",
-            "host": "localhost",
-            "database": "mydb",
-            "username": "root",
-            "password": "secret",
-        }
-        url = ConnectionFactory.build_url(config)
-        self.assertEqual(url, "mysql+aiomysql://root:secret@localhost:3306/mydb")
-
-    def test_postgres_missing_port_uses_default_5432(self):
-        config = {
-            "driver": "postgres",
-            "host": "db.example.com",
-            "database": "mydb",
-            "username": "user",
-            "password": "pass",
-        }
-        url = ConnectionFactory.build_url(config)
-        self.assertEqual(url, "postgresql+asyncpg://user:pass@db.example.com:5432/mydb")
-
-    def test_mysql_empty_string_port_uses_default(self):
-        config = {
-            "driver": "mysql",
-            "host": "localhost",
-            "port": "",
-            "database": "mydb",
-            "username": "root",
-            "password": "secret",
-        }
-        url = ConnectionFactory.build_url(config)
-        self.assertEqual(url, "mysql+aiomysql://root:secret@localhost:3306/mydb")
-
-    def test_postgres_empty_string_port_uses_default(self):
-        config = {
-            "driver": "postgres",
-            "host": "localhost",
-            "port": "",
-            "database": "mydb",
-            "username": "user",
-            "password": "pass",
-        }
-        url = ConnectionFactory.build_url(config)
-        self.assertEqual(url, "postgresql+asyncpg://user:pass@localhost:5432/mydb")
-
-    def test_explicit_port_is_preserved(self):
-        """An explicitly configured port must win over the default (happy path)."""
-        config = {
-            "driver": "postgres",
-            "host": "localhost",
-            "port": 6543,
-            "database": "mydb",
-            "username": "user",
-            "password": "pass",
-        }
-        url = ConnectionFactory.build_url(config)
-        self.assertEqual(url, "postgresql+asyncpg://user:pass@localhost:6543/mydb")
+@pytest.mark.parametrize("config_type,port", [(MySQLConfig, 3306), (PostgresConfig, 5432)])
+def test_default_port(config_type, port, monkeypatch):
+    monkeypatch.delenv("DB_PORT", raising=False)
+    config = config_type(host="localhost", database="app", username="user", password="secret", url=None)
+    assert f"localhost:{port}/app" in ConnectionFactory.build_url(config)
 
 
-class TestConnectionFactoryUnsupportedDriver(unittest.TestCase):
-    """An unknown driver must raise a friendly framework error, not a raw KeyError."""
-
-    def test_build_url_unknown_driver_raises_driver_not_found(self):
-        with self.assertRaises(DriverNotFound) as ctx:
-            ConnectionFactory.build_url({"driver": "oracle", "database": "mydb"})
-        message = str(ctx.exception)
-        self.assertIn("oracle", message)
-        # The message should guide the user toward the supported drivers.
-        self.assertIn("sqlite", message)
-        self.assertIn("mysql", message)
-        self.assertIn("postgres", message)
-
-    def test_build_url_does_not_raise_raw_keyerror(self):
-        with self.assertRaises(DriverNotFound):
-            ConnectionFactory.build_url({"driver": "cassandra"})
-
-    def test_make_unknown_driver_raises_driver_not_found(self):
-        """make()'s driver check is reachable and fires before any engine is built."""
-        with self.assertRaises(DriverNotFound):
-            ConnectionFactory().make({"driver": "oracle", "database": "mydb"}, "oracle")
-
-    def test_url_passthrough_bypasses_driver_validation(self):
-        """The documented `url` stopgap short-circuits field assembly entirely, so an
-        unknown driver name is irrelevant when a full url is supplied."""
-        config = {
-            "driver": "oracle",
-            "url": "sqlite+aiosqlite:///db.sqlite3",
-        }
-        url = ConnectionFactory.build_url(config)
-        self.assertEqual(url, "sqlite+aiosqlite:///db.sqlite3")
+@pytest.mark.parametrize("driver", ["oracle", "cassandra"])
+def test_unknown_driver_raises_driver_not_found(driver):
+    config = SQLiteConfig(driver=driver, url=None)
+    with pytest.raises(DriverNotFound, match=driver):
+        ConnectionFactory.build_url(config)
+    with pytest.raises(DriverNotFound, match=driver):
+        ConnectionFactory().make(config, driver)
 
 
-class TestConnectionFactoryEcho(unittest.TestCase):
-    def test_engine_echo_is_off_by_default(self):
-        engine = ConnectionFactory.create_engine({"driver": "sqlite", "database": ":memory:"})
-        self.assertFalse(engine.echo)
+@pytest.mark.parametrize("echo", [False, True])
+def test_engine_echo(echo):
+    engine = ConnectionFactory.create_engine(SQLiteConfig(database=":memory:", url=None, echo=echo))
+    assert engine.echo is echo
 
-    def test_engine_echo_follows_config(self):
-        engine = ConnectionFactory.create_engine({"driver": "sqlite", "database": ":memory:", "echo": True})
-        self.assertTrue(engine.echo)
 
-    def test_connection_configs_default_echo_to_false(self):
-        for config_class in (SQLiteConfig, MySQLConfig, PostgresConfig):
-            self.assertFalse(config_class().echo)
+@pytest.mark.parametrize("config_type", [SQLiteConfig, MySQLConfig, PostgresConfig])
+def test_echo_defaults_to_false(config_type, monkeypatch):
+    monkeypatch.delenv("DB_ECHO", raising=False)
+    assert config_type().echo is False

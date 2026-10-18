@@ -13,7 +13,8 @@ content via schema() for deterministic replay.
 import unittest
 from unittest import mock
 
-import langchain.chat_models as chat_models
+import pytest
+
 from langchain_core.messages import AIMessage
 from langchain_core.tools import tool
 from pydantic import BaseModel
@@ -23,6 +24,8 @@ from fastapi_startkit.ai.agent import Agent
 from fastapi_startkit.ai.ai import Ai
 from fastapi_startkit.ai.runner import Runner
 from fastapi_startkit.application import app
+
+chat_models = pytest.importorskip("langchain.chat_models")
 
 
 class Movie(BaseModel):

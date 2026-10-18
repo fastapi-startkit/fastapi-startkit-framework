@@ -1,9 +1,7 @@
 from pathlib import Path
 
-from authentication.middlewares.auth import AuthMiddleware, NotAuthenticated
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi_startkit.fastapi import FastAPIProvider as BaseFastAPIProvider
-from starlette.middleware.sessions import SessionMiddleware
 from starlette.templating import Jinja2Templates
 
 
@@ -33,5 +31,5 @@ class FastAPIProvider(BaseFastAPIProvider):
         inertia.share("errors", {})
 
         from routes.web import guest, auth
-        self.app.include_router(guest)
-        self.app.include_router(auth)
+        self.app.include_router(guest.router)
+        self.app.include_router(auth.router)

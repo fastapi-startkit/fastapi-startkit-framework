@@ -1,3 +1,4 @@
+from fastapi_startkit.masoniteorm import PostgresConfig
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, Mock
 
@@ -10,7 +11,7 @@ from fastapi_startkit.masoniteorm.schema.platforms import PostgresPlatform
 class TestPostgresConnection(IsolatedAsyncioTestCase):
     @staticmethod
     def _connection_with_result(row):
-        connection = PostgresConnection(engine=None, config={"driver": "postgres"})
+        connection = PostgresConnection(engine=None, config=PostgresConfig(driver="postgres"))
         result = Mock()
         result.fetchone.return_value = row
         connection.run = AsyncMock(return_value=result)
