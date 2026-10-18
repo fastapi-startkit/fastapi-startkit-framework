@@ -2,6 +2,7 @@ from fastapi_startkit.masoniteorm.collection import Collection
 from fastapi_startkit.masoniteorm import Model
 from fastapi_startkit.masoniteorm.models.registry import Registry
 from fastapi_startkit.masoniteorm.relationships import MorphMany
+from fastapi_startkit.masoniteorm.exceptions import LazyLoadingViolation
 from ...fixtures.model import Like, Product
 from ..test_case import TestCase
 
@@ -141,3 +142,9 @@ class TestMorphManyRelationship(TestCase):
         # Only likes for this article type are included
         for like in article_likes:
             self.assertEqual(like.likeable_type, "article")
+
+    async def test_unloaded_morph_many_raises_lazy_loading_violation(self):
+        article = await ArticleModel.where("id", self.article.id).first()
+
+        with self.assertRaisesRegex(LazyLoadingViolation, "likes"):
+            article.likes

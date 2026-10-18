@@ -1,6 +1,7 @@
 from fastapi_startkit.masoniteorm import Model
 from fastapi_startkit.masoniteorm.models.registry import Registry
 from fastapi_startkit.masoniteorm.relationships import MorphOne
+from fastapi_startkit.masoniteorm.exceptions import LazyLoadingViolation
 from ...fixtures.model import Like, Product
 from ..test_case import TestCase
 
@@ -153,3 +154,9 @@ class TestMorphOneRelationship(TestCase):
         with self.assertRaises(AttributeError):
             rel.resolver()
         self.assertFalse(hasattr(rel, "where"))
+
+    async def test_unloaded_morph_one_raises_lazy_loading_violation(self):
+        article = await ArticleModelMorphOne.where("id", self.article.id).first()
+
+        with self.assertRaisesRegex(LazyLoadingViolation, "first_like"):
+            article.first_like

@@ -1,5 +1,6 @@
 import pytest
 
+from fastapi_startkit.masoniteorm.exceptions import LazyLoadingViolation
 from ...fixtures.model import Country, IncomingShipment
 from ..test_case import TestCase
 
@@ -64,3 +65,9 @@ class TestHasOneThroughRelationship(TestCase):
     def test_has_one_through_with_count_is_not_implemented(self):
         with pytest.raises(NotImplementedError):
             IncomingShipment.from_country.get_with_count_query(IncomingShipment.where("id", 1), None)
+
+    async def test_unloaded_has_one_through_raises_lazy_loading_violation(self):
+        shipment = await IncomingShipment.where("name", "Milk").first()
+
+        with pytest.raises(LazyLoadingViolation, match="from_country"):
+            shipment.from_country

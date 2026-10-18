@@ -2,6 +2,7 @@ import pytest
 
 from fastapi_startkit.masoniteorm.collection import Collection
 
+from fastapi_startkit.masoniteorm.exceptions import LazyLoadingViolation
 from ...fixtures.model import Logo, User
 from ..test_case import TestCase
 
@@ -81,3 +82,9 @@ class TestHasManyThroughRelationship(TestCase):
     def test_has_many_through_with_count_is_not_implemented(self):
         with pytest.raises(NotImplementedError):
             User.logos.get_with_count_query(User.where("id", 1), None)
+
+    async def test_unloaded_has_many_through_raises_lazy_loading_violation(self):
+        user = await User.where("email", "admin@admin.com").first()
+
+        with pytest.raises(LazyLoadingViolation, match="logos"):
+            user.logos

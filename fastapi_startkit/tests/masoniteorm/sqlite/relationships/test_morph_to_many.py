@@ -2,6 +2,7 @@ from fastapi_startkit.masoniteorm import Model
 from fastapi_startkit.masoniteorm.collection import Collection
 from fastapi_startkit.masoniteorm.models.registry import Registry
 from fastapi_startkit.masoniteorm.relationships import MorphToMany
+from fastapi_startkit.masoniteorm.exceptions import LazyLoadingViolation
 from ...fixtures.model import Articles, Product
 from ..test_case import TestCase
 
@@ -148,3 +149,10 @@ class TestMorphToManyRelationship(TestCase):
         eager_get = await LikeModelMorphToMany.with_("record").where("id", like.id).get()
         self.assertIsInstance(eager_get.first().record, Collection)
         self.assertTrue(eager_get.first().record.is_empty())
+
+    async def test_unloaded_morph_to_many_raises_lazy_loading_violation(self):
+        like = await LikeModelMorphToMany.create({"likeable_type": "article_m2m", "likeable_id": self.article.id})
+        like_loaded = await LikeModelMorphToMany.where("id", like.id).first()
+
+        with self.assertRaisesRegex(LazyLoadingViolation, "record"):
+            like_loaded.record
