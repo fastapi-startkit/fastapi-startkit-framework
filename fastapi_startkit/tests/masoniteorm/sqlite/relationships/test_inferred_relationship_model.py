@@ -104,6 +104,10 @@ class TestInferredRelationshipModel(TestCase):
         assert_type(user.profile, Any)
         assert isinstance(user.profile, InferredProfile)
 
+    def test_a_non_string_model_argument_is_rejected(self):
+        with pytest.raises(TypeError, match="expects a string"):
+            HasOne(InferredProfile, "user_id", "id")  # pyright: ignore[reportArgumentType]
+
     def test_a_relationship_without_a_model_fails_at_class_creation(self):
         with pytest.raises(TypeError, match="Orphan.owner"):
 
