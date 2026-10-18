@@ -9,12 +9,17 @@ if TYPE_CHECKING:
 class TypedUser(Model):
     __table__ = "users"
 
-    profile = HasOne["TypedProfile"]("TypedProfile", "user_id", "id")
-    articles = HasMany["TypedArticle"]("TypedArticle", "id", "user_id")
-    untyped_profile = HasOne("TypedProfile", "user_id", "id")
+    profile = HasOne["TypedProfile"](foreign_key="user_id", local_key="id")
+    articles = HasMany["TypedArticle"](local_key="id", foreign_key="user_id")
 
 
 class TypedStore(Model):
     __table__ = "stores"
 
-    products = BelongsToMany["TypedProduct"]("TypedProduct", "store_id", "product_id", "id", "id", with_timestamps=True)
+    products = BelongsToMany["TypedProduct"](
+        local_foreign_key="store_id",
+        other_foreign_key="product_id",
+        local_owner_key="id",
+        other_owner_key="id",
+        with_timestamps=True,
+    )

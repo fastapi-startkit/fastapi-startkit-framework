@@ -4,7 +4,7 @@ from fastapi_startkit.masoniteorm.models import Model
 from fastapi_startkit.masoniteorm import BelongsTo, MorphMany
 
 if TYPE_CHECKING:
-    pass
+    from .course import Course  # noqa: F401
 
 
 class Lesson(Model):
@@ -12,5 +12,5 @@ class Lesson(Model):
 
     title: str
 
-    course = BelongsTo("Course")
+    course = BelongsTo["Course"]()
     reviews = MorphMany("Review", "reviewable_type", "reviewable_id")

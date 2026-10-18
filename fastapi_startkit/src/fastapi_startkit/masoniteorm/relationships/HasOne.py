@@ -1,13 +1,12 @@
 from ..collection import Collection
 from .BaseRelationship import BaseRelationship, SingleResult, TModel
-from fastapi_startkit.masoniteorm.models import registry
 
 
 class HasOne(BaseRelationship[TModel, SingleResult[TModel]]):
     """Has One Relationship Class."""
 
-    def __init__(self, fn: str, foreign_key=None, local_key=None):
-        self.fn = lambda: registry.Registry.resolve(fn)
+    def __init__(self, fn: str | None = None, foreign_key=None, local_key=None):
+        self.bind_model(fn)
 
         self.local_key = local_key or "id"
         self.foreign_key = foreign_key

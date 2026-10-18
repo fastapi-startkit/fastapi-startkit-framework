@@ -25,9 +25,8 @@ class User(Model):
     email: str
     role: str
 
-    profile = HasOne("Profile")
-    courses = BelongsToMany(
-        "Course",
+    profile = HasOne["Profile"]()
+    courses = BelongsToMany["Course"](
         local_foreign_key="user_id",
         other_foreign_key="course_id",
         table="course_user",
@@ -51,11 +50,18 @@ if TYPE_CHECKING:
 
 
 class Word(Model):
-    lexeme = BelongsTo["Lexeme"]("Lexeme", local_key="word_id", foreign_key="id")
+    lexeme = BelongsTo["Lexeme"](local_key="word_id", foreign_key="id")
 ```
 
 `Word.lexeme` is typed as `BelongsTo[Lexeme]`; `word.lexeme` is `Lexeme | None`
 (`Collection[Lexeme]` for many relationships).
+
+The related model comes from the subscript, so pass the keys by keyword. Use
+`BelongsTo[Lexeme]` with a real import when there is no import cycle.
+
+The positional form `BelongsTo("Lexeme", ...)` is deprecated and will be removed
+in 1.x; use `BelongsTo["Lexeme"](local_key=..., foreign_key=...)`. If both are
+given, the positional argument wins.
 
 ## Query builder
 

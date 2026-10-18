@@ -5,7 +5,7 @@ from fastapi_startkit.masoniteorm import BelongsTo
 
 
 def test_attach_fills_and_creates_unsaved_model():
-    relationship = BelongsTo("Bottle", "bottle_id", "id")
+    relationship = BelongsTo["Bottle"](local_key="bottle_id", foreign_key="id")
     model = MagicMock()
     model.is_created.return_value = False
     model.all_attributes.return_value = {"bottle_id": 7}
@@ -17,7 +17,7 @@ def test_attach_fills_and_creates_unsaved_model():
 
 
 def test_attach_updates_saved_model():
-    relationship = BelongsTo("Bottle", "bottle_id", "id")
+    relationship = BelongsTo["Bottle"](local_key="bottle_id", foreign_key="id")
     model = MagicMock()
     model.is_created.return_value = True
 

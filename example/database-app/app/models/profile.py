@@ -4,7 +4,7 @@ from fastapi_startkit.masoniteorm.models import Model
 from fastapi_startkit.masoniteorm import BelongsTo
 
 if TYPE_CHECKING:
-    pass
+    from .user import User  # noqa: F401
 
 
 class Profile(Model):
@@ -22,4 +22,4 @@ class Profile(Model):
     languages_spoken: dict | list | None
     subjects: dict | list | None
 
-    user = BelongsTo("User")
+    user = BelongsTo["User"]()

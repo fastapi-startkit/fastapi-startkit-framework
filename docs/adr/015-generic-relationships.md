@@ -17,10 +17,10 @@ if TYPE_CHECKING:
 
 
 class Word(Model):
-    lexeme = BelongsTo["Lexeme"]("Lexeme", local_key="word_id", foreign_key="id")
+    lexeme = BelongsTo["Lexeme"](local_key="word_id", foreign_key="id")
 ```
 
-`Lexeme` does not exist at runtime, so the subscript has to stay a string forward reference and must not be evaluated. The model is still resolved from the first positional argument through the registry.
+`Lexeme` does not exist at runtime, so the subscript has to stay a string forward reference and must not be evaluated. At runtime the model is resolved from the subscript through the registry (see "Inferring the related model from the subscript").
 
 ## Alternatives
 
@@ -78,6 +78,33 @@ Query-side relationship APIs are unchanged: class access (`Word.lexeme.attach(..
 
 Ruff's F401 only reads strings in annotation positions, so an import used only by `BelongsTo["Lexeme"]` is reported as unused and `ruff --fix` would delete it. Such `TYPE_CHECKING` imports carry `# noqa: F401`.
 
+### Inferring the related model from the subscript
+
+Passing both a subscript and a model argument names the model twice (`BelongsTo["Lexeme"]("Lexeme", ...)`), and nothing checks that the two agree. The subscript is therefore the source of the model:
+
+```python
+if TYPE_CHECKING:
+    from app.models.lexeme import Lexeme  # noqa: F401
+
+class Word(Model):
+    lexeme = BelongsTo["Lexeme"](local_key="word_id", foreign_key="id")
+```
+
+Alternatives considered:
+
+- **Real classes only (`BelongsTo[Lexeme]`).** The subscript is evaluated along with the class body, so the class must be imported at runtime. Models that reference each other then hit circular imports. This form is supported, but it can't be the only one.
+- **An attribute annotation (`lexeme: BelongsTo[Lexeme] = BelongsTo(...)`).** Resolving it at runtime means evaluating names that were never imported, or parsing the annotation text. Rejected as fragile.
+- **Read the subscript at runtime (chosen).** `Generic` sets `__orig_class__` on the instance right after `__init__` returns. `__set_name__` runs later, so the subscript is available from then on.
+
+Rules:
+
+- A quoted subscript (`ForwardRef`) resolves through `Registry`. A real class is used as is.
+- A relationship with neither a subscript nor a model argument raises `TypeError` when the owning class is created. The error names the relationship (`Owner.attribute`, or just the relationship class when it is used outside a class body) and suggests only the subscript form.
+- Keys are passed by keyword. `BelongsTo["Lexeme"]("word_id")` would read `"word_id"` as the model.
+- Morph and through relationships are unchanged. Their first argument is a morph key or a pair of models, which one type parameter cannot express.
+
+Deprecation: passing the model as an argument (`BelongsTo("Lexeme", ...)`) still works and still takes precedence over the subscript. It emits a `DeprecationWarning` and will be removed in 1.x. The warning uses `skip_file_prefixes` so that it points at the user's model file, not the framework. All in-repo fixtures, examples and the database skill have been migrated.
+
 ## Implementation
 
 - `relationships/BaseRelationship.py`: `TModel`, `TResult`, `SingleResult`, `ManyResult`, generic base, overloaded `__get__`, `access`.
@@ -88,13 +115,21 @@ Ruff's F401 only reads strings in annotation positions, so an import used only b
 - `Model.load`, `Collection.load`, `EagerLoadMixin._register_relationships_to_model`, `MorphToMany.map_related`.
 - In-repo `await model.relation` usages (framework tests) migrated to `load()`; `example/` has none.
 - `pyproject.toml`: `typing-extensions` runtime dependency.
+- `BaseRelationship.bind_model(fn)` warns when `fn` is given, stores it, and points `self.fn` at `related_model`, so existing `self.fn()` call sites keep working. `BaseRelationship`, `BelongsTo`, `HasOne` and `BelongsToMany` call it. `related_model()` reads `__orig_class__` from `self.__dict__` because `__getattr__` forwards to the query builder and would recurse. `__set_name__` validates the model at class creation.
 
 ## Validation
 
 - `tests/masoniteorm/fixtures/typed/`: two model modules that reference each other only under `TYPE_CHECKING`.
-- `tests/masoniteorm/sqlite/relationships/test_generic_relationships.py`: subscripted `BelongsTo`, `HasOne`, `HasMany`, `BelongsToMany` on sqlite: module import succeeds, the string argument still resolves the model, eager load with `with_`, `where_has`, and unsubscripted relations stay `Any`.
+- `tests/masoniteorm/sqlite/relationships/test_generic_relationships.py`: subscripted `BelongsTo`, `HasOne`, `HasMany`, `BelongsToMany` on sqlite: module import succeeds, eager load with `with_`, and `where_has`.
 - The same file uses `assert_type` for class access and instance access and is checked with `uv run pyright` and `uv run basedpyright`.
 - The same file covers `LazyLoadingViolation` and its message, typed `load()`, and empty relationships registered through `load()`, `with_().get()` and `with_().first()`.
 - `test_belongs_to_null_foreign_key.py` covers a `BelongsTo` whose foreign keys are all `NULL`, and mixed with resolvable keys, through `load()`, `Collection.load()`, `with_().get()` and `with_().first()`.
 - Each many relationship (`HasMany`, `HasManyThrough`, `BelongsToMany`, `MorphMany`, `MorphToMany`) has sqlite tests asserting that an empty relation is an empty `Collection` through `load()`, `with_().get()` and `with_().first()`.
+- `test_inferred_relationship_model.py` covers the following:
+  - `BelongsTo`, `HasOne`, `HasMany` and `BelongsToMany` resolve from a quoted subscript.
+  - A real-class subscript resolves.
+  - An explicit argument wins, with a warning.
+  - The deprecation message mentions 1.x and points at the caller's file.
+  - An unsubscripted model argument stays `Any`.
+  - A relationship with no model raises `TypeError` at class creation.
 - Full suite: `uv run pytest --ignore=tests/masoniteorm/postgres --cov` stays above `fail_under`.
