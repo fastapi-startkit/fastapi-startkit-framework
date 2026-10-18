@@ -103,7 +103,7 @@ and use the orm as:
 from app.models import User
 
 async def store(request: UserStoreRequest):
-    user = User.create(request.model_dump())
+    user = await User.create(request.model_dump())
     ...
 ```
 
@@ -124,7 +124,7 @@ from fastapi_startkit.jsonapi import JsonResource
 from app.models import User
 
 async def store(request: UserStoreRequest):
-    user = User.create(request.model_dump())
+    user = await User.create(request.model_dump())
     return JsonResource(user)
 ```
 
@@ -143,7 +143,7 @@ class UserStoreAction:
     def prepare(request: UserStoreRequest) -> 'UserStoreAction':
         return UserStoreAction(request)
 
-    def handle(self) -> JsonResource[User]:
-        user = User.create(self.request.model_dump())
+    async def handle(self) -> JsonResource[User]:
+        user = await User.create(self.request.model_dump())
         return JsonResource(user)
 ```
