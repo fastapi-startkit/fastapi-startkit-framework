@@ -277,7 +277,7 @@ class Caster:
 
     @staticmethod
     def is_cast(item: Any) -> bool:
-        return isinstance(item, BaseCast) or (hasattr(item, "get") and hasattr(item, "set"))
+        return isinstance(item, BaseCast) or (isinstance(item, type) and issubclass(item, BaseCast))
 
     @staticmethod
     def normalize_type(t):
@@ -340,9 +340,6 @@ class Caster:
                 return cast().get(value)
             return cast(value)
 
-        if Caster.is_cast(cast):
-            return cast.get(value)
-
         return value
 
     def set(self, attribute: str, value: Any) -> Any:
@@ -359,8 +356,5 @@ class Caster:
             if hasattr(cast, "set"):
                 return cast().set(value)
             return value
-
-        if Caster.is_cast(cast):
-            return cast.set(value)
 
         return value

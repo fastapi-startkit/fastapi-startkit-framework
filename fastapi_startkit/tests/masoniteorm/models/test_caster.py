@@ -52,7 +52,7 @@ def test_unresolvable_annotation_keeps_resolvable_casts():
     assert isinstance(Caster(CasterForwardRefProfile).casts["age"], IntCast)
 
 
-class IsoStringCast:
+class IsoStringCast(BaseCast):
     def get(self, value):
         return f"get:{value}"
 
@@ -93,9 +93,17 @@ def test_annotated_cast_instance_is_used_like_a_class():
     assert caster.set("nickname", "j") == "set:j"
 
 
+class DuckTypedCast:
+    def get(self, value):
+        return value
+
+    def set(self, value):
+        return value
+
+
 def test_annotated_without_a_cast_falls_back_to_the_base_type():
     class CountedModel(Model):
-        visits: Annotated[int, "not a cast"]
+        visits: Annotated[int, "not a cast", DuckTypedCast, DuckTypedCast()]
 
     caster = Caster(CountedModel)
 
