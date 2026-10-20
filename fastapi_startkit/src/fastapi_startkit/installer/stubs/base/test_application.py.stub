@@ -1,10 +1,14 @@
-from fastapi.testclient import TestClient
-
-from bootstrap.application import app
+from fastapi_startkit.fastapi.testing import HttpTestCase
 
 
-def test_health():
-    with TestClient(app.fastapi) as client:
-        response = client.get("/health")
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+class TestApplication(HttpTestCase):
+    def get_application(self):
+        from bootstrap.application import app
+
+        return app
+
+    async def test_health(self):
+        response = await self.get("/health")
+
+        assert response.status_code == 200
+        assert response.json() == {"status": "ok"}

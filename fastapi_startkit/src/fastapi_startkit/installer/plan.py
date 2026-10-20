@@ -188,12 +188,13 @@ requires-python = ">=3.12,<4.0"
 dependencies = [{json.dumps(dependency)}]
 
 [dependency-groups]
-dev = ["pytest>=8", "httpx>=0.28"]
+dev = ["pytest>=8", "pytest-asyncio>=0.24", "httpx>=0.28"]
 
 [tool.uv]
 package = false
 
 [tool.pytest.ini_options]
+asyncio_mode = "auto"
 pythonpath = ["."]
 testpaths = ["tests"]
 """,

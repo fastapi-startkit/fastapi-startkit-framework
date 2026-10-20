@@ -231,3 +231,20 @@ with TestClient(app.fastapi) as client:
         )
         assert result.returncode == 0, result.stdout + result.stderr
         assert (plan.directory / "databases/database.sqlite").exists()
+
+
+@pytest.mark.parametrize("frontend", ["none", "react", "vue"])
+def test_generated_class_based_health_test(tmp_path, frontend):
+    plan = build_plan(InstallOptions(tmp_path / "application", database="none", frontend=frontend))
+    write_plan(plan)
+    source = Path(__file__).resolve().parents[1] / "src"
+    env = {key: value for key, value in os.environ.items() if not key.startswith(("APP_", "DB_", "SESSION_"))}
+    env["PYTHONPATH"] = str(source)
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "tests/test_application.py::TestApplication::test_health", "-q"],
+        cwd=plan.directory,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
