@@ -76,7 +76,7 @@ The summary shows the resolved destination, selected features, files, extras, an
 | SQLite/PostgreSQL/MySQL | Database and driver extras, typed database configuration, migrations, seeders, and driver-specific environment keys; SQLite also gets its database directory |
 | Worker | TaskIQ and its Redis transport, broker configuration through environment variables, worker entry point, and an example task |
 | Web + worker | Both setups, sharing application configuration (future work) |
-| React or Vue | Inertia and Vite integration, selected frontend dependencies in `package.json`, root HTML template, and a working welcome page; frontend installation creates the lockfile |
+| React or Vue | Inertia, Vite, and Tailwind CSS integration, selected frontend dependencies in `package.json`, root HTML template, and a working welcome page; frontend installation creates the lockfile |
 
 Use available starter files as references, `example/queue-app/` as a TaskIQ reference, and the existing Inertia/Vite examples for frontend integration. Ship normalized `string.Template` stubs inside the package wheel, as proposed in PR #288, rather than fetching examples at runtime. TaskIQ is currently an example integration, not a framework extra; enable the worker template only after framework queue support is available. Each frontend needs its own validated template before it is offered in a released wizard.
 

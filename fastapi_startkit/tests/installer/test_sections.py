@@ -93,7 +93,12 @@ def test_frontend_defines_matching_inertia_assets(frontend, entry, page, package
     assert section.environment["SESSION_SECRET"] == "change-me"
     assert section.providers.index("(ViteProvider, ViteConfig)") < section.providers.index("InertiaProvider")
     rendered = render_sections((define_base("example-app"), define_web(), section))
-    assert package in json.loads(rendered["package.json"])["dependencies"]
+    metadata = json.loads(rendered["package.json"])
+    assert package in metadata["dependencies"]
+    assert "tailwindcss" in metadata["devDependencies"]
+    assert "@tailwindcss/vite" in metadata["devDependencies"]
+    assert "tailwindcss()" in rendered["vite.config.ts"]
+    assert '@import "tailwindcss";' in rendered["resources/css/app.css"]
     assert "Inertia.render" in rendered["routes/api.py"]
     assert entry in rendered["resources/templates/index.html"]
 

@@ -8,7 +8,7 @@
     {{ vite('${entry}') }}
     {{ inertia_head(page) }}
 </head>
-<body>
+<body class="bg-stone-50 font-sans text-emerald-950">
     {{ inertia(page) }}
 </body>
 </html>
