@@ -111,8 +111,8 @@ uvx fastapi-startkit init example-project --app web --database sqlite --frontend
 
 ## Implementation
 
-The standalone CLI lives in `fastapi_startkit.installer`. `InstallOptions` is validated before a generation plan renders bundled `.stub` files. The writer rechecks the destination before using exclusive file creation. A frontend app receives a fresh session secret in `.env`; `.env.example` keeps a placeholder.
+The standalone CLI lives in `fastapi_startkit.installer`. `InstallOptions` is validated before `build_plan()` composes `define_base()`, `define_database()`, `define_web()`, and `define_frontend()`. Each function returns an independent section containing its templates, imports, providers, dependencies, and environment settings. `render_sections()` combines those sections and renders bundled `.stub` files; `define_metadata()` supplies project metadata. The writer rechecks the destination before using exclusive file creation. A frontend app receives a fresh session secret in `.env`; `.env.example` keeps a placeholder.
 
 Generated metadata pins the framework to the installer version and includes only the selected extras. Dependency installation runs `uv sync` in the destination, installing the generated project and creating `uv.lock`. `--no-deps` prints this command instead. Frontend dependency installation remains manual.
 
-Validation covers all twelve database/frontend combinations, generated HTTP and Inertia responses, SQLite migrations, file preservation, interactive prompts, failures, and dry runs. React and Vue templates must also pass production builds; the built wheel must expose the command and include all templates.
+Focused unit tests cover each section and their composition. Validation also covers all twelve database/frontend combinations, generated HTTP and Inertia responses, SQLite migrations, file preservation, interactive prompts, failures, and dry runs. React and Vue templates must also pass production builds; the built wheel must expose the command and include all templates.
