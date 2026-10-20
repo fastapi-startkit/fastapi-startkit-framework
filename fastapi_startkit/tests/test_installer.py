@@ -52,8 +52,6 @@ def test_plan_matrix(tmp_path, database, frontend):
 @pytest.mark.parametrize(
     "flags,message",
     [
-        ("--app worker", "Queue support"),
-        ("--app both", "Queue support"),
         ("--app invalid", "--app must"),
         ("--database invalid", "--database must"),
         ("--frontend invalid", "--frontend must"),

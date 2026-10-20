@@ -1,0 +1,47 @@
+from contextlib import asynccontextmanager
+
+from taskiq import InMemoryBroker
+from taskiq_redis import ListQueueBroker, RedisAsyncResultBackend
+
+from commands.queue_work_command import QueueWorkCommand
+from config.queue import QueueConfig
+from fastapi_startkit.support import Provider
+
+
+class QueueProvider(Provider):
+    manages_http_lifespan = ${manages_http_lifespan}
+
+    def register(self):
+        config = self.resolve_config(QueueConfig)
+        self.merge_config_from(config, self.provider_key)
+        if config["driver"] == "memory":
+            broker = InMemoryBroker()
+        elif config["driver"] == "redis":
+            broker = ListQueueBroker(config["url"]).with_result_backend(RedisAsyncResultBackend(config["url"]))
+        else:
+            raise ValueError("QUEUE_DRIVER must be redis or memory")
+        self.app.bind("broker", broker)
+        self.app.bind("queue", broker)
+
+    def boot(self):
+        self.commands([QueueWorkCommand])
+        if not self.manages_http_lifespan:
+            return
+        broker = self.app.make("broker")
+        router = self.app.fastapi.router
+        previous_lifespan = router.lifespan_context
+
+        @asynccontextmanager
+        async def lifespan(app):
+            if broker.is_worker_process:
+                async with previous_lifespan(app) as state:
+                    yield state
+                return
+            await broker.startup()
+            try:
+                async with previous_lifespan(app) as state:
+                    yield state
+            finally:
+                await broker.shutdown()
+
+        router.lifespan_context = lifespan

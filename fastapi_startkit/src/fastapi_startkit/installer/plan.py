@@ -21,6 +21,7 @@ class Plan:
     files: dict[str, str]
     dependency: str
     frontend: str
+    dependencies: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,7 @@ class Section:
     imports: tuple[str, ...] = ()
     providers: tuple[str, ...] = ()
     extras: tuple[str, ...] = ()
+    dependencies: tuple[str, ...] = ()
     environment: dict[str, str] = field(default_factory=dict)
     substitutions: dict[str, str] = field(default_factory=dict)
 
@@ -43,8 +45,6 @@ def validate_options(options: InstallOptions) -> None:
         raise ValueError("--frontend must be none, react, or vue.")
     if options.app == "worker" and options.frontend != "none":
         raise ValueError("A worker application cannot have a frontend.")
-    if options.app != "web":
-        raise ValueError("Queue support is not available in this version. Use --app web.")
 
 
 def validate_destination(directory: Path) -> None:
@@ -70,7 +70,7 @@ def define_base(project_name: str) -> Section:
             "README.md": "base/README.md",
         },
         files={
-            **{f"{package}/__init__.py": "" for package in ("bootstrap", "config", "providers", "routes", "tests")},
+            **{f"{package}/__init__.py": "" for package in ("bootstrap", "config", "providers", "tests")},
             "storage/logs/.gitignore": "*\n!.gitignore\n",
         },
         imports=(
@@ -98,6 +98,7 @@ def define_web() -> Section:
             "routes/api.py": "base/routes.py",
             "tests/test_application.py": "base/test_application.py",
         },
+        files={"routes/__init__.py": ""},
         imports=(
             "from config.fastapi import FastAPIConfig",
             "from providers.fastapi_provider import FastapiProvider",
@@ -179,13 +180,35 @@ def define_frontend(frontend: str) -> Section:
     )
 
 
-def define_metadata(project_name: str, dependency: str) -> dict[str, str]:
+def define_queue(web: bool = False) -> Section:
+    templates = {
+        "config/queue.py": "queue/config.py",
+        "providers/queue_provider.py": "queue/provider.py",
+        "commands/queue_work_command.py": "queue/command.py",
+        "worker.py": "queue/worker.py",
+        "tasks/example_task.py": "queue/task.py",
+    }
+    if not web:
+        templates["tests/test_application.py"] = "queue/test_application.py"
+        templates["README.md"] = "queue/README.md"
+    return Section(
+        templates=templates,
+        files={"commands/__init__.py": "", "tasks/__init__.py": ""},
+        imports=("from config.queue import QueueConfig", "from providers.queue_provider import QueueProvider"),
+        providers=("(QueueProvider, QueueConfig)",),
+        dependencies=("taskiq>=0.11,<1", "taskiq-redis>=1,<2"),
+        environment={"QUEUE_DRIVER": "redis", "QUEUE_URL": "redis://127.0.0.1:6379/0"},
+        substitutions={"manages_http_lifespan": str(web)},
+    )
+
+
+def define_metadata(project_name: str, dependency: str, dependencies: tuple[str, ...] = ()) -> dict[str, str]:
     return {
         "pyproject.toml": f"""[project]
 name = {json.dumps(project_name)}
 version = "0.1.0"
 requires-python = ">=3.12,<4.0"
-dependencies = [{json.dumps(dependency)}]
+dependencies = {json.dumps([dependency, *dependencies])}
 
 [dependency-groups]
 dev = ["pytest>=8", "pytest-asyncio>=0.24", "httpx>=0.28"]
@@ -227,11 +250,14 @@ def build_plan(options: InstallOptions) -> Plan:
     sections = (
         define_base(project_name),
         define_database(options.database, project_name),
-        define_web(),
+        define_web() if options.app != "worker" else Section(),
         define_frontend(options.frontend),
+        define_queue(web=options.app == "both") if options.app != "web" else Section(),
     )
     extras = {extra for section in sections for extra in section.extras}
-    dependency = f"fastapi-startkit[{','.join(sorted(extras))}]=={version('fastapi-startkit')}"
+    package = f"fastapi-startkit[{','.join(sorted(extras))}]" if extras else "fastapi-startkit"
+    dependency = f"{package}=={version('fastapi-startkit')}"
+    dependencies = tuple(sorted({dependency for section in sections for dependency in section.dependencies}))
     rendered = render_sections(sections)
-    rendered.update(define_metadata(project_name, dependency))
-    return Plan(directory, rendered, dependency, options.frontend)
+    rendered.update(define_metadata(project_name, dependency, dependencies))
+    return Plan(directory, rendered, dependency, options.frontend, (dependency, *dependencies))

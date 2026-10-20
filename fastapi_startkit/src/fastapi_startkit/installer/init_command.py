@@ -44,10 +44,12 @@ class InitCommand(Command):
         validate_options(InstallOptions(Path(directory), **selections))
         if interactive:
             for name, choices in (
-                ("app", ["web"]),
+                ("app", ["web", "worker", "both"]),
                 ("database", ["none", "sqlite", "postgres", "mysql"]),
                 ("frontend", ["none", "react", "vue"]),
             ):
+                if name == "frontend" and selections["app"] == "worker":
+                    continue
                 if self.option(name) is None:
                     selections[name] = self.choice(
                         f"{name.capitalize()}?", choices, default=choices.index(selections[name]), attempts=3
@@ -60,7 +62,8 @@ class InitCommand(Command):
         )
         for name in sorted(plan.files):
             self.line(f"  create {name}")
-        self.line(f"Dependency: {plan.dependency}")
+        for dependency in plan.dependencies:
+            self.line(f"Dependency: {dependency}")
         self.line("Python dependencies: uv sync")
         if plan.frontend != "none":
             self.line("Frontend dependencies: npm install (run after generation; requires Node.js 22.12+)")
@@ -92,7 +95,12 @@ class InitCommand(Command):
                 )
                 return 1
             self.line("Your application is ready.")
-        self.line("Run: uv run python artisan serve")
+        if selections["app"] != "worker":
+            self.line("Run: uv run python artisan serve")
+        if selections["app"] != "web":
+            self.line("Start Redis at QUEUE_URL from .env, then run: uv run python artisan queue:work")
+            if selections["app"] == "both":
+                self.line("Run the HTTP server and queue worker in separate terminals.")
         if plan.frontend != "none":
             self.line("In another terminal: npm install && npm run dev (Node.js 22.12+).")
         if selections["database"] in ("postgres", "mysql"):
