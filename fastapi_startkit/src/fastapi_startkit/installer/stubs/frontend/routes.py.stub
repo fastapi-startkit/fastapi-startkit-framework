@@ -1,15 +1,17 @@
-from fastapi import APIRouter
+from fastapi_startkit.fastapi import Router
 from fastapi_startkit.inertia import Inertia
 from fastapi_startkit.inertia.inertia import InertiaResponse
 
-router = APIRouter()
+
+class HomeController:
+    async def index(self) -> InertiaResponse:
+        return Inertia.render("Home")
+
+    async def health(self):
+        return {"status": "ok"}
 
 
-@router.get("/", response_model=None)
-async def index() -> InertiaResponse:
-    return Inertia.render("Home")
-
-
-@router.get("/health")
-async def health():
-    return {"status": "ok"}
+controller = HomeController()
+router = Router()
+router.get("/", controller.index, response_model=None)
+router.get("/health", controller.health)

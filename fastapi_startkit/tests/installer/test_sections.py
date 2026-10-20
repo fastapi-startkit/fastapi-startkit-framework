@@ -140,3 +140,20 @@ def test_metadata_creates_standalone_project_with_exact_dependency():
     assert metadata["tool"]["uv"] == {"package": False}
     assert metadata["tool"]["pytest"]["ini_options"]["testpaths"] == ["tests"]
     assert files[".python-version"] == "3.12\n"
+
+
+@pytest.mark.parametrize("frontend", ["none", "react", "vue"])
+async def test_routes_bind_controller_actions(frontend):
+    rendered = render_sections((define_base("example-app"), define_web(), define_frontend(frontend)))
+    namespace = {}
+    exec(compile(rendered["routes/api.py"], "routes/api.py", "exec"), namespace)
+    controller = namespace["controller"]
+    routes = {route.path: route.endpoint for route in namespace["router"].router.routes}
+    assert routes["/"].__self__ is controller
+    assert routes["/health"].__self__ is controller
+    assert await routes["/health"]() == {"status": "ok"}
+    if frontend == "none":
+        assert await routes["/"]() == {"message": "Welcome to FastAPI Startkit"}
+    else:
+        response = await routes["/"]()
+        assert response.component == "Home"

@@ -6,4 +6,4 @@ class FastapiProvider(FastAPIProvider):
         super().boot()
         from routes.api import router
 
-        self.app.fastapi.include_router(router)
+        self.app.fastapi.include_router(router.router)
