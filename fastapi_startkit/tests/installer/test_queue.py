@@ -47,13 +47,26 @@ def test_worker_selector_skips_frontend(tmp_path):
     tester = CommandTester(cli.find("init"))
     path = tmp_path / "worker"
     assert tester.execute("--no-deps", inputs=f"{path}\n1\n0\ny\n", interactive=True) == 0
-    assert "Frontend?" not in tester.io.fetch_error()
+    assert "frontend" not in tester.io.fetch_error()
     assert not (path / "routes").exists()
     assert not (path / "package.json").exists()
     output = tester.io.fetch_output()
     assert "artisan queue:work" in output
     assert "artisan serve" not in output
     assert "taskiq-redis" in output
+
+
+def test_selecting_both_services_creates_combined_app(tmp_path):
+    cli = create_cli()
+    tester = CommandTester(cli.find("init"))
+    path = tmp_path / "both"
+    assert tester.execute("--no-deps", inputs=f"{path}\n0,1\n0\n0\ny\n", interactive=True) == 0
+    assert "HTTP server with FastAPI routes and a health check" in tester.io.fetch_error()
+    assert (path / "routes").exists()
+    assert (path / "worker.py").exists()
+    output = tester.io.fetch_output()
+    assert "artisan queue:work" in output
+    assert "artisan serve" in output
 
 
 @pytest.mark.parametrize("app,frontend", [("worker", "none"), ("both", "none"), ("both", "react"), ("both", "vue")])

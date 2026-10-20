@@ -1,6 +1,6 @@
 # Project scaffolding
 
-Status: Installer implemented for web, worker, and combined applications, with optional database and React/Vue frontends for HTTP applications; available through uvx after the next package release. Existing-project installation and the hosted shell bootstrap remain future work.
+Status: Installer implemented for web, worker, and combined applications, with optional database and React/Vue frontends for HTTP applications; available through uvx after the next package release. The hosted shell bootstrap is served by the docs site at `https://fastapi-startkit.github.io/install.sh`. Existing-project installation remains future work.
 
 Related proposal: [PR #288 — project scaffolding](https://github.com/fastapi-startkit/fastapi-startkit-framework/pull/288). The initial proposal is implemented by the standalone `init` command. It uses a standalone Cleo CLI, bundled templates, a generation plan, and database selection. The new-project command is `init`; any existing-project `install` workflow remains separate.
 
@@ -24,38 +24,43 @@ uvx fastapi-startkit init example-project
 
 `uvx` runs a command supplied by a package in an isolated tool environment. Since the package and executable share the name `fastapi-startkit`, no `--from` option is needed ([uv tools guide](https://docs.astral.sh/uv/guides/tools/)). Users need uv installed, but do not need to install fastapi-startkit first. The package provides a `fastapi-startkit` console entry point backed by a bare Cleo application that runs before a framework application exists. For development before publication, run `uvx --from /path/to/built.whl fastapi-startkit init example-project`.
 
-A future macOS/Linux bootstrap can provide the requested shell experience. The following illustrates its shape; `HOST` must be replaced by an actual project-controlled host before publication:
+On macOS and Linux, users without uv can run the hosted bootstrap ([docs ADR: hosted install script](https://github.com/fastapi-startkit/fastapi-startkit.github.io/blob/main/docs/adr/2026-10-19-install-script.md)):
 
 ```shell
-/bin/bash -c "$(curl -fsSL https://HOST/install.sh)"
+/bin/bash -c "$(curl -fsSL https://fastapi-startkit.github.io/install.sh)"
 ```
 
-The bootstrap locates uv or installs it using its [official installer](https://docs.astral.sh/uv/getting-started/installation/), then launches a versioned release of the same wizard. Newly installed uv must be usable in the current process without restarting the terminal. Keep interactive input connected to the terminal. Windows users with uv use the same uvx entry point; a native bootstrap can follow later.
+The bootstrap locates uv or installs it using its [official installer](https://docs.astral.sh/uv/getting-started/installation/), then launches the latest release of the same wizard with `uv tool run fastapi-startkit@latest init`; setting `FASTAPI_STARTKIT_VERSION` pins a release. Newly installed uv must be usable in the current process without restarting the terminal. Keep interactive input connected to the terminal. Windows users with uv use the same uvx entry point; a native bootstrap can follow later.
 
 ## Interactive flow
 
 ```text
-Project directory? example-project
+┌ Where should the project be created? ────────────────────┐
+│ example-project                                          │
+└──────────────────────────────────────────────────────────┘
 
-App?
-  > web
-    worker
-    both
+┌ Which services should your application run? ─────────────┐
+│ › ◼ Web     HTTP server with FastAPI routes and a health…│
+│   ◻ Worker  TaskIQ background jobs with a Redis broker   │
+└─────────────────────── space to toggle, enter to confirm ┘
 
-Database?
-    none
-  > sqlite
-    postgres
-    mysql
+┌ Which database will your application use? ───────────────┐
+│   ○ None        No ORM or migrations                     │
+│ › ● SQLite      File-based, no server required           │
+│   ○ PostgreSQL  asyncpg driver                           │
+│   ○ MySQL       aiomysql driver                          │
+└──────────────────────────────────────────────────────────┘
 
-Frontend?
-  > none
-    react
-    vue
+┌ Which frontend would you like to install? ───────────────┐
+│ › ● None   API only                                      │
+│   ○ React  Inertia, React, TypeScript and Tailwind       │
+│   ○ Vue    Inertia, Vue, TypeScript and Tailwind         │
+└──────────────────────────────────────────────────────────┘
 
-Create this application?
-  > Yes
-    No
+┌ Create the application with these settings? ─────────────┐
+│ › ● Yes                                                  │
+│   ○ No                                                   │
+└──────────────────────────────────────────────────────────┘
 
 Creating application...
 Installing Python dependencies...
@@ -63,7 +68,7 @@ Installing Python dependencies...
 Your application is ready.
 ```
 
-Skip the directory question when it was supplied as an argument. Default to a web application with no frontend. Selecting a queue-only application skips frontend selection and generates no HTTP server or frontend files. The combined choice configures both services.
+Skip the directory question when it was supplied as an argument. Default to a web application with no frontend. Prompts use arrow keys, space and enter in a terminal ([ADR 023](../adr/023-interactive-installer-prompts.md)); on Windows, piped input and in tests the same questions fall back to numbered Cleo prompts. The services question is multi-select; choosing both creates the combined application. Selecting a queue-only application skips frontend selection and generates no HTTP server or frontend files. The combined choice configures both services.
 
 Worker and combined choices reuse the TaskIQ integration from `example/queue-app/` through generated application-local providers. No framework queue extra is required. Database selection is independent of application type and defaults to SQLite; choosing None omits ORM configuration and dependencies.
 

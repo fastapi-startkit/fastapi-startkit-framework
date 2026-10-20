@@ -1,13 +1,31 @@
 import shlex
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 from cleo.commands.command import Command
 from cleo.helpers import argument, option
 
 from .plan import InstallOptions, build_plan, validate_options
+from .prompts import Choice, ClassicPrompts, Prompter, Terminal
 from .writer import write_plan
+
+SERVICES = [
+    Choice("web", "Web", "HTTP server with FastAPI routes and a health check"),
+    Choice("worker", "Worker", "TaskIQ background jobs with a Redis broker"),
+]
+DATABASES = [
+    Choice("none", "None", "No ORM or migrations"),
+    Choice("sqlite", "SQLite", "File-based, no server required"),
+    Choice("postgres", "PostgreSQL", "asyncpg driver"),
+    Choice("mysql", "MySQL", "aiomysql driver"),
+]
+FRONTENDS = [
+    Choice("none", "None", "API only"),
+    Choice("react", "React", "Inertia, React, TypeScript and Tailwind"),
+    Choice("vue", "Vue", "Inertia, Vue, TypeScript and Tailwind"),
+]
 
 
 class InitCommand(Command):
@@ -28,32 +46,36 @@ class InitCommand(Command):
         except (ValueError, OSError) as error:
             self.line_error(str(error), style="error")
             return 1
+        except KeyboardInterrupt:
+            self.line_error("Cancelled.", style="error")
+            return 1
 
     def create_project(self) -> int:
         interactive = self.io.is_interactive() and not self.option("no-interaction")
+        prompts = self.prompts() if interactive else None
         directory = self.argument("directory")
         if not directory:
-            if not interactive:
+            if prompts is None:
                 raise ValueError("A destination directory is required with --no-interaction.")
-            directory = self.ask("Project directory?", default="example-project")
+            directory = prompts.text("Where should the project be created?", "example-project")
         selections = {
             "app": self.option("app") or "web",
             "database": self.option("database") or "sqlite",
             "frontend": self.option("frontend") or "none",
         }
         validate_options(InstallOptions(Path(directory), **selections))
-        if interactive:
-            for name, choices in (
-                ("app", ["web", "worker", "both"]),
-                ("database", ["none", "sqlite", "postgres", "mysql"]),
-                ("frontend", ["none", "react", "vue"]),
-            ):
-                if name == "frontend" and selections["app"] == "worker":
-                    continue
-                if self.option(name) is None:
-                    selections[name] = self.choice(
-                        f"{name.capitalize()}?", choices, default=choices.index(selections[name]), attempts=3
-                    )
+        if prompts is not None:
+            if self.option("app") is None:
+                services = prompts.multiselect("Which services should your application run?", SERVICES, ["web"])
+                selections["app"] = "both" if len(services) == len(SERVICES) else services[0]
+            if self.option("database") is None:
+                selections["database"] = prompts.select(
+                    "Which database will your application use?", DATABASES, selections["database"]
+                )
+            if self.option("frontend") is None and selections["app"] != "worker":
+                selections["frontend"] = prompts.select(
+                    "Which frontend would you like to install?", FRONTENDS, selections["frontend"]
+                )
         plan = build_plan(InstallOptions(Path(directory), **selections))
         command = ["uv", "sync"]
         self.line(f"Destination: {plan.directory}")
@@ -69,7 +91,7 @@ class InitCommand(Command):
             self.line("Frontend dependencies: npm install (run after generation; requires Node.js 22.12+)")
         if self.option("dry-run"):
             return 0
-        if interactive and not self.confirm("Create this application?", default=True):
+        if prompts is not None and not prompts.confirm("Create the application with these settings?", default=True):
             return 0
         if not self.option("no-deps") and shutil.which("uv") is None:
             raise ValueError("uv is required to install dependencies. Install uv or pass --no-deps.")
@@ -108,3 +130,9 @@ class InitCommand(Command):
         if selections["database"] != "none":
             self.line("Migrate: uv run python artisan db:migrate")
         return 0
+
+    def prompts(self) -> Prompter | ClassicPrompts:
+        stream = getattr(self.io.input, "stream", None) or sys.stdin
+        if Terminal.supported(stream, sys.stdout):
+            return Prompter(Terminal(stream, sys.stdout))
+        return ClassicPrompts(self)
