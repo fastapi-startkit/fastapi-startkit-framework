@@ -79,7 +79,7 @@ The summary shows the resolved destination, selected features, files, extras, an
 | Selection | Generated setup |
 |---|---|
 | All applications | Standalone `pyproject.toml`, Python version pin, `uv.lock` after dependency installation, `.env.example`, local `.env`, `artisan`, bootstrap, configuration, providers, storage, and a minimal smoke test |
-| Web | FastAPI dependency extra, HTTP provider, routes, and a working health endpoint |
+| Web | FastAPI dependency extra, HTTP provider, a class-based `HomeController` in `app/http/controllers/`, routes that register it, and a working health endpoint |
 | SQLite/PostgreSQL/MySQL | Database and driver extras, typed database configuration, migrations, seeders, and driver-specific environment keys; SQLite also gets its database directory |
 | Worker | TaskIQ and its Redis transport, broker configuration through environment variables, worker entry point, and an example task |
 | Web + worker | Both setups, sharing application configuration and managing the broker through the HTTP lifespan |

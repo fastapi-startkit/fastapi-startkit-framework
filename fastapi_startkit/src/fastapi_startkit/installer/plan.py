@@ -96,9 +96,15 @@ def define_web() -> Section:
             "config/fastapi.py": "base/fastapi.py",
             "providers/fastapi_provider.py": "base/provider.py",
             "routes/api.py": "base/routes.py",
+            "app/http/controllers/home_controller.py": "base/controller.py",
             "tests/test_application.py": "base/test_application.py",
         },
-        files={"routes/__init__.py": ""},
+        files={
+            "routes/__init__.py": "",
+            "app/__init__.py": "",
+            "app/http/__init__.py": "",
+            "app/http/controllers/__init__.py": "",
+        },
         imports=(
             "from config.fastapi import FastAPIConfig",
             "from providers.fastapi_provider import FastapiProvider",
@@ -153,7 +159,7 @@ def define_frontend(frontend: str) -> Section:
     page = "Home.tsx" if frontend == "react" else "Home.vue"
     return Section(
         templates={
-            "routes/api.py": "frontend/routes.py",
+            "app/http/controllers/home_controller.py": "frontend/controller.py",
             "config/vite.py": "frontend/config.py",
             "resources/templates/index.html": "frontend/index.html",
             "resources/css/app.css": "frontend/app.css",

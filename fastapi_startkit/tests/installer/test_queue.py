@@ -35,6 +35,7 @@ def test_queue_plans_install_taskiq_and_preserve_optional_http(tmp_path, app, da
     assert ("config/fastapi.py" in plan.files) == (app == "both")
     assert ("routes/api.py" in plan.files) == (app == "both")
     assert ("routes/__init__.py" in plan.files) == (app == "both")
+    assert ("app/http/controllers/home_controller.py" in plan.files) == (app == "both")
     assert ("fastapi," in plan.dependency or "fastapi]" in plan.dependency) == (app == "both")
     assert "[]" not in plan.dependency
     for name, content in plan.files.items():

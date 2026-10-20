@@ -1,3 +1,5 @@
+import sys
+import importlib
 import ast
 import json
 import tomllib
@@ -31,6 +33,8 @@ def test_web_defines_http_routes_and_server_provider():
     section = define_web()
     assert section.extras == ("fastapi",)
     assert "routes/api.py" in section.templates
+    assert section.templates["app/http/controllers/home_controller.py"] == "base/controller.py"
+    assert {"app/__init__.py", "app/http/__init__.py", "app/http/controllers/__init__.py"} <= set(section.files)
     assert "tests/test_application.py" in section.templates
     assert "(FastapiProvider, FastAPIConfig)" in section.providers
 
@@ -99,7 +103,8 @@ def test_frontend_defines_matching_inertia_assets(frontend, entry, page, package
     assert "@tailwindcss/vite" in metadata["devDependencies"]
     assert "tailwindcss()" in rendered["vite.config.ts"]
     assert '@import "tailwindcss";' in rendered["resources/css/app.css"]
-    assert "Inertia.render" in rendered["routes/api.py"]
+    assert "Inertia.render" in rendered["app/http/controllers/home_controller.py"]
+    assert "HomeController" in rendered["routes/api.py"]
     assert entry in rendered["resources/templates/index.html"]
 
 
@@ -147,12 +152,20 @@ def test_metadata_creates_standalone_project_with_exact_dependency():
 
 
 @pytest.mark.parametrize("frontend", ["none", "react", "vue"])
-async def test_routes_bind_controller_actions(frontend):
+async def test_routes_bind_controller_actions(frontend, tmp_path, monkeypatch):
     rendered = render_sections((define_base("example-app"), define_web(), define_frontend(frontend)))
-    namespace = {}
-    exec(compile(rendered["routes/api.py"], "routes/api.py", "exec"), namespace)
-    controller = namespace["controller"]
-    routes = {route.path: route.endpoint for route in namespace["router"].router.routes}
+    for name, content in rendered.items():
+        if name.startswith(("app/", "routes/")):
+            path = tmp_path / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content)
+    monkeypatch.syspath_prepend(str(tmp_path))
+    for name in [name for name in sys.modules if name.split(".")[0] in ("app", "routes")]:
+        monkeypatch.delitem(sys.modules, name)
+    routes_module = importlib.import_module("routes.api")
+    controller = routes_module.controller
+    assert type(controller).__module__ == "app.http.controllers.home_controller"
+    routes = {route.path: route.endpoint for route in routes_module.router.router.routes}
     assert routes["/"].__self__ is controller
     assert routes["/health"].__self__ is controller
     assert await routes["/health"]() == {"status": "ok"}
