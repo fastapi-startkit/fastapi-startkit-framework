@@ -1,7 +1,8 @@
 import inspect
+from collections.abc import Callable, Sequence
 from enum import Enum
 from types import ModuleType
-from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Type, Union
+from typing import Any, TypedDict, Unpack
 
 from fastapi import APIRouter, params
 from fastapi.datastructures import DefaultPlaceholder
@@ -10,53 +11,52 @@ from fastapi.types import IncEx
 from starlette.responses import Response
 from starlette.routing import BaseRoute
 from starlette.types import ASGIApp, Lifespan
-from typing_extensions import TypedDict, Unpack
 
 
 class RouterOptions(TypedDict, total=False):
     prefix: str
-    tags: Optional[List[Union[str, Enum]]]
-    dependencies: Optional[Sequence[params.Depends]]
-    default_response_class: Type[Response]
-    responses: Optional[Dict[Union[int, str], Dict[str, Any]]]
-    callbacks: Optional[List[BaseRoute]]
-    routes: Optional[List[BaseRoute]]
+    tags: list[str | Enum] | None
+    dependencies: Sequence[params.Depends] | None
+    default_response_class: type[Response]
+    responses: dict[int | str, dict[str, Any]] | None
+    callbacks: list[BaseRoute] | None
+    routes: list[BaseRoute] | None
     redirect_slashes: bool
-    default: Optional[ASGIApp]
-    dependency_overrides_provider: Optional[Any]
-    route_class: Type[APIRoute]
-    on_startup: Optional[Sequence[Callable[[], Any]]]
-    on_shutdown: Optional[Sequence[Callable[[], Any]]]
-    lifespan: Optional[Lifespan[Any]]
-    deprecated: Optional[bool]
+    default: ASGIApp | None
+    dependency_overrides_provider: Any | None
+    route_class: type[APIRoute]
+    on_startup: Sequence[Callable[[], Any]] | None
+    on_shutdown: Sequence[Callable[[], Any]] | None
+    lifespan: Lifespan[Any] | None
+    deprecated: bool | None
     include_in_schema: bool
     generate_unique_id_function: Callable[[APIRoute], str]
 
 
 class RouteOptions(TypedDict, total=False):
     response_model: Any
-    status_code: Optional[int]
-    tags: Optional[List[Union[str, Enum]]]
-    dependencies: Optional[Sequence[params.Depends]]
-    summary: Optional[str]
-    description: Optional[str]
+    status_code: int | None
+    tags: list[str | Enum] | None
+    dependencies: Sequence[params.Depends] | None
+    summary: str | None
+    description: str | None
     response_description: str
-    responses: Optional[Dict[Union[int, str], Dict[str, Any]]]
-    deprecated: Optional[bool]
-    operation_id: Optional[str]
-    response_model_include: Optional[IncEx]
-    response_model_exclude: Optional[IncEx]
+    responses: dict[int | str, dict[str, Any]] | None
+    deprecated: bool | None
+    operation_id: str | None
+    response_model_include: IncEx | None
+    response_model_exclude: IncEx | None
     response_model_by_alias: bool
     response_model_exclude_unset: bool
     response_model_exclude_defaults: bool
     response_model_exclude_none: bool
     include_in_schema: bool
-    response_class: Union[Type[Response], DefaultPlaceholder]
-    name: Optional[str]
-    route_class_override: Optional[Type[APIRoute]]
-    callbacks: Optional[List[BaseRoute]]
-    openapi_extra: Optional[Dict[str, Any]]
-    generate_unique_id_function: Union[Callable[[APIRoute], str], DefaultPlaceholder]
+    response_class: type[Response] | DefaultPlaceholder
+    name: str | None
+    route_class_override: type[APIRoute] | None
+    callbacks: list[BaseRoute] | None
+    openapi_extra: dict[str, Any] | None
+    generate_unique_id_function: Callable[[APIRoute], str] | DefaultPlaceholder
 
 
 class Router:
@@ -67,7 +67,7 @@ class Router:
         self,
         path: str,
         action: Callable[..., Any],
-        methods: List[str],
+        methods: list[str],
         **kwargs: Unpack[RouteOptions],
     ) -> None:
         kwargs["responses"] = kwargs.get("responses") or {}
@@ -97,12 +97,12 @@ class Router:
     def resource(
         self,
         resource: str,
-        controller: Union[ModuleType, Any],
+        controller: ModuleType | Any,
         *,
-        only: Optional[Set[str]] = None,
-        excepts: Optional[Set[str]] = None,
-        names: Optional[Dict[str, str]] = None,
-        parameters: Optional[Dict[str, str]] = None,
+        only: set[str] | None = None,
+        excepts: set[str] | None = None,
+        names: dict[str, str] | None = None,
+        parameters: dict[str, str] | None = None,
     ) -> None:
         if inspect.isclass(controller):
             controller = controller()
