@@ -7,14 +7,16 @@ import json
 import operator
 import sys
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from . import recording
 from . import state as agent_state
 
 if TYPE_CHECKING:
+    from langchain_core.messages import ToolCall
+
     from .agent import Agent
     from .document import Document
 
@@ -36,7 +38,7 @@ def _frame_text(frame: Any) -> str:
     return str(frame)
 
 
-def _chunk_event(text: str) -> dict:
+def _chunk_event(text: str) -> dict[str, Any]:
     """A replayed on_chat_model_stream event, shaped like astream_events yields."""
     from langchain_core.messages import AIMessageChunk  # noqa: PLC0415
 
@@ -51,11 +53,11 @@ def _chunk_event(text: str) -> dict:
     }
 
 
-def _new_token_totals() -> dict:
+def _new_token_totals() -> dict[str, int]:
     return {"input": 0, "output": 0, "cache": 0, "total": 0}
 
 
-def _text_state(content: str, tool_calls: list | None = None) -> dict:
+def _text_state(content: str, tool_calls: list[ToolCall] | None = None) -> dict[str, Any]:
     """A minimal one-message state for legacy/fallback shapes."""
     from langchain_core.messages import AIMessage  # noqa: PLC0415
 
@@ -80,7 +82,7 @@ class TokenQuery:
         "!=": operator.ne,
     }
 
-    def __init__(self, totals: dict) -> None:
+    def __init__(self, totals: dict[str, int]) -> None:
         self._totals = totals
         self._checks: list[tuple[str, str, float]] = []
 
@@ -101,19 +103,19 @@ class TokenQuery:
 
 
 class AgentFake:
-    def __init__(self, agent_cls: type[Agent], responses: list) -> None:
+    def __init__(self, agent_cls: type[Agent], responses: list[Any]) -> None:
         self._agent_cls = agent_cls
         self._responses = list(responses)
         self._agent = agent_cls()
         self._agent.messages = self._history  # type: ignore[method-assign]
-        self._records: list[dict] = []
-        self._last_response: dict | None = None
+        self._records: list[dict[str, Any]] = []
+        self._last_response: dict[str, Any] | None = None
         self.last_elapsed: float | None = None
-        self._tokens: dict = _new_token_totals()
+        self._tokens: dict[str, int] = _new_token_totals()
         self._response_time: float = 0.0
         self._trajectory: list[str] = []
 
-    def _history(self) -> list:
+    def _history(self) -> list[dict[str, Any]]:
         return self._records
 
     def _subject(self) -> Agent:
@@ -147,8 +149,8 @@ class AgentFake:
         *,
         model: str | None = None,
         attachments: list[Document] | None = None,
-        provider_options: dict | None = None,
-    ) -> dict:
+        provider_options: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         start = time.monotonic()
         self._last_response = await self._agent.prompt(
             message, model=model, attachments=attachments, provider_options=provider_options
@@ -158,8 +160,8 @@ class AgentFake:
         return self._last_response
 
     async def stream(
-        self, message: str, *, model: str | None = None, provider_options: dict | None = None
-    ) -> AsyncIterator[dict]:
+        self, message: str, *, model: str | None = None, provider_options: dict[str, Any] | None = None
+    ) -> AsyncIterator[dict[str, Any]]:
         chunks: list[str] = []
         # Drive the runner directly so we can read the structured response it
         # captures while streaming (content + tool_calls), not just joined text.
@@ -172,14 +174,14 @@ class AgentFake:
         self._last_response = state
         self._remember(message, state)
 
-    def _remember(self, message: str, state: dict) -> None:
+    def _remember(self, message: str, state: dict[str, Any]) -> None:
         self._accumulate_tokens(state)
         self._response_time += agent_state.runtime(state)
         self._trajectory.extend(tc.get("name", "") for tc in agent_state.tool_calls(state))
         self._records.append({"role": "user", "content": message})
         self._records.append({"role": "assistant", "content": agent_state.text(state)})
 
-    def _accumulate_tokens(self, state: dict) -> None:
+    def _accumulate_tokens(self, state: dict[str, Any]) -> None:
         """Add a turn's token usage — read from each AI message's usage_metadata —
         to the running totals."""
         recording.accumulate_uses(agent_state.messages(state), self._tokens)
@@ -229,7 +231,7 @@ class AgentFake:
         self._trajectory = []
         return self
 
-    def _require_response(self) -> dict:
+    def _require_response(self) -> dict[str, Any]:
         assert self._last_response is not None, "No prompt() call has been made yet."
         return self._last_response
 
@@ -361,10 +363,12 @@ class AgentFake:
         provider: str | None = None,
         *,
         fallbacks: tuple[str, ...] = (),
-    ) -> dict:
+    ) -> dict[str, Any]:
         return await self._judge_live(model, expectation, content, provider)
 
-    async def _judge_live(self, model: str | None, expectation: str, content: str, provider: str | None = None) -> dict:
+    async def _judge_live(
+        self, model: str | None, expectation: str, content: str, provider: str | None = None
+    ) -> dict[str, Any]:
         from .judge import JudgeAgent  # noqa: PLC0415
 
         judge = JudgeAgent()
@@ -372,7 +376,7 @@ class AgentFake:
         judge.provider = provider
         return await judge.judge(expectation, content)
 
-    def __call__(self, func: Callable) -> Callable:
+    def __call__(self, func: Callable[..., Any]) -> Callable[..., Any]:
         if inspect.iscoroutinefunction(func):
 
             @functools.wraps(func)
@@ -391,7 +395,7 @@ class AgentFake:
 
 
 class AssertToolCall:
-    def __init__(self, data: dict) -> None:
+    def __init__(self, data: dict[str, Any]) -> None:
         self.name = data.get("name", "")
         self.args = data.get("args") or {}
         self.id = data.get("id")
@@ -402,19 +406,19 @@ class AssertToolCall:
 
 
 class AgentRecordFake(AgentFake):
-    def __init__(self, real: Agent, cassette: str | None = None, messages: list | None = None) -> None:
+    def __init__(self, real: Agent, cassette: str | None = None, messages: list[Any] | None = None) -> None:
         self._real = real
         self.cassette: Path | None = Path(cassette) if cassette else None
-        self._seed_messages: list = list(messages or [])
-        self._records: list[dict] = []
+        self._seed_messages: list[Any] = list(messages or [])
+        self._records: list[dict[str, Any]] = []
         self._real.messages = self._history  # type: ignore[method-assign]
-        self._last_response: dict | None = None
+        self._last_response: dict[str, Any] | None = None
         self.last_elapsed: float | None = None
-        self._tokens: dict = _new_token_totals()
+        self._tokens: dict[str, int] = _new_token_totals()
         self._response_time: float = 0.0
         self._trajectory: list[str] = []
 
-    def _history(self) -> list:
+    def _history(self) -> list[Any]:
         return self._seed_messages + self._records
 
     def _subject(self) -> Agent:
@@ -438,22 +442,22 @@ class AgentRecordFake(AgentFake):
         )
         return hashlib.sha256(payload.encode()).hexdigest()
 
-    def _load(self) -> tuple[Path, dict]:
+    def _load(self) -> tuple[Path, dict[str, Any]]:
         cassette = self.cassette
         assert cassette is not None, "AgentRecordFake has no cassette resolved"
         return cassette, (json.loads(cassette.read_text()) if cassette.exists() else {})
 
-    def _save(self, cassette: Path, store: dict, key: str, value: Any) -> None:
+    def _save(self, cassette: Path, store: dict[str, Any], key: str, value: Any) -> None:
         store[key] = value
         cassette.parent.mkdir(parents=True, exist_ok=True)
         cassette.write_text(json.dumps(store, indent=2, sort_keys=True))
 
-    def _turn(self, message: str, state: dict, chunks: list[str] | None = None) -> list[dict]:
+    def _turn(self, message: str, state: dict[str, Any], chunks: list[str] | None = None) -> list[dict[str, Any]]:
         """Build the ordered per-turn transcript persisted to the cassette:
         the human input followed by the turn's AI/tool messages. Streamed
         ``chunks`` are attached to the last model entry so replay can re-emit
         them."""
-        entries: list[dict] = [recording.human(message)]
+        entries: list[dict[str, Any]] = [recording.human(message)]
         entries.extend(recording.entries_from_messages(agent_state.messages(state)))
         if chunks:
             for entry in reversed(entries):
@@ -463,14 +467,14 @@ class AgentRecordFake(AgentFake):
         return entries
 
     @staticmethod
-    def _state_from_cache(value: Any) -> dict:
+    def _state_from_cache(value: Any) -> dict[str, Any]:
         if recording.is_transcript(value):
             return recording.to_state(value)
         if isinstance(value, dict) and "content" in value:  # legacy flat shape
             return _text_state(_joined(value.get("content", "")), value.get("tool_calls") or [])
         return _text_state(_joined(value))
 
-    def _remember_turn(self, message: str, state: dict) -> None:
+    def _remember_turn(self, message: str, state: dict[str, Any]) -> None:
         self._accumulate_tokens(state)
         self._response_time += agent_state.runtime(state)
         self._trajectory.extend(tc.get("name", "") for tc in agent_state.tool_calls(state))
@@ -486,8 +490,8 @@ class AgentRecordFake(AgentFake):
         *,
         model: str | None = None,
         attachments: list[Document] | None = None,
-        provider_options: dict | None = None,
-    ) -> dict:
+        provider_options: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         cassette, store = self._load()
         key = self._key(message, attachments)
         start = time.monotonic()
@@ -505,8 +509,8 @@ class AgentRecordFake(AgentFake):
         return state
 
     async def stream(
-        self, message: str, *, model: str | None = None, provider_options: dict | None = None
-    ) -> AsyncIterator[dict]:
+        self, message: str, *, model: str | None = None, provider_options: dict[str, Any] | None = None
+    ) -> AsyncIterator[dict[str, Any]]:
         cassette, store = self._load()
         key = self._key(message, None)
         if key in store:
@@ -543,7 +547,7 @@ class AgentRecordFake(AgentFake):
         assert cassette is not None, "AgentRecordFake has no cassette resolved"
         return cassette.with_name(f"{cassette.stem}.judge{cassette.suffix}")
 
-    def _load_judge(self) -> tuple[Path, dict]:
+    def _load_judge(self) -> tuple[Path, dict[str, Any]]:
         path = self._judge_cassette()
         return path, (json.loads(path.read_text()) if path.exists() else {})
 
@@ -555,7 +559,7 @@ class AgentRecordFake(AgentFake):
         provider: str | None = None,
         *,
         fallbacks: tuple[str, ...] = (),
-    ) -> dict:
+    ) -> dict[str, Any]:
         path, store = self._load_judge()
         _, legacy = self._load()  # verdicts recorded before the sidecar split lived here
         for candidate in (content, *fallbacks):
@@ -591,7 +595,7 @@ class AgentRecordFake(AgentFake):
     def __exit__(self, *_exc: Any) -> bool:
         return False
 
-    def __call__(self, func: Callable) -> Callable:
+    def __call__(self, func: Callable[..., Any]) -> Callable[..., Any]:
         self._resolve_cassette(inspect.getfile(func), func.__qualname__)
 
         if inspect.iscoroutinefunction(func):
