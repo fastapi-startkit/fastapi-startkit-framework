@@ -1,0 +1,11 @@
+from dataclasses import dataclass, field
+
+from fastapi_startkit.environment import env
+from fastapi_startkit.masoniteorm.config.config import ${driver_class}
+from fastapi_startkit.masoniteorm.config.database import DatabaseConfig as BaseDatabaseConfig
+
+
+@dataclass
+class DatabaseConfig(BaseDatabaseConfig):
+    default: str = env("DB_CONNECTION", "${driver}")
+    connections: dict = field(default_factory=lambda: {"${driver}": ${driver_class}()})

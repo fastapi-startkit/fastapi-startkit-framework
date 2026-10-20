@@ -1,0 +1,14 @@
+import '../css/app.css'
+import { createInertiaApp } from '@inertiajs/react'
+import { createRoot } from 'react-dom/client'
+import Home from './Pages/Home'
+
+createInertiaApp({
+    resolve: name => {
+        if (name !== 'Home') throw new Error(`Unknown page: $${name}`)
+        return Home
+    },
+    setup({ el, App, props }) {
+        createRoot(el).render(<App {...props} />)
+    },
+})

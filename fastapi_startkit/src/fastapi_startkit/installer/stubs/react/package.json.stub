@@ -1,0 +1,23 @@
+{
+  "name": "${project_name}",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "dependencies": {
+    "@inertiajs/react": "^3.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "vite": "^8.0.0",
+    "@vitejs/plugin-react": "^6.0.0",
+    "fastapi-vite-plugin": "^0.0.3",
+    "typescript": "^6.0.0"
+  }
+}

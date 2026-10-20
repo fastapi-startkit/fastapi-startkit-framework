@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>FastAPI Startkit</title>
+    ${react_refresh}
+    {{ vite('${entry}') }}
+    {{ inertia_head(page) }}
+</head>
+<body>
+    {{ inertia(page) }}
+</body>
+</html>

@@ -1,0 +1,7 @@
+<template>
+    <main>
+        <h1>Welcome to FastAPI Startkit</h1>
+        <p>Your Vue application is ready.</p>
+        <a href="/docs">Explore the API</a>
+    </main>
+</template>

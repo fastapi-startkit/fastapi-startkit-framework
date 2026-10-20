@@ -1,8 +1,8 @@
 # Project scaffolding
 
-Status: Proposed. The commands and wizard below describe the intended experience; the installer entry point and hosted bootstrap do not exist yet.
+Status: Installer implemented for web applications with optional database and React/Vue frontends; available through uvx after the next package release. Queue support, existing-project installation, and the hosted shell bootstrap remain future work.
 
-Related proposal: [PR #288 — project scaffolding](https://github.com/fastapi-startkit/fastapi-startkit-framework/pull/288). This is a feature proposal; the installer is not implemented. Reuse the proposed standalone Cleo CLI, bundled templates, generation plan, and database selection. The new-project command is `init`; any existing-project `install` workflow remains separate.
+Related proposal: [PR #288 — project scaffolding](https://github.com/fastapi-startkit/fastapi-startkit-framework/pull/288). The initial proposal is implemented by the standalone `init` command. It uses a standalone Cleo CLI, bundled templates, a generation plan, and database selection. The new-project command is `init`; any existing-project `install` workflow remains separate.
 
 ## Goal
 
@@ -10,7 +10,7 @@ Start with one command, answer a few questions, and receive an application confi
 
 ## Entry points
 
-For users who already have uv, the proposed command is:
+For users who already have uv, the command after release is:
 
 ```shell
 uvx fastapi-startkit init
@@ -22,7 +22,7 @@ Users can optionally supply a project directory:
 uvx fastapi-startkit init example-project
 ```
 
-`uvx` runs a command supplied by a package in an isolated tool environment. Since the package and executable share the name `fastapi-startkit`, no `--from` option is needed ([uv tools guide](https://docs.astral.sh/uv/guides/tools/)). Users need uv installed, but do not need to install fastapi-startkit first. Shipping these commands requires adding a `fastapi-startkit` console entry point to the package, backed by a bare Cleo application that can run before a framework application exists.
+`uvx` runs a command supplied by a package in an isolated tool environment. Since the package and executable share the name `fastapi-startkit`, no `--from` option is needed ([uv tools guide](https://docs.astral.sh/uv/guides/tools/)). Users need uv installed, but do not need to install fastapi-startkit first. The package provides a `fastapi-startkit` console entry point backed by a bare Cleo application that runs before a framework application exists. For development before publication, run `uvx --from /path/to/built.whl fastapi-startkit init example-project`.
 
 A future macOS/Linux bootstrap can provide the requested shell experience. The following illustrates its shape; `HOST` must be replaced by an actual project-controlled host before publication:
 
@@ -35,27 +35,23 @@ The bootstrap locates uv or installs it using its [official installer](https://d
 ## Interactive flow
 
 ```text
-Welcome to FastAPI Startkit
-
 Project directory? example-project
 
-What are you building?
-  > Web application (FastAPI)
-    Queue worker (TaskIQ)
-    Web application + queue worker
+App?
+  > web
 
 Database?
-    None
-  > SQLite
-    PostgreSQL
-    MySQL
+    none
+  > sqlite
+    postgres
+    mysql
 
-Frontend?                         [web applications only]
-  > None (API only)
-    React (Inertia + Vite)
-    Vue (Inertia + Vite)
+Frontend?
+  > none
+    react
+    vue
 
-Create example-project with FastAPI, SQLite, and React?
+Create this application?
   > Yes
     No
 
@@ -75,14 +71,14 @@ The summary shows the resolved destination, selected features, files, extras, an
 
 | Selection | Generated setup |
 |---|---|
-| All applications | Standalone `pyproject.toml`, Python version pin, `uv.lock`, `.env.example`, local `.env`, `artisan`, bootstrap, configuration, providers, storage, and a minimal smoke test |
+| All applications | Standalone `pyproject.toml`, Python version pin, `uv.lock` after dependency installation, `.env.example`, local `.env`, `artisan`, bootstrap, configuration, providers, storage, and a minimal smoke test |
 | Web | FastAPI dependency extra, HTTP provider, routes, and a working health endpoint |
 | SQLite/PostgreSQL/MySQL | Database and driver extras, typed database configuration, migrations, seeders, and driver-specific environment keys; SQLite also gets its database directory |
 | Worker | TaskIQ and its Redis transport, broker configuration through environment variables, worker entry point, and an example task |
-| Web + worker | Both setups, sharing application configuration |
+| Web + worker | Both setups, sharing application configuration (future work) |
 | React or Vue | Inertia and Vite integration, selected frontend dependencies in `package.json`, root HTML template, and a working welcome page; frontend installation creates the lockfile |
 
-Use `application/` as the baseline, `example/queue-app/` as a TaskIQ reference, and the existing Inertia/Vite examples for frontend integration. Ship normalized `string.Template` stubs inside the package wheel, as proposed in PR #288, rather than fetching examples at runtime. TaskIQ is currently an example integration, not a framework extra; enable the worker template only after framework queue support is available. Each frontend needs its own validated template before it is offered in a released wizard.
+Use available starter files as references, `example/queue-app/` as a TaskIQ reference, and the existing Inertia/Vite examples for frontend integration. Ship normalized `string.Template` stubs inside the package wheel, as proposed in PR #288, rather than fetching examples at runtime. TaskIQ is currently an example integration, not a framework extra; enable the worker template only after framework queue support is available. Each frontend needs its own validated template before it is offered in a released wizard.
 
 Generate only the dependencies, providers, and files required by the chosen features. Worker output includes Redis connection instructions; frontend output lists its supported Node.js prerequisite. Do not install Node.js or start Redis automatically. Node.js is required when the user runs the printed frontend commands.
 
@@ -107,8 +103,16 @@ Frontend applications also receive `npm install` and `npm run dev`. Worker appli
 - Support `--dry-run` to show the complete plan without writing files or installing dependencies.
 - Support `--no-deps` to generate files and print dependency commands instead of installing Python dependencies. Explain that the environment and `uv.lock` will be ready only after those commands run.
 
-Proposed automation example:
+Automation example after release:
 
 ```shell
 uvx fastapi-startkit init example-project --app web --database sqlite --frontend vue --no-interaction
 ```
+
+## Implementation
+
+The standalone CLI lives in `fastapi_startkit.installer`. `InstallOptions` is validated before a generation plan renders bundled `.stub` files. The writer rechecks the destination before using exclusive file creation. A frontend app receives a fresh session secret in `.env`; `.env.example` keeps a placeholder.
+
+Generated metadata pins the framework to the installer version and includes only the selected extras. Dependency installation runs `uv sync` in the destination, installing the generated project and creating `uv.lock`. `--no-deps` prints this command instead. Frontend dependency installation remains manual.
+
+Validation covers all twelve database/frontend combinations, generated HTTP and Inertia responses, SQLite migrations, file preservation, interactive prompts, failures, and dry runs. React and Vue templates must also pass production builds; the built wheel must expose the command and include all templates.
