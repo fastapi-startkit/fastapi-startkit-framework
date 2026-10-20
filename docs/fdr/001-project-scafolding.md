@@ -2,7 +2,7 @@
 
 Status: Proposed. The commands and wizard below describe the intended experience; the installer entry point and hosted bootstrap do not exist yet.
 
-Related design: [PR #288 — interactive install command](https://github.com/fastapi-startkit/fastapi-startkit-framework/pull/288). That PR contains a proposed ADR, not an implementation. Reuse its standalone Cleo CLI, bundled templates, generation plan, and database selection. This document specifies the new-project onboarding flow; the relationship between its `init` command and the PR's existing-project `install` command is recorded in [ADR 023](../adr/023-interactive-project-scaffolding.md).
+Related proposal: [PR #288 — project scaffolding](https://github.com/fastapi-startkit/fastapi-startkit-framework/pull/288). This is a feature proposal; the installer is not implemented. Reuse the proposed standalone Cleo CLI, bundled templates, generation plan, and database selection. The new-project command is `init`; any existing-project `install` workflow remains separate.
 
 ## Goal
 
@@ -67,7 +67,7 @@ Your application is ready.
 
 Skip the directory question when it was supplied as an argument. Default to a web application with no frontend. Selecting a queue-only application skips frontend selection and generates no HTTP server or frontend files. The combined choice configures both services.
 
-Worker and combined choices describe the intended experience after queue support ships. Until the separate queue ADR and implementation from PR #288 land, offer only the web choice and reject worker requests before creating files. Database selection is independent of application type and defaults to SQLite; choosing None omits ORM configuration and dependencies.
+Worker and combined choices describe the intended experience after queue support ships. Until framework queue support is implemented, offer only the web choice and reject worker requests before creating files. Database selection is independent of application type and defaults to SQLite; choosing None omits ORM configuration and dependencies.
 
 The summary shows the resolved destination, selected features, files, extras, and dependency commands before file generation. Declining exits without creating the project. Show dependency installation steps only when applicable, and report success only after they finish. As in PR #288, print frontend installation commands for the user to run instead of installing Node dependencies during scaffolding.
 
@@ -112,5 +112,3 @@ Proposed automation example:
 ```shell
 uvx fastapi-startkit init example-project --app web --database sqlite --frontend vue --no-interaction
 ```
-
-Design decision: [ADR 023 — Interactive project scaffolding](../adr/023-interactive-project-scaffolding.md).
