@@ -2,6 +2,7 @@ import ast
 import itertools
 import json
 import os
+import runpy
 import subprocess
 import sys
 import tomllib
@@ -234,3 +235,29 @@ def test_generated_class_based_health_test(tmp_path, frontend):
         text=True,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_next_steps_for_frontend_and_server_database(tmp_path, tester):
+    destination = tmp_path / "project"
+    assert tester.execute(f"{destination} -n --no-deps --database postgres --frontend react") == 0
+    output = tester.io.fetch_output()
+    assert "npm install && npm run dev" in output
+    assert "Configure database credentials" in output
+
+
+def test_terminal_prompts_cancel_on_interrupt(tester):
+    with (
+        patch("fastapi_startkit.installer.init_command.Terminal.supported", return_value=True),
+        patch("fastapi_startkit.installer.init_command.Prompter.text", side_effect=KeyboardInterrupt) as text,
+    ):
+        assert tester.execute("--no-deps", interactive=True) == 1
+    text.assert_called_once()
+    assert "Cancelled." in tester.io.fetch_error()
+
+
+def test_cli_module_entry_point(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["fastapi-startkit", "--version"])
+    with pytest.warns(RuntimeWarning), pytest.raises(SystemExit) as exit:
+        runpy.run_module("fastapi_startkit.installer.cli", run_name="__main__")
+    assert exit.value.code == 0
+    assert "Fastapi Startkit" in capsys.readouterr().out
