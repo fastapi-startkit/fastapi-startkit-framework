@@ -1,0 +1,31 @@
+[tool.basedpyright]
+include = ["fastapi_startkit/src/fastapi_startkit", "example"]
+exclude = [
+    "**/tests",
+    "**/migrations",
+    "**/*.backup",
+    "**/*_backup",
+    "**/__pycache__",
+    "**/node_modules",
+    "**/.venv",
+]
+venvPath = "fastapi_startkit"
+venv = ".venv"
+typeCheckingMode = "standard"
+pythonVersion = "3.12"
+executionEnvironments = [
+    { root = "fastapi_startkit/src" },
+    { root = "fastapi_startkit", extraPaths = ["fastapi_startkit/src"] },
+    { root = "example/agents", extraPaths = ["fastapi_startkit/src"] },
+    { root = "example/config-app", extraPaths = ["fastapi_startkit/src"] },
+    { root = "example/console-app", extraPaths = ["fastapi_startkit/src"] },
+    { root = "example/database-app", extraPaths = ["fastapi_startkit/src"] },
+    { root = "example/fastapi-app", extraPaths = ["fastapi_startkit/src"] },
+    { root = "example/inertia-pingcrm-app", extraPaths = ["fastapi_startkit/src"] },
+    { root = "example/mcp-app", extraPaths = ["fastapi_startkit/src"] },
+    { root = "example/mcp-authentication", extraPaths = ["fastapi_startkit/src"] },
+    { root = "example/onefile-app", extraPaths = ["fastapi_startkit/src"] },
+    { root = "example/queue-app", extraPaths = ["fastapi_startkit/src"] },
+    { root = "example/singleline-app", extraPaths = ["fastapi_startkit/src"] },
+    { root = "example/vite-app", extraPaths = ["fastapi_startkit/src"] },
+]
