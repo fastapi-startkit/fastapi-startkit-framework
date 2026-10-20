@@ -253,7 +253,9 @@ class TestAutomaticTimestamps(TestCase):
         assert fresh.updated_at == note.updated_at
 
     async def test_create_keeps_a_supplied_created_at(self):
-        supplied = datetime.datetime(2020, 1, 2, 8, 34, 5, 678000, tzinfo=datetime.timezone(datetime.timedelta(hours=5, minutes=30)))
+        supplied = datetime.datetime(
+            2020, 1, 2, 8, 34, 5, 678000, tzinfo=datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+        )
 
         note = await Note.create({"body": "supplied", "created_at": supplied})
 
@@ -291,7 +293,9 @@ class TestSQLiteDatetimeBinding(TestCase):
 
         await ObservedUser.where("id", user.id).update({"email_verified_at": DateCast().set(written)})
 
-        row = await self.db.connection("default").select_one('SELECT "email_verified_at" FROM "users" WHERE "id" = ?', [user.id])
+        row = await self.db.connection("default").select_one(
+            'SELECT "email_verified_at" FROM "users" WHERE "id" = ?', [user.id]
+        )
         assert row is not None
         assert row["email_verified_at"] == "2024-05-06 11:08:09.123456"
         assert DateCast().get(row["email_verified_at"]) == written
