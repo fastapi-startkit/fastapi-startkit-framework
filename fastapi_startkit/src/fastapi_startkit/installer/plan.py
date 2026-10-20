@@ -86,7 +86,7 @@ def define_base(project_name: str) -> Section:
             "APP_DEBUG": "true",
             "APP_URL": "http://127.0.0.1:8000",
         },
-        substitutions={"project_name": project_name, "middleware": "", "entry": "", "react_refresh": ""},
+        substitutions={"project_name": project_name, "entry": "", "react_refresh": ""},
     )
 
 
@@ -166,14 +166,10 @@ def define_frontend(frontend: str) -> Section:
             "from fastapi_startkit.inertia import InertiaProvider",
             "from fastapi_startkit.vite import ViteProvider",
             "from config.vite import ViteConfig",
-            "from starlette.middleware.sessions import SessionMiddleware",
-            "from fastapi_startkit.environment import value, env",
         ),
         providers=("(ViteProvider, ViteConfig)", "InertiaProvider"),
         extras=("inertia", "vite"),
-        environment={"SESSION_SECRET": "change-me"},
         substitutions={
-            "middleware": 'app.add_middleware(SessionMiddleware, secret_key=value(env("SESSION_SECRET", "")))\n',
             "entry": f"resources/js/app.{extension}",
             "react_refresh": "{{ vite_react_refresh() }}" if frontend == "react" else "",
         },

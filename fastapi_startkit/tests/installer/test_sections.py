@@ -90,7 +90,7 @@ def test_frontend_defines_matching_inertia_assets(frontend, entry, page, package
     assert entry in section.templates
     assert page in section.templates
     assert section.substitutions["entry"] == entry
-    assert section.environment["SESSION_SECRET"] == "change-me"
+    assert "SESSION_SECRET" not in section.environment
     assert section.providers.index("(ViteProvider, ViteConfig)") < section.providers.index("InertiaProvider")
     rendered = render_sections((define_base("example-app"), define_web(), section))
     metadata = json.loads(rendered["package.json"])
@@ -122,9 +122,8 @@ def test_render_sections_combines_providers_without_losing_http_or_database():
     ast.parse(bootstrap)
     assert bootstrap.index("(DatabaseProvider, DatabaseConfig)") < bootstrap.index("(FastapiProvider, FastAPIConfig)")
     assert bootstrap.index("(ViteProvider, ViteConfig)") < bootstrap.index("InertiaProvider,")
-    assert "SessionMiddleware" in bootstrap
+    assert "SessionMiddleware" not in bootstrap
     assert "DB_DATABASE=databases/database.sqlite\n" in rendered[".env"]
-    assert "SESSION_SECRET=change-me\n" in rendered[".env"]
     assert rendered[".env"] == rendered[".env.example"]
     assert "databases/migrations/.gitkeep" in rendered
 

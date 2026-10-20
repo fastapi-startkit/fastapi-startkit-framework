@@ -183,25 +183,13 @@ def test_interactive_prompts(tmp_path, tester):
     assert (destination / "artisan").exists()
 
 
-def test_sessions_get_unique_secrets(tmp_path):
-    secrets = []
-    for name in ("first", "second"):
-        plan = build_plan(InstallOptions(tmp_path / name, frontend="vue"))
-        write_plan(plan)
-        env = (plan.directory / ".env").read_text()
-        assert "SESSION_SECRET=change-me" not in env
-        assert "SESSION_SECRET=change-me" in (plan.directory / ".env.example").read_text()
-        secrets.append(env.split("SESSION_SECRET=")[1].strip())
-    assert secrets[0] != secrets[1]
-
-
 @pytest.mark.parametrize(
     "database,frontend", itertools.product(("none", "sqlite", "postgres", "mysql"), ("none", "react", "vue"))
 )
 def test_generated_application(tmp_path, database, frontend):
     plan = build_plan(InstallOptions(tmp_path / "outside workspace", database=database, frontend=frontend))
     write_plan(plan)
-    env = {key: value for key, value in os.environ.items() if not key.startswith(("APP_", "DB_", "SESSION_"))}
+    env = {key: value for key, value in os.environ.items() if not key.startswith(("APP_", "DB_"))}
     source = Path(__file__).resolve().parents[1] / "src"
     env["PYTHONPATH"] = str(source)
     code = """from fastapi.testclient import TestClient
@@ -236,7 +224,7 @@ def test_generated_class_based_health_test(tmp_path, frontend):
     plan = build_plan(InstallOptions(tmp_path / "application", database="none", frontend=frontend))
     write_plan(plan)
     source = Path(__file__).resolve().parents[1] / "src"
-    env = {key: value for key, value in os.environ.items() if not key.startswith(("APP_", "DB_", "SESSION_"))}
+    env = {key: value for key, value in os.environ.items() if not key.startswith(("APP_", "DB_"))}
     env["PYTHONPATH"] = str(source)
     result = subprocess.run(
         [sys.executable, "-m", "pytest", "tests/test_application.py::TestApplication::test_health", "-q"],

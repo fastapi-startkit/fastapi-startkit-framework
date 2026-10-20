@@ -1,5 +1,3 @@
-import secrets
-
 from .plan import Plan, validate_destination
 
 
@@ -9,8 +7,6 @@ def write_plan(plan: Plan) -> None:
     for name, content in plan.files.items():
         path = plan.directory / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        if name == ".env":
-            content = content.replace("SESSION_SECRET=change-me", f"SESSION_SECRET={secrets.token_urlsafe(32)}")
         with path.open("x", encoding="utf-8") as stream:
             stream.write(content)
     artisan = plan.directory / "artisan"

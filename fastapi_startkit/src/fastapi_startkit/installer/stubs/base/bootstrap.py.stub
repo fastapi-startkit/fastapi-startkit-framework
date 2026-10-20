@@ -9,4 +9,3 @@ app = Application(
         ${providers},
     ],
 )
-${middleware}
