@@ -1,0 +1,11 @@
+from pathlib import Path
+
+${imports}
+
+app = Application(
+    base_path=Path(__file__).resolve().parent.parent,
+    config=AppConfig,
+    providers=[
+        ${providers},
+    ],
+)

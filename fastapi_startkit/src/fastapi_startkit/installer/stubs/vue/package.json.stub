@@ -1,0 +1,24 @@
+{
+  "name": "${project_name}",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "dependencies": {
+    "@inertiajs/vue3": "^3.0.0",
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "vite": "^8.0.0",
+    "@vitejs/plugin-vue": "^6.0.0",
+    "fastapi-vite-plugin": "^0.0.3",
+    "typescript": "^6.0.0",
+    "tailwindcss": "^4.0.0",
+    "@tailwindcss/vite": "^4.0.0"
+  }
+}

@@ -1,0 +1,12 @@
+from fastapi_startkit.testing import TestCase
+
+
+class TestApplication(TestCase):
+    def get_application(self):
+        from bootstrap.application import app
+
+        return app
+
+    async def test_broker(self):
+        app = self.get_application()
+        assert app.make("broker") is app.make("queue")

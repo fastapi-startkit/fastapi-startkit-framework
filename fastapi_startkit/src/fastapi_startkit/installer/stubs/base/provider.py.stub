@@ -1,0 +1,9 @@
+from fastapi_startkit.fastapi import FastAPIProvider
+
+
+class FastapiProvider(FastAPIProvider):
+    def boot(self):
+        super().boot()
+        from routes.api import router
+
+        self.app.fastapi.include_router(router.router)
