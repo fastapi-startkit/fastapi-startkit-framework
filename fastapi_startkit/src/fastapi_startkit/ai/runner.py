@@ -24,7 +24,7 @@ def _as_text(content: Any) -> str:
     return content if isinstance(content, str) else str(content)
 
 
-def _stream_event(event: str, name: str, run_id: str, data: dict) -> dict:
+def _stream_event(event: str, name: str, run_id: str, data: dict[str, Any]) -> dict[str, Any]:
     """A StandardStreamEvent dict, the shape LangChain's astream_events yields."""
     return {"event": event, "name": name, "run_id": run_id, "tags": [], "metadata": {}, "parent_ids": [], "data": data}
 
@@ -35,17 +35,17 @@ class BaseRunner(ABC):
         self._reset_capture()
         # Populated by stream() so the record-and-replay harness can persist the
         # same structured turn a buffered prompt() produces.
-        self.last_response: dict | None = None
+        self.last_response: dict[str, Any] | None = None
 
     def _reset_capture(self) -> None:
         """Clear the per-turn interaction captured across the model/tool calls."""
-        self._transcript: list[dict] = []
-        self._tool_events: list[dict] = []
-        self._requested_tool_calls: list[dict] = []
-        self._usage: dict = {}
+        self._transcript: list[dict[str, Any]] = []
+        self._tool_events: list[dict[str, Any]] = []
+        self._requested_tool_calls: list[ToolCall] = []
+        self._usage: dict[str, int] = {}
 
     @staticmethod
-    def _usage_from_message(message: Any) -> dict:
+    def _usage_from_message(message: Any) -> dict[str, int]:
         meta = getattr(message, "usage_metadata", None)
         if not meta:
             return {}
@@ -120,9 +120,9 @@ class BaseRunner(ABC):
                 )
         return messages
 
-    async def _build_messages(self, message: str, attachments: list[Document] | None = None) -> list[dict]:
+    async def _build_messages(self, message: str, attachments: list[Document] | None = None) -> list[dict[str, Any]]:
         agent = self.agent
-        messages: list[dict] = []
+        messages: list[dict[str, Any]] = []
 
         instruction = agent.instructions()
         if instruction:
@@ -146,12 +146,12 @@ class BaseRunner(ABC):
 
         return messages
 
-    def _build_model(self, model: str | None = None, provider_options: dict | None = None) -> Any:
+    def _build_model(self, model: str | None = None, provider_options: dict[str, Any] | None = None) -> Any:
         from .ai import Ai  # noqa: PLC0415
 
         return Ai().get_model_for(self.agent, model, provider_options)
 
-    def _apply_schema(self, state: dict) -> dict:
+    def _apply_schema(self, state: dict[str, Any]) -> dict[str, Any]:
         from . import state as agent_state  # noqa: PLC0415
 
         schema = self.agent.schema()
@@ -176,8 +176,8 @@ class BaseRunner(ABC):
         *,
         model: str | None = None,
         attachments: list[Document] | None = None,
-        provider_options: dict | None = None,
-    ) -> dict: ...
+        provider_options: dict[str, Any] | None = None,
+    ) -> dict[str, Any]: ...
 
     @abstractmethod
     def stream(
@@ -185,8 +185,8 @@ class BaseRunner(ABC):
         message: str,
         *,
         model: str | None = None,
-        provider_options: dict | None = None,
-    ) -> AsyncIterator[dict]: ...
+        provider_options: dict[str, Any] | None = None,
+    ) -> AsyncIterator[dict[str, Any]]: ...
 
 
 class Runner(BaseRunner):
@@ -196,19 +196,19 @@ class Runner(BaseRunner):
         *,
         model: str | None = None,
         attachments: list[Document] | None = None,
-        provider_options: dict | None = None,
-    ) -> dict:
+        provider_options: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         self._reset_capture()
         messages = await self._build_messages(message, attachments)
         model = self._build_model(model, provider_options)
 
         parsed = await self._run_pipeline(model, messages)
-        state: dict = {"messages": self._turn_messages(message)}
+        state: dict[str, Any] = {"messages": self._turn_messages(message)}
         if parsed is not None:
             state["structured_response"] = parsed
         return self._apply_schema(state)
 
-    async def _run_pipeline(self, chat_model: Any, messages: list) -> Any:
+    async def _run_pipeline(self, chat_model: Any, messages: list[dict[str, Any]]) -> Any:
         """Run the turn through the middleware pipeline; the interaction lands on
         the capture buffers. Returns the parsed structured output, if any."""
         chain = list(self.agent.middleware())
@@ -238,8 +238,8 @@ class Runner(BaseRunner):
         message: str,
         *,
         model: str | None = None,
-        provider_options: dict | None = None,
-    ) -> AsyncIterator[dict]:
+        provider_options: dict[str, Any] | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
         self._reset_capture()
         messages = await self._build_messages(message)
         chat_model = self._build_model(model, provider_options)
@@ -257,7 +257,7 @@ class Runner(BaseRunner):
         # record-and-replay harness can persist streamed runs identically.
         self.last_response = {"messages": self._turn_messages(message)}
 
-    async def _invoke(self, model: Runnable[Any, BaseMessage], messages: list) -> BaseMessage:
+    async def _invoke(self, model: Runnable[Any, BaseMessage], messages: list[dict[str, Any]]) -> BaseMessage:
         started = time.perf_counter()
         response: AIMessage = await model.ainvoke(list(messages))  # type: ignore[assignment]
         latency_ms = (time.perf_counter() - started) * 1000
@@ -273,7 +273,9 @@ class Runner(BaseRunner):
             return response
         return (await self._run_tools(response.tool_calls))[-1]
 
-    async def _invoke_stream(self, model: Runnable[Any, BaseMessage], messages: list) -> AsyncIterator[dict]:
+    async def _invoke_stream(
+        self, model: Runnable[Any, BaseMessage], messages: list[dict[str, Any]]
+    ) -> AsyncIterator[dict[str, Any]]:
         """Yield the same StandardStreamEvent dicts LangChain's astream_events
         produces: on_chat_model_(start|stream|end) for the model turn, then
         on_tool_(start|end) around each tool execution."""

@@ -1,25 +1,26 @@
 import sys
 import atexit
-from typing import Any, Callable, Dict, List, Optional, Type
+from collections.abc import Callable
+from typing import Any
 
 
 class ExceptionHandler:
     def __init__(self, application=None):
         self.app = application
-        self._handlers: Dict[Type[Exception], Any] = {}
-        self._renders: Dict[Type[Exception], Callable] = {}
-        self._reports: Dict[Type[Exception], Callable] = {}
-        self._dont_report: List[Type[Exception]] = []
+        self._handlers: dict[type[Exception], Any] = {}
+        self._renders: dict[type[Exception], Callable[..., Any]] = {}
+        self._reports: dict[type[Exception], Callable[..., Any]] = {}
+        self._dont_report: list[type[Exception]] = []
 
     def register(self):
         """Override in subclasses to register handlers, renders, and report rules."""
         pass
 
-    def dont_report(self, exceptions: List[Type[Exception]]):
+    def dont_report(self, exceptions: list[type[Exception]]):
         self._dont_report.extend(exceptions)
         return self
 
-    def register_handler(self, exc_class: Type[Exception], handler):
+    def register_handler(self, exc_class: type[Exception], handler):
         """Register a handler instance for an exception type.
 
         The handler must implement report(exc) and/or render(request, exc).
@@ -27,12 +28,12 @@ class ExceptionHandler:
         self._handlers[exc_class] = handler
         return self
 
-    def register_render(self, exc_class: Type[Exception], callable: Callable):
+    def register_render(self, exc_class: type[Exception], callable: Callable[..., Any]):
         """Register a render callable: (request, exc) -> Response."""
         self._renders[exc_class] = callable
         return self
 
-    def register_report(self, exc_class: Type[Exception], callable: Callable):
+    def register_report(self, exc_class: type[Exception], callable: Callable[..., Any]):
         """Register a report callable: (exc) -> None."""
         self._reports[exc_class] = callable
         return self
@@ -76,12 +77,12 @@ class ExceptionHandler:
             context += "\n" + "".join(traceback.format_exception(type(exception), exception, exception.__traceback__))
         return context
 
-    async def handle(self, exception: Exception, context: Optional[Dict] = None) -> Any:
+    async def handle(self, exception: Exception, context: dict[str, Any] | None = None) -> Any:
         """Main entry point called from the FastAPI exception_handler hook."""
         self.report(exception)
         return await self.render(exception, context or {})
 
-    async def render(self, exception: Exception, context: Dict) -> Any:
+    async def render(self, exception: Exception, context: dict[str, Any]) -> Any:
         request = context.get("request")
         exc_type = type(exception)
 
@@ -96,7 +97,7 @@ class ExceptionHandler:
 
         return None  # caller falls back to its own default
 
-    def _resolve_handler(self, exception: Exception) -> Optional[Any]:
+    def _resolve_handler(self, exception: Exception) -> Any | None:
         """Find the most specific registered handler for an exception."""
         for exc_class in type(exception).__mro__:
             if exc_class in self._handlers:
