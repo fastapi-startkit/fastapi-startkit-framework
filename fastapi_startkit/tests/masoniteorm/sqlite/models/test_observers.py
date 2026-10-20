@@ -1,3 +1,6 @@
+import datetime
+
+from fastapi_startkit.masoniteorm.models.caster import DateCast
 from fastapi_startkit.masoniteorm.models.model import Model
 from ..test_case import TestCase
 
@@ -218,23 +221,77 @@ class TestModelLifecycleEvents(TestCase):
         assert recorder.events == []
 
 
-class UntimedArticle(Model):
-    __table__ = "articles"
-    __fillable__ = ["title"]
-    title: str
-    user_id: int
-    published_date: str
+class Note(Model):
+    __table__ = "notes"
+    __fillable__ = ["body"]
+    body: str
 
 
-class TestBuiltInTimestampObserversStayInert(TestCase):
-    async def test_default_model_without_timestamp_columns_creates_and_updates(self):
-        article = await UntimedArticle.create({"title": "first", "user_id": 1, "published_date": "2024-01-01 00:00:00"})
-        assert article.created_at is None
-        assert article.updated_at is None
+class UntimedNote(Model):
+    __table__ = "notes"
+    __timestamps__ = False
+    __fillable__ = ["body"]
+    body: str
 
-        await article.update({"title": "second"})
-        assert article.updated_at is None
 
-        fresh = await UntimedArticle.find(article.id)
+class TestAutomaticTimestamps(TestCase):
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        async with await self.schema.create_table_if_not_exists("notes") as table:
+            table.id()
+            table.string("body")
+            table.timestamp("created_at", nullable=True)
+            table.timestamp("updated_at", nullable=True)
+
+    async def test_create_sets_both_timestamps_without_a_column_default(self):
+        note = await Note.create({"body": "first"})
+
+        fresh = await Note.find(note.id)
         assert fresh is not None
-        assert fresh.title == "second"
+        assert fresh.created_at is not None
+        assert fresh.created_at == note.created_at
+        assert fresh.updated_at == note.updated_at
+
+    async def test_create_keeps_a_supplied_created_at(self):
+        supplied = datetime.datetime(2020, 1, 2, 8, 34, 5, 678000, tzinfo=datetime.timezone(datetime.timedelta(hours=5, minutes=30)))
+
+        note = await Note.create({"body": "supplied", "created_at": supplied})
+
+        fresh = await Note.find(note.id)
+        assert fresh is not None
+        assert fresh.created_at == supplied
+        assert fresh.created_at.microsecond == 678000
+        assert fresh.created_at.timezone_name == "UTC"
+
+    async def test_update_moves_updated_at_and_keeps_created_at(self):
+        note = await Note.create({"body": "before"})
+        created_at, updated_at = note.created_at, note.updated_at
+
+        await note.update({"body": "after"})
+
+        fresh = await Note.find(note.id)
+        assert fresh is not None
+        assert fresh.created_at == created_at
+        assert fresh.updated_at > updated_at
+
+    async def test_disabled_timestamps_are_not_written(self):
+        note = await UntimedNote.create({"body": "plain"})
+        await note.update({"body": "still plain"})
+
+        fresh = await UntimedNote.find(note.id)
+        assert fresh is not None
+        assert fresh.created_at is None
+        assert fresh.updated_at is None
+
+
+class TestSQLiteDatetimeBinding(TestCase):
+    async def test_datetime_round_trips_in_utc(self):
+        written = datetime.datetime(2024, 5, 6, 7, 8, 9, 123456, tzinfo=datetime.timezone(datetime.timedelta(hours=-4)))
+        user = await ObservedUser.create({"name": "bind", "email": "bind@test.com", "is_admin": False})
+
+        await ObservedUser.where("id", user.id).update({"email_verified_at": DateCast().set(written)})
+
+        row = await self.db.connection("default").select_one('SELECT "email_verified_at" FROM "users" WHERE "id" = ?', [user.id])
+        assert row is not None
+        assert row["email_verified_at"] == "2024-05-06 11:08:09.123456"
+        assert DateCast().get(row["email_verified_at"]) == written

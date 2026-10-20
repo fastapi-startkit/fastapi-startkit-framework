@@ -1,5 +1,8 @@
+import datetime
+
 from ..test_case import TestCase
 from ...fixtures.model import User
+from ..fixtures.db import DB
 
 
 class TestPostGresModel(TestCase):
@@ -154,3 +157,25 @@ class TestPostGresModel(TestCase):
 
         admin = await User.where("is_admin", True).first()
         self.assertEqual(admin.name, "Quentin")
+
+    async def test_supplied_created_at_is_stored_exactly(self):
+        supplied = datetime.datetime(2020, 1, 2, 3, 4, 5, 678000, tzinfo=datetime.UTC)
+
+        user = await User.create({"name": "Stamp", "email": "stamp@example.com", "created_at": supplied})
+
+        row = await DB.connection("postgres").select_one('SELECT "created_at" FROM "users" WHERE "id" = ?', [user.id])
+        self.assertIsNotNone(row)
+        self.assertEqual(row["created_at"], supplied)
+
+    async def test_update_and_touch_move_updated_at_forward(self):
+        user = await User.create({"name": "Toucher", "email": "toucher@example.com"})
+        created_at, inserted_updated_at = user.created_at, user.updated_at
+
+        await user.update({"name": "Touched"})
+        updated = await User.find(user.id)
+        self.assertGreater(updated.updated_at, inserted_updated_at)
+        self.assertEqual(updated.created_at, created_at)
+
+        self.assertTrue(await user.touch())
+        touched = await User.find(user.id)
+        self.assertGreater(touched.updated_at, updated.updated_at)

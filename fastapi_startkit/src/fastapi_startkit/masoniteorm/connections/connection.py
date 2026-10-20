@@ -58,13 +58,17 @@ class Connection(ManagesTransactions):
     async def reconnect(self) -> None:
         await self.close()
 
-    @staticmethod
-    def sql_alchemy_bindings(query: str, bindings: list[Any] | None = None):
+    @classmethod
+    def prepare_binding(cls, value: Any) -> Any:
+        return value
+
+    @classmethod
+    def sql_alchemy_bindings(cls, query: str, bindings: list[Any] | None = None):
         params: dict[str, Any] = {}
         if bindings:
             for i, val in enumerate(bindings):
                 name = f"p{i}"
-                params[name] = val
+                params[name] = cls.prepare_binding(val)
                 query = query.replace("?", f":{name}", 1)
         return (query, params)
 

@@ -6,7 +6,7 @@ from enum import Enum
 from inspect import get_annotations
 from dataclasses import dataclass, field
 from collections.abc import Callable
-from typing import Any, get_args, get_type_hints, Optional
+from typing import Annotated, Any, get_args, get_origin, get_type_hints, Optional
 from typing import cast as typing_cast
 from pydantic.fields import FieldInfo
 from pydantic import BaseModel as PydanticModel
@@ -99,11 +99,11 @@ class DateCast(BaseCast):
         if not value:
             return None
 
-        parsed = pendulum.parse(str(value))
-        if not isinstance(parsed, pendulum.DateTime):
+        parsed = value if isinstance(value, datetime.datetime) else pendulum.parse(str(value))
+        if not isinstance(parsed, datetime.datetime):
             raise ValueError(f"Cannot cast {value!r} to a datetime")
 
-        return parsed.to_datetime_string()
+        return pendulum.instance(parsed).in_timezone("UTC")
 
 
 class DecimalCast(BaseCast):
@@ -177,7 +177,7 @@ class ModelCast(BaseCast):
 
 
 class Caster:
-    casts = {}
+    casts: dict[str, Any] = {}
 
     cast_class_map = {
         "bool": BoolCast,
@@ -205,7 +205,7 @@ class Caster:
         )
 
         try:
-            annotations = get_type_hints(model)
+            annotations = get_type_hints(model, include_extras=True)
         except NameError:
             annotations = {}
             for klass in reversed(model.__mro__):
@@ -250,6 +250,13 @@ class Caster:
                 if descriptor.field_info.default is not PydanticUndefined:
                     typ = type(descriptor.field_info.default)
 
+            if get_origin(typ) is Annotated:
+                typ, *metadata = get_args(typ)
+                declared_cast = next((item for item in metadata if Caster.is_cast(item)), None)
+                if declared_cast is not None:
+                    casts[field_name] = declared_cast
+                    continue
+
             typ = typ or "str"
 
             # Nested Pydantic models are stored as JSON and hydrated back into
@@ -267,6 +274,10 @@ class Caster:
                 casts[field_name] = caster
 
         return casts
+
+    @staticmethod
+    def is_cast(item: Any) -> bool:
+        return isinstance(item, BaseCast) or (hasattr(item, "get") and hasattr(item, "set"))
 
     @staticmethod
     def normalize_type(t):
@@ -329,6 +340,9 @@ class Caster:
                 return cast().get(value)
             return cast(value)
 
+        if Caster.is_cast(cast):
+            return cast.get(value)
+
         return value
 
     def set(self, attribute: str, value: Any) -> Any:
@@ -344,5 +358,9 @@ class Caster:
             # Fallback for old custom types that don't inherit BaseCast
             if hasattr(cast, "set"):
                 return cast().set(value)
+            return value
+
+        if Caster.is_cast(cast):
+            return cast.set(value)
 
         return value
