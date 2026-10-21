@@ -7,9 +7,16 @@ from typing import Any
 
 from fastapi_startkit.redis import Connection
 
+from .lock import Lock
 from .store import MISSING
 
 GLOB = re.compile(r"([*?\[\]\\])")
+RELEASE = """
+if redis.call("get", KEYS[1]) == ARGV[1] then
+    return redis.call("del", KEYS[1])
+end
+return 0
+"""
 
 
 class RedisStore:
@@ -51,6 +58,26 @@ class RedisStore:
         if keys:
             await connection.unlink(*keys)
         return True
+
+    def lock(self, name: str, seconds: float = 0, owner: str | None = None) -> "RedisLock":
+        return RedisLock(self, name, seconds, owner)
+
+
+class RedisLock(Lock):
+    def __init__(self, store: RedisStore, name: str, seconds: float = 0, owner: str | None = None):
+        super().__init__(name, seconds, owner)
+        self.store = store
+        self.key = f"lock:{name}"
+
+    async def acquire(self) -> bool:
+        milliseconds = None if self.ttl is None else max(1, math.ceil(self.ttl * 1000))
+        return bool(await self.store.connection().set(self.key, self.owner, nx=True, px=milliseconds))
+
+    async def release(self) -> bool:
+        return bool(await self.store.connection().eval(RELEASE, 1, self.key, self.owner))
+
+    async def force_release(self) -> None:
+        await self.store.connection().delete(self.key)
 
 
 def strip(key: Any, prefix: str) -> Any:

@@ -1,16 +1,21 @@
 import asyncio
 import hashlib
+import json
 import os
 import pickle
 import re
 import shutil
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from .store import MISSING, expired, expires_at
+from .lock import Lock
+from .store import MISSING, Missing, expired, expires_at
 
 SHARD = re.compile(r"^[0-9a-f]{2}$")
+Holder = tuple[str, float | None] | None
+Decision = tuple[bool, Holder | Missing]
 
 
 class FileStore:
@@ -76,3 +81,55 @@ class FileStore:
         for shard in self.directory.iterdir():
             if shard.is_dir() and SHARD.match(shard.name):
                 shutil.rmtree(shard, ignore_errors=True)
+
+    def lock(self, name: str, seconds: float = 0, owner: str | None = None) -> "FileLock":
+        return FileLock(self, name, seconds, owner)
+
+
+class FileLock(Lock):
+    def __init__(self, store: FileStore, name: str, seconds: float = 0, owner: str | None = None):
+        super().__init__(name, seconds, owner)
+        self.path = store.directory / "locks" / hashlib.sha1(name.encode()).hexdigest()
+
+    async def acquire(self) -> bool:
+        def decide(holder: Holder) -> Decision:
+            if holder is not None:
+                return False, MISSING
+            return True, (self.owner, expires_at(self.ttl))
+
+        return await asyncio.to_thread(self.exclusive, decide)
+
+    async def release(self) -> bool:
+        def decide(holder: Holder) -> Decision:
+            if holder is None or holder[0] != self.owner:
+                return False, MISSING
+            return True, None
+
+        return await asyncio.to_thread(self.exclusive, decide)
+
+    async def force_release(self) -> None:
+        await asyncio.to_thread(self.exclusive, lambda holder: (True, None))
+
+    def exclusive(self, decide: Callable[[Holder], Decision]) -> bool:
+        import fcntl
+
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.path, "a+b") as file:
+            fcntl.flock(file, fcntl.LOCK_EX)
+            file.seek(0)
+            result, holder = decide(self.read(file.read()))
+            if holder is not MISSING:
+                file.truncate(0)
+                if holder is not None:
+                    file.write(json.dumps(holder).encode())
+                file.flush()
+            return result
+
+    def read(self, payload: bytes) -> Holder:
+        try:
+            owner, expiration = json.loads(payload)
+        except (ValueError, TypeError):
+            return None
+        if not isinstance(owner, str) or not isinstance(expiration, int | float | None) or expired(expiration):
+            return None
+        return owner, expiration
