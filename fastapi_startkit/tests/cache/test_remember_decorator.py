@@ -1,140 +1,128 @@
 import threading
-
-import pytest
+from unittest import IsolatedAsyncioTestCase, mock
 
 from fastapi_startkit.cache import ArrayStore, CacheManager, Repository
 
 
-@pytest.fixture
-def store():
-    return ArrayStore()
+class TestRememberDecorator(IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.time = self.enterContext(mock.patch("time.time", return_value=1_000_000.0))
+        self.store = ArrayStore()
+        self.cache = Repository(self.store, "app")
 
+    async def test_caches_async_function_result(self):
+        calls = []
 
-@pytest.fixture
-def cache(store):
-    return Repository(store, "app")
+        @self.cache.remember("users", 60)
+        async def users():
+            calls.append(1)
+            return ["taylor"]
 
+        self.assertEqual(await users(), ["taylor"])
+        self.assertEqual(await users(), ["taylor"])
+        self.assertEqual(calls, [1])
+        self.assertEqual(list(self.store.storage), ["app:users"])
 
-async def test_caches_async_function_result(cache, store):
-    calls = []
+    async def test_wraps_sync_function_into_async(self):
+        @self.cache.remember("total", 60)
+        def total():
+            return 42
 
-    @cache.remember("users", 60)
-    async def users():
-        calls.append(1)
-        return ["taylor"]
+        self.assertEqual(await total(), 42)
+        self.assertEqual(total.__name__, "total")
 
-    assert await users() == ["taylor"]
-    assert await users() == ["taylor"]
-    assert calls == [1]
-    assert list(store.storage) == ["app:users"]
+    async def test_awaits_awaitable_returned_by_sync_function(self):
+        async def query():
+            return "rows"
 
+        @self.cache.remember("rows", 60)
+        def rows():
+            return query()
 
-async def test_wraps_sync_function_into_async(cache):
-    @cache.remember("total", 60)
-    def total():
-        return 42
+        self.assertEqual(await rows(), "rows")
 
-    assert await total() == 42
-    assert total.__name__ == "total"
+    async def test_each_argument_set_gets_its_own_key(self):
+        calls = []
 
+        @self.cache.remember("users", 60)
+        async def users_by_role(role, active=True):
+            calls.append((role, active))
+            return f"{role}:{active}"
 
-async def test_awaits_awaitable_returned_by_sync_function(cache):
-    async def query():
-        return "rows"
+        self.assertEqual(await users_by_role("admin"), "admin:True")
+        self.assertEqual(await users_by_role("admin"), "admin:True")
+        self.assertEqual(await users_by_role("editor"), "editor:True")
+        self.assertEqual(await users_by_role("admin", active=False), "admin:False")
+        self.assertEqual(await users_by_role("admin", active=False), "admin:False")
 
-    @cache.remember("rows", 60)
-    def rows():
-        return query()
+        self.assertEqual(calls, [("admin", True), ("editor", True), ("admin", False)])
+        self.assertEqual(len(self.store.storage), 3)
+        self.assertTrue(all(key.startswith("app:users:") for key in self.store.storage))
 
-    assert await rows() == "rows"
+    async def test_keyword_order_does_not_change_the_key(self):
+        calls = []
 
+        @self.cache.remember("sum", 60)
+        def add(**numbers):
+            calls.append(1)
+            return sum(numbers.values())
 
-async def test_each_argument_set_gets_its_own_key(cache, store):
-    calls = []
+        self.assertEqual(await add(a=1, b=2), 3)
+        self.assertEqual(await add(b=2, a=1), 3)
+        self.assertEqual(calls, [1])
 
-    @cache.remember("users", 60)
-    async def users_by_role(role, active=True):
-        calls.append((role, active))
-        return f"{role}:{active}"
+    async def test_unpicklable_arguments_fall_back_to_repr(self):
+        lock = threading.Lock()
 
-    assert await users_by_role("admin") == "admin:True"
-    assert await users_by_role("admin") == "admin:True"
-    assert await users_by_role("editor") == "editor:True"
-    assert await users_by_role("admin", active=False) == "admin:False"
-    assert await users_by_role("admin", active=False) == "admin:False"
+        @self.cache.remember("locked", 60)
+        def locked(value):
+            return value is lock
 
-    assert calls == [("admin", True), ("editor", True), ("admin", False)]
-    assert len(store.storage) == 3
-    assert all(key.startswith("app:users:") for key in store.storage)
+        self.assertIs(await locked(lock), True)
+        self.assertIs(await locked(lock), True)
 
+    async def test_key_defaults_to_function_path(self):
+        @self.cache.remember(None, 60)
+        def answer():
+            return 42
 
-async def test_keyword_order_does_not_change_the_key(cache):
-    calls = []
+        self.assertEqual(await answer(), 42)
+        self.assertEqual(
+            list(self.store.storage),
+            [f"app:{__name__}.TestRememberDecorator.test_key_defaults_to_function_path.<locals>.answer"],
+        )
 
-    @cache.remember("sum", 60)
-    def add(**numbers):
-        calls.append(1)
-        return sum(numbers.values())
+    async def test_expires_with_ttl(self):
+        values = iter(["first", "second"])
 
-    assert await add(a=1, b=2) == 3
-    assert await add(b=2, a=1) == 3
-    assert calls == [1]
+        @self.cache.remember("value", 10)
+        def value():
+            return next(values)
 
+        self.assertEqual(await value(), "first")
+        self.time.return_value += 10
+        self.assertEqual(await value(), "second")
 
-async def test_unpicklable_arguments_fall_back_to_repr(cache):
-    lock = threading.Lock()
+    async def test_shares_entries_with_callable_form(self):
+        @self.cache.remember("users", 60)
+        def users():
+            return "decorated"
 
-    @cache.remember("locked", 60)
-    def locked(value):
-        return value is lock
+        await self.cache.put("users", "cached")
 
-    assert await locked(lock) is True
-    assert await locked(lock) is True
+        self.assertEqual(await users(), "cached")
+        self.assertEqual(await self.cache.remember("users", 60, lambda: "factory"), "cached")
 
+    def test_factory_form_requires_a_key(self):
+        with self.assertRaisesRegex(ValueError, "requires a key"):
+            self.cache.remember(None, 60, lambda: 1)  # pyright: ignore[reportCallIssue, reportArgumentType]
 
-async def test_key_defaults_to_function_path(cache, store):
-    @cache.remember(None, 60)
-    def answer():
-        return 42
+    async def test_manager_proxies_decorator_to_default_store(self):
+        manager = CacheManager({"default": "array", "stores": {"array": {"driver": "array"}}})
 
-    assert await answer() == 42
-    assert list(store.storage) == [f"app:{__name__}.test_key_defaults_to_function_path.<locals>.answer"]
+        @manager.remember("name", 60)
+        def name():
+            return "taylor"
 
-
-async def test_expires_with_ttl(cache, clock):
-    values = iter(["first", "second"])
-
-    @cache.remember("value", 10)
-    def value():
-        return next(values)
-
-    assert await value() == "first"
-    clock.travel(10)
-    assert await value() == "second"
-
-
-async def test_shares_entries_with_callable_form(cache):
-    @cache.remember("users", 60)
-    def users():
-        return "decorated"
-
-    await cache.put("users", "cached")
-
-    assert await users() == "cached"
-    assert await cache.remember("users", 60, lambda: "factory") == "cached"
-
-
-def test_factory_form_requires_a_key(cache):
-    with pytest.raises(ValueError, match="requires a key"):
-        cache.remember(None, 60, lambda: 1)  # pyright: ignore[reportCallIssue, reportArgumentType]
-
-
-async def test_manager_proxies_decorator_to_default_store():
-    manager = CacheManager({"default": "array", "stores": {"array": {"driver": "array"}}})
-
-    @manager.remember("name", 60)
-    def name():
-        return "taylor"
-
-    assert await name() == "taylor"
-    assert await manager.get("name") == "taylor"
+        self.assertEqual(await name(), "taylor")
+        self.assertEqual(await manager.get("name"), "taylor")

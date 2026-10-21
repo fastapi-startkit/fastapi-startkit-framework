@@ -1,4 +1,8 @@
+import os
+import tempfile
 from dataclasses import dataclass, field
+from pathlib import Path
+from unittest import IsolatedAsyncioTestCase, mock
 
 from fastapi_startkit.application import Application
 from fastapi_startkit.cache import ArrayStoreConfig, CacheManager, CacheProvider, FileStore
@@ -13,83 +17,81 @@ class ArrayCacheConfig:
     stores: dict = field(default_factory=lambda: {"array": ArrayStoreConfig(), "second": ArrayStoreConfig()})
 
 
-def make_app(tmp_path, provider=(CacheProvider, ArrayCacheConfig)):
-    return Application(base_path=tmp_path, env="testing", providers=[provider])
+class TestCacheProvider(IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.enterContext(mock.patch.dict(os.environ))
+        for name in ("CACHE_CONNECTION", "CACHE_FILE_PATH"):
+            os.environ.pop(name, None)
+        self.base_path = Path(self.enterContext(tempfile.TemporaryDirectory()))
 
+    def make_app(self, provider=(CacheProvider, ArrayCacheConfig)):
+        return Application(base_path=self.base_path, env="testing", providers=[provider])
 
-def test_binds_manager_and_merges_default_config(tmp_path, monkeypatch):
-    monkeypatch.delenv("CACHE_CONNECTION", raising=False)
-    app = make_app(tmp_path, CacheProvider)
+    def test_binds_manager_and_merges_default_config(self):
+        app = self.make_app(CacheProvider)
 
-    assert isinstance(app.make("cache"), CacheManager)
-    assert config("cache.default") == "database"
-    assert config("cache.stores.database.table") == "caches"
+        self.assertIsInstance(app.make("cache"), CacheManager)
+        self.assertEqual(config("cache.default"), "database")
+        self.assertEqual(config("cache.stores.database.table"), "caches")
 
+    def test_plain_dataclass_config_is_accepted(self):
+        app = self.make_app()
 
-def test_plain_dataclass_config_is_accepted(tmp_path):
-    app = make_app(tmp_path)
+        self.assertEqual(app.make("cache").config["prefix"], "shop")
+        self.assertEqual(config("cache.stores.second.driver"), "array")
 
-    assert app.make("cache").config["prefix"] == "shop"
-    assert config("cache.stores.second.driver") == "array"
+    async def test_file_store_lives_under_base_path(self):
+        self.make_app(CacheProvider)
 
+        repository = Cache.store("file")
+        await repository.put("name", "taylor")
 
-async def test_file_store_lives_under_base_path(tmp_path, monkeypatch):
-    monkeypatch.delenv("CACHE_FILE_PATH", raising=False)
-    make_app(tmp_path, CacheProvider)
+        self.assertIsInstance(repository.store, FileStore)
+        self.assertEqual(repository.store.directory, self.base_path / "storage/framework/cache/data")
+        self.assertTrue(repository.store.path("cache:name").is_file())
+        self.assertEqual(await Cache.store("file").get("name"), "taylor")
 
-    repository = Cache.store("file")
-    await repository.put("name", "taylor")
+    def test_publishes_config_stub(self):
+        app = self.make_app()
 
-    assert isinstance(repository.store, FileStore)
-    assert repository.store.directory == tmp_path / "storage/framework/cache/data"
-    assert repository.store.path("cache:name").is_file()
-    assert await Cache.store("file").get("name") == "taylor"
+        self.assertIn("config/cache.py", app.published_resources["cache"].values())
 
+    async def test_facade_proxies_to_manager(self):
+        app = self.make_app()
 
-def test_publishes_config_stub(tmp_path):
-    app = make_app(tmp_path)
+        await Cache.put("name", "taylor", 60)
+        await Cache.store("second").put("name", "otwell")
 
-    assert "config/cache.py" in app.published_resources["cache"].values()
+        self.assertEqual(await Cache.get("name"), "taylor")
+        self.assertEqual(await Cache.store("second").get("name"), "otwell")
+        self.assertIs(await Cache.has("name"), True)
+        self.assertEqual(await Cache.get("missing", lambda: "fallback"), "fallback")
+        self.assertIs(Cache.store(), app.make("cache").store())
 
+    async def test_facade_remember_with_factory(self):
+        self.make_app()
 
-async def test_facade_proxies_to_manager(tmp_path):
-    app = make_app(tmp_path)
+        async def factory():
+            return "computed"
 
-    await Cache.put("name", "taylor", 60)
-    await Cache.store("second").put("name", "otwell")
+        self.assertEqual(await Cache.remember("value", 60, factory), "computed")
+        self.assertEqual(await Cache.remember("value", 60, lambda: "other"), "computed")
 
-    assert await Cache.get("name") == "taylor"
-    assert await Cache.store("second").get("name") == "otwell"
-    assert await Cache.has("name") is True
-    assert await Cache.get("missing", lambda: "fallback") == "fallback"
-    assert Cache.store() is app.make("cache").store()
+    async def test_facade_decorator_resolves_the_container_per_call(self):
+        calls = []
 
+        @Cache.remember("users", 60)
+        async def users(role):
+            calls.append(role)
+            return [role]
 
-async def test_facade_remember_with_factory(tmp_path):
-    make_app(tmp_path)
+        first = self.make_app()
+        self.assertEqual(await users("admin"), ["admin"])
+        self.assertEqual(await users("admin"), ["admin"])
+        self.assertEqual(calls, ["admin"])
+        self.assertEqual(users.__name__, "users")
 
-    async def factory():
-        return "computed"
-
-    assert await Cache.remember("value", 60, factory) == "computed"
-    assert await Cache.remember("value", 60, lambda: "other") == "computed"
-
-
-async def test_facade_decorator_resolves_the_container_per_call(tmp_path):
-    calls = []
-
-    @Cache.remember("users", 60)
-    async def users(role):
-        calls.append(role)
-        return [role]
-
-    first = make_app(tmp_path)
-    assert await users("admin") == ["admin"]
-    assert await users("admin") == ["admin"]
-    assert calls == ["admin"]
-    assert users.__name__ == "users"
-
-    second = make_app(tmp_path)
-    assert await users("admin") == ["admin"]
-    assert calls == ["admin", "admin"]
-    assert first.make("cache") is not second.make("cache")
+        second = self.make_app()
+        self.assertEqual(await users("admin"), ["admin"])
+        self.assertEqual(calls, ["admin", "admin"])
+        self.assertIsNot(first.make("cache"), second.make("cache"))
