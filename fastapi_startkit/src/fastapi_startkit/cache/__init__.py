@@ -1,5 +1,5 @@
 from .array_store import ArrayStore
-from .config import ArrayStoreConfig, CacheConfig, DatabaseStoreConfig, FileStoreConfig
+from .config import ArrayStoreConfig, CacheConfig, DatabaseStoreConfig, FileStoreConfig, RedisStoreConfig
 from .file_store import FileStore
 from .manager import CacheManager
 from .memo_store import MemoStore
@@ -18,6 +18,7 @@ __all__ = [
     "FileStore",
     "FileStoreConfig",
     "MemoStore",
+    "RedisStoreConfig",
     "Repository",
     "Store",
 ]
