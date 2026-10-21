@@ -1,9 +1,6 @@
-"""__SEEDER_NAME__ Seeder."""
-
 from fastapi_startkit.masoniteorm.seeders import Seeder
 
 
 class __SEEDER_NAME__(Seeder):
-    def run(self):
-        """Run the database seeds."""
+    async def run(self) -> None:
         pass

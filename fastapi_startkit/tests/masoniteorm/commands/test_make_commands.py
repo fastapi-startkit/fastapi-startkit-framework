@@ -2,6 +2,7 @@ import asyncio
 import importlib.util
 import os
 import shutil
+import sys
 import tempfile
 import unittest
 
@@ -12,6 +13,7 @@ from fastapi_startkit.masoniteorm.commands.MakeModelCommand import MakeModelComm
 from fastapi_startkit.masoniteorm.commands.MakeObserverCommand import MakeObserverCommand
 from fastapi_startkit.masoniteorm.commands.MakeSeedCommand import MakeSeedCommand
 from fastapi_startkit.masoniteorm.migrations.Migration import Migration
+from fastapi_startkit.masoniteorm.seeders import Seeder
 
 from .fixtures.app import create_app, DB_PATH
 
@@ -235,6 +237,29 @@ class TestMakeSeedCommand(_TempCwdTestCase):
         tester.execute("Post")
         output = tester.io.fetch_output()
         self.assertIn("already exists.", output)
+
+    def test_generated_seeder_runs_through_seeding_path(self):
+        os.makedirs("generated_seeds/seeders")
+        self._tester(MakeSeedCommand).execute("Post --directory generated_seeds/seeders")
+
+        content = open(os.path.join("generated_seeds/seeders", "post_table_seeder.py")).read()
+        self.assertIn("from fastapi_startkit.masoniteorm.seeders import Seeder", content)
+        self.assertIn("async def run(self) -> None:", content)
+        self.assertNotIn('"""', content)
+
+        sys.path.insert(0, self._tmp_dir)
+        self.addCleanup(sys.path.remove, self._tmp_dir)
+        self.addCleanup(self._forget_modules, "generated_seeds")
+
+        seeder = Seeder(seed_path="generated_seeds/seeders")
+        asyncio.run(seeder.run_specific_seed("post_table_seeder.PostTableSeeder"))
+
+        self.assertEqual([seed.__name__ for seed in seeder.ran_seeds], ["PostTableSeeder"])
+
+    @staticmethod
+    def _forget_modules(package):
+        for name in [name for name in sys.modules if name == package or name.startswith(f"{package}.")]:
+            del sys.modules[name]
 
 
 class TestMakeObserverCommand(_TempCwdTestCase):
