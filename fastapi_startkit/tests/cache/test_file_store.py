@@ -1,6 +1,8 @@
 import hashlib
 import os
 import pickle
+import sys
+import types
 from dataclasses import dataclass
 
 import pytest
@@ -106,6 +108,22 @@ async def test_corrupt_file_is_a_miss_and_removed(store, directory):
     store.path("name").write_bytes(b"not a pickle")
 
     assert await store.get("name") is MISSING
+    assert files(directory) == []
+
+
+@pytest.mark.parametrize("removal", ["module", "class"])
+async def test_value_of_removed_class_is_a_miss_and_removed(store, directory, monkeypatch, removal):
+    module = types.ModuleType("cache_fixture_models")
+    module.Gone = type("Gone", (), {"__module__": "cache_fixture_models"})
+    monkeypatch.setitem(sys.modules, "cache_fixture_models", module)
+    await store.put("gone", module.Gone(), None)
+
+    if removal == "module":
+        monkeypatch.delitem(sys.modules, "cache_fixture_models")
+    else:
+        monkeypatch.delattr(module, "Gone")
+
+    assert await store.get("gone") is MISSING
     assert files(directory) == []
 
 

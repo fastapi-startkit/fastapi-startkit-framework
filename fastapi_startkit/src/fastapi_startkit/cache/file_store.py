@@ -38,10 +38,12 @@ class FileStore:
 
     def read(self, path: Path) -> Any:
         try:
-            expiration, value = pickle.loads(path.read_bytes())
+            payload = path.read_bytes()
         except FileNotFoundError:
             return MISSING
-        except (pickle.UnpicklingError, EOFError, ValueError, TypeError):
+        try:
+            expiration, value = pickle.loads(payload)
+        except Exception:
             self.delete(path)
             return MISSING
 
