@@ -189,3 +189,11 @@ class TestRedisCacheProvider(IsolatedAsyncioTestCase):
         await Cache.flush()
 
         self.assertEqual(await self.database(1).keys("*"), ["app_queue:1"])
+
+    async def test_missing_redis_provider_raises_on_first_use(self):
+        Application(base_path=self.base_path, env="testing", providers=[(CacheProvider, RedisCacheConfig)])
+
+        repository = Cache.store("redis")
+
+        with self.assertRaisesRegex(RuntimeError, "RedisProvider"):
+            await repository.get("name")

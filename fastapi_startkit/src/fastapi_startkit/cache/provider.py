@@ -31,7 +31,12 @@ class CacheProvider(Provider):
     def redis_store(self, store: dict[str, Any], prefix: str) -> Store:
         from .redis_store import RedisStore
 
-        return RedisStore(lambda: self.app.make("redis").connection(store.get("connection")), prefix)
+        return RedisStore(lambda: self.redis().connection(store.get("connection")), prefix)
+
+    def redis(self) -> Any:
+        if not self.app.has("redis"):
+            raise RuntimeError("The redis cache store requires RedisProvider to be registered.")
+        return self.app.make("redis")
 
     def boot(self) -> None:
         directory = Path(__file__).resolve().parent
