@@ -433,7 +433,7 @@ class Model(Attribute, Relationship, ObservesEvents):
     async def save(self, options: dict[str, Any] | None = None) -> bool:
         query = self.new_query()
 
-        self.observe_events(self, "saving")
+        await self.observe_events(self, "saving")
 
         if self._exists:
             saved = await self.perform_update(query) if self.is_dirty() else True
@@ -441,15 +441,17 @@ class Model(Attribute, Relationship, ObservesEvents):
             saved = await self.perform_insert(query)
 
         if saved:
-            self.finish_saving(options)
+            await self.finish_saving(options)
 
         return saved
 
-    def finish_saving(self, options: dict[str, Any] | None = None) -> None:
-        self.observe_events(self, "saved")
+    async def finish_saving(self, options: dict[str, Any] | None = None) -> None:
+        await self.observe_events(self, "saved")
         self.sync_original()
 
     async def perform_insert(self, query: "QueryBuilder[Self]") -> bool:
+        await self.observe_events(self, "creating")
+
         attributes = self.get_attributes_for_insert()
 
         """if the model set auto incrementing, we need to set back the primary key to the inserted id."""
@@ -463,10 +465,12 @@ class Model(Attribute, Relationship, ObservesEvents):
 
         self._exists = True
         self._was_recently_created = True
-        self.observe_events(self, "created")
+        await self.observe_events(self, "created")
         return True
 
     async def perform_update(self, query: "QueryBuilder[Self]") -> bool:
+        await self.observe_events(self, "updating")
+
         dirty = self.get_dirty()
         if not dirty:
             return True
@@ -474,7 +478,20 @@ class Model(Attribute, Relationship, ObservesEvents):
         pk_value = self.get_attribute(self.__primary_key__)
         await query.where(self.__primary_key__, pk_value).update(dirty)
 
-        self.observe_events(self, "updated")
+        await self.observe_events(self, "updated")
+        return True
+
+    async def delete(self) -> bool:
+        if not self._exists:
+            return False
+
+        await self.observe_events(self, "deleting")
+
+        pk_value = self.get_attribute(self.__primary_key__)
+        await self.new_query().where(self.__primary_key__, pk_value).delete()
+        self._exists = False
+
+        await self.observe_events(self, "deleted")
         return True
 
     def sync_original(self):

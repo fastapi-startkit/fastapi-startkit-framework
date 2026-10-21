@@ -1,3 +1,4 @@
+import datetime
 import unittest
 from unittest.mock import AsyncMock
 
@@ -18,8 +19,10 @@ class SqliteTestQueryBuilderModel(TestCase):
         mock_update.assert_called_once()
         sql, bindings = mock_update.call_args[0]
 
-        self.assertEqual(sql, 'UPDATE "users" SET "name" = ? WHERE "id" = ?')
-        self.assertEqual(bindings, ["joe", 1])
+        self.assertEqual(sql, 'UPDATE "users" SET "name" = ?, "updated_at" = ? WHERE "id" = ?')
+        self.assertEqual(bindings[0], "joe")
+        self.assertIsInstance(bindings[1], datetime.datetime)
+        self.assertEqual(bindings[2], 1)
 
     async def test_update_all_records(self):
         mock_update = AsyncMock(return_value=1)
@@ -100,8 +103,10 @@ class SqliteTestQueryBuilderModel(TestCase):
         mock_update.assert_called_once()
         sql, bindings = mock_update.call_args[0]
 
-        self.assertEqual(sql, 'UPDATE "users" SET "name" = ? WHERE "id" = ?')
-        self.assertEqual(bindings, ["new_name", 1])
+        self.assertEqual(sql, 'UPDATE "users" SET "name" = ?, "updated_at" = ? WHERE "id" = ?')
+        self.assertEqual(bindings[0], "new_name")
+        self.assertIsInstance(bindings[1], datetime.datetime)
+        self.assertEqual(bindings[2], 1)
 
     @unittest.skip("__selects__ not yet implemented")
     async def test_model_can_use_selects(self):
