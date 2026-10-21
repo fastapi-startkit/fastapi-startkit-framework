@@ -1,5 +1,8 @@
+import datetime
+
 from ..test_case import TestCase
 from ...fixtures.model import User
+from ..fixtures.db import DB
 
 
 class TestPostGresModel(TestCase):
@@ -154,3 +157,78 @@ class TestPostGresModel(TestCase):
 
         admin = await User.where("is_admin", True).first()
         self.assertEqual(admin.name, "Quentin")
+
+    async def test_supplied_created_at_is_stored_exactly(self):
+        supplied = datetime.datetime(2020, 1, 2, 3, 4, 5, 678000, tzinfo=datetime.UTC)
+
+        user = await User.create({"name": "Stamp", "email": "stamp@example.com", "created_at": supplied})
+
+        row = await DB.connection("postgres").select_one('SELECT "created_at" FROM "users" WHERE "id" = ?', [user.id])
+        self.assertIsNotNone(row)
+        self.assertEqual(row["created_at"], supplied)
+
+    async def test_update_and_touch_move_updated_at_forward(self):
+        user = await User.create({"name": "Toucher", "email": "toucher@example.com"})
+        created_at, inserted_updated_at = user.created_at, user.updated_at
+
+        await user.update({"name": "Touched"})
+        updated = await User.find(user.id)
+        self.assertGreater(updated.updated_at, inserted_updated_at)
+        self.assertEqual(updated.created_at, created_at)
+
+        self.assertTrue(await user.touch())
+        touched = await User.find(user.id)
+        self.assertGreater(touched.updated_at, updated.updated_at)
+
+    async def test_timestamp_and_timestamptz_columns_store_the_same_instant_for_aware_and_naive_input(self):
+        instant = datetime.datetime(2020, 1, 2, 3, 4, 5, 678000, tzinfo=datetime.UTC)
+        inputs = {
+            "aware": instant.astimezone(datetime.timezone(datetime.timedelta(hours=-4))),
+            "naive": instant.replace(tzinfo=None),
+        }
+
+        for label, value in inputs.items():
+            with self.subTest(label):
+                user = await User.create(
+                    {"name": label, "email": f"{label}@example.com", "email_verified_at": value, "created_at": value}
+                )
+
+                row = await DB.connection("postgres").select_one(
+                    'SELECT "email_verified_at", "created_at" FROM "users" WHERE "id" = ?', [user.id]
+                )
+                self.assertIsNotNone(row)
+                self.assertEqual(row["email_verified_at"], instant.replace(tzinfo=None))
+                self.assertEqual(row["created_at"], instant)
+
+                found = await User.find(user.id)
+                self.assertEqual(found.email_verified_at, instant)
+                self.assertEqual(found.created_at, instant)
+
+    async def test_raw_bindings_keep_the_instant_on_timestamp_and_timestamptz_columns(self):
+        instant = datetime.datetime(2021, 6, 7, 8, 9, 10, 123456, tzinfo=datetime.UTC)
+        aware = instant.astimezone(datetime.timezone(datetime.timedelta(hours=5, minutes=30)))
+        connection = DB.connection("postgres")
+
+        row = await connection.select_one(
+            "SELECT CAST(? AS timestamp) AS from_aware, CAST(? AS timestamp) AS from_naive, "
+            "CAST(? AS timestamptz) AS tz_from_aware",
+            [aware, instant.replace(tzinfo=None), aware],
+        )
+
+        self.assertIsNotNone(row)
+        self.assertEqual(row["from_aware"], instant.replace(tzinfo=None))
+        self.assertEqual(row["from_naive"], instant.replace(tzinfo=None))
+        self.assertEqual(row["tz_from_aware"], instant)
+
+    async def test_timestamp_infinity_maps_to_datetime_bounds(self):
+        row = await DB.connection("postgres").select_one(
+            "SELECT CAST(? AS timestamp) = 'infinity' AS is_infinity, CAST(? AS timestamp) = '-infinity' AS is_negative, "
+            "CAST('infinity' AS timestamp) AS infinity, CAST('-infinity' AS timestamp) AS negative",
+            [datetime.datetime.max, datetime.datetime.min],
+        )
+
+        self.assertIsNotNone(row)
+        self.assertTrue(row["is_infinity"])
+        self.assertTrue(row["is_negative"])
+        self.assertEqual(row["infinity"], datetime.datetime.max)
+        self.assertEqual(row["negative"], datetime.datetime.min)
