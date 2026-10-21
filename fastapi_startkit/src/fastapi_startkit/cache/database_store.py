@@ -82,7 +82,13 @@ class DatabaseLock(Lock):
         return True
 
     async def release(self) -> bool:
-        return bool(await self.store.query().where("key", self.key).where("value", encode(self.owner)).delete())
+        held = (
+            self.store.query()
+            .where("key", self.key)
+            .where("value", encode(self.owner))
+            .where(lambda query: query.where_null("expiration").or_where("expiration", ">", time.time()))
+        )
+        return bool(await held.delete())
 
     async def force_release(self) -> None:
         await self.store.query().where("key", self.key).delete()

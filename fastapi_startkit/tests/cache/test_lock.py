@@ -56,6 +56,21 @@ class LockContract:
         self.assertIs(await lock.release(), False)
         self.assertIs(await self.lock().get(), True)
 
+    async def test_release_of_own_expired_lock_returns_false(self):
+        lock = self.lock(seconds=10)
+        await lock.get()
+
+        self.time.return_value += 11
+
+        self.assertIs(await lock.release(), False)
+        self.assertIs(await self.lock().get(), True)
+
+    async def test_concurrent_acquires_have_exactly_one_winner(self):
+        results = await asyncio.gather(*(self.lock().get() for _ in range(10)))
+
+        self.assertEqual(results.count(True), 1)
+        self.assertEqual(results.count(False), 9)
+
     async def test_force_release_ignores_owner(self):
         await self.lock().get()
 
@@ -126,6 +141,13 @@ class LockContract:
     async def test_async_with_acquires_and_releases(self):
         async with self.lock():
             self.assertIs(await self.lock().get(), False)
+
+        self.assertIs(await self.lock().get(), True)
+
+    async def test_async_with_releases_when_body_raises(self):
+        with self.assertRaises(RuntimeError):
+            async with self.lock():
+                raise RuntimeError("boom")
 
         self.assertIs(await self.lock().get(), True)
 
