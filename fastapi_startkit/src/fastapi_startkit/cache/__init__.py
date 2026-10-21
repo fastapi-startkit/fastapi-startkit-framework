@@ -1,5 +1,5 @@
 from .array_store import ArrayStore
-from .config import ArrayStoreConfig, CacheConfig, DatabaseStoreConfig, FileStoreConfig
+from .config import ArrayStoreConfig, CacheConfig, DatabaseStoreConfig, FileStoreConfig, RedisStoreConfig
 from .file_store import FileStore
 from .lock import Lock, LockTimeoutError
 from .manager import CacheManager
@@ -21,6 +21,7 @@ __all__ = [
     "Lock",
     "LockTimeoutError",
     "MemoStore",
+    "RedisStoreConfig",
     "Repository",
     "Store",
 ]
