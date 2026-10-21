@@ -106,6 +106,21 @@ class TestMySQLPlatformAlter(unittest.TestCase):
             ["ALTER TABLE `users` MODIFY `age` INT NOT NULL"],
         )
 
+    def test_change_column_length_nullable_and_default(self):
+        from fastapi_startkit.masoniteorm.schema.Column import Column
+
+        diff = TableDiff("users")
+        diff.changed_columns = {
+            "name": Column("name", "string", length=100, nullable=True),
+            "role": Column("role", "string", length=20, default="member"),
+        }
+        self.assertEqual(
+            self.platform.compile_alter_sql(diff),
+            [
+                "ALTER TABLE `users` MODIFY `name` VARCHAR(100) NULL, MODIFY `role` VARCHAR(20) NOT NULL DEFAULT 'member'"
+            ],
+        )
+
     def test_drop_column(self):
         diff = TableDiff("users")
         diff.drop_column("age")
