@@ -3,8 +3,12 @@ import tempfile
 from pathlib import Path
 from unittest import IsolatedAsyncioTestCase, mock
 
+import fakeredis
+
 from fastapi_startkit.cache import ArrayStore, FileStore, LockTimeoutError, Repository
 from fastapi_startkit.cache.database_store import DatabaseStore
+from fastapi_startkit.cache.redis_store import RedisStore
+from fastapi_startkit.redis import RedisManager
 
 from test_database_store import InMemoryDatabase, load_migration
 
@@ -206,6 +210,36 @@ class TestDatabaseLock(LockContract, IsolatedAsyncioTestCase):
 
         self.assertIs(await self.lock().get(), True)
         self.assertEqual(await self.store.get("reports"), "cached")
+
+
+class TestRedisLock(LockContract, IsolatedAsyncioTestCase):
+    async def make_store(self):
+        self.server = fakeredis.FakeServer()
+        manager = RedisManager(
+            {"client": "fake", "options": {"prefix": "app_"}, "connections": {"cache": {"database": 1}}}
+        ).extend("fake", lambda parameters: fakeredis.FakeAsyncRedis(server=self.server, **parameters))
+        self.raw = fakeredis.FakeAsyncRedis(server=self.server, db=1, decode_responses=True)
+        return RedisStore(lambda: manager.connection("cache"), "shop")
+
+    async def test_lock_key_uses_connection_prefix_and_expiry(self):
+        lock = self.lock(seconds=10)
+        await lock.get()
+
+        self.assertEqual(await self.raw.get("app_lock:reports"), lock.owner)
+        self.assertGreater(await self.raw.pttl("app_lock:reports"), 0)
+
+    async def test_lock_does_not_collide_with_cache_key(self):
+        await self.store.put("reports", "cached", None)
+
+        self.assertIs(await self.lock().get(), True)
+        self.assertEqual(await self.store.get("reports"), "cached")
+
+    async def test_flush_keeps_locks(self):
+        await self.lock().get()
+
+        await self.store.flush()
+
+        self.assertIs(await self.lock().get(), False)
 
 
 class TestRepositoryLock(IsolatedAsyncioTestCase):
