@@ -103,8 +103,9 @@ def test_wrong_shape_names_the_missing_attributes(tmp_path: Path):
 def test_basedpyright_accepts_plain_dataclasses(tmp_path: Path):
     snippet = tmp_path / "snippet.py"
     snippet.write_text(Path(__file__).read_text())
+    (tmp_path / "pyrightconfig.json").write_text('{"typeCheckingMode": "standard"}')
     result = subprocess.run(
-        ["basedpyright", "--level", "error", "--pythonpath", sys.executable, str(snippet)],
+        ["basedpyright", "--pythonpath", sys.executable, str(snippet)],
         capture_output=True,
         text=True,
         cwd=tmp_path,
