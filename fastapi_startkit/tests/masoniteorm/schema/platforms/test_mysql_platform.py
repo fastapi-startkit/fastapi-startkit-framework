@@ -116,7 +116,9 @@ class TestMySQLPlatformAlter(unittest.TestCase):
         }
         self.assertEqual(
             self.platform.compile_alter_sql(diff),
-            ["ALTER TABLE `users` MODIFY `name` VARCHAR(100) NULL, MODIFY `role` VARCHAR(20) NOT NULL DEFAULT 'member'"],
+            [
+                "ALTER TABLE `users` MODIFY `name` VARCHAR(100) NULL, MODIFY `role` VARCHAR(20) NOT NULL DEFAULT 'member'"
+            ],
         )
 
     def test_drop_column(self):

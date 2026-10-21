@@ -8,9 +8,7 @@ class TestSQLiteColumnChange(TestCase):
             blueprint.increments("id")
             blueprint.string("name", 50)
             blueprint.string("age")
-        await self.schema.get_connection().statement(
-            "INSERT INTO change_targets (name, age) VALUES ('alice', '30')"
-        )
+        await self.schema.get_connection().statement("INSERT INTO change_targets (name, age) VALUES ('alice', '30')")
 
     async def asyncTearDown(self):
         await self.schema.drop_table_if_exists("change_targets")

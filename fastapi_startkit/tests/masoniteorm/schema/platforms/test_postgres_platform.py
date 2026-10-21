@@ -155,7 +155,7 @@ class TestPostgresPlatformAlter(unittest.TestCase):
             self._changed(Column("status", "enum", values=["on", "off"], default="on")),
             [
                 'ALTER TABLE "users" ALTER COLUMN "status" TYPE VARCHAR USING "status"::VARCHAR, '
-                "ALTER COLUMN \"status\" SET NOT NULL, ALTER COLUMN \"status\" SET DEFAULT 'on', "
+                'ALTER COLUMN "status" SET NOT NULL, ALTER COLUMN "status" SET DEFAULT \'on\', '
                 "DROP CONSTRAINT IF EXISTS users_status_check, "
                 "ADD CONSTRAINT users_status_check CHECK(\"status\" IN ('on', 'off'))"
             ],
