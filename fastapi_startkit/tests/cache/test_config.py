@@ -3,7 +3,7 @@ import unittest
 from dataclasses import asdict
 from unittest import mock
 
-from fastapi_startkit.cache import ArrayStoreConfig, CacheConfig, DatabaseStoreConfig, FileStoreConfig
+from fastapi_startkit.cache import ArrayStoreConfig, CacheConfig, DatabaseStoreConfig, FileStoreConfig, RedisStoreConfig
 
 ENV = ("CACHE_CONNECTION", "CACHE_PREFIX", "CACHE_FILE_PATH", "DB_CACHE_CONNECTION", "DB_CACHE_TABLE")
 
@@ -25,6 +25,7 @@ class TestCacheConfig(unittest.TestCase):
                 "array": ArrayStoreConfig(),
                 "file": FileStoreConfig(path="storage/framework/cache/data"),
                 "database": DatabaseStoreConfig(connection=None, table="caches"),
+                "redis": RedisStoreConfig(connection="cache"),
             },
         )
 
@@ -47,7 +48,7 @@ class TestCacheConfig(unittest.TestCase):
     def test_store_drivers(self):
         self.assertEqual(
             {name: getattr(store, "driver") for name, store in CacheConfig().stores.items()},
-            {"array": "array", "file": "file", "database": "database"},
+            {"array": "array", "file": "file", "database": "database", "redis": "redis"},
         )
 
     def test_environment_is_read_per_instance(self):
@@ -88,9 +89,9 @@ class TestCacheConfig(unittest.TestCase):
         first = CacheConfig()
         second = CacheConfig()
 
-        first.stores["redis"] = ArrayStoreConfig()
+        first.stores["custom"] = ArrayStoreConfig()
 
-        self.assertNotIn("redis", second.stores)
+        self.assertNotIn("custom", second.stores)
         self.assertIsNot(first.stores["file"], second.stores["file"])
 
     def test_class_attributes_resolve_environment(self):
@@ -116,6 +117,7 @@ class TestCacheConfig(unittest.TestCase):
                     "array": {"driver": "array"},
                     "file": {"driver": "file", "path": "var/cache"},
                     "database": {"driver": "database", "connection": None, "table": "caches"},
+                    "redis": {"driver": "redis", "connection": "cache"},
                 },
             },
         )
