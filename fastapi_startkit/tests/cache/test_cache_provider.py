@@ -22,7 +22,7 @@ def test_binds_manager_and_merges_default_config(tmp_path, monkeypatch):
     app = make_app(tmp_path, CacheProvider)
 
     assert isinstance(app.make("cache"), CacheManager)
-    assert config("cache.default") == "file"
+    assert config("cache.default") == "database"
     assert config("cache.stores.database.table") == "caches"
 
 

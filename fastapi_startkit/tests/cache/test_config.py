@@ -9,7 +9,7 @@ def test_defaults(monkeypatch):
 
     config = CacheConfig()
 
-    assert config.default == "file"
+    assert config.default == "database"
     assert config.prefix == "cache"
     assert config.stores == {
         "array": ArrayStoreConfig(),
