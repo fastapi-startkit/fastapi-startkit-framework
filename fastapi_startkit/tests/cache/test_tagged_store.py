@@ -2,8 +2,12 @@ import hashlib
 import tempfile
 from unittest import IsolatedAsyncioTestCase, mock
 
+import fakeredis
+
 from fastapi_startkit.cache import ArrayStore, CacheManager, FileStore, MemoStore, Repository, TaggedStore
 from fastapi_startkit.cache.database_store import DatabaseStore
+from fastapi_startkit.cache.redis_store import RedisStore
+from fastapi_startkit.redis import RedisManager
 
 from test_database_store import InMemoryDatabase, load_migration
 
@@ -123,6 +127,23 @@ class TestDatabaseTags(TaggedContract, IsolatedAsyncioTestCase):
         with mock.patch.object(migration, "config", return_value=None):
             await migration.CreateCachesTable("sqlite", self.database.get_schema_builder()).up()
         return DatabaseStore(self.database.connection)
+
+
+class TestRedisTags(TaggedContract, IsolatedAsyncioTestCase):
+    async def make_store(self):
+        server = fakeredis.FakeServer()
+        manager = RedisManager(
+            {"client": "fake", "options": {"prefix": "app_"}, "connections": {"cache": {"database": 1}}}
+        ).extend("fake", lambda parameters: fakeredis.FakeAsyncRedis(server=server, **parameters))
+        return RedisStore(lambda: manager.connection("cache"), "app")
+
+    async def test_store_flush_removes_tagged_entries(self):
+        await self.cache.tags("people").put("john", "doe")
+
+        await self.cache.flush()
+
+        self.assertEqual([key async for key in self.store.connection().scan_iter(match="app_*")], [])
+        self.assertIsNone(await self.cache.tags("people").get("john"))
 
 
 class TestRepositoryTags(IsolatedAsyncioTestCase):
