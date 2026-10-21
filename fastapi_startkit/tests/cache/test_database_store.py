@@ -1,6 +1,8 @@
 import base64
 import importlib.util
 import pickle
+import sys
+import types
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -44,6 +46,7 @@ async def migrate(db):
 
 @pytest.fixture
 async def db(tmp_path):
+    Application(base_path=tmp_path, env="testing")
     manager = DatabaseManager(ConnectionFactory(), database_config(tmp_path / "cache.sqlite3"))
     await migrate(manager)
     return manager
@@ -141,6 +144,32 @@ async def test_corrupt_value_is_a_miss_and_removed(store, db):
     assert await rows(db) == []
 
 
+@pytest.mark.parametrize("removal", ["module", "class"])
+async def test_value_of_removed_class_is_a_miss_and_removed(store, db, monkeypatch, removal):
+    module = types.ModuleType("cache_fixture_models")
+    module.Gone = type("Gone", (), {"__module__": "cache_fixture_models"})
+    monkeypatch.setitem(sys.modules, "cache_fixture_models", module)
+    await store.put("gone", module.Gone(), None)
+
+    if removal == "module":
+        monkeypatch.delitem(sys.modules, "cache_fixture_models")
+    else:
+        monkeypatch.delattr(module, "Gone")
+
+    assert await store.get("gone") is MISSING
+    assert await rows(db) == []
+
+
+async def test_expiration_column_is_big_integer(store, db, clock):
+    columns = await db.connection(None).select("PRAGMA table_info(caches)")
+
+    assert {column["name"]: column["type"] for column in columns}["expiration"].upper() == "BIGINT"
+
+    await store.put("far", "future", 60 * 60 * 24 * 365 * 100)
+    [row] = await rows(db)
+    assert row["expiration"] > 2**31
+
+
 async def test_forget_reports_whether_key_existed(store):
     await store.put("name", "taylor", None)
 
@@ -181,3 +210,22 @@ async def test_provider_uses_database_store_by_default(tmp_path, monkeypatch):
     [row] = await rows(app.make("db"))
     assert row["key"] == "cache:name"
     assert "databases/migrations/2026_10_21_000000_create_caches_table.py" in app.published_resources["cache"].values()
+
+
+async def test_migration_follows_configured_table(tmp_path, monkeypatch):
+    monkeypatch.setenv("DB_CACHE_TABLE", "app_cache")
+    monkeypatch.setenv("CACHE_CONNECTION", "database")
+    config = database_config(tmp_path / "app.sqlite3")
+    app = Application(
+        base_path=tmp_path,
+        env="testing",
+        providers=[(DatabaseProvider, lambda: config), CacheProvider],
+    )
+    schema = app.make("db").get_schema_builder()
+
+    await migrate(app.make("db"))
+    await Cache.put("name", "taylor")
+
+    assert await schema.has_table("app_cache")
+    assert not await schema.has_table("caches")
+    assert await Cache.get("name") == "taylor"

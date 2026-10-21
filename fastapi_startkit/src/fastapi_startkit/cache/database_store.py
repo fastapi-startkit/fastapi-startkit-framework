@@ -28,7 +28,7 @@ class DatabaseStore:
 
         try:
             value = pickle.loads(base64.b64decode(row["value"]))
-        except (pickle.UnpicklingError, EOFError, ValueError, TypeError):
+        except Exception:
             await self.forget(key)
             return MISSING
 
