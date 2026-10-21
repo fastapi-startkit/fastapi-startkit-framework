@@ -6,7 +6,7 @@ from fastapi_startkit.console import Command
 
 
 class MakeObserverCommand(Command):
-    name = "observer"
+    name = "db:make:observer"
     description = "Creates a new observer file."
 
     arguments = [argument("name", description="The name of the observer")]
