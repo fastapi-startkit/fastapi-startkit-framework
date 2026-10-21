@@ -105,12 +105,8 @@ class MSSQLPlatform(Platform):
             )
 
         if table.changed_columns:
-            sql.append(
-                self.alter_format().format(
-                    table=self.wrap_table(table.name),
-                    columns="ALTER COLUMN " + ", ".join(self.columnize(table.changed_columns)).strip(),
-                )
-            )
+            for name, column in table.changed_columns.items():
+                sql.extend(self.change_column_statements(table.name, name, column))
 
         if table.renamed_columns:
             for name, column in table.get_renamed_columns().items():
@@ -190,6 +186,48 @@ class MSSQLPlatform(Platform):
                         f"ALTER TABLE {self.wrap_table(table.name)} ADD CONSTRAINT {constraint.name} PRIMARY KEY ({','.join(constraint._columns)})"
                     )
         return sql
+
+    def change_column_statements(self, table_name, name, column):
+        table = self.quote_identifier(table_name)
+        column_name = self.quote_identifier(name)
+        constraint = self.quote_identifier(f"DF_{table_name}_{name}")
+        length = self.create_column_length(column.column_type).format(length=column.length) if column.length else ""
+        statements = [
+            self.drop_default_constraint_string(table_name, name),
+            f"ALTER TABLE {table} ALTER COLUMN {column_name} "
+            f"{self.type_map.get(column.column_type, '')}{length} {self.premapped_nulls[bool(column.is_null)]}",
+        ]
+
+        default = self.change_default(column)
+        if default is not None:
+            statements.append(f"ALTER TABLE {table} ADD CONSTRAINT {constraint} DEFAULT {default} FOR {column_name}")
+
+        return statements
+
+    def drop_default_constraint_string(self, table_name, name):
+        return (
+            "DECLARE @sql NVARCHAR(MAX) = N''; "
+            "SELECT @sql += N'ALTER TABLE ' + QUOTENAME(OBJECT_SCHEMA_NAME(dc.parent_object_id)) + N'.' "
+            "+ QUOTENAME(OBJECT_NAME(dc.parent_object_id)) + N' DROP CONSTRAINT ' + QUOTENAME(dc.name) + N';' "
+            "FROM sys.default_constraints dc "
+            "JOIN sys.columns c ON c.object_id = dc.parent_object_id AND c.column_id = dc.parent_column_id "
+            f"WHERE dc.parent_object_id = OBJECT_ID(N{self.quote_string(self.quote_identifier(table_name))}) "
+            f"AND c.name = N{self.quote_string(name)}; "
+            "EXEC sp_executesql @sql"
+        )
+
+    @staticmethod
+    def quote_identifier(name):
+        return "[" + name.replace("]", "]]") + "]"
+
+    def change_default(self, column):
+        if column.default is None:
+            return None
+        if column.default in self.premapped_defaults:
+            return self.premapped_defaults[column.default].removeprefix(" DEFAULT ")
+        if isinstance(column.default, str) and not column.default_is_raw:
+            return self.quote_string(column.default)
+        return str(column.default)
 
     def add_column_string(self):
         return "{name} {data_type}{length}"

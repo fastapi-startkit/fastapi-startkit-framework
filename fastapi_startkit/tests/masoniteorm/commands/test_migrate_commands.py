@@ -13,6 +13,7 @@ from fastapi_startkit.masoniteorm.migrations.Migrator import Migrator
 from fastapi_startkit.masoniteorm.models.MigrationModel import MigrationModel
 
 from .fixtures.app import create_app, DB_PATH
+from .fixtures.models import SeededUser
 
 CREATE_POSTS = "2026_01_01_000000_create_posts_table"
 ADD_BODY_TO_POSTS = "2026_01_01_000001_add_body_to_posts_table"
@@ -165,3 +166,49 @@ class TestMigrateCommands(unittest.TestCase):
         tester.execute("--connection sqlite")
 
         self.assertIn("Migrated:", tester.io.fetch_output())
+
+
+class TestMigrateSeedOption(unittest.TestCase):
+    MIGRATE = "--connection sqlite --directory databases/seed_migrations"
+    SEED_DIRECTORY = "--seed-directory tests.masoniteorm.commands.fixtures.databases.seeders"
+
+    def setUp(self):
+        self.app = create_app()
+        asyncio.run(self._reset_db())
+
+    def tearDown(self):
+        if DB_PATH.exists():
+            DB_PATH.unlink()
+
+    async def _reset_db(self):
+        db = self.app.make("db")
+        await db.clear()
+        schema = db.get_schema_builder()
+        for table in await schema.get_all_tables():
+            if not table.startswith("sqlite_"):
+                await schema.drop_table_if_exists(table)
+
+    def _seeded_names(self):
+        return asyncio.run(self._fetch_names())
+
+    async def _fetch_names(self):
+        await self.app.make("db").clear()
+        rows = await SeededUser.all()
+        return sorted(row.name for row in rows)
+
+    def test_fresh_seed_runs_database_seeder_through_console(self):
+        self.assertEqual(self.app.run("db:migrate:fresh", f"{self.MIGRATE} --seed null {self.SEED_DIRECTORY}"), 0)
+
+        self.assertEqual(self._seeded_names(), ["database-seeder"])
+
+    def test_fresh_seed_runs_table_seeder_through_console(self):
+        self.assertEqual(self.app.run("db:migrate:fresh", f"{self.MIGRATE} --seed user {self.SEED_DIRECTORY}"), 0)
+
+        self.assertEqual(self._seeded_names(), ["user-table-seeder"])
+
+    def test_refresh_is_registered_and_seeds_through_console(self):
+        self.assertEqual(self.app.run("db:migrate", self.MIGRATE), 0)
+
+        self.assertEqual(self.app.run("db:migrate:refresh", f"{self.MIGRATE} --seed null {self.SEED_DIRECTORY}"), 0)
+
+        self.assertEqual(self._seeded_names(), ["database-seeder"])
