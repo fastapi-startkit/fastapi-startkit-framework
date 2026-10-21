@@ -66,7 +66,7 @@ class MigrateFreshCommand(Command):
             seeded = await DBSeedCommand.run_seeders(
                 directory=self.option("seed-directory"),
                 connection=self.option("connection"),
-                table="None" if self.option("seed") == "null" else self.option("seed"),
+                table=None if self.option("seed") == "null" else self.option("seed"),
             )
             self.line(f"<info>{seeded} seeded!</info>")
 

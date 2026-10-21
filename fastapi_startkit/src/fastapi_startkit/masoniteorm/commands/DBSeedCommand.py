@@ -11,7 +11,7 @@ class DBSeedCommand(Command):
     arguments = [
         argument(
             "table",
-            default="None",
+            default=None,
             description="Name of the table to seed",
             optional=True,
         )
@@ -56,7 +56,7 @@ class DBSeedCommand(Command):
         self.line(f"<info>{seeded} seeded!</info>")
 
     @staticmethod
-    async def run_seeders(directory: str, connection: str, table: str = "None", class_name: str | None = None) -> str:
+    async def run_seeders(directory: str, connection: str, table: str | None = None, class_name: str | None = None) -> str:
         from ..seeders import Seeder
 
         seeder = Seeder(seed_path=directory, connection=connection)
@@ -72,7 +72,7 @@ class DBSeedCommand(Command):
             await seeder.run_specific_seed(seeder_file)
             return seeder_file.split(".")[-1]
 
-        if table != "None":
+        if table:
             await seeder.run_specific_seed(f"{underscore(table)}_table_seeder.{camelize(table)}TableSeeder")
             return f"{camelize(table)}TableSeeder"
 
