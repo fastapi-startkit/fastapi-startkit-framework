@@ -23,6 +23,12 @@ class DatabaseStoreConfig(Config):
 
 
 @dataclass
+class RedisStoreConfig(Config):
+    driver: str = "redis"
+    connection: str = "cache"
+
+
+@dataclass
 class CacheConfig(Config):
     default: str = env("CACHE_CONNECTION", "database")
     prefix: str = env("CACHE_PREFIX", "cache")
@@ -31,8 +37,9 @@ class CacheConfig(Config):
             "array": ArrayStoreConfig(),
             "file": FileStoreConfig(),
             "database": DatabaseStoreConfig(),
+            "redis": RedisStoreConfig(),
         }
     )
 
 
-__all__ = ["ArrayStoreConfig", "CacheConfig", "DatabaseStoreConfig", "FileStoreConfig"]
+__all__ = ["ArrayStoreConfig", "CacheConfig", "DatabaseStoreConfig", "FileStoreConfig", "RedisStoreConfig"]
