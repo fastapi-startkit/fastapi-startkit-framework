@@ -105,8 +105,59 @@ class TestPostgresPlatformAlter(unittest.TestCase):
         self.assertEqual(
             self.platform.compile_alter_sql(diff),
             [
-                'ALTER TABLE "users" ALTER COLUMN "age" TYPE INTEGER, '
+                'ALTER TABLE "users" ALTER COLUMN "age" TYPE INTEGER USING "age"::INTEGER, '
                 'ALTER COLUMN "age" SET NOT NULL, ALTER COLUMN "age" SET DEFAULT 5'
+            ],
+        )
+
+    def _changed(self, column):
+        diff = TableDiff("users")
+        diff.changed_columns = {column.name: column}
+        return self.platform.compile_alter_sql(diff)
+
+    def test_change_column_length_and_nullable_drops_default(self):
+        from fastapi_startkit.masoniteorm.schema.Column import Column
+
+        self.assertEqual(
+            self._changed(Column("name", "string", length=100, nullable=True)),
+            [
+                'ALTER TABLE "users" ALTER COLUMN "name" TYPE VARCHAR(100) USING "name"::VARCHAR(100), '
+                'ALTER COLUMN "name" DROP NOT NULL, ALTER COLUMN "name" DROP DEFAULT'
+            ],
+        )
+
+    def test_change_column_quotes_string_default(self):
+        from fastapi_startkit.masoniteorm.schema.Column import Column
+
+        self.assertEqual(
+            self._changed(Column("name", "string", length=255, default="o'neil")),
+            [
+                'ALTER TABLE "users" ALTER COLUMN "name" TYPE VARCHAR(255) USING "name"::VARCHAR(255), '
+                "ALTER COLUMN \"name\" SET NOT NULL, ALTER COLUMN \"name\" SET DEFAULT 'o''neil'"
+            ],
+        )
+
+    def test_change_column_without_length_and_premapped_default(self):
+        from fastapi_startkit.masoniteorm.schema.Column import Column
+
+        self.assertEqual(
+            self._changed(Column("body", "text", default="null", nullable=True)),
+            [
+                'ALTER TABLE "users" ALTER COLUMN "body" TYPE TEXT USING "body"::TEXT, '
+                'ALTER COLUMN "body" DROP NOT NULL, ALTER COLUMN "body" SET DEFAULT NULL'
+            ],
+        )
+
+    def test_change_enum_column_replaces_check_constraint(self):
+        from fastapi_startkit.masoniteorm.schema.Column import Column
+
+        self.assertEqual(
+            self._changed(Column("status", "enum", values=["on", "off"], default="on")),
+            [
+                'ALTER TABLE "users" ALTER COLUMN "status" TYPE VARCHAR USING "status"::VARCHAR, '
+                "ALTER COLUMN \"status\" SET NOT NULL, ALTER COLUMN \"status\" SET DEFAULT 'on', "
+                "DROP CONSTRAINT IF EXISTS users_status_check, "
+                "ADD CONSTRAINT users_status_check CHECK(\"status\" IN ('on', 'off'))"
             ],
         )
 

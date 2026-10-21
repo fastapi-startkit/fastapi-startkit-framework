@@ -259,34 +259,7 @@ class PostgresPlatform(Platform):
             changed_sql = []
 
             for name, column in table.changed_columns.items():
-                column_constraint = ""
-                if column.column_type == "enum":
-                    values = ", ".join(f"'{x}'" for x in column.values)
-                    column_constraint = f" CHECK({column.name} IN ({values}))"
-                changed_sql.append(
-                    self.modify_column_string()
-                    .format(
-                        name=self.wrap_column(name),
-                        data_type=self.type_map.get(column.column_type),
-                        nullable="NULL" if column.is_null else "NOT NULL",
-                        length=(
-                            "(" + str(column.length) + ")"
-                            if column.column_type not in self.types_without_lengths
-                            else ""
-                        ),
-                        column_constraint=column_constraint,
-                        constraint="PRIMARY KEY" if column.primary else "",
-                    )
-                    .strip()
-                )
-
-                if column.is_null:
-                    changed_sql.append(f"ALTER COLUMN {self.wrap_column(name)} DROP NOT NULL")
-                else:
-                    changed_sql.append(f"ALTER COLUMN {self.wrap_column(name)} SET NOT NULL")
-
-                if column.default is not None:
-                    changed_sql.append(f"ALTER COLUMN {self.wrap_column(name)} SET DEFAULT {column.default}")
+                changed_sql.extend(self.change_column_clauses(table.name, name, column))
 
             sql.append(
                 self.alter_format().format(
@@ -376,8 +349,40 @@ class PostgresPlatform(Platform):
     def drop_column_string(self):
         return "DROP COLUMN {name}"
 
+    def change_column_clauses(self, table_name, name, column):
+        column_name = self.wrap_column(name)
+        length = self.create_column_length(column.column_type).format(length=column.length) if column.length else ""
+        data_type = f"{self.type_map.get(column.column_type, '')}{length}"
+        clauses = [
+            self.modify_column_string().format(name=column_name, data_type=data_type),
+            f"ALTER COLUMN {column_name} {'DROP' if column.is_null else 'SET'} NOT NULL",
+        ]
+
+        default = self.change_default(column)
+        if default is None:
+            clauses.append(f"ALTER COLUMN {column_name} DROP DEFAULT")
+        else:
+            clauses.append(f"ALTER COLUMN {column_name} SET DEFAULT {default}")
+
+        if column.column_type == "enum":
+            check_name = f"{table_name}_{name}_check"
+            values = ", ".join(self.quote_string(str(value)) for value in column.values)
+            clauses.append(f"DROP CONSTRAINT IF EXISTS {check_name}")
+            clauses.append(f"ADD CONSTRAINT {check_name} CHECK({column_name} IN ({values}))")
+
+        return clauses
+
+    def change_default(self, column):
+        if column.default is None:
+            return None
+        if column.default in self.premapped_defaults:
+            return self.premapped_defaults[column.default].removeprefix(" DEFAULT ")
+        if isinstance(column.default, str) and not column.default_is_raw:
+            return self.quote_string(column.default)
+        return str(column.default)
+
     def modify_column_string(self):
-        return "ALTER COLUMN {name} TYPE {data_type}{length}{column_constraint} {constraint}"
+        return "ALTER COLUMN {name} TYPE {data_type} USING {name}::{data_type}"
 
     def rename_column_string(self):
         return "RENAME COLUMN {old} TO {to}"
