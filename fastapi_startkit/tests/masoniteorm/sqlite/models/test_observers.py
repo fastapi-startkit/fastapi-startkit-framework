@@ -112,7 +112,6 @@ class RecordedUser(Model):
     __table__ = "users"
     __timestamps__ = False
     __observers__ = {}
-    __fillable__ = ["name", "email"]
     name: str
     email: str
     address: str
@@ -122,7 +121,6 @@ class AsyncObservedUser(Model):
     __table__ = "users"
     __timestamps__ = False
     __observers__ = {}
-    __fillable__ = ["name", "email"]
     name: str
     email: str
     address: str
@@ -223,14 +221,12 @@ class TestModelLifecycleEvents(TestCase):
 
 class Note(Model):
     __table__ = "notes"
-    __fillable__ = ["body"]
     body: str
 
 
 class UntimedNote(Model):
     __table__ = "notes"
     __timestamps__ = False
-    __fillable__ = ["body"]
     body: str
 
 
