@@ -9,6 +9,7 @@ from fastapi_startkit.masoniteorm.commands import (
     DBSeedCommand,
     MakeMigrationCommand,
     MakeModelCommand,
+    MakeObserverCommand,
     MakeSeedCommand,
     MigrateRollbackCommand,
     MigrateFreshCommand,
@@ -58,6 +59,7 @@ class DatabaseProvider(Provider):
                 MigrateStatusCommand,
                 MigrateRollbackCommand,
                 MakeModelCommand,
+                MakeObserverCommand,
                 MakeSeedCommand,
                 MigrateFreshCommand,
             ]

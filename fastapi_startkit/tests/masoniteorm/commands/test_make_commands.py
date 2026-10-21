@@ -36,6 +36,12 @@ class _TempCwdTestCase(unittest.TestCase):
     def _tester(self, command_class):
         return CommandTester(command_class())
 
+    def _load_class(self, path, class_name):
+        spec = importlib.util.spec_from_file_location(class_name, path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return getattr(module, class_name)
+
     def _generated_file(self, directory):
         files = [f for f in os.listdir(directory) if f.endswith(".py")]
         self.assertEqual(len(files), 1, f"expected one generated file in {directory}, got {files}")
@@ -188,6 +194,17 @@ class TestMakeModelCommand(_TempCwdTestCase):
         content = open(os.path.join("app", "Post.py")).read()
         self.assertIn("class Post(Model)", content)
 
+    def test_generated_model_imports(self):
+        os.makedirs("app")
+        self._tester(MakeModelCommand).execute("Post")
+
+        content = open(os.path.join("app", "Post.py")).read()
+        self.assertIn("from fastapi_startkit.masoniteorm.models import Model", content)
+        self.assertNotIn('"""', content)
+
+        post_class = self._load_class(os.path.join("app", "Post.py"), "Post")
+        self.assertTrue(issubclass(post_class, Model))
+
     def test_pep_option_uses_underscore_filename(self):
         os.makedirs("app")
         tester = self._tester(MakeModelCommand)
@@ -241,12 +258,6 @@ class TestMakeSeedCommand(_TempCwdTestCase):
 class TestMakeObserverCommand(_TempCwdTestCase):
     LIFECYCLE_EVENTS = ["saving", "creating", "updating", "created", "updated", "saved", "deleting", "deleted"]
 
-    def _load_observer(self, file_name, class_name):
-        spec = importlib.util.spec_from_file_location(class_name, os.path.join("app/observers", file_name))
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        return getattr(module, class_name)
-
     def test_creates_observer_file(self):
         tester = self._tester(MakeObserverCommand)
         tester.execute("Post")
@@ -272,7 +283,7 @@ class TestMakeObserverCommand(_TempCwdTestCase):
     def test_generated_observer_imports_and_handles_lifecycle_events(self):
         self._tester(MakeObserverCommand).execute("Post")
 
-        observer_class = self._load_observer("PostObserver.py", "PostObserver")
+        observer_class = self._load_class(os.path.join("app/observers", "PostObserver.py"), "PostObserver")
         handlers = [name for name in vars(observer_class) if not name.startswith("_")]
         self.assertEqual(handlers, self.LIFECYCLE_EVENTS)
 
@@ -283,6 +294,12 @@ class TestMakeObserverCommand(_TempCwdTestCase):
         post = Post()
         for event in self.LIFECYCLE_EVENTS:
             asyncio.run(post.observe_events(post, event))
+
+    def test_runs_through_console_as_db_make_observer(self):
+        app = create_app()
+
+        self.assertEqual(app.run("db:make:observer", "Order"), 0)
+        self.assertTrue(os.path.exists(os.path.join("app/observers", "OrderObserver.py")))
 
     def test_reports_when_observer_already_exists(self):
         self._tester(MakeObserverCommand).execute("Post")
