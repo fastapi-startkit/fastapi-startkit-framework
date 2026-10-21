@@ -1,6 +1,7 @@
 from .array_store import ArrayStore
 from .config import ArrayStoreConfig, CacheConfig, DatabaseStoreConfig, FileStoreConfig
 from .manager import CacheManager
+from .provider import CacheProvider
 from .repository import Repository
 from .store import MISSING, Store
 
@@ -10,6 +11,7 @@ __all__ = [
     "ArrayStoreConfig",
     "CacheConfig",
     "CacheManager",
+    "CacheProvider",
     "DatabaseStoreConfig",
     "FileStoreConfig",
     "Repository",
