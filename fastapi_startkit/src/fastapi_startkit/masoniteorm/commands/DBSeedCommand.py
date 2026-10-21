@@ -56,7 +56,9 @@ class DBSeedCommand(Command):
         self.line(f"<info>{seeded} seeded!</info>")
 
     @staticmethod
-    async def run_seeders(directory: str, connection: str, table: str | None = None, class_name: str | None = None) -> str:
+    async def run_seeders(
+        directory: str, connection: str, table: str | None = None, class_name: str | None = None
+    ) -> str:
         from ..seeders import Seeder
 
         seeder = Seeder(seed_path=directory, connection=connection)
