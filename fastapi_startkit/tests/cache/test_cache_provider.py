@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 
 from fastapi_startkit.application import Application
-from fastapi_startkit.cache import ArrayStoreConfig, CacheManager, CacheProvider
+from fastapi_startkit.cache import ArrayStoreConfig, CacheManager, CacheProvider, FileStore
 from fastapi_startkit.configuration import config
 from fastapi_startkit.facades import Cache
 
@@ -31,6 +31,19 @@ def test_plain_dataclass_config_is_accepted(tmp_path):
 
     assert app.make("cache").config["prefix"] == "shop"
     assert config("cache.stores.second.driver") == "array"
+
+
+async def test_file_store_lives_under_base_path(tmp_path, monkeypatch):
+    monkeypatch.delenv("CACHE_FILE_PATH", raising=False)
+    make_app(tmp_path, CacheProvider)
+
+    repository = Cache.store("file")
+    await repository.put("name", "taylor")
+
+    assert isinstance(repository.store, FileStore)
+    assert repository.store.directory == tmp_path / "storage/framework/cache/data"
+    assert repository.store.path("cache:name").is_file()
+    assert await Cache.store("file").get("name") == "taylor"
 
 
 def test_publishes_config_stub(tmp_path):

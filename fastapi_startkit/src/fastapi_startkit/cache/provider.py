@@ -3,6 +3,7 @@ from pathlib import Path
 from fastapi_startkit.support import Provider
 
 from .config import CacheConfig
+from .file_store import FileStore
 from .manager import CacheManager
 
 
@@ -12,7 +13,9 @@ class CacheProvider(Provider):
     def register(self) -> None:
         config = self.resolve_config(CacheConfig)
         self.merge_config_from(config, self.provider_key)
-        self.app.bind("cache", CacheManager(config))
+        manager = CacheManager(config)
+        manager.extend("file", lambda store: FileStore(Path(self.app.base_path) / store["path"]))
+        self.app.bind("cache", manager)
 
     def boot(self) -> None:
         self.publishes({Path(__file__).resolve().parent / "config" / "__init__.py": "config/cache.py"})
