@@ -1,7 +1,7 @@
 from collections.abc import Awaitable, Callable
 from typing import Any, overload
 
-from fastapi_startkit.cache import CacheManager, Repository
+from fastapi_startkit.cache import CacheManager, Lock, Repository
 from fastapi_startkit.cache.manager import StoreFactory
 from fastapi_startkit.cache.repository import Decorator, Ttl
 
@@ -17,6 +17,7 @@ class CacheFacade:
     def remember(self, key: str, ttl: Ttl, factory: Callable[[], Any]) -> Awaitable[Any]: ...
     @overload
     def remember(self, key: str | None, ttl: Ttl, factory: None = None) -> Decorator: ...
+    def lock(self, name: str, seconds: float = 0, owner: str | None = None) -> Lock: ...
     async def forget(self, key: str) -> bool: ...
     async def flush(self) -> bool: ...
 
