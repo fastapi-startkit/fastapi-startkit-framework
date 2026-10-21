@@ -12,6 +12,7 @@ from fastapi_startkit.masoniteorm.commands.MakeModelCommand import MakeModelComm
 from fastapi_startkit.masoniteorm.commands.MakeObserverCommand import MakeObserverCommand
 from fastapi_startkit.masoniteorm.commands.MakeSeedCommand import MakeSeedCommand
 from fastapi_startkit.masoniteorm.migrations.Migration import Migration
+from fastapi_startkit.masoniteorm.models import Model
 
 from .fixtures.app import create_app, DB_PATH
 
@@ -238,8 +239,14 @@ class TestMakeSeedCommand(_TempCwdTestCase):
 
 
 class TestMakeObserverCommand(_TempCwdTestCase):
-    # make:observer emits a plain observer class with no schema side effects, so
-    # the generated file content is the only meaningful contract to assert.
+    LIFECYCLE_EVENTS = ["saving", "creating", "updating", "created", "updated", "saved", "deleting", "deleted"]
+
+    def _load_observer(self, file_name, class_name):
+        spec = importlib.util.spec_from_file_location(class_name, os.path.join("app/observers", file_name))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return getattr(module, class_name)
+
     def test_creates_observer_file(self):
         tester = self._tester(MakeObserverCommand)
         tester.execute("Post")
@@ -248,17 +255,34 @@ class TestMakeObserverCommand(_TempCwdTestCase):
         self.assertIn("Observer created:", output)
 
         content = open(os.path.join("app/observers", "PostObserver.py")).read()
+        self.assertIn("from fastapi_startkit.masoniteorm.models import Model", content)
         self.assertIn("class PostObserver:", content)
-        self.assertIn("def created(self, post):", content)
+        self.assertIn("async def created(self, post: Model) -> None:", content)
+        self.assertNotIn('"""', content)
+        self.assertNotIn("#", content)
 
-    def test_model_option_controls_variable_and_type(self):
+    def test_model_option_controls_variable_name(self):
         tester = self._tester(MakeObserverCommand)
         tester.execute("Audit --model User")
 
         content = open(os.path.join("app/observers", "AuditObserver.py")).read()
         self.assertIn("class AuditObserver:", content)
-        self.assertIn("def created(self, user):", content)
-        self.assertIn("User model.", content)
+        self.assertIn("async def created(self, user: Model) -> None:", content)
+
+    def test_generated_observer_imports_and_handles_lifecycle_events(self):
+        self._tester(MakeObserverCommand).execute("Post")
+
+        observer_class = self._load_observer("PostObserver.py", "PostObserver")
+        handlers = [name for name in vars(observer_class) if not name.startswith("_")]
+        self.assertEqual(handlers, self.LIFECYCLE_EVENTS)
+
+        class Post(Model):
+            __observers__ = {}
+
+        Post.observe(observer_class())
+        post = Post()
+        for event in self.LIFECYCLE_EVENTS:
+            asyncio.run(post.observe_events(post, event))
 
     def test_reports_when_observer_already_exists(self):
         self._tester(MakeObserverCommand).execute("Post")
