@@ -7,6 +7,7 @@ from .memo_store import MemoStore
 from .provider import CacheProvider
 from .repository import Repository
 from .store import MISSING, Store
+from .tagged_store import TaggedStore, TagSet
 
 __all__ = [
     "MISSING",
@@ -24,4 +25,6 @@ __all__ = [
     "RedisStoreConfig",
     "Repository",
     "Store",
+    "TagSet",
+    "TaggedStore",
 ]
