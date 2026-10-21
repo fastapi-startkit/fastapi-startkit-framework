@@ -1,11 +1,31 @@
+import functools
+import hashlib
 import inspect
-from collections.abc import Callable
+import pickle
+from collections.abc import Awaitable, Callable
 from datetime import timedelta
-from typing import Any
+from typing import Any, ParamSpec, Protocol, overload
 
 from .store import MISSING, Store
 
+P = ParamSpec("P")
 Ttl = float | timedelta | None
+
+
+class Decorator(Protocol):
+    def __call__(self, function: Callable[P, Any], /) -> Callable[P, Awaitable[Any]]: ...
+
+
+def call_key(base: str, args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
+    if not args and not kwargs:
+        return base
+
+    arguments = (args, sorted(kwargs.items()))
+    try:
+        payload = pickle.dumps(arguments)
+    except (pickle.PicklingError, TypeError, AttributeError):
+        payload = repr(arguments).encode()
+    return f"{base}:{hashlib.sha256(payload).hexdigest()[:16]}"
 
 
 async def evaluate(value: Any) -> Any:
@@ -45,7 +65,34 @@ class Repository:
     async def forever(self, key: str, value: Any) -> bool:
         return await self.put(key, value)
 
-    async def remember(self, key: str, ttl: Ttl, factory: Callable[[], Any]) -> Any:
+    @overload
+    def remember(self, key: str, ttl: Ttl, factory: Callable[[], Any]) -> Awaitable[Any]: ...
+
+    @overload
+    def remember(self, key: str | None, ttl: Ttl, factory: None = None) -> Decorator: ...
+
+    def remember(
+        self, key: str | None, ttl: Ttl, factory: Callable[[], Any] | None = None
+    ) -> Awaitable[Any] | Decorator:
+        if factory is None:
+            return self.decorator(key, ttl)
+        if key is None:
+            raise ValueError("Cache.remember requires a key when a factory is given.")
+        return self.fetch(key, ttl, factory)
+
+    def decorator(self, key: str | None, ttl: Ttl) -> Decorator:
+        def decorate(function: Callable[P, Any]) -> Callable[P, Awaitable[Any]]:
+            base = key or f"{function.__module__}.{function.__qualname__}"
+
+            @functools.wraps(function)
+            async def cached(*args: P.args, **kwargs: P.kwargs) -> Any:
+                return await self.fetch(call_key(base, args, kwargs), ttl, lambda: function(*args, **kwargs))
+
+            return cached
+
+        return decorate
+
+    async def fetch(self, key: str, ttl: Ttl, factory: Callable[[], Any]) -> Any:
         value = await self.store.get(self.key(key))
         if value is not MISSING:
             return value
