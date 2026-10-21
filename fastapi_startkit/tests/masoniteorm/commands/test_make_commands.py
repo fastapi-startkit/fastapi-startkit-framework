@@ -205,6 +205,39 @@ class TestMakeModelCommand(_TempCwdTestCase):
         post_class = self._load_class(os.path.join("app", "Post.py"), "Post")
         self.assertTrue(issubclass(post_class, Model))
 
+    def test_migration_option_creates_migration_through_console(self):
+        os.makedirs("app")
+        os.makedirs("databases/migrations")
+        app = create_app()
+
+        self.assertEqual(app.run("db:make:model", "Post --migration"), 0)
+
+        migration = self._generated_file("databases/migrations")
+        self.assertTrue(migration.endswith("_create_posts_table.py"))
+        content = open(migration).read()
+        self.assertIn('self.schema.create("posts")', content)
+
+    def test_migration_and_table_options_create_update_migration_through_console(self):
+        os.makedirs("app")
+        os.makedirs("databases/migrations")
+        app = create_app()
+
+        self.assertEqual(app.run("db:make:model", "Post --migration --table"), 0)
+
+        migration = self._generated_file("databases/migrations")
+        self.assertTrue(migration.endswith("_update_posts_table.py"))
+        content = open(migration).read()
+        self.assertIn('self.schema.table("posts")', content)
+
+    def test_seeder_option_creates_seeder_through_console(self):
+        os.makedirs("app")
+        os.makedirs("databases/seeders")
+        app = create_app()
+
+        self.assertEqual(app.run("db:make:model", "Post --seeder"), 0)
+
+        self.assertTrue(os.path.exists(os.path.join("databases/seeders", "post_table_seeder.py")))
+
     def test_pep_option_uses_underscore_filename(self):
         os.makedirs("app")
         tester = self._tester(MakeModelCommand)
