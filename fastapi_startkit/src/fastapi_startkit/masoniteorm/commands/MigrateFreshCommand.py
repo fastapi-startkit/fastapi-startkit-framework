@@ -1,5 +1,6 @@
 from cleo.helpers import option
 from fastapi_startkit.console import Command
+from fastapi_startkit.masoniteorm.commands.DBSeedCommand import DBSeedCommand
 from fastapi_startkit.masoniteorm.migrations.Migrator import Migrator
 
 
@@ -61,16 +62,13 @@ class MigrateFreshCommand(Command):
 
         await migration.fresh(ignore_fk=not self.option("no-fk"))
 
-        if self.option("seed") == "null":
-            self.call(
-                "seed:run",
-                f"None --directory {self.option('seed-directory')} --connection {self.option('connection')}",
+        if self.option("seed"):
+            seeded = await DBSeedCommand.run_seeders(
+                directory=self.option("seed-directory"),
+                connection=self.option("connection"),
+                table="None" if self.option("seed") == "null" else self.option("seed"),
             )
-        elif self.option("seed"):
-            self.call(
-                "seed:run",
-                f"{self.option('seed')} --directory {self.option('seed-directory')} --connection {self.option('connection')}",
-            )
+            self.line(f"<info>{seeded} seeded!</info>")
 
     def resolve_migration_path(self) -> str:
         path = self.option("directory")
