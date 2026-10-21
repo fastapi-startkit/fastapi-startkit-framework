@@ -156,10 +156,19 @@ class TestPostgresPlatformAlter(unittest.TestCase):
             [
                 'ALTER TABLE "users" ALTER COLUMN "status" TYPE VARCHAR USING "status"::VARCHAR, '
                 'ALTER COLUMN "status" SET NOT NULL, ALTER COLUMN "status" SET DEFAULT \'on\', '
-                "DROP CONSTRAINT IF EXISTS users_status_check, "
-                "ADD CONSTRAINT users_status_check CHECK(\"status\" IN ('on', 'off'))"
+                'DROP CONSTRAINT IF EXISTS "users_status_check", '
+                "ADD CONSTRAINT \"users_status_check\" CHECK(\"status\" IN ('on', 'off'))"
             ],
         )
+
+    def test_change_enum_column_quotes_check_constraint_name(self):
+        from fastapi_startkit.masoniteorm.schema.Column import Column
+
+        diff = TableDiff('user-logs.v"2')
+        diff.changed_columns = {"status": Column("status", "enum", values=["on"], default="on")}
+        sql = self.platform.compile_alter_sql(diff)[0]
+        self.assertIn('DROP CONSTRAINT IF EXISTS "user-logs.v""2_status_check"', sql)
+        self.assertIn('ADD CONSTRAINT "user-logs.v""2_status_check" CHECK', sql)
 
     def test_add_primary_key_constraint(self):
         diff = TableDiff("users")

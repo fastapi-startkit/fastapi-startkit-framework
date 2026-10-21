@@ -365,7 +365,7 @@ class PostgresPlatform(Platform):
             clauses.append(f"ALTER COLUMN {column_name} SET DEFAULT {default}")
 
         if column.column_type == "enum":
-            check_name = f"{table_name}_{name}_check"
+            check_name = self.quote_identifier(f"{table_name}_{name}_check")
             values = ", ".join(self.quote_string(str(value)) for value in column.values)
             clauses.append(f"DROP CONSTRAINT IF EXISTS {check_name}")
             clauses.append(f"ADD CONSTRAINT {check_name} CHECK({column_name} IN ({values}))")
@@ -380,6 +380,10 @@ class PostgresPlatform(Platform):
         if isinstance(column.default, str) and not column.default_is_raw:
             return self.quote_string(column.default)
         return str(column.default)
+
+    @staticmethod
+    def quote_identifier(name):
+        return '"' + name.replace('"', '""') + '"'
 
     def modify_column_string(self):
         return "ALTER COLUMN {name} TYPE {data_type} USING {name}::{data_type}"
