@@ -20,12 +20,18 @@ class CacheProvider(Provider):
         manager = CacheManager(config)
         manager.extend("file", lambda store: FileStore(Path(self.app.base_path) / store["path"]))
         manager.extend("database", self.database_store)
+        manager.extend("redis", lambda store: self.redis_store(store, config.get("prefix") or ""))
         self.app.bind("cache", manager)
 
     def database_store(self, store: dict[str, Any]) -> Store:
         from .database_store import DatabaseStore
 
         return DatabaseStore(lambda: self.app.make("db").connection(store.get("connection")), store["table"])
+
+    def redis_store(self, store: dict[str, Any], prefix: str) -> Store:
+        from .redis_store import RedisStore
+
+        return RedisStore(lambda: self.app.make("redis").connection(store.get("connection")), prefix)
 
     def boot(self) -> None:
         directory = Path(__file__).resolve().parent
