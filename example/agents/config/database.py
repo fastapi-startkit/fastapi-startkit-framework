@@ -1,12 +1,11 @@
 from dataclasses import dataclass, field
 
 from fastapi_startkit.environment import env
-from fastapi_startkit.masoniteorm import DatabaseConfig as BaseDatabaseConfig
 from fastapi_startkit.masoniteorm import DBConfig, PostgresConfig
 
 
 @dataclass
-class DatabaseConfig(BaseDatabaseConfig):
+class DatabaseConfig:
     default: str = env("DB_CONNECTION", "postgres")
 
     connections: dict[str, DBConfig] = field(
