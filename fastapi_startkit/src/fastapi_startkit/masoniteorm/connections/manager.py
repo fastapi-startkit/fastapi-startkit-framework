@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-from fastapi_startkit.masoniteorm.config.database import DatabaseConfig
+from fastapi_startkit.masoniteorm.config.database import DatabaseSettings, ensure_database_settings
 from fastapi_startkit.masoniteorm.connections.connection import Connection
 
 if TYPE_CHECKING:
@@ -8,11 +8,9 @@ if TYPE_CHECKING:
 
 
 class DatabaseManager:
-    def __init__(self, factory: "ConnectionFactory", config: DatabaseConfig):
+    def __init__(self, factory: "ConnectionFactory", config: DatabaseSettings):
         self.factory = factory
-        if not isinstance(config, DatabaseConfig):
-            raise TypeError("DatabaseManager requires DatabaseConfig")
-        self.config: DatabaseConfig = config
+        self.config: DatabaseSettings = ensure_database_settings("DatabaseManager", config)
         self.connections: dict[str, Connection] = {}
 
     def connection(self, name: str | None = None):

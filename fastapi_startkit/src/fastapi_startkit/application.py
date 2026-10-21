@@ -2,7 +2,7 @@ import os
 import shlex
 from fastapi_startkit.foundation.app_provider import AppProvider
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Protocol, runtime_checkable
 from typing import Type, Callable, Any, List, TypeVar, Generic, cast
 
 from .config import AppConfig
@@ -22,7 +22,15 @@ def app() -> "Container":
     return Container.instance()
 
 
-TConfig = TypeVar("TConfig", bound=AppConfig)
+@runtime_checkable
+class AppSettings(Protocol):
+    name: str
+    env: str
+    debug: bool
+    timezone: str
+
+
+TConfig = TypeVar("TConfig", bound=AppSettings)
 
 
 class Application(Container, Generic[TConfig]):
