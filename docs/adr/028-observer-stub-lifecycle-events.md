@@ -1,4 +1,4 @@
-# 026. Observer and model stubs import, and make:observer is registered
+# 028. Observer and model stubs import, and make:observer is registered
 
 - Date: 2026-10-21
 - Status: Accepted
