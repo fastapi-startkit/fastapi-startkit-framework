@@ -17,18 +17,59 @@ The framework ships a `Cache` facade bound to the `cache` key, but nothing regis
 
 ## Decision
 
-- Package `fastapi_startkit.cache` with `CacheConfig` (`default`, `prefix`, `stores`) and one config dataclass per driver: `ArrayStoreConfig`, `FileStoreConfig(path)` and `DatabaseStoreConfig(connection, table)`. Env names follow the original sketch: `CACHE_CONNECTION` (default `database`), `CACHE_PREFIX` (default `cache`), `CACHE_FILE_PATH`, `DB_CACHE_CONNECTION` (default: the default database connection) and `DB_CACHE_TABLE` (default `caches`). The provider reads it with `resolve_config`, so a plain dataclass of the same shape works (ADR 027).
+- Package `fastapi_startkit.cache` with `CacheConfig` in `cache/config/__init__.py` (`default`, `prefix`, `stores`) and one config dataclass per driver: `ArrayStoreConfig`, `FileStoreConfig(path)` and `DatabaseStoreConfig(connection, table)`. Env names follow the original sketch: `CACHE_CONNECTION` (default `file` until the database store lands, then `database`), `CACHE_PREFIX` (default `cache`), `CACHE_FILE_PATH`, `DB_CACHE_CONNECTION` (default: the default database connection) and `DB_CACHE_TABLE` (default `caches`). The provider reads it with `resolve_config`, so a plain dataclass of the same shape works (ADR 027).
 - Store contract (async): `get(key)` returns a `MISSING` sentinel on a miss so that a cached `None` is a hit; `put(key, value, seconds | None)`, `forget(key)` and `flush()` return `bool`.
-- Stores: `ArrayStore` (in-process dict of `(expires_at, value)`, values kept as-is), `FileStore` (one pickled `(expires_at, value)` file per key under `<sha1[:2]>/<sha1[2:4]>/<sha1>` inside the configured path, atomic write through a temp file and `os.replace`, file I/O in `asyncio.to_thread`) and `DatabaseStore` (masoniteorm table `key` primary key, `value` text holding base64 pickle, `expiration` integer; upsert on put; migration stub published by the provider). Pickle allows arbitrary Python values; the cache is trusted storage.
+- Stores: `ArrayStore` (in-process dict of `(expires_at, value)`, values kept as-is), `FileStore` (one pickled `(expires_at, value)` file per key under `<sha1[:2]>/<sha1[2:4]>/<sha1>` inside the configured path, atomic write through a temp file and `os.replace`, file I/O in `asyncio.to_thread`) and `DatabaseStore` (masoniteorm table `key` primary key, `value` text holding base64 pickle, `expiration` integer; upsert on put; migration stub published by the provider). Pickle allows arbitrary Python values, and unpickling runs code, so the file directory and the cache table are trusted storage: never point them at a location or table that untrusted parties can write.
 - `Repository` wraps one store and adds the key prefix (`<prefix>:<key>` when a prefix is set) and the public API: `get(key, default=None)` where a callable default is called (and awaited when it returns an awaitable) only on a miss, `put(key, value, ttl=None)`, `has`, `forget`, `flush`, and `remember(key, ttl, factory)`.
 - TTL is seconds or a `timedelta`; `None` stores forever; zero or less forgets the key and returns `False`. Expiry is an absolute epoch timestamp checked lazily on read, and expired entries are deleted when read.
-- `remember(key, ttl)` without a factory returns a decorator. The decorated function becomes async; the cache key is `key` alone for a call without arguments, otherwise `key:` plus a SHA-256 prefix of the pickled `(args, sorted kwargs)` (falling back to `repr` for unpicklable arguments).
+- `remember(key, ttl)` without a factory returns a decorator. The decorated function becomes async; the cache key is `key` alone for a call without arguments, otherwise `key:` plus a SHA-256 prefix of the pickled `(args, sorted kwargs)` (falling back to `repr` for unpicklable arguments). Arguments that cannot be pickled and whose `repr` is not stable (for example one that includes a memory address that changes per call) produce a new key every call and always miss.
 - `CacheManager` resolves a `Repository` per store name, caches it, delegates unknown attributes to the default store, and supports `extend(driver, factory)` for custom stores. `CacheProvider` merges config under `cache`, binds the manager as `cache` and publishes `config/cache.py`. The `Cache` facade defines `remember` on the facade class so decorating at import time does not resolve the container; resolution happens per call. A `.pyi` stub types the facade.
 - Out of scope: request memoization, tags and atomic locks (the sketch's lock settings were dropped until locks land).
 
+## Usage
+
+```python
+from fastapi_startkit.facades import Cache
+
+value = await Cache.get("key")
+value = await Cache.get("key", "default")
+value = await Cache.get("key", lambda: compute_default())
+
+await Cache.put("key", "value", 600)
+await Cache.put("key", "value", timedelta(minutes=10))
+await Cache.forever("key", "value")
+await Cache.forget("key")
+await Cache.flush()
+
+value = await Cache.store("array").get("key")
+
+users = await Cache.remember("users", 600, lambda: DB.table("users").get())
+
+
+@Cache.remember("users", 600)
+async def users_by_role(role: str):
+    return await DB.table("users").where("role", role).get()
+```
+
+A plain dataclass with the same shape configures it:
+
+```python
+@dataclass
+class CacheConfig:
+    default: str = env("CACHE_CONNECTION", "file")
+    prefix: str = env("CACHE_PREFIX", "cache")
+    stores: dict = field(
+        default_factory=lambda: {
+            "array": ArrayStoreConfig(),
+            "file": FileStoreConfig(path="storage/framework/cache/data"),
+            "database": DatabaseStoreConfig(table="caches"),
+        }
+    )
+```
+
 ## Delivery
 
-Shipped as small PRs into the `feature/caches` integration branch: (1) this ADR, config and readme; (2) store contract, `ArrayStore`, `Repository` and `CacheManager`; (3) the `remember` decorator; (4) provider, facade and stub; (5) `FileStore`; (6) `DatabaseStore` and migration.
+Shipped as small PRs into the `feature/caches` integration branch: (1) this ADR and `CacheConfig`; (2) store contract, `ArrayStore`, `Repository` and `CacheManager`; (3) the `remember` decorator; (4) provider, facade and stub; (5) `FileStore`; (6) `DatabaseStore` and migration.
 
 ## Validation
 
