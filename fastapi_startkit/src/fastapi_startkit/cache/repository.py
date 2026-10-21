@@ -121,4 +121,4 @@ class Repository:
         tags = TagSet(self.store, [names] if isinstance(names, str) else names, self.key)
         if not tags.names:
             raise ValueError("Cache.tags requires at least one tag.")
-        return Repository(TaggedStore(self.store, tags), self.prefix)
+        return Repository(TaggedStore(self.store, tags))

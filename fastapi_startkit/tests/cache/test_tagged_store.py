@@ -1,15 +1,19 @@
+import hashlib
 import tempfile
-from unittest import IsolatedAsyncioTestCase
+from unittest import IsolatedAsyncioTestCase, mock
 
 from fastapi_startkit.cache import ArrayStore, CacheManager, FileStore, MemoStore, Repository, TaggedStore
+from fastapi_startkit.cache.database_store import DatabaseStore
+
+from test_database_store import InMemoryDatabase, load_migration
 
 
 class TaggedContract:
-    def make_store(self):
+    async def make_store(self):
         raise NotImplementedError
 
-    def setUp(self):
-        self.store = self.make_store()
+    async def asyncSetUp(self):
+        self.store = await self.make_store()
         self.cache = Repository(self.store, "app")
 
     async def test_tagged_put_and_get(self):
@@ -94,13 +98,31 @@ class TaggedContract:
 
 
 class TestArrayTags(TaggedContract, IsolatedAsyncioTestCase):
-    def make_store(self):
+    async def make_store(self):
         return ArrayStore()
+
+    async def test_tagged_key_starts_with_prefix(self):
+        await self.cache.tags(["people", "artists"]).put("john", "doe")
+        artists = await self.cache.get("tag:artists:key")
+        people = await self.cache.get("tag:people:key")
+        namespace = hashlib.sha1(f"{artists}|{people}".encode()).hexdigest()
+
+        self.assertIn(f"app:{namespace}:john", self.store.storage)
 
 
 class TestFileTags(TaggedContract, IsolatedAsyncioTestCase):
-    def make_store(self):
+    async def make_store(self):
         return FileStore(self.enterContext(tempfile.TemporaryDirectory()))
+
+
+class TestDatabaseTags(TaggedContract, IsolatedAsyncioTestCase):
+    async def make_store(self):
+        self.database = InMemoryDatabase()
+        self.addAsyncCleanup(self.database.engine.dispose)
+        migration = load_migration()
+        with mock.patch.object(migration, "config", return_value=None):
+            await migration.CreateCachesTable("sqlite", self.database.get_schema_builder()).up()
+        return DatabaseStore(self.database.connection)
 
 
 class TestRepositoryTags(IsolatedAsyncioTestCase):
@@ -112,7 +134,19 @@ class TestRepositoryTags(IsolatedAsyncioTestCase):
         self.assertIsInstance(tagged.store, TaggedStore)
         self.assertIs(tagged.store.store, store)
         self.assertEqual(tagged.store.tags.names, ["a", "b"])
-        self.assertEqual(tagged.prefix, "app")
+        self.assertEqual(tagged.prefix, "")
+
+    async def test_unprefixed_tagged_key_has_no_leading_separator(self):
+        store = ArrayStore()
+
+        await Repository(store).tags("people").put("john", "doe")
+
+        self.assertIn("tag:people:key", store.storage)
+        self.assertEqual(len([key for key in store.storage if key.endswith(":john") and not key.startswith(":")]), 1)
+
+    async def test_tagged_repository_has_no_lock(self):
+        with self.assertRaises(TypeError):
+            Repository(ArrayStore(), "app").tags("people").lock("reports")
 
     async def test_empty_tags_raise(self):
         with self.assertRaises(ValueError):

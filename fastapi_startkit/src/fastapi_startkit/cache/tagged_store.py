@@ -41,7 +41,7 @@ class TaggedStore:
         self.tags = tags
 
     async def tagged(self, key: str) -> str:
-        return f"{await self.tags.namespace()}:{key}"
+        return self.tags.key(f"{await self.tags.namespace()}:{key}")
 
     async def get(self, key: str) -> Any:
         return await self.store.get(await self.tagged(key))
