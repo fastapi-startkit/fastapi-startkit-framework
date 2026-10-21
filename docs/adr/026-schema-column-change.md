@@ -20,7 +20,7 @@ async with await schema.table("users") as table:
 | MySQL | `MODIFY` redefines the full column (type, length, null, quoted default). Correct. |
 | SQLite | Rebuilds the table (temp copy, drop, create with the new definition, copy rows back). Correct. |
 | Postgres | Broken: string defaults unquoted (`SET DEFAULT x`), types without a length rendered `TEXT(None)`, an omitted default never dropped, no `USING` cast so incompatible conversions (`varchar` → `integer`) failed, and enum `CHECK` and `PRIMARY KEY` inlined into `ALTER COLUMN ... TYPE`, which Postgres rejects. |
-| MSSQL | `ALTER COLUMN ... DEFAULT` is not valid T-SQL. Out of scope here. |
+| MSSQL | Broken: `ALTER COLUMN ... DEFAULT` is not valid T-SQL, several columns were joined after a single `ALTER COLUMN` (T-SQL allows one per statement), and an existing default constraint blocks type changes. |
 
 ## Alternatives
 
@@ -37,15 +37,23 @@ Option 2. Postgres now emits, for each changed column, in one `ALTER TABLE` stat
 - `ALTER COLUMN c SET DEFAULT v`, with defaults rendered like `CREATE` (quoted strings, raw defaults, `current`/`now`/`null` mappings), or `DROP DEFAULT` when no default is declared
 - for enums, `DROP CONSTRAINT IF EXISTS {table}_{column}_check, ADD CONSTRAINT {table}_{column}_check CHECK(...)`. Postgres auto-names the inline check from `CREATE` with this same name.
 
+MSSQL emits separate statements for each changed column:
+
+1. Drop the current default constraint, whatever its name. Its name is looked up in `sys.default_constraints` joined to `sys.columns` and dropped through `sp_executesql`. This always runs, because a bound default blocks `ALTER COLUMN`, and an omitted default must be removed.
+2. `ALTER TABLE [t] ALTER COLUMN [c] type(length) NULL|NOT NULL`
+3. `ALTER TABLE [t] ADD CONSTRAINT DF_<table>_<column> DEFAULT v FOR [c]`, only when a default is declared
+
 MySQL and SQLite are unchanged. SQLite always applies `.change()` by rebuilding the table.
 
 ## Implementation
 
 - `PostgresPlatform.change_column_clauses` and `PostgresPlatform.change_default`, plus a new `modify_column_string`.
-- `PRIMARY KEY` is no longer emitted for changed columns on Postgres; primary keys are managed with constraints.
+- `MSSQLPlatform.change_column_statements`, `MSSQLPlatform.drop_default_constraint_string` and `MSSQLPlatform.change_default`. The default rendering is duplicated from Postgres instead of moved to `Platform`, to keep the change small. Enum check constraints are not rewritten on MSSQL, because inline checks there have generated names.
+- `PRIMARY KEY` is no longer emitted for changed columns on Postgres or MSSQL; primary keys are managed with constraints.
 
 ## Validation
 
-- Platform SQL tests for Postgres (length, nullable, default quoting, premapped defaults, no-length types, enum checks) and MySQL (length, nullable, default).
+- Platform SQL tests for Postgres (length, nullable, default quoting, premapped defaults, no-length types, enum checks), MySQL (length, nullable, default) and MSSQL (drop default lookup, one `ALTER COLUMN` per column, `DF_` default constraints).
+- Live Postgres integration test: `varchar` → `integer` cast keeps the rows, an omitted default is dropped, and the enum check is replaced.
 - SQLite integration test against a real database: changing type, nullable and default keeps the existing rows and the untouched columns.
 - Existing schema tests and adding columns without `.change()` are unaffected.

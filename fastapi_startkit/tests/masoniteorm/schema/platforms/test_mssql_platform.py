@@ -64,12 +64,52 @@ class TestMSSQLPlatformAlter(unittest.TestCase):
         diff.add_column("age", "integer")
         self.assertEqual(self.platform.compile_alter_sql(diff), ["ALTER TABLE [users] ADD [age] INT NOT NULL"])
 
-    def test_change_column(self):
+    def drop_default(self, column):
+        return (
+            "DECLARE @sql NVARCHAR(MAX) = N''; "
+            "SELECT @sql += N'ALTER TABLE [users] DROP CONSTRAINT ' + QUOTENAME(dc.name) + N';' "
+            "FROM sys.default_constraints dc "
+            "JOIN sys.columns c ON c.object_id = dc.parent_object_id AND c.column_id = dc.parent_column_id "
+            f"WHERE dc.parent_object_id = OBJECT_ID(N'users') AND c.name = N'{column}'; "
+            "EXEC sp_executesql @sql"
+        )
+
+    def test_change_column_without_default_drops_existing_default(self):
         diff = TableDiff("users")
         diff.changed_columns = {"age": Column("age", "integer")}
         self.assertEqual(
             self.platform.compile_alter_sql(diff),
-            ["ALTER TABLE [users] ALTER COLUMN [age] INT NOT NULL"],
+            [self.drop_default("age"), "ALTER TABLE [users] ALTER COLUMN [age] INT NOT NULL"],
+        )
+
+    def test_change_column_length_nullable_and_default(self):
+        diff = TableDiff("users")
+        diff.changed_columns = {"name": Column("name", "string", length=100, nullable=True, default="o'neil")}
+        self.assertEqual(
+            self.platform.compile_alter_sql(diff),
+            [
+                self.drop_default("name"),
+                "ALTER TABLE [users] ALTER COLUMN [name] VARCHAR(100) NULL",
+                "ALTER TABLE [users] ADD CONSTRAINT DF_users_name DEFAULT 'o''neil' FOR [name]",
+            ],
+        )
+
+    def test_change_multiple_columns_emits_one_alter_per_column(self):
+        diff = TableDiff("users")
+        diff.changed_columns = {
+            "age": Column("age", "integer", default=0),
+            "created": Column("created", "timestamp", default="current"),
+        }
+        self.assertEqual(
+            self.platform.compile_alter_sql(diff),
+            [
+                self.drop_default("age"),
+                "ALTER TABLE [users] ALTER COLUMN [age] INT NOT NULL",
+                "ALTER TABLE [users] ADD CONSTRAINT DF_users_age DEFAULT 0 FOR [age]",
+                self.drop_default("created"),
+                "ALTER TABLE [users] ALTER COLUMN [created] DATETIME NOT NULL",
+                "ALTER TABLE [users] ADD CONSTRAINT DF_users_created DEFAULT CURRENT_TIMESTAMP FOR [created]",
+            ],
         )
 
     def test_rename_column(self):
