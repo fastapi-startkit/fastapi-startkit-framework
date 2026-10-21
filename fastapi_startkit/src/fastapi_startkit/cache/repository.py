@@ -4,9 +4,12 @@ import inspect
 import pickle
 from collections.abc import Awaitable, Callable
 from datetime import timedelta
-from typing import Any, ParamSpec, Protocol, overload
+from typing import TYPE_CHECKING, Any, ParamSpec, Protocol, overload
 
 from .store import MISSING, Store
+
+if TYPE_CHECKING:
+    from .lock import Lock
 
 P = ParamSpec("P")
 Ttl = float | timedelta | None
@@ -106,3 +109,9 @@ class Repository:
 
     async def flush(self) -> bool:
         return await self.store.flush()
+
+    def lock(self, name: str, seconds: float = 0, owner: str | None = None) -> "Lock":
+        factory = getattr(self.store, "lock", None)
+        if factory is None:
+            raise TypeError(f"Cache store [{type(self.store).__name__}] does not support locks.")
+        return factory(self.key(name), seconds, owner)
