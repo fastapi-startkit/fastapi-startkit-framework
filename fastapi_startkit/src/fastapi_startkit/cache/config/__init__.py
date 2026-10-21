@@ -24,7 +24,7 @@ class DatabaseStoreConfig(Config):
 
 @dataclass
 class CacheConfig(Config):
-    default: str = env("CACHE_CONNECTION", "file")
+    default: str = env("CACHE_CONNECTION", "database")
     prefix: str = env("CACHE_PREFIX", "cache")
     stores: dict[str, Config] = field(
         default_factory=lambda: {
