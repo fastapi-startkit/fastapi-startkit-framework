@@ -1,5 +1,5 @@
-from ..fixtures.db import schema
-from ..test_case import TestCase
+from .fixtures.db import schema
+from .test_case import TestCase
 
 
 class TestPostgresColumnChange(TestCase):
