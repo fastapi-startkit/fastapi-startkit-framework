@@ -121,7 +121,7 @@ def test_updated_at_descriptor_assignment_uses_attribute_storage():
     timestamp = pendulum.datetime(2026, 1, 2, 3, 4, 5, tz="UTC")
     object.__setattr__(user, "updated_at", timestamp)
     assert user.updated_at == timestamp
-    assert user.get_dirty()["updated_at"] == "2026-01-02 03:04:05"
+    assert user.get_dirty()["updated_at"] == timestamp
 
 
 @pytest.fixture

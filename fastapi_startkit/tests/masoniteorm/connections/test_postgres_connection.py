@@ -2,16 +2,23 @@ from fastapi_startkit.masoniteorm import PostgresConfig
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, Mock
 
+from sqlalchemy import event
+from sqlalchemy.ext.asyncio import create_async_engine
+
 from fastapi_startkit.masoniteorm.connections.postgres_connection import PostgresConnection
 from fastapi_startkit.masoniteorm.query.grammars import PostgresGrammar
 from fastapi_startkit.masoniteorm.query.processors import PostgresPostProcessor
 from fastapi_startkit.masoniteorm.schema.platforms import PostgresPlatform
 
 
+def _engine():
+    return create_async_engine("postgresql+asyncpg://app:secret@localhost/unused")
+
+
 class TestPostgresConnection(IsolatedAsyncioTestCase):
     @staticmethod
     def _connection_with_result(row):
-        connection = PostgresConnection(engine=None, config=PostgresConfig(driver="postgres"))
+        connection = PostgresConnection(engine=_engine(), config=PostgresConfig(driver="postgres"))
         result = Mock()
         result.fetchone.return_value = row
         connection.run = AsyncMock(return_value=result)
@@ -31,3 +38,8 @@ class TestPostgresConnection(IsolatedAsyncioTestCase):
         self.assertIs(PostgresConnection.get_query_grammar(), PostgresGrammar)
         self.assertIs(PostgresConnection.get_default_platform(), PostgresPlatform)
         self.assertIs(PostgresConnection.get_post_processor(), PostgresPostProcessor)
+
+    def test_registers_timestamp_codec_on_connect(self):
+        engine = _engine()
+        PostgresConnection(engine=engine, config=PostgresConfig(driver="postgres"))
+        self.assertTrue(event.contains(engine.sync_engine, "connect", PostgresConnection.on_connect))

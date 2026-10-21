@@ -37,6 +37,7 @@ async def migrate(schema: Schema) -> None:
         table.string("title")
         table.integer("user_id")
         table.datetime("published_date")
+        table.timestamps()
 
     async with await schema.create_table_if_not_exists("logos") as table:
         table.id()
@@ -53,6 +54,7 @@ async def migrate(schema: Schema) -> None:
     async with await schema.create_table_if_not_exists("stores") as table:
         table.integer("id").primary()
         table.string("name")
+        table.timestamps()
 
     async with await schema.create_table_if_not_exists("products") as table:
         table.id()

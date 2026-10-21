@@ -1,3 +1,4 @@
+from inspect import isawaitable
 from typing import Any
 
 
@@ -5,14 +6,19 @@ class ObservesEvents:
     __has_events__: bool
     __observers__: dict[type, list[Any]]
 
-    def observe_events(self, model, event):
-        if model.__has_events__ == True:
-            for klass in type(model).__mro__:
-                for observer in model.__observers__.get(klass, []):
-                    try:
-                        getattr(observer, event)(model)
-                    except AttributeError:
-                        pass
+    async def observe_events(self, model, event):
+        if not model.__has_events__:
+            return
+
+        for klass in type(model).__mro__:
+            for observer in model.__observers__.get(klass, []):
+                handler = getattr(observer, event, None)
+                if handler is None:
+                    continue
+
+                result = handler(model)
+                if isawaitable(result):
+                    await result
 
     @classmethod
     def observe(cls, observer):
