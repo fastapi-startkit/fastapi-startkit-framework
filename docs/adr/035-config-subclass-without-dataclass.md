@@ -34,6 +34,8 @@ Option 3, in `support/config.py`:
 
 Values are cast by the existing `env()` rules: the default's type decides the cast, so `env("DB_PORT", 5432)` returns an `int`. Decorated classes, `Config.get` dotted access and `Configuration.set` behave as before.
 
+A single class body that mixes `env()` fields with a plain mutable default (`opts: dict = {}`) is processed and raises the usual dataclass `ValueError`; before this change such a class returned raw `Field`s, so it never worked. Use `field(default_factory=dict)` there.
+
 Class-level access (`DatabaseConfig.default`) on an undecorated leaf class that has been neither instantiated nor subclassed still returns the `Field`. No hook runs between class creation and a following decorator, so processing the leaf earlier would bring back the double processing of option 2.
 
 ## Validation
