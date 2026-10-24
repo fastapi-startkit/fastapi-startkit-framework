@@ -18,17 +18,26 @@ class _ConfigMeta(type):
 
     @staticmethod
     def ensure_dataclass(classes: tuple[type, ...]) -> None:
-        pending = [klass for klass in reversed(classes) if _ConfigMeta.is_undecorated(klass)]
+        pending = [klass for klass in reversed(classes) if _ConfigMeta.needs_dataclass(klass)]
         if not pending:
             return
         with _dataclass_lock:
             for klass in pending:
-                if _ConfigMeta.is_undecorated(klass):
-                    dataclass(eq=False)(klass)
+                if _ConfigMeta.needs_dataclass(klass):
+                    dataclass(eq=False, frozen=_ConfigMeta.has_frozen_base(klass))(klass)
 
     @staticmethod
-    def is_undecorated(klass: type) -> bool:
-        return isinstance(klass, _ConfigMeta) and klass is not Config and "__dataclass_fields__" not in klass.__dict__
+    def needs_dataclass(klass: type) -> bool:
+        return (
+            isinstance(klass, _ConfigMeta)
+            and "__dataclass_fields__" not in klass.__dict__
+            and any(isinstance(attribute, Field) for attribute in klass.__dict__.values())
+        )
+
+    @staticmethod
+    def has_frozen_base(klass: type) -> bool:
+        params = getattr(klass, "__dataclass_params__", None)
+        return params is not None and params.frozen
 
     def __getattr__(cls, name: str) -> object:
         try:
