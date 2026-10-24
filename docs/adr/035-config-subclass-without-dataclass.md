@@ -18,17 +18,27 @@ DatabaseConfig().default
 ## Alternatives
 
 1. Make `env()` return a descriptor instead of a `Field`. This breaks dataclass configs, which need a `Field` to get a per-instance `default_factory`, and changes `value()` and the `_ConfigMeta` lookups.
-2. Apply `dataclass` eagerly in `__init_subclass__`. Subclasses that are also decorated with `@dataclass` would be processed twice; the first pass deletes the `Field` class attributes, so the second pass turns every `env()` field into a required argument.
-3. Apply `dataclass` lazily in `_ConfigMeta.__call__`, the first time an unprocessed class is instantiated. Decorators have already run by then, so decorated classes are untouched.
+2. Apply `dataclass` eagerly to every subclass in `__init_subclass__`. A subclass that is also decorated is then processed twice. The first pass deletes the `default_factory` class attributes, so the second pass reads them with `getattr`, which reaches `_ConfigMeta.__getattr__` and gets the resolved value. Every `env()` field is frozen to its value at import time, and any `field(default_factory=...)` returning a dict or list fails with `ValueError: mutable default ... use default_factory`. This was checked on Python 3.15.
+3. Apply `dataclass` lazily, the first time an unprocessed class is instantiated or subclassed. By then the class's own decorator, if any, has already run, so no class is processed twice.
 
 ## Decision
 
-Option 3. Before instantiating, `_ConfigMeta.__call__` walks the class MRO from the base down and applies `dataclass` to every `Config` class whose own `__dict__` has no `__dataclass_fields__`. Undecorated parents are processed first so their `env()` fields are inherited as fields. Decorated classes, `Config.get` dotted access and `Configuration.set` (which uses `dataclasses.fields`) behave as before. Values are cast by the existing `env()` rules: the default's type decides the cast, so `env("DB_PORT", 5432)` returns an `int`.
+Option 3, in `support/config.py`:
 
-Class-level access (`DatabaseConfig.default`) on an undecorated class that has never been instantiated still returns the `Field`, because intercepting class attribute reads would also intercept `@dataclass`'s own reads of the class. Instantiating once, or decorating the class, gives resolved class-level access.
+- `_ConfigMeta.__call__` processes every unprocessed class in the instantiated class's MRO, base first, before building the instance.
+- `Config.__init_subclass__` processes the new class's unprocessed ancestors before its own decorator runs. A `@dataclass` child of an undecorated parent therefore inherits the parent's fields; otherwise the parent would be processed after the child and its `Field` class attributes deleted from under the child.
+- A class counts as unprocessed when it is a `Config` subclass, is not `Config` itself, and has no `__dataclass_fields__` in its own `__dict__`. `Config` is never made a dataclass, so it keeps identity equality and `object.__hash__`.
+- Automatic processing uses `dataclass(eq=False)`, so undecorated subclasses keep the identity equality and hashing they had before. Classes the user decorates follow normal `@dataclass` rules.
+- Processing runs under a module lock with a re-check inside it, so concurrent first instantiations process a class once.
+
+Values are cast by the existing `env()` rules: the default's type decides the cast, so `env("DB_PORT", 5432)` returns an `int`. Decorated classes, `Config.get` dotted access and `Configuration.set` behave as before.
+
+Class-level access (`DatabaseConfig.default`) on an undecorated leaf class that has been neither instantiated nor subclassed still returns the `Field`. No hook runs between class creation and a following decorator, so processing the leaf earlier would bring back the double processing of option 2.
 
 ## Validation
 
-- Tests for an undecorated subclass: the fallback value without the variable, the variable's value when set, `int` and `bool` casting, explicit keyword arguments, an undecorated parent with an undecorated child, and a decorated class that is still processed exactly once.
+- Tests for an undecorated subclass: the fallback value without the variable, the variable's value when set, `int` and `bool` casting, explicit keyword arguments, and the environment being read again on every instantiation.
+- Inheritance: an undecorated parent with an undecorated child, and a `@dataclass` child of an undecorated parent that keeps the parent's fields.
+- `Config` is never a dataclass, undecorated subclass instances stay hashable, a decorated class is processed exactly once, and eight threads instantiating a new class at the same time process it once.
 - The reported repro prints `'sqlite'`.
 - Full suite without Postgres passes with the coverage threshold.

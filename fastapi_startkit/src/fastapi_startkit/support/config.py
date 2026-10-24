@@ -1,23 +1,34 @@
 from dataclasses import Field, MISSING, dataclass
+from threading import Lock
 from typing import TypeVar, cast
 
 from fastapi_startkit.environment import value
 
 T = TypeVar("T")
 
+_dataclass_lock = Lock()
+
 
 class _ConfigMeta(type):
     def __call__(cls: type[T], *args: object, **kwargs: object) -> T:
-        _ConfigMeta.ensure_dataclass(cls)
+        _ConfigMeta.ensure_dataclass(cls.__mro__)
         resolved_args = [value(argument) for argument in args]
         resolved_kwargs = {name: value(argument) for name, argument in kwargs.items()}
         return cast(T, type.__call__(cls, *resolved_args, **resolved_kwargs))
 
     @staticmethod
-    def ensure_dataclass(cls: type) -> None:
-        for klass in reversed(cls.__mro__):
-            if isinstance(klass, _ConfigMeta) and "__dataclass_fields__" not in klass.__dict__:
-                dataclass(klass)
+    def ensure_dataclass(classes: tuple[type, ...]) -> None:
+        pending = [klass for klass in reversed(classes) if _ConfigMeta.is_undecorated(klass)]
+        if not pending:
+            return
+        with _dataclass_lock:
+            for klass in pending:
+                if _ConfigMeta.is_undecorated(klass):
+                    dataclass(eq=False)(klass)
+
+    @staticmethod
+    def is_undecorated(klass: type) -> bool:
+        return isinstance(klass, _ConfigMeta) and klass is not Config and "__dataclass_fields__" not in klass.__dict__
 
     def __getattr__(cls, name: str) -> object:
         try:
@@ -31,4 +42,6 @@ class _ConfigMeta(type):
 
 
 class Config(metaclass=_ConfigMeta):
-    pass
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        super().__init_subclass__(**kwargs)
+        _ConfigMeta.ensure_dataclass(cls.__mro__[1:])
