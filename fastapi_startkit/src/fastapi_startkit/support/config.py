@@ -1,19 +1,20 @@
 import sys
+from collections.abc import Mapping
 from dataclasses import Field, InitVar, MISSING, dataclass, field
 from threading import Lock
 from typing import ClassVar, TypeVar, cast, get_origin
 
 from fastapi_startkit.environment import value
 
-try:
+if sys.version_info >= (3, 14):
     from annotationlib import Format, get_annotations
 
-    def _own_annotations(klass: type) -> dict[str, object]:
+    def _own_annotations(klass: type) -> Mapping[str, object]:
         return get_annotations(klass, format=Format.FORWARDREF)
 
-except ImportError:
+else:
 
-    def _own_annotations(klass: type) -> dict[str, object]:
+    def _own_annotations(klass: type) -> Mapping[str, object]:
         return klass.__dict__.get("__annotations__", {})
 
 
