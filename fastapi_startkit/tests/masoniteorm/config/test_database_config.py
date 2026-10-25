@@ -77,3 +77,23 @@ def test_provider_rejects_dictionary_connection_settings(tmp_path):
     config = DatabaseConfig(default="sqlite", connections={"sqlite": {"driver": "sqlite"}})
     with pytest.raises(TypeError, match="Database connection 'sqlite' requires a database config object"):
         DatabaseProvider(app, config).register()
+
+
+def test_default_connection_is_defined(monkeypatch):
+    monkeypatch.delenv("DB_CONNECTION", raising=False)
+    config = DatabaseConfig()
+
+    assert config.default == "sqlite"
+    assert isinstance(DatabaseManager(ConnectionFactory(), config).connection(), SQliteConnection)
+
+
+@pytest.mark.parametrize(
+    "name,config_type",
+    [("sqlite", SQLiteConfig), ("mysql", MySQLConfig), ("postgres", PostgresConfig)],
+)
+def test_db_connection_selects_a_defined_connection(monkeypatch, name, config_type):
+    monkeypatch.setenv("DB_CONNECTION", name)
+    config = DatabaseConfig()
+
+    assert config.default == name
+    assert isinstance(config.connections[config.default], config_type)
