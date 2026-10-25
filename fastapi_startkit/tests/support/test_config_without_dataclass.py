@@ -8,6 +8,18 @@ import pytest
 import fastapi_startkit.support.config as config_module
 from fastapi_startkit.configuration import Config
 from fastapi_startkit.environment import env
+from fastapi_startkit.storage.storage import StorageManager
+from fastapi_startkit.support.dataclass import Dataclass
+
+
+def test_reported_database_config_without_dataclass(monkeypatch):
+    class DatabaseConfig(Config):
+        default: str = env("DB_CONNECTION", "sqlite")
+
+    monkeypatch.delenv("DB_CONNECTION", raising=False)
+    assert DatabaseConfig().default == "sqlite"
+    monkeypatch.setenv("DB_CONNECTION", "mysql")
+    assert DatabaseConfig().default == "mysql"
 
 
 class PlainDatabaseConfig(Config):
@@ -170,12 +182,36 @@ def test_env_child_of_frozen_parent_is_frozen(monkeypatch):
         child.port = 1
 
 
-def test_plain_mutable_default_is_left_alone():
+def test_plain_mutable_default_is_copied_per_instance():
     class Options(Config):
+        opts: dict[str, list[str]] = {"tags": []}
+
+    first, second = Options(), Options()
+    first.opts["tags"].append("changed")
+    assert second.opts == {"tags": []}
+    assert Options(opts={"tags": ["given"]}).opts == {"tags": ["given"]}
+
+
+def test_env_fields_with_plain_mutable_default_in_same_body(monkeypatch):
+    class Mixed(Config):
+        host: str = env("PLAIN_MIXED_BODY_HOST", "localhost")
         opts: dict[str, str] = {}
 
-    assert "__dataclass_fields__" not in Options.__dict__
-    assert Options().opts == {}
+    monkeypatch.setenv("PLAIN_MIXED_BODY_HOST", "example.test")
+    first, second = Mixed(), Mixed()
+    assert (first.host, first.opts) == ("example.test", {})
+    assert first.opts is not second.opts
+
+
+def test_plain_defaults_without_env_are_processed():
+    class Plain(Config):
+        driver: str = "memory"
+        prefix: str = ""
+
+    config = Plain(prefix="app/")
+    assert (config.driver, config.prefix) == ("memory", "app/")
+    assert Dataclass.to_dict(config) == {"driver": "memory", "prefix": "app/"}
+    assert Plain.driver == "memory"
 
 
 def test_bare_annotation_is_left_alone():
@@ -214,3 +250,36 @@ def test_undecorated_child_without_env_inherits_resolved_parent(monkeypatch):
 
     monkeypatch.setenv("PLAIN_INHERIT_HOST", "example.test")
     assert (Child().host, Child().timeout) == ("example.test", 5)
+
+
+class MemoryDriver:
+    def __init__(self) -> None:
+        self.options: dict[str, object] = {}
+
+    def set_options(self, options: dict[str, object]) -> "MemoryDriver":
+        self.options = options
+        return self
+
+
+class MemoryDiskConfig(Config):
+    driver: str = "memory"
+    prefix: str = env("MEMORY_DISK_PREFIX", "")
+
+
+class CustomStorageConfig(Config):
+    default: str = env("FILESYSTEM_DISK", "memory")
+    disks: dict[str, Config] = field(default_factory=lambda: {"memory": MemoryDiskConfig(prefix="app/")})
+
+
+def test_storage_custom_disk_config_without_dataclass(monkeypatch):
+    monkeypatch.delenv("FILESYSTEM_DISK", raising=False)
+    manager = StorageManager(None, Dataclass.to_dict(CustomStorageConfig()))
+    manager.add_driver("memory", MemoryDriver())
+
+    assert manager.disk("memory").options == {"driver": "memory", "prefix": "app/"}
+    assert manager.disk().options == {"driver": "memory", "prefix": "app/"}
+
+
+def test_storage_custom_disk_reads_environment(monkeypatch):
+    monkeypatch.setenv("MEMORY_DISK_PREFIX", "env/")
+    assert Dataclass.to_dict(MemoryDiskConfig()) == {"driver": "memory", "prefix": "env/"}
