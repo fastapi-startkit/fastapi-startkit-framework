@@ -4,13 +4,17 @@ import importlib
 import importlib.util
 import json
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 
 from fastapi_startkit.support import Provider
 from .config import BroadcastingConfig
 from .manager import BroadcastManager
 from .reverb.server import ReverbServer
-from .reverb.signature import sign
+from .reverb.signature import is_presence, requires_auth, sign, valid_channel, valid_socket_id
+
+UNSAFE_SECRETS = ("", "secret")
+INSECURE_ENVIRONMENTS = ("local", "testing")
 
 
 class ReverbProvider(Provider):
@@ -39,7 +43,13 @@ class ReverbProvider(Provider):
         self.merge_config_from(config_data, "broadcasting")
 
         reverb = config_data.get("connections", {}).get("reverb", {})
-        server = ReverbServer(key=reverb.get("key", "local"), secret=reverb.get("secret", "secret"))
+        secret = reverb.get("secret") or ""
+        if secret in UNSAFE_SECRETS and self.app.env not in INSECURE_ENVIRONMENTS:
+            raise RuntimeError(
+                f"REVERB_APP_SECRET must be set to a private value when APP_ENV is {self.app.env!r}; "
+                "private and presence channel signatures would otherwise be forgeable."
+            )
+        server = ReverbServer(key=reverb.get("key", "local"), secret=secret)
         manager = BroadcastManager(config_data, server)
 
         self.app.bind("broadcasting", manager)
@@ -108,30 +118,39 @@ class ReverbProvider(Provider):
         application = self.app
 
         async def broadcasting_auth(request: Request):
-            content_type = request.headers.get("content-type", "")
-            if "application/json" in content_type:
-                body = await request.json()
+            if "application/json" in request.headers.get("content-type", ""):
+                try:
+                    body = await request.json()
+                except ValueError:
+                    return JSONResponse({"error": "Malformed JSON body"}, status_code=400)
             else:
                 body = await request.form()
+            if not isinstance(body, Mapping):
+                return JSONResponse({"error": "Request body must be an object"}, status_code=422)
+
             channel_name = body.get("channel_name", "")
             socket_id = body.get("socket_id", "")
+            if not valid_socket_id(socket_id):
+                return JSONResponse({"error": "socket_id is invalid"}, status_code=422)
+            if not valid_channel(channel_name):
+                return JSONResponse({"error": "channel_name is invalid"}, status_code=422)
 
-            if not isinstance(channel_name, str) or not isinstance(socket_id, str):
-                return JSONResponse({"error": "channel_name and socket_id must be strings"}, status_code=422)
-            if not socket_id:
-                return JSONResponse({"error": "socket_id is required"}, status_code=422)
-
+            server: ReverbServer = application.make("reverb.server")
             user = self._resolve_user(application, request)
+            if not server.secret or not requires_auth(channel_name) or user is None:
+                return JSONResponse({"error": "Forbidden"}, status_code=403)
 
             manager: BroadcastManager = application.make("broadcasting")
             if not await manager.channel_registry.authorize(channel_name, user):
                 return JSONResponse({"error": "Forbidden"}, status_code=403)
 
-            server: ReverbServer = application.make("reverb.server")
-            if not channel_name.startswith("presence-"):
+            if not is_presence(channel_name):
                 return JSONResponse({"auth": sign(server.key, server.secret, socket_id, channel_name)})
 
-            channel_data = json.dumps({"user_id": str(getattr(user, "id", ""))})
+            user_id = getattr(user, "id", None)
+            if user_id is None:
+                return JSONResponse({"error": "Forbidden"}, status_code=403)
+            channel_data = json.dumps({"user_id": str(user_id)})
             auth = sign(server.key, server.secret, socket_id, channel_name, channel_data)
             return JSONResponse({"auth": auth, "channel_data": channel_data})
 

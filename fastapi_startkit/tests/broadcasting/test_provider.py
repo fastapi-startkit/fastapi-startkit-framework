@@ -1,13 +1,59 @@
 import json
 from types import SimpleNamespace
 
+import pytest
 from starlette.testclient import TestClient
 
 from fastapi_startkit.application import Application
+from fastapi_startkit.broadcasting.config import ReverbConnectionConfig
 from fastapi_startkit.broadcasting.manager import BroadcastManager
 from fastapi_startkit.broadcasting.provider import ReverbProvider
 from fastapi_startkit.broadcasting.reverb.server import ReverbServer
 from fastapi_startkit.broadcasting.reverb.signature import sign
+
+from .conftest import SECRET
+
+
+class TestSecret:
+    def test_has_no_default_secret(self, monkeypatch):
+        monkeypatch.delenv("REVERB_APP_SECRET")
+        assert ReverbConnectionConfig().secret == ""
+
+    @pytest.mark.parametrize("secret", [None, "", "secret"])
+    def test_refuses_to_boot_outside_local_and_testing_without_real_secret(self, monkeypatch, tmp_path, secret):
+        monkeypatch.delenv("PYTEST_CURRENT_TEST")
+        if secret is None:
+            monkeypatch.delenv("REVERB_APP_SECRET")
+        else:
+            monkeypatch.setenv("REVERB_APP_SECRET", secret)
+        with pytest.raises(RuntimeError, match="REVERB_APP_SECRET"):
+            Application(base_path=tmp_path, env="production", providers=[ReverbProvider])
+
+    def test_boots_in_production_with_real_secret(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("PYTEST_CURRENT_TEST")
+        app = Application(base_path=tmp_path, env="production", providers=[ReverbProvider])
+        assert app.make("reverb.server").secret == SECRET
+
+    @pytest.mark.parametrize("env", ["local", "testing"])
+    def test_boots_in_local_and_testing_without_secret(self, monkeypatch, tmp_path, env):
+        monkeypatch.delenv("PYTEST_CURRENT_TEST")
+        monkeypatch.delenv("REVERB_APP_SECRET")
+        app = Application(base_path=tmp_path, env=env, providers=[ReverbProvider])
+        assert app.make("reverb.server").secret == ""
+
+    def test_empty_secret_rejects_every_protected_subscription(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("REVERB_APP_SECRET")
+        app = make_app(tmp_path)
+        register_rule(app, "private-room.{room}", lambda user, room: True)
+        app.bind("auth", SimpleNamespace(user=SimpleNamespace(id=1)))
+        client = client_for(app)
+        with client.websocket_connect("/app/local") as ws:
+            socket_id = json.loads(json.loads(ws.receive_text())["data"])["socket_id"]
+            assert post_auth(app, channel_name="private-room.7", socket_id=socket_id).status_code == 403
+
+            auth = sign("local", "", socket_id, "private-room.7")
+            ws.send_text(json.dumps({"event": "pusher:subscribe", "data": {"channel": "private-room.7", "auth": auth}}))
+            assert json.loads(ws.receive_text())["event"] == "pusher:subscription_error"
 
 
 def make_app(tmp_path):
@@ -32,9 +78,9 @@ class TestRegister:
         assert isinstance(app.make("broadcasting"), BroadcastManager)
         assert isinstance(app.make("reverb.server"), ReverbServer)
 
-    def test_server_uses_configured_credentials(self, tmp_path):
+    def test_server_uses_configured_credentials(self, tmp_path, reverb_secret):
         server = make_app(tmp_path).make("reverb.server")
-        assert (server.key, server.secret) == ("local", "secret")
+        assert (server.key, server.secret) == ("local", reverb_secret)
 
     def test_publishes_channels_stub(self, tmp_path):
         app = make_app(tmp_path)
@@ -55,17 +101,19 @@ class TestAuthEndpoint:
     def test_private_channel_returns_signed_auth(self, tmp_path):
         app = make_app(tmp_path)
         register_rule(app, "private-room.{room}", lambda user, room: True)
+        app.bind("auth", SimpleNamespace(user=SimpleNamespace(id=1)))
         response = post_auth(app, channel_name="private-room.7", socket_id="123.456")
         assert response.status_code == 200
-        assert response.json() == {"auth": sign("local", "secret", "123.456", "private-room.7")}
+        assert response.json() == {"auth": sign("local", SECRET, "123.456", "private-room.7")}
 
     def test_accepts_json_body(self, tmp_path):
         app = make_app(tmp_path)
         register_rule(app, "private-room.{room}", lambda user, room: True)
+        app.bind("auth", SimpleNamespace(user=SimpleNamespace(id=1)))
         response = client_for(app).post(
             "/broadcasting/auth", json={"channel_name": "private-room.7", "socket_id": "123.456"}
         )
-        assert response.json()["auth"] == sign("local", "secret", "123.456", "private-room.7")
+        assert response.json()["auth"] == sign("local", SECRET, "123.456", "private-room.7")
 
     def test_presence_channel_signs_channel_data(self, tmp_path):
         app = make_app(tmp_path)
@@ -73,7 +121,7 @@ class TestAuthEndpoint:
         app.bind("auth", SimpleNamespace(user=SimpleNamespace(id=9)))
         body = post_auth(app, channel_name="presence-room", socket_id="1.2").json()
         assert body["channel_data"] == '{"user_id": "9"}'
-        assert body["auth"] == sign("local", "secret", "1.2", "presence-room", body["channel_data"])
+        assert body["auth"] == sign("local", SECRET, "1.2", "presence-room", body["channel_data"])
 
     def test_denied_callback_returns_403(self, tmp_path):
         app = make_app(tmp_path)
@@ -123,6 +171,7 @@ class TestWebsocketSubscription:
     def test_private_subscribe_requires_signature_from_auth_endpoint(self, tmp_path):
         app = make_app(tmp_path)
         register_rule(app, "private-room.{room}", lambda user, room: True)
+        app.bind("auth", SimpleNamespace(user=SimpleNamespace(id=1)))
         client = client_for(app)
         with client.websocket_connect("/app/local") as ws:
             socket_id = json.loads(json.loads(ws.receive_text())["data"])["socket_id"]
