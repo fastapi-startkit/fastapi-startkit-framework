@@ -42,6 +42,12 @@ Class-level access (`DatabaseConfig.default`) on an undecorated leaf class that 
 
 Once a plain-default class has been processed, its defaults are baked into the generated `__init__`. A class-level override made after the first instantiation or subclassing (`MemoryDiskConfig.driver = "redis"`, or `monkeypatch.setattr` on the class) changes what the class attribute returns but is ignored by new instances, which still get `"memory"`. This is standard `@dataclass` behaviour; pass the value as a keyword argument instead (`MemoryDiskConfig(driver="redis")`).
 
+For a class that holds a `Field` and also has a plain container default, the copied default has three edges. None of them is a regression, because such a body raised `ValueError` before:
+
+- `registry: dict = {}` becomes a `default_factory`, so class-level `Cls.registry` returns a new dict on every access and writes through the class are lost. Keep shared state in a `ClassVar`.
+- The copy is shallow, so nested containers (`{"tags": []}`) are shared between instances. Use `field(default_factory=...)` when nested values must be independent.
+- Only exact `dict`, `list` and `set` are copied. A subclass default such as `OrderedDict()` is passed to `@dataclass` unchanged and raises `ValueError: mutable default ... use default_factory`. Use `field(default_factory=OrderedDict)`.
+
 ## Bug fix: plain-default configs without `@dataclass`
 
 The first version processed only classes whose own body held a `Field`. A config with only plain defaults, such as a custom storage disk, was skipped once `@dataclass` was removed:
