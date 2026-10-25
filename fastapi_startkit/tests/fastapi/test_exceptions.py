@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from fastapi_startkit.container import Container
+from fastapi_startkit.exceptions import AuthorizationException, MethodNotAllowedException
 from fastapi_startkit.fastapi.exceptions import (
     HTTPExceptionHandler,
     ValidationExceptionHandler,
@@ -66,6 +67,19 @@ class TestHTTPExceptionHandler:
 
         assert response.status_code == 500
         assert json.loads(response.body) == {"message": "Server Error"}
+
+    async def test_framework_http_exception_keeps_status_detail_and_headers(self):
+        response = await HTTPExceptionHandler().render(FakeRequest(), MethodNotAllowedException(["GET"], "POST"))
+
+        assert response.status_code == 405
+        assert response.headers["allow"] == "GET"
+        assert json.loads(response.body)["detail"].startswith("POST method not allowed")
+
+    async def test_authorization_exception_returns_403(self):
+        response = await HTTPExceptionHandler().render(FakeRequest(), AuthorizationException())
+
+        assert response.status_code == 403
+        assert json.loads(response.body) == {"detail": "Action not authorized"}
 
 
 class TestValidationExceptionHandler:

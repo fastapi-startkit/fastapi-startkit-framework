@@ -61,9 +61,8 @@ class Application(Container, Generic[TConfig]):
         self.resolve_environment()
         self.configure_config()
         self.configure_paths()
-        self.register_providers()
-
         self._fastapi: Optional["FastAPI"] = None
+        self.register_providers()
         self.load_providers()
 
     def set_environment(self, env: str):

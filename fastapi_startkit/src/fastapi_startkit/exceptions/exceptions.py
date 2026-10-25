@@ -70,9 +70,20 @@ class RouteException(Exception):
     pass
 
 
-class RouteNotFoundException(Exception):
+class HttpException(Exception):
     is_http_exception = True
 
+    def get_status(self) -> int:
+        raise NotImplementedError
+
+    def get_response(self) -> str:
+        raise NotImplementedError
+
+    def get_headers(self) -> dict[str, str] | None:
+        return None
+
+
+class RouteNotFoundException(HttpException):
     def __init__(self, message):
         super().__init__(message)
         self.message = message or "Route Not Found"
@@ -84,9 +95,7 @@ class RouteNotFoundException(Exception):
         return 404
 
 
-class MethodNotAllowedException(Exception):
-    is_http_exception = True
-
+class MethodNotAllowedException(HttpException):
     def __init__(self, allowed_methods, method):
         allowed_list = ", ".join(allowed_methods)
         message = f"{method} method not allowed for this route. Supported methods are: {allowed_list}."
@@ -144,9 +153,7 @@ class NotificationException(Exception):
     pass
 
 
-class AuthorizationException(Exception):
-    is_http_exception = True
-
+class AuthorizationException(HttpException):
     def __init__(self, message="", status=403):
         super().__init__(message)
         self.message = message or "Action not authorized"

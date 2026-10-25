@@ -16,7 +16,7 @@ class FastAPIProvider(Provider):
         self.merge_config_from(config, self.provider_key)
 
         fastapi = FastAPI(
-            title="Jobins AI Agent (LangChain)",
+            title=config["title"],
             version="1.0.0",
         )
 
@@ -34,8 +34,10 @@ class FastAPIProvider(Provider):
 
     def _register_exception_handlers(self):
         """Wire exception_manager as a catch-all handler for all exceptions."""
-        from fastapi import HTTPException
         from fastapi.exceptions import RequestValidationError
+        from starlette.exceptions import HTTPException
+
+        from fastapi_startkit.exceptions import HttpException
 
         exception_manager = self.app.exception_manager
         exception_manager.register_handler(Exception, HTTPExceptionHandler())
@@ -58,5 +60,6 @@ class FastAPIProvider(Provider):
         # FastAPI registers its own handlers for these two types internally,
         # so they must be overridden explicitly
         self.app.fastapi.add_exception_handler(HTTPException, handler)
+        self.app.fastapi.add_exception_handler(HttpException, handler)
         self.app.fastapi.add_exception_handler(RequestValidationError, handler)
         self.app.fastapi.add_exception_handler(Exception, handler)

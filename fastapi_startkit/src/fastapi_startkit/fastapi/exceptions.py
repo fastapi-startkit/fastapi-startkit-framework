@@ -11,8 +11,20 @@ class HTTPExceptionHandler:
 
     async def render(self, request, exc):
         import traceback
+        from fastapi.exception_handlers import http_exception_handler
         from fastapi.responses import JSONResponse
+        from starlette.exceptions import HTTPException
+
         from fastapi_startkit.container import Container
+        from fastapi_startkit.exceptions import HttpException
+
+        if isinstance(exc, HTTPException):
+            return await http_exception_handler(request, exc)
+
+        if isinstance(exc, HttpException):
+            return await http_exception_handler(
+                request, HTTPException(exc.get_status(), exc.get_response(), headers=exc.get_headers())
+            )
 
         app = cast("Application", Container.instance())
         if app.is_debug():
