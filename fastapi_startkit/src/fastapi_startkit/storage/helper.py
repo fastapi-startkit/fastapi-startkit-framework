@@ -31,3 +31,10 @@ def get_extension(filepath: str, without_dot=False) -> str:
         if without_dot:
             extension = extension[1:]
     return extension
+
+
+def decode_text(content: bytes) -> str | bytes:
+    try:
+        return content.decode("utf-8")
+    except UnicodeDecodeError:
+        return content

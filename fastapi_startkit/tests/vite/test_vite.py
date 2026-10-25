@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import json
 import os
@@ -235,6 +236,44 @@ class TestAttributeResolvers:
         vite.use_preload_tag_attributes(lambda *a: {"data-preload": "1"})
         html = vite("resources/js/app.js")
         assert 'data-preload="1"' in html
+
+    def test_script_tag_attributes_accept_dict(self, public_path):
+        write_manifest(public_path)
+        vite = Vite(public_path).use_script_tag_attributes({"defer": True, "data-track": "reload"})
+        html = vite("resources/js/app.js")
+        assert '<script type="module" src="/build/assets/app-abc123.js" defer data-track="reload">' in html
+
+    def test_style_tag_attributes_accept_dict(self, public_path):
+        write_manifest(public_path)
+        vite = Vite(public_path).use_style_tag_attributes({"media": "print"})
+        html = vite("resources/js/app.js")
+        assert '<link rel="stylesheet" href="/build/assets/app-def456.css" media="print" />' in html
+
+    def test_preload_tag_attributes_accept_dict_and_false(self, public_path):
+        write_manifest(public_path)
+        assert 'data-preload="1"' in Vite(public_path).use_preload_tag_attributes({"data-preload": "1"})(
+            "resources/js/app.js"
+        )
+        assert "modulepreload" not in Vite(public_path).use_preload_tag_attributes(False)("resources/js/app.js")
+
+    async def test_csp_nonce_is_isolated_between_concurrent_requests(self, public_path):
+        write_manifest(public_path)
+        vite = Vite(public_path)
+        both_set = asyncio.Barrier(2)
+
+        async def request(nonce):
+            vite.use_csp_nonce(nonce)
+            await both_set.wait()
+            return vite.csp_nonce(), vite("resources/js/app.js")
+
+        (nonce_a, html_a), (nonce_b, html_b) = await asyncio.gather(
+            asyncio.create_task(request("nonce-a")), asyncio.create_task(request("nonce-b"))
+        )
+
+        assert (nonce_a, nonce_b) == ("nonce-a", "nonce-b")
+        assert 'nonce="nonce-a"' in html_a and "nonce-b" not in html_a
+        assert 'nonce="nonce-b"' in html_b and "nonce-a" not in html_b
+        assert vite.csp_nonce() is None
 
     def test_nonce_applied_to_tags(self, public_path):
         write_manifest(public_path)

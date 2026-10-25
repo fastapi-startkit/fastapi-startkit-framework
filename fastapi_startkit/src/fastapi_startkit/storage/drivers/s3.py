@@ -2,7 +2,7 @@ import os
 import uuid
 
 from ..file import File
-from ..helper import get_extension
+from ..helper import decode_text, get_extension
 
 
 class S3Driver:
@@ -67,12 +67,14 @@ class S3Driver:
         return os.path.join(file_path, file_name)
 
     def get(self, file_path):
+        content = self.get_bytes(file_path)
+        return None if content is None else decode_text(content)
+
+    def get_bytes(self, file_path):
         try:
-            return (
-                self.get_resource().Bucket(self.get_bucket()).Object(file_path).get().get("Body").read().decode("utf-8")
-            )
+            return self.get_resource().Bucket(self.get_bucket()).Object(file_path).get().get("Body").read()
         except self.missing_file_exceptions():
-            pass
+            return None
 
     def missing_file_exceptions(self):
         import botocore  # pyright: ignore[reportMissingImports]  # boto3 is an optional extra, imported lazily

@@ -77,6 +77,29 @@ class TestS3DriverGet:
             result = driver.get("missing.txt")
         assert result is None
 
+    def test_get_returns_bytes_for_binary_content(self, driver, mock_resource):
+        body = MagicMock()
+        body.read.return_value = b"\x89PNG\xff"
+        mock_resource.Bucket().Object().get.return_value = {"Body": body}
+
+        assert driver.get("logo.png") == b"\x89PNG\xff"
+
+    def test_get_bytes_returns_raw_content(self, driver, mock_resource):
+        body = MagicMock()
+        body.read.return_value = b"file content"
+        mock_resource.Bucket().Object().get.return_value = {"Body": body}
+
+        assert driver.get_bytes("file.txt") == b"file content"
+
+    def test_get_bytes_returns_none_on_client_error(self, driver, mock_resource):
+        class FakeClientError(Exception):
+            pass
+
+        mock_resource.Bucket().Object().get.side_effect = FakeClientError("not found")
+
+        with patch.object(driver, "missing_file_exceptions", return_value=(FakeClientError,)):
+            assert driver.get_bytes("missing.txt") is None
+
 
 # ---------------------------------------------------------------------------
 # exists
