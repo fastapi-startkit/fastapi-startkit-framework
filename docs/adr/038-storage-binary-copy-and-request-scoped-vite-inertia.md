@@ -1,4 +1,4 @@
-# 037. Storage binary reads and relative copy; request-scoped Vite and Inertia state
+# 038. Storage binary reads and relative copy; request-scoped Vite and Inertia state
 
 Date: 2026-10-25
 
