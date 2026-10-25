@@ -49,6 +49,8 @@ class MakeSeedCommand(Command):
             self.line(f"<error>{path_normalized} already exists.</error>")
             return 0
 
+        full_path.parent.mkdir(parents=True, exist_ok=True)
+
         with open(full_path, "w") as fp:
             fp.write(output)
 
