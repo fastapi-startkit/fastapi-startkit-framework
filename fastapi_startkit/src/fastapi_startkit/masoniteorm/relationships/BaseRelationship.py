@@ -106,16 +106,13 @@ class BaseRelationship(Generic[TModel, TResult]):
         return f"{cls.snake_name_of(model)}_{model.__primary_key__}"
 
     def bound_to(self, owner) -> Self:
-        if owner is None or owner is self.__dict__.get("owner_class", owner):
+        if owner is None or self.attribute is None or owner is self.__dict__.get("owner_class", owner):
             return self
-        bindings = self.__dict__.setdefault("_bindings", {})
-        if owner not in bindings:
-            bound = object.__new__(type(self))
-            excluded = ("_bindings", "_inferred_keys")
-            bound.__dict__.update({key: value for key, value in self.__dict__.items() if key not in excluded})
-            bound.owner_class = owner
-            bindings[owner] = bound
-        return bindings[owner]
+        bound = object.__new__(type(self))
+        bound.__dict__.update({key: value for key, value in self.__dict__.items() if key != "_inferred_keys"})
+        bound.owner_class = owner
+        setattr(owner, self.attribute, bound)
+        return bound
 
     @overload
     def __get__(self, instance: None, owner: Any) -> Self: ...

@@ -1,6 +1,9 @@
+import gc
 import warnings
+import weakref
 
 from fastapi_startkit.masoniteorm import BelongsTo, BelongsToMany, HasMany, HasOne, Model
+from fastapi_startkit.masoniteorm.models.registry import Registry
 from fastapi_startkit.masoniteorm.relationships import HasOneThrough
 
 from ..test_case import TestCase
@@ -103,6 +106,24 @@ def test_inherited_relationships_bind_to_the_accessing_class():
     assert KeyInvoice.notes.owner_class is KeyInvoice
     assert KeyInvoice.notes is KeyInvoice.notes
     assert keys(KeyInvoice.explicit_notes) == ("id", "owner_id")
+
+
+def test_bound_relationships_do_not_keep_subclasses_alive():
+    def declare():
+        class KeyTransientItem(KeyBaseItem):
+            pass
+
+        assert keys(KeyTransientItem.notes) == ("id", "key_transient_item_id")
+        Registry._models.pop("KeyTransientItem")
+        Registry._morph_map.pop("KeyTransientItem")
+        Registry._reverse_map.pop(KeyTransientItem)
+        return weakref.ref(KeyTransientItem)
+
+    subclass = declare()
+    gc.collect()
+
+    assert subclass() is None
+    assert keys(KeyBaseItem.notes) == ("id", "key_base_item_id")
 
 
 class TestDefaultRelationshipKeys(TestCase):

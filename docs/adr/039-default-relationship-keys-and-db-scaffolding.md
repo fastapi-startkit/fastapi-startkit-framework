@@ -38,7 +38,8 @@ For the config, either keep `pgsql` and add a Postgres connection, or read `DB_C
     - `BelongsTo`: `{attribute}_{related_pk}`, and the related primary key.
     - `BelongsToMany`: the pivot table is the two snake class names sorted and joined with `_` (`media_tag`). The keys are each side's foreign key and each side's primary key.
     - `HasOneThrough`: the owner pk, the owner's foreign key on the intermediate model, the intermediate pk, and the intermediate's foreign key on the distant model.
-  - Inferred keys are cached separately from explicit ones. Reading a relationship through a subclass returns a copy bound to that subclass and cached on the descriptor. The copy keeps the explicit keys and infers the rest from the subclass, matching Laravel, where `$this` is the concrete model.
+  - Inferred keys are cached separately from explicit ones. Reading a relationship through a subclass returns a copy bound to that subclass, matching Laravel, where `$this` is the concrete model. The copy keeps the explicit keys and infers the rest from the subclass.
+  - The bound copy is installed on the subclass itself with `setattr`. There is no side cache, so the copy lives and dies with the subclass. A `weakref.WeakKeyDictionary` keyed by the subclass was tried and rejected: the cached copy holds the subclass in `owner_class`, so the value keeps its own key alive and the subclass is never collected.
   - The table-based `BelongsToMany.get_pivot_table_name` fallback is removed, because `_table` is always inferred.
   - The four duplicated alphabetical pivot blocks in `BelongsToMany` are removed.
   - `HasOneThrough` selects its join key as the fixed alias `m_through_key`.
@@ -50,9 +51,29 @@ For the config, either keep `pgsql` and add a Postgres connection, or read `DB_C
   - `db:make:migration` and `seed` create their target directories.
   - `-m` already calls `db:make:migration`, and the model stub already imports `fastapi_startkit.masoniteorm.models`. Both stay as they are.
 - **Fresh migrate.**
+  - `Connection.resolve_url` lets a driver rewrite its URL before the engine is created. `SQliteConnection` resolves a relative database path against the application `base_path`, like migrations and other framework paths, so the database location does not depend on the working directory.
   - `SQliteConnection` creates the parent directory of a file database. In-memory and `file:` URIs are skipped.
   - `Migrator.migration_files()` returns an empty list when the migrations directory is missing, so `db:migrate` creates the tracking table and reports nothing to migrate. Laravel behaves the same way.
 - **Out of scope.** `HasManyThrough` default keys and the `m_through_key` alias are follow-ups.
+
+## Upgrade notes / Breaking changes
+
+Some default names change for configurations that already worked on `main`. Each one is fixed by passing the old name explicitly.
+
+| Case | Before | After | Fix |
+|---|---|---|---|
+| (a) `BelongsToMany` without `table=` between models with a custom `__table__` (`CpItemModel.__table__ = "cp_items"`, `CpShopModel.__table__ = "cp_shops"`) | `cp_item_cp_shop` | `cp_item_model_cp_shop_model` | `BelongsToMany["CpShopModel"](table="cp_item_cp_shop")` |
+| (b) A subclass that shares its parent's table and inherits a `BelongsToMany` (`CpAdmin(CpPerson)`) | `cp_person_cp_role` | `cp_admin_cp_role` | `BelongsToMany["CpRole"](table="cp_person_cp_role")` on the parent |
+| (c) Irregular plurals in the pivot (`Media` ↔ `Tag`) | `medium_tag` | `media_tag` | `BelongsToMany["Tag"](table="medium_tag")` |
+| (d) `HasOne`/`HasMany` default foreign key | `{attribute}_id` (`posts = HasMany(...)` on `User` → `posts_id`) | `{owner}_{pk}` (`user_id`) | `HasMany["Post"](foreign_key="posts_id")` |
+
+The foreign keys of the pivot in (a)–(c) follow the same class-name rule (for example `media_id` instead of `medium_id`). Pass `local_key=` / `foreign_key=` to keep the old names.
+
+Not affected:
+
+- any relationship with an explicit `table=`, `local_key=` or `foreign_key=`;
+- multi-word classes on their default table (`BlogPost` / `blog_posts` gives `blog_post_id` both before and after);
+- `BelongsTo`, `HasOneThrough` and implicit `BelongsToMany` reached through the class (`with_`, `where_has`, `attach`). These raised on `main` with no keys, so no working configuration depends on their old defaults.
 
 ## Validation
 
@@ -66,6 +87,7 @@ For the config, either keep `pgsql` and add a Postgres connection, or read `DB_C
   - `where_has` with and without callbacks.
 - The database config tests check that the default resolves to a defined connection, and that each `DB_CONNECTION` value selects one.
 - The make-command tests no longer pre-create directories. They also import a generated model through the package.
-- A sqlite connection to a file in a missing directory runs a query and creates the file. A `Migrator` with a missing migrations directory migrates nothing and leaves only the tracking table.
+- A sqlite connection to a file in a missing directory runs a query and creates the file. A relative sqlite path resolves against `base_path`, not the working directory.
+- A subclass that bound an inherited relationship is garbage collected once it is dropped. A `Migrator` with a missing migrations directory migrates nothing and leaves only the tracking table.
 - In a fresh temporary application, `provider:publish --provider=database` followed by `db:migrate` reports nothing to migrate and creates `databases/sqlite.db`.
 - In a temporary application, publishing the config, then running `db:make:model Post -m` and `db:migrate`, creates `app/models/Post.py` and the migration, and migrates on sqlite.
