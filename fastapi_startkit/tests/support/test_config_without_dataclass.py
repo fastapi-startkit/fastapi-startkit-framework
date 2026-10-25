@@ -1,7 +1,9 @@
 import time
+import typing
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import FrozenInstanceError, dataclass, field, fields
-from threading import Barrier
+from dataclasses import Field, FrozenInstanceError, InitVar, dataclass, field, fields
+from threading import Barrier, Lock
+from typing import ClassVar
 
 import pytest
 
@@ -10,6 +12,7 @@ from fastapi_startkit.configuration import Config
 from fastapi_startkit.environment import env
 from fastapi_startkit.storage.storage import StorageManager
 from fastapi_startkit.support.dataclass import Dataclass
+from tests.support.future_annotation_configs import FutureEnvRegistry, FutureRegistry
 
 
 def test_reported_database_config_without_dataclass(monkeypatch):
@@ -182,14 +185,132 @@ def test_env_child_of_frozen_parent_is_frozen(monkeypatch):
         child.port = 1
 
 
-def test_plain_mutable_default_is_copied_per_instance():
-    class Options(Config):
-        opts: dict[str, list[str]] = {"tags": []}
+def test_plain_mutable_default_is_left_alone_and_shared():
+    class Shared(Config):
+        registry: dict[str, int] = {}
 
-    first, second = Options(), Options()
-    first.opts["tags"].append("changed")
-    assert second.opts == {"tags": []}
-    assert Options(opts={"tags": ["given"]}).opts == {"tags": ["given"]}
+    first = Shared()
+    Shared.registry["key"] = 1
+    assert "__dataclass_fields__" not in Shared.__dict__
+    assert (Shared.registry, Shared().registry, first.registry) == ({"key": 1}, {"key": 1}, {"key": 1})
+
+
+def test_classvar_mutable_default_next_to_plain_fields():
+    class Registry(Config):
+        registry: ClassVar[dict[str, int]] = {}
+        driver: str = "memory"
+
+    first = Registry(driver="other")
+    Registry.registry["key"] = 1
+    assert [field.name for field in fields(Registry)] == ["driver"]
+    assert (first.driver, Registry().driver) == ("other", "memory")
+    assert first.registry is Registry.registry
+
+
+def test_classvar_mutable_default_next_to_env_fields(monkeypatch):
+    class Registry(Config):
+        registry: ClassVar[dict[str, int]] = {}
+        host: str = env("PLAIN_CLASSVAR_HOST", "localhost")
+
+    monkeypatch.setenv("PLAIN_CLASSVAR_HOST", "example.test")
+    assert Registry().host == "example.test"
+    assert Registry().registry is Registry.registry
+
+
+def test_string_classvar_and_initvar_annotations_are_skipped():
+    class Registry(Config):
+        registry: "ClassVar[dict[str, int]]" = {}
+        aliases: "typing.ClassVar[list[str]]" = []
+        seed: "InitVar[int]" = 0
+        driver: str = "memory"
+
+    instance = Registry(seed=1)
+    assert [field.name for field in fields(Registry)] == ["driver"]
+    assert instance.registry is Registry.registry
+
+
+def test_future_annotations_classvar_and_initvar_are_skipped():
+    registry = FutureRegistry(driver="other")
+    assert [field.name for field in fields(FutureRegistry)] == ["driver"]
+    assert (registry.driver, registry.registry is FutureRegistry.registry) == ("other", True)
+
+
+def test_future_annotations_classvar_next_to_env_field(monkeypatch):
+    monkeypatch.setenv("FUTURE_CLASSVAR_HOST", "example.test")
+    assert FutureEnvRegistry().host == "example.test"
+    assert FutureEnvRegistry().registry is FutureEnvRegistry.registry
+
+
+def test_unresolvable_string_classvar_is_left_alone():
+    class Registry(Config):
+        aliases: "unknown_module.ClassVar[list[str]]" = []
+        driver: str = "memory"
+
+    assert Registry().aliases == []
+    assert "__dataclass_fields__" not in Registry.__dict__
+
+
+def test_classvar_alone_is_left_alone():
+    class Registry(Config):
+        registry: ClassVar[dict[str, int]] = {}
+
+    assert Registry().registry == {}
+    assert "__dataclass_fields__" not in Registry.__dict__
+
+
+def test_custom_init_is_left_alone():
+    class Custom(Config):
+        opts: dict[str, int] = {}
+        driver: str = "memory"
+
+        def __init__(self) -> None:
+            pass
+
+    assert (Custom().opts, Custom().driver) == ({}, "memory")
+    assert "__dataclass_fields__" not in Custom.__dict__
+
+
+def test_custom_init_with_env_field_is_left_alone():
+    class Custom(Config):
+        host: str = env("PLAIN_CUSTOM_INIT_HOST", "localhost")
+
+        def __init__(self) -> None:
+            pass
+
+    assert "__dataclass_fields__" not in Custom.__dict__
+    assert isinstance(Custom.__dict__["host"], Field)
+
+
+def test_child_of_custom_init_parent_keeps_parent_init():
+    class Parent(Config):
+        def __init__(self) -> None:
+            self.ready = True
+
+    class Child(Parent):
+        driver: str = "memory"
+
+    child = Child()
+    assert (child.ready, child.driver) == (True, "memory")
+    assert "__dataclass_fields__" not in Child.__dict__
+
+
+class Holder:
+    def __init__(self) -> None:
+        self.lock = Lock()
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Holder)
+
+
+def test_unhashable_object_default_is_shared_not_copied():
+    holder = Holder()
+
+    class WithClient(Config):
+        client: Holder = holder
+        driver: str = "memory"
+
+    assert WithClient().client is holder
+    assert "__dataclass_fields__" not in WithClient.__dict__
 
 
 def test_env_fields_with_plain_mutable_default_in_same_body(monkeypatch):
@@ -201,6 +322,18 @@ def test_env_fields_with_plain_mutable_default_in_same_body(monkeypatch):
     first, second = Mixed(), Mixed()
     assert (first.host, first.opts) == ("example.test", {})
     assert first.opts is not second.opts
+
+
+def test_container_default_next_to_env_field_is_copied_shallowly():
+    holder = Holder()
+
+    class Mixed(Config):
+        host: str = env("PLAIN_SHALLOW_HOST", "localhost")
+        clients: dict[str, Holder] = {"main": holder}
+
+    first, second = Mixed(), Mixed()
+    assert first.clients is not second.clients
+    assert first.clients["main"] is holder
 
 
 def test_plain_defaults_without_env_are_processed():

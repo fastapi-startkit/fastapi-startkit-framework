@@ -1,8 +1,7 @@
-from copy import deepcopy
-from dataclasses import Field, MISSING, dataclass, field
-from functools import partial
+import sys
+from dataclasses import Field, InitVar, MISSING, dataclass, field
 from threading import Lock
-from typing import TypeVar, cast
+from typing import ClassVar, TypeVar, cast, get_origin
 
 from fastapi_startkit.environment import value
 
@@ -21,6 +20,32 @@ except ImportError:
 T = TypeVar("T")
 
 _dataclass_lock = Lock()
+_COPIED_DEFAULT_TYPES = (dict, list, set)
+
+
+def _resolve_string_annotation(klass: type, annotation: str) -> object:
+    module = sys.modules.get(klass.__module__)
+    namespace = vars(module) if module is not None else {}
+    owner, _, name = annotation.split("[", 1)[0].strip().rpartition(".")
+    if owner:
+        return getattr(namespace.get(owner), name, None)
+    return namespace.get(name)
+
+
+def _is_pseudo_field(klass: type, annotation: object) -> bool:
+    if isinstance(annotation, str):
+        annotation = _resolve_string_annotation(klass, annotation)
+    return (
+        isinstance(annotation, InitVar) or annotation is InitVar or (get_origin(annotation) or annotation) is ClassVar
+    )
+
+
+def _field_names(klass: type) -> list[str]:
+    return [name for name, annotation in _own_annotations(klass).items() if not _is_pseudo_field(klass, annotation)]
+
+
+def _is_hashable(default: object) -> bool:
+    return type(default).__hash__ is not None
 
 
 class _ConfigMeta(type):
@@ -38,24 +63,39 @@ class _ConfigMeta(type):
         with _dataclass_lock:
             for klass in pending:
                 if _ConfigMeta.needs_dataclass(klass):
-                    _ConfigMeta.copy_unhashable_defaults(klass)
+                    _ConfigMeta.copy_container_defaults(klass)
                     dataclass(eq=False, frozen=_ConfigMeta.has_frozen_base(klass))(klass)
 
     @staticmethod
     def needs_dataclass(klass: type) -> bool:
         if not isinstance(klass, _ConfigMeta) or "__dataclass_fields__" in klass.__dict__:
             return False
-        if any(isinstance(attribute, Field) for attribute in klass.__dict__.values()):
+        if _ConfigMeta.has_custom_init(klass):
+            return False
+        if _ConfigMeta.declares_field(klass):
             return True
-        names = _own_annotations(klass)
-        return bool(names) and all(name in klass.__dict__ for name in names)
+        defaults = [klass.__dict__.get(name, MISSING) for name in _field_names(klass)]
+        return bool(defaults) and all(default is not MISSING and _is_hashable(default) for default in defaults)
 
     @staticmethod
-    def copy_unhashable_defaults(klass: type) -> None:
-        for name in _own_annotations(klass):
+    def declares_field(klass: type) -> bool:
+        return any(isinstance(attribute, Field) for attribute in klass.__dict__.values())
+
+    @staticmethod
+    def has_custom_init(klass: type) -> bool:
+        for base in klass.__mro__:
+            if "__init__" in base.__dict__:
+                return base is not object and "__dataclass_fields__" not in base.__dict__
+        return False
+
+    @staticmethod
+    def copy_container_defaults(klass: type) -> None:
+        if not _ConfigMeta.declares_field(klass):
+            return
+        for name in _field_names(klass):
             default = klass.__dict__.get(name, MISSING)
-            if default is not MISSING and not isinstance(default, Field) and type(default).__hash__ is None:
-                setattr(klass, name, field(default_factory=partial(deepcopy, default)))
+            if type(default) in _COPIED_DEFAULT_TYPES:
+                setattr(klass, name, field(default_factory=cast(dict[object, object], default).copy))
 
     @staticmethod
     def has_frozen_base(klass: type) -> bool:
