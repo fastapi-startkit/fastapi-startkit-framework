@@ -166,8 +166,8 @@ class AuthorizationException(HttpException):
         return self.status
 
 
-class ThrottleRequestsException(Exception):
-    def __init__(self, message="Too many attempts", status=429, headers={}):
+class ThrottleRequestsException(HttpException):
+    def __init__(self, message="Too many attempts", status=429, headers: dict[str, str] | None = None):
         super().__init__(message)
         self.message = message
         self.status = status
