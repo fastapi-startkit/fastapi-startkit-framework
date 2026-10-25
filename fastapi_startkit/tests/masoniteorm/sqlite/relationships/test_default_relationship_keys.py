@@ -8,39 +8,101 @@ from ..test_case import TestCase
 with warnings.catch_warnings():
     warnings.simplefilter("ignore", DeprecationWarning)
 
-    class DefaultKeyWriter(Model):
-        __table__ = "writers"
+    class Novelist(Model):
         __timestamps__ = False
 
-        biography = HasOne["DefaultKeyBiography"]()
-        posts = HasMany["DefaultKeyPost"]()
-        latest_media = HasOneThrough(["DefaultKeyMedia", "DefaultKeyPost"])
+        memoir = HasOne["Memoir"]()
+        essays = HasMany["Essay"]()
+        latest_media = HasOneThrough(["Media", "Essay"])
 
-    class DefaultKeyBiography(Model):
-        __table__ = "biographies"
+    class Memoir(Model):
         __timestamps__ = False
 
-        writer = BelongsTo["DefaultKeyWriter"]()
+        novelist = BelongsTo["Novelist"]()
 
-    class DefaultKeyPost(Model):
-        __table__ = "posts"
+    class Essay(Model):
         __timestamps__ = False
 
-        writer = BelongsTo["DefaultKeyWriter"]()
-        media = HasMany("DefaultKeyMedia")
-        tags = BelongsToMany["DefaultKeyTag"]()
+        novelist = BelongsTo["Novelist"]()
+        media = HasMany("Media")
+        labels = BelongsToMany["Label"]()
 
-    class DefaultKeyMedia(Model):
+    class Media(Model):
         __table__ = "media"
         __timestamps__ = False
 
-        post = BelongsTo("DefaultKeyPost")
+        essay = BelongsTo("Essay")
+        labels = BelongsToMany["Label"]()
 
-    class DefaultKeyTag(Model):
-        __table__ = "tags"
+    class Label(Model):
+        __table__ = "blog_labels"
         __timestamps__ = False
 
-        posts = BelongsToMany["DefaultKeyPost"]()
+        essays = BelongsToMany["Essay"]()
+
+    class KeyAccount(Model):
+        __primary_key__ = "uuid"
+
+        setting = HasOne["KeyAccountNote"]()
+        notes = HasMany["KeyAccountNote"]()
+
+    class KeyAccountNote(Model):
+        account = BelongsTo["KeyAccount"]()
+
+    class KeyBaseItem(Model):
+        notes = HasMany["KeyAccountNote"]()
+        explicit_notes = HasMany["KeyAccountNote"](foreign_key="owner_id")
+
+    class KeyInvoice(KeyBaseItem):
+        pass
+
+
+def keys(relationship):
+    return relationship.local_key, relationship.foreign_key
+
+
+def test_keys_follow_the_owner_class_name():
+    assert keys(Novelist.essays) == ("id", "novelist_id")
+    assert keys(Novelist.memoir) == ("id", "novelist_id")
+    assert keys(Essay.novelist) == ("novelist_id", "id")
+    assert keys(Media.essay) == ("essay_id", "id")
+
+
+def test_pivot_table_and_keys_follow_sorted_class_names():
+    labels = Essay.labels
+    assert (labels._table, *keys(labels)) == ("essay_label", "essay_id", "label_id")
+    assert (labels.local_owner_key, labels.other_owner_key) == ("id", "id")
+
+    assert (Label.essays._table, *keys(Label.essays)) == ("essay_label", "label_id", "essay_id")
+
+
+def test_irregular_plural_class_names_are_not_singularized():
+    assert (Media.labels._table, *keys(Media.labels)) == ("label_media", "media_id", "label_id")
+
+
+def test_custom_table_does_not_change_key_names():
+    assert keys(Label.essays)[0] == "label_id"
+    assert Label.essays._table == "essay_label"
+
+
+def test_has_one_through_keys_follow_class_names():
+    through = Novelist.latest_media
+    assert (through.local_key, through.local_owner_key) == ("id", "novelist_id")
+    assert (through.foreign_key, through.other_owner_key) == ("id", "essay_id")
+
+
+def test_custom_primary_key_is_used_for_default_keys():
+    assert keys(KeyAccount.setting) == ("uuid", "key_account_uuid")
+    assert keys(KeyAccount.notes) == ("uuid", "key_account_uuid")
+    assert keys(KeyAccountNote.account) == ("account_uuid", "uuid")
+
+
+def test_inherited_relationships_bind_to_the_accessing_class():
+    assert keys(KeyBaseItem.notes) == ("id", "key_base_item_id")
+    assert keys(KeyInvoice.notes) == ("id", "key_invoice_id")
+    assert KeyInvoice.notes.owner_class is KeyInvoice
+    assert KeyInvoice.notes is KeyInvoice.notes
+    assert keys(KeyInvoice.explicit_notes) == ("id", "owner_id")
 
 
 class TestDefaultRelationshipKeys(TestCase):
@@ -48,111 +110,94 @@ class TestDefaultRelationshipKeys(TestCase):
         await super().asyncSetUp()
         schema = self.schema.on("default")
 
-        async with await schema.create_table_if_not_exists("writers") as table:
+        async with await schema.create_table_if_not_exists("novelists") as table:
             table.id()
             table.string("name")
 
-        async with await schema.create_table_if_not_exists("biographies") as table:
+        async with await schema.create_table_if_not_exists("memoirs") as table:
             table.id()
-            table.integer("writer_id")
+            table.integer("novelist_id")
             table.string("body")
 
-        async with await schema.create_table_if_not_exists("posts") as table:
+        async with await schema.create_table_if_not_exists("essays") as table:
             table.id()
-            table.integer("writer_id")
+            table.integer("novelist_id")
             table.string("title")
 
         async with await schema.create_table_if_not_exists("media") as table:
             table.id()
-            table.integer("post_id")
+            table.integer("essay_id")
             table.string("path")
 
-        async with await schema.create_table_if_not_exists("tags") as table:
+        async with await schema.create_table_if_not_exists("blog_labels") as table:
             table.id()
             table.string("name")
 
-        async with await schema.create_table_if_not_exists("post_tag") as table:
+        async with await schema.create_table_if_not_exists("essay_label") as table:
             table.id()
-            table.integer("post_id")
-            table.integer("tag_id")
+            table.integer("essay_id")
+            table.integer("label_id")
 
-        ada = await DefaultKeyWriter.create({"name": "Ada"})
-        await DefaultKeyWriter.create({"name": "Grace"})
-        await DefaultKeyBiography.create({"writer_id": ada.id, "body": "Analyst"})
-        post = await DefaultKeyPost.create({"writer_id": ada.id, "title": "Engines"})
-        await DefaultKeyPost.create({"writer_id": ada.id, "title": "Notes"})
-        await DefaultKeyMedia.create({"post_id": post.id, "path": "engine.png"})
-        tag = await DefaultKeyTag.create({"name": "math"})
-        await DefaultKeyTag.create({"name": "unused"})
-        await DefaultKeyPost.tags.attach(post, tag)
-
-    def test_keys_are_inferred_on_class_access(self):
-        assert (DefaultKeyWriter.posts.local_key, DefaultKeyWriter.posts.foreign_key) == ("id", "writer_id")
-        assert (DefaultKeyWriter.biography.local_key, DefaultKeyWriter.biography.foreign_key) == ("id", "writer_id")
-        assert (DefaultKeyPost.writer.local_key, DefaultKeyPost.writer.foreign_key) == ("writer_id", "id")
-        assert (DefaultKeyMedia.post.local_key, DefaultKeyMedia.post.foreign_key) == ("post_id", "id")
-
-        tags = DefaultKeyPost.tags
-        assert (tags._table, tags.local_key, tags.foreign_key) == ("post_tag", "post_id", "tag_id")
-        assert (tags.local_owner_key, tags.other_owner_key) == ("id", "id")
-
-        posts = DefaultKeyTag.posts
-        assert (posts._table, posts.local_key, posts.foreign_key) == ("post_tag", "tag_id", "post_id")
-
-        through = DefaultKeyWriter.latest_media
-        assert (through.local_key, through.local_owner_key) == ("id", "writer_id")
-        assert (through.foreign_key, through.other_owner_key) == ("id", "post_id")
+        ada = await Novelist.create({"name": "Ada"})
+        await Novelist.create({"name": "Grace"})
+        await Memoir.create({"novelist_id": ada.id, "body": "Analyst"})
+        essay = await Essay.create({"novelist_id": ada.id, "title": "Engines"})
+        await Essay.create({"novelist_id": ada.id, "title": "Notes"})
+        await Media.create({"essay_id": essay.id, "path": "engine.png"})
+        label = await Label.create({"name": "math"})
+        await Label.create({"name": "unused"})
+        await Essay.labels.attach(essay, label)
 
     async def test_eager_loads_default_key_relationships(self):
-        posts = await DefaultKeyPost.with_("writer", "tags", "media").where("title", "Engines").get()
-        post = posts.first()
+        essays = await Essay.with_("novelist", "labels", "media").where("title", "Engines").get()
+        essay = essays.first()
 
-        assert post.writer.name == "Ada"
-        assert [tag.name for tag in post.tags] == ["math"]
-        assert [media.path for media in post.media] == ["engine.png"]
+        assert essay.novelist.name == "Ada"
+        assert [label.name for label in essay.labels] == ["math"]
+        assert [media.path for media in essay.media] == ["engine.png"]
 
-        media = await DefaultKeyMedia.with_("post").first_or_fail()
-        assert media.post.title == "Engines"
+        media = await Media.with_("essay").first_or_fail()
+        assert media.essay.title == "Engines"
 
-        tag = await DefaultKeyTag.with_("posts").where("name", "math").first_or_fail()
-        assert [item.title for item in tag.posts] == ["Engines"]
+        label = await Label.with_("essays").where("name", "math").first_or_fail()
+        assert [item.title for item in label.essays] == ["Engines"]
 
     async def test_eager_loads_default_key_has_one_and_has_many(self):
-        writer = await DefaultKeyWriter.with_("biography", "posts").where("name", "Ada").first_or_fail()
+        novelist = await Novelist.with_("memoir", "essays").where("name", "Ada").first_or_fail()
 
-        assert writer.biography.body == "Analyst"
-        assert sorted(post.title for post in writer.posts) == ["Engines", "Notes"]
+        assert novelist.memoir.body == "Analyst"
+        assert sorted(essay.title for essay in novelist.essays) == ["Engines", "Notes"]
 
-        biography = await DefaultKeyBiography.with_("writer").first_or_fail()
-        assert biography.writer.name == "Ada"
+        memoir = await Memoir.with_("novelist").first_or_fail()
+        assert memoir.novelist.name == "Ada"
 
     async def test_eager_loads_default_key_has_one_through(self):
-        writer = await DefaultKeyWriter.with_("latest_media").where("name", "Ada").first_or_fail()
+        novelist = await Novelist.with_("latest_media").where("name", "Ada").first_or_fail()
 
-        assert writer.latest_media.path == "engine.png"
-        assert writer.latest_media.id is not None
+        assert novelist.latest_media.path == "engine.png"
+        assert novelist.latest_media.id is not None
 
-        lonely = await DefaultKeyWriter.with_("latest_media").where("name", "Grace").first_or_fail()
+        lonely = await Novelist.with_("latest_media").where("name", "Grace").first_or_fail()
         assert lonely.latest_media is None
 
     async def test_existence_queries_correlate_default_keys(self):
-        with_posts = await DefaultKeyWriter.where_has("posts").get()
-        assert [writer.name for writer in with_posts] == ["Ada"]
+        with_essays = await Novelist.where_has("essays").get()
+        assert [novelist.name for novelist in with_essays] == ["Ada"]
 
-        engines = await DefaultKeyWriter.where_has("posts", lambda query: query.where("title", "Engines")).get()
-        assert [writer.name for writer in engines] == ["Ada"]
+        engines = await Novelist.where_has("essays", lambda query: query.where("title", "Engines")).get()
+        assert [novelist.name for novelist in engines] == ["Ada"]
 
-        tagged = await DefaultKeyTag.where_has("posts").get()
-        assert [tag.name for tag in tagged] == ["math"]
+        labelled = await Label.where_has("essays").get()
+        assert [label.name for label in labelled] == ["math"]
 
-        with_biography = await DefaultKeyWriter.where_has("biography").get()
-        assert [writer.name for writer in with_biography] == ["Ada"]
+        with_memoir = await Novelist.where_has("memoir").get()
+        assert [novelist.name for novelist in with_memoir] == ["Ada"]
 
-        with_writer = await DefaultKeyPost.where_has("writer", lambda query: query.where("name", "Ada")).get()
-        assert sorted(post.title for post in with_writer) == ["Engines", "Notes"]
+        by_ada = await Essay.where_has("novelist", lambda query: query.where("name", "Ada")).get()
+        assert sorted(essay.title for essay in by_ada) == ["Engines", "Notes"]
 
-        tagged_posts = await DefaultKeyPost.where_has("tags").get()
-        assert [post.title for post in tagged_posts] == ["Engines"]
+        labelled_essays = await Essay.where_has("labels").get()
+        assert [essay.title for essay in labelled_essays] == ["Engines"]
 
-        with_media = await DefaultKeyWriter.where_has("latest_media").get()
-        assert [writer.name for writer in with_media] == ["Ada"]
+        with_media = await Novelist.where_has("latest_media").get()
+        assert [novelist.name for novelist in with_media] == ["Ada"]

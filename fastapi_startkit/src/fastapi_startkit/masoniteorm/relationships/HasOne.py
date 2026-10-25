@@ -8,7 +8,7 @@ class HasOne(BaseRelationship[TModel, SingleResult[TModel]]):
     def __init__(self, fn: str | None = None, foreign_key=None, local_key=None):
         self.bind_model(fn)
 
-        self.local_key = local_key or "id"
+        self.local_key = local_key
         self.foreign_key = foreign_key
 
     def default_keys(self):

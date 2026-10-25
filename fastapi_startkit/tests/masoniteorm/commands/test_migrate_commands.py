@@ -1,4 +1,6 @@
 import asyncio
+import os
+import tempfile
 import unittest
 
 from cleo.testers.command_tester import CommandTester
@@ -85,6 +87,17 @@ class TestMigrateCommands(unittest.TestCase):
             self._ran_migrations(),
             [(CREATE_POSTS, 1), (ADD_BODY_TO_POSTS, 1)],
         )
+
+    def test_migrate_without_a_migrations_directory_creates_only_the_tracking_table(self):
+        with tempfile.TemporaryDirectory() as base:
+            migrator = Migrator(connection="sqlite", migration_directory=os.path.join(base, "missing"))
+
+            asyncio.run(migrator.create_table_if_not_exists())
+            asyncio.run(migrator.migrate())
+
+            self.assertEqual(asyncio.run(migrator.get_ran_migrations()), [])
+        self.assertTrue(self._has_table("migrations"))
+        self.assertEqual(self._ran_migrations(), [])
 
     def test_migrate_is_idempotent_when_nothing_pending(self):
         cmd = self._make_command(DBMigrateCommand)

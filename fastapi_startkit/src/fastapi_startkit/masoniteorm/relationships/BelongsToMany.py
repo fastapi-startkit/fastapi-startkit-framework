@@ -1,5 +1,4 @@
 import pendulum
-from inflection import singularize
 
 from .BaseRelationship import BaseRelationship, ManyResult, RelationshipKey, TModel
 from ..collection import Collection
@@ -43,7 +42,7 @@ class BelongsToMany(BaseRelationship[TModel, ManyResult[TModel]]):
         owner = self.owner_class
         related = self.related_model()
         return {
-            "_table": "_".join(sorted(singularize(self.table_of(model)) for model in (owner, related))),
+            "_table": "_".join(sorted(self.snake_name_of(model) for model in (owner, related))),
             "local_key": self.foreign_key_of(owner),
             "foreign_key": self.foreign_key_of(related),
             "local_owner_key": owner.__primary_key__,
@@ -353,7 +352,7 @@ class BelongsToMany(BaseRelationship[TModel, ManyResult[TModel]]):
 
     def query_where_exists(self, builder, callback, method="where_exists"):
         query = self.get_builder()
-        pivot_table = self._table or self.get_pivot_table_name(query, builder)
+        pivot_table = self._table
         table = self.get_builder().get_table_name()
 
         getattr(builder, method)(
@@ -374,7 +373,7 @@ class BelongsToMany(BaseRelationship[TModel, ManyResult[TModel]]):
 
     def query_has(self, current_query_builder, method="where_exists"):
         query = self.get_builder()
-        pivot_table = self._table or self.get_pivot_table_name(query, current_query_builder)
+        pivot_table = self._table
         table = self.get_builder().get_table_name()
         return getattr(current_query_builder, method)(
             query.new()
@@ -391,17 +390,8 @@ class BelongsToMany(BaseRelationship[TModel, ManyResult[TModel]]):
             )
         )
 
-    def get_pivot_table_name(self, query, builder):
-        pivot_tables = [
-            singularize(query.get_table_name()),
-            singularize(builder.get_table_name()),
-        ]
-        pivot_tables.sort()
-        return "_".join(pivot_tables)
-
     def get_with_count_query(self, builder, callback):
         query = self.get_builder()
-        self._table = self._table or self.get_pivot_table_name(query, builder)
 
         if not builder._columns:
             builder = builder.select("*")
@@ -433,8 +423,6 @@ class BelongsToMany(BaseRelationship[TModel, ManyResult[TModel]]):
             self.foreign_key: getattr(related_record, self.other_owner_key),
         }
 
-        self._table = self._table or self.get_pivot_table_name(current_model, related_record)
-
         if self.with_timestamps:
             data.update(
                 {
@@ -451,8 +439,6 @@ class BelongsToMany(BaseRelationship[TModel, ManyResult[TModel]]):
             self.foreign_key: getattr(related_record, self.other_owner_key),
         }
 
-        self._table = self._table or self.get_pivot_table_name(current_model, related_record)
-
         return (
             current_model.get_builder()
             .connection.query()
@@ -467,8 +453,6 @@ class BelongsToMany(BaseRelationship[TModel, ManyResult[TModel]]):
             self.local_key: getattr(current_model, self.local_owner_key),
             self.foreign_key: getattr(related_record, self.other_owner_key),
         }
-
-        self._table = self._table or self.get_pivot_table_name(current_model, related_record)
 
         if self.with_timestamps:
             data.update(
@@ -485,8 +469,6 @@ class BelongsToMany(BaseRelationship[TModel, ManyResult[TModel]]):
             self.local_key: getattr(current_model, self.local_owner_key),
             self.foreign_key: getattr(related_record, self.other_owner_key),
         }
-
-        self._table = self._table or self.get_pivot_table_name(current_model, related_record)
 
         if self.with_timestamps:
             data.update(

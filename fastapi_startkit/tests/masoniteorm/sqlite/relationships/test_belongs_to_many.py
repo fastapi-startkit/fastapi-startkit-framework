@@ -99,13 +99,8 @@ class TestBelongsToManyRelationship(TestCase):
         products = store.products
         self.assertEqual(len(products), 0)
 
-    async def test_get_pivot_table_name(self):
-        # Test the helper method directly using builder proxies
-        rel = Store.products
-        # Manually set the pivot table name to test the method
-        rel._table = None
-        name = rel.get_pivot_table_name(self.store.get_builder(), self.product1.get_builder())
-        self.assertEqual(name, "product_store")
+    async def test_default_pivot_table_name(self):
+        self.assertEqual(Store.products._table, "product_store")
 
     async def test_map_related_returns_result(self):
         results = [self.product1, self.product2]

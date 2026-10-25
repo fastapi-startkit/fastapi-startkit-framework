@@ -79,7 +79,8 @@ def test_provider_rejects_dictionary_connection_settings(tmp_path):
         DatabaseProvider(app, config).register()
 
 
-def test_default_connection_is_defined(monkeypatch):
+def test_default_connection_is_defined(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("DB_CONNECTION", raising=False)
     config = DatabaseConfig()
 
@@ -97,3 +98,13 @@ def test_db_connection_selects_a_defined_connection(monkeypatch, name, config_ty
 
     assert config.default == name
     assert isinstance(config.connections[config.default], config_type)
+
+
+async def test_sqlite_connection_creates_the_database_directory(tmp_path):
+    database = tmp_path / "databases" / "sqlite.db"
+    connection = ConnectionFactory().make(SQLiteConfig(database=str(database), url=None), "sqlite")
+    try:
+        assert await connection.select_one("select 1 as one") == {"one": 1}
+        assert database.exists()
+    finally:
+        await connection.engine.dispose()

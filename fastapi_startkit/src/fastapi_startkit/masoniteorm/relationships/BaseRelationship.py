@@ -3,7 +3,7 @@ import typing
 import warnings
 from typing import TYPE_CHECKING, Any, ForwardRef, Generic, Self, get_args, overload
 
-from inflection import singularize, tableize
+from inflection import underscore
 from typing_extensions import TypeVar
 
 from fastapi_startkit.masoniteorm.models import registry
@@ -31,11 +31,12 @@ class RelationshipKey:
     def __get__(self, relationship, owner=None) -> Any:
         if relationship is None:
             return self
-        if relationship.__dict__.get(self.name) is None and "owner_class" in relationship.__dict__:
-            for name, value in relationship.default_keys().items():
-                if relationship.__dict__.get(name) is None:
-                    relationship.__dict__[name] = value
-        return relationship.__dict__.get(self.name)
+        explicit = relationship.__dict__.get(self.name)
+        if explicit is not None or "owner_class" not in relationship.__dict__:
+            return explicit
+        if "_inferred_keys" not in relationship.__dict__:
+            relationship.__dict__["_inferred_keys"] = relationship.default_keys()
+        return relationship.__dict__["_inferred_keys"].get(self.name)
 
     def __set__(self, relationship: object, value: str | None) -> None:
         relationship.__dict__[self.name] = value
@@ -97,12 +98,24 @@ class BaseRelationship(Generic[TModel, TResult]):
         return {}
 
     @staticmethod
-    def table_of(model) -> str:
-        return model.__table__ or tableize(model.__name__)
+    def snake_name_of(model) -> str:
+        return underscore(model.__name__)
 
     @classmethod
     def foreign_key_of(cls, model) -> str:
-        return f"{singularize(cls.table_of(model))}_{model.__primary_key__}"
+        return f"{cls.snake_name_of(model)}_{model.__primary_key__}"
+
+    def bound_to(self, owner) -> Self:
+        if owner is None or owner is self.__dict__.get("owner_class", owner):
+            return self
+        bindings = self.__dict__.setdefault("_bindings", {})
+        if owner not in bindings:
+            bound = object.__new__(type(self))
+            excluded = ("_bindings", "_inferred_keys")
+            bound.__dict__.update({key: value for key, value in self.__dict__.items() if key not in excluded})
+            bound.owner_class = owner
+            bindings[owner] = bound
+        return bindings[owner]
 
     @overload
     def __get__(self, instance: None, owner: Any) -> Self: ...
@@ -111,7 +124,7 @@ class BaseRelationship(Generic[TModel, TResult]):
     @overload
     def __get__(self, instance: object, owner: Any) -> TResult: ...
     def __get__(self, instance, owner) -> Any:
-        return self.access(instance, owner)
+        return self.bound_to(owner).access(instance, owner)
 
     def access(self, instance, owner):
         """
