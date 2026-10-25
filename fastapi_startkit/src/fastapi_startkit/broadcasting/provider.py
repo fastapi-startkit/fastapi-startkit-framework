@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -9,6 +10,7 @@ from fastapi_startkit.support import Provider
 from .config import BroadcastingConfig
 from .manager import BroadcastManager
 from .reverb.server import ReverbServer
+from .reverb.signature import sign
 
 
 class ReverbProvider(Provider):
@@ -36,7 +38,8 @@ class ReverbProvider(Provider):
         config_data = self.resolve_config(BroadcastingConfig)
         self.merge_config_from(config_data, "broadcasting")
 
-        server = ReverbServer()
+        reverb = config_data.get("connections", {}).get("reverb", {})
+        server = ReverbServer(key=reverb.get("key", "local"), secret=reverb.get("secret", "secret"))
         manager = BroadcastManager(config_data, server)
 
         self.app.bind("broadcasting", manager)
@@ -81,91 +84,66 @@ class ReverbProvider(Provider):
         spec.loader.exec_module(module)  # type: ignore[union-attr]
 
     def _mount_websocket(self) -> None:
-        """Mount the Reverb WebSocket endpoint on the FastAPI application.
-
-        The endpoint path is ``/app/{app_key}``, matching the Pusher protocol
-        expected by Laravel Echo.  The ``app_key`` is taken from the
-        ``reverb.connections.reverb.key`` config value (default: ``"local"``).
-        """
         try:
             fastapi_app = self.app.fastapi
         except RuntimeError:
-            # FastAPI not installed or app not yet booted — skip
             return
 
-        config = self.app.make("config").get("broadcasting") or {}
-        connections = config.get("connections", {}) if isinstance(config, dict) else {}
-        reverb_conn = connections.get("reverb", {}) if isinstance(connections, dict) else {}
-        app_key = reverb_conn.get("key", "local") if isinstance(reverb_conn, dict) else "local"
-
         server: ReverbServer = self.app.make("reverb.server")
-
-        from starlette.routing import WebSocketRoute
-        from starlette.applications import Starlette
 
         async def ws_endpoint(websocket):
             await server.handle(websocket)
 
-        ws_app = Starlette(routes=[WebSocketRoute(f"/app/{app_key}", ws_endpoint)])
-        fastapi_app.mount("", ws_app)
+        fastapi_app.router.add_websocket_route(f"/app/{server.key}", ws_endpoint)
 
     def _mount_auth_endpoint(self) -> None:
-        """Mount the ``/broadcasting/auth`` HTTP endpoint.
-
-        The endpoint handles the Laravel Echo authentication handshake for
-        private and presence channels.  It:
-
-        1. Reads ``channel_name`` from the POST body (form or JSON).
-        2. Resolves the current user via the container's ``auth`` binding (if
-           available), falling back to ``request.state.user``.
-        3. Calls :meth:`~.auth.ChannelAuthRegistry.authorize` with the channel
-           name and the resolved user.
-        4. Returns **200** on success or **403** on denial.
-        """
         try:
             fastapi_app = self.app.fastapi
         except RuntimeError:
             return
 
-        from fastapi import Request
-        from fastapi.responses import JSONResponse
+        from starlette.requests import Request
+        from starlette.responses import JSONResponse
 
         application = self.app
 
-        @fastapi_app.post("/broadcasting/auth")
         async def broadcasting_auth(request: Request):
-            # Resolve channel name from form data or JSON body
             content_type = request.headers.get("content-type", "")
             if "application/json" in content_type:
                 body = await request.json()
-                channel_name = body.get("channel_name", "")
             else:
-                form = await request.form()
-                channel_name = form.get("channel_name", "")
+                body = await request.form()
+            channel_name = body.get("channel_name", "")
+            socket_id = body.get("socket_id", "")
 
-            if not isinstance(channel_name, str):
-                return JSONResponse({"error": "channel_name must be a string"}, status_code=422)
+            if not isinstance(channel_name, str) or not isinstance(socket_id, str):
+                return JSONResponse({"error": "channel_name and socket_id must be strings"}, status_code=422)
+            if not socket_id:
+                return JSONResponse({"error": "socket_id is required"}, status_code=422)
 
-            # Resolve authenticated user.
-            # Prefer request.state.user (set by auth middleware), then fall
-            # back to the container's "auth" service.
-            user = getattr(request.state, "user", None)
-            if user is None:
-                try:
-                    auth_service = application.make("auth")
-                    user_attr = getattr(auth_service, "user", None)
-                    if callable(user_attr):
-                        user = user_attr()
-                    else:
-                        user = user_attr
-                except Exception:
-                    user = None
+            user = self._resolve_user(application, request)
 
-            # Authorise
             manager: BroadcastManager = application.make("broadcasting")
-            allowed = await manager.channel_registry.authorize(channel_name, user)
-
-            if not allowed:
+            if not await manager.channel_registry.authorize(channel_name, user):
                 return JSONResponse({"error": "Forbidden"}, status_code=403)
 
-            return JSONResponse({"auth": True, "channel_data": {}})
+            server: ReverbServer = application.make("reverb.server")
+            if not channel_name.startswith("presence-"):
+                return JSONResponse({"auth": sign(server.key, server.secret, socket_id, channel_name)})
+
+            channel_data = json.dumps({"user_id": str(getattr(user, "id", ""))})
+            auth = sign(server.key, server.secret, socket_id, channel_name, channel_data)
+            return JSONResponse({"auth": auth, "channel_data": channel_data})
+
+        fastapi_app.router.add_route("/broadcasting/auth", broadcasting_auth, methods=["POST"])
+
+    @staticmethod
+    def _resolve_user(application, request):
+        user = getattr(request.state, "user", None)
+        if user is not None:
+            return user
+        try:
+            user_attr = getattr(application.make("auth"), "user", None)
+        except Exception:
+            return None
+        return user_attr() if callable(user_attr) else user_attr

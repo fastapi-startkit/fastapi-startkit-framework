@@ -4,10 +4,13 @@ from starlette.routing import WebSocketRoute
 from starlette.applications import Starlette
 from .connection import ConnectionManager
 from .channel_manager import ChannelManager
+from .signature import requires_auth, verify
 
 
 class ReverbServer:
-    def __init__(self):
+    def __init__(self, key: str = "local", secret: str = "secret"):
+        self.key = key
+        self.secret = secret
         self.connections = ConnectionManager()
         self.channels = ChannelManager()
 
@@ -36,7 +39,23 @@ class ReverbServer:
         if event == "pusher:ping":
             await websocket.send_text(json.dumps({"event": "pusher:pong", "data": {}}))
         elif event == "pusher:subscribe":
-            channel = message.get("data", {}).get("channel", "")
+            data = message.get("data") or {}
+            channel = data.get("channel", "")
+            if not isinstance(channel, str) or not channel:
+                return
+            if requires_auth(channel) and not verify(
+                self.key, self.secret, socket_id, channel, data.get("auth"), data.get("channel_data")
+            ):
+                await websocket.send_text(
+                    json.dumps(
+                        {
+                            "event": "pusher:subscription_error",
+                            "channel": channel,
+                            "data": {"type": "AuthError", "error": "Invalid signature", "status": 401},
+                        }
+                    )
+                )
+                return
             self.channels.subscribe(channel, socket_id)
             await websocket.send_text(
                 json.dumps({"event": "pusher_internal:subscription_succeeded", "channel": channel, "data": {}})

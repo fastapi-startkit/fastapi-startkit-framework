@@ -1,60 +1,29 @@
+import json
 from types import SimpleNamespace
+
+from starlette.testclient import TestClient
 
 from fastapi_startkit.application import Application
 from fastapi_startkit.broadcasting.manager import BroadcastManager
 from fastapi_startkit.broadcasting.provider import ReverbProvider
 from fastapi_startkit.broadcasting.reverb.server import ReverbServer
-
-
-_MISSING = object()
+from fastapi_startkit.broadcasting.reverb.signature import sign
 
 
 def make_app(tmp_path):
     return Application(base_path=tmp_path, env="testing", providers=[ReverbProvider])
 
 
-def mount_auth(tmp_path):
-    """Register broadcasting and mount only the auth endpoint.
-
-    The full ``boot()`` mounts a catch-all WebSocket sub-app at ``""`` which
-    shadows the HTTP auth route, so exercise the auth handler on its own.
-    """
-    app = Application(base_path=tmp_path, env="testing", providers=[])
-    provider = ReverbProvider(app)
-    provider.register()
-    provider._mount_auth_endpoint()
-    return app
+def client_for(app):
+    return TestClient(app.fastapi)
 
 
-def auth_handler(app):
-    for route in app.fastapi.routes:
-        if getattr(route, "path", None) == "/broadcasting/auth":
-            return route.endpoint
-    raise AssertionError("auth route not mounted")
+def register_rule(app, pattern, callback):
+    app.make("broadcasting").channel_registry.register(pattern, callback)
 
 
-class FakeRequest:
-    """Stand-in for a Starlette Request.
-
-    ``from __future__ import annotations`` in the provider turns the handler's
-    ``Request`` annotation into an unresolved forward-ref, so FastAPI cannot
-    inject a real request through the test client. Calling the handler with
-    this fake exercises the same body directly.
-    """
-
-    def __init__(self, content_type, *, json_body=None, form_body=None, user=_MISSING):
-        self.headers = {"content-type": content_type}
-        self._json = json_body or {}
-        self._form = form_body or {}
-        self.state = SimpleNamespace()
-        if user is not _MISSING:
-            self.state.user = user
-
-    async def json(self):
-        return self._json
-
-    async def form(self):
-        return self._form
+def post_auth(app, **body):
+    return client_for(app).post("/broadcasting/auth", data=body)
 
 
 class TestRegister:
@@ -63,6 +32,10 @@ class TestRegister:
         assert isinstance(app.make("broadcasting"), BroadcastManager)
         assert isinstance(app.make("reverb.server"), ReverbServer)
 
+    def test_server_uses_configured_credentials(self, tmp_path):
+        server = make_app(tmp_path).make("reverb.server")
+        assert (server.key, server.secret) == ("local", "secret")
+
     def test_publishes_channels_stub(self, tmp_path):
         app = make_app(tmp_path)
         published = app.published_resources.get("broadcasting", {})
@@ -70,53 +43,96 @@ class TestRegister:
 
 
 class TestAuthEndpoint:
-    async def test_public_channel_allowed_json(self, tmp_path):
-        handler = auth_handler(mount_auth(tmp_path))
-        response = await handler(FakeRequest("application/json", json_body={"channel_name": "orders"}))
-        assert response.status_code == 200
-
-    async def test_private_channel_denied_without_rule(self, tmp_path):
-        handler = auth_handler(mount_auth(tmp_path))
-        response = await handler(FakeRequest("application/json", json_body={"channel_name": "private-secret"}))
+    def test_auth_route_is_reachable_after_full_boot(self, tmp_path):
+        response = post_auth(make_app(tmp_path), channel_name="private-secret", socket_id="1.1")
         assert response.status_code == 403
 
-    async def test_accepts_form_encoded_body(self, tmp_path):
-        handler = auth_handler(mount_auth(tmp_path))
-        response = await handler(
-            FakeRequest("application/x-www-form-urlencoded", form_body={"channel_name": "public-room"})
-        )
-        assert response.status_code == 200
+    def test_routes_added_after_boot_are_not_shadowed(self, tmp_path):
+        app = make_app(tmp_path)
+        app.fastapi.get("/ping")(lambda: {"ok": True})
+        assert client_for(app).get("/ping").status_code == 200
 
-    async def test_rejects_non_string_json_channel_name(self, tmp_path):
-        handler = auth_handler(mount_auth(tmp_path))
-        response = await handler(FakeRequest("application/json", json_body={"channel_name": 42}))
+    def test_private_channel_returns_signed_auth(self, tmp_path):
+        app = make_app(tmp_path)
+        register_rule(app, "private-room.{room}", lambda user, room: True)
+        response = post_auth(app, channel_name="private-room.7", socket_id="123.456")
+        assert response.status_code == 200
+        assert response.json() == {"auth": sign("local", "secret", "123.456", "private-room.7")}
+
+    def test_accepts_json_body(self, tmp_path):
+        app = make_app(tmp_path)
+        register_rule(app, "private-room.{room}", lambda user, room: True)
+        response = client_for(app).post(
+            "/broadcasting/auth", json={"channel_name": "private-room.7", "socket_id": "123.456"}
+        )
+        assert response.json()["auth"] == sign("local", "secret", "123.456", "private-room.7")
+
+    def test_presence_channel_signs_channel_data(self, tmp_path):
+        app = make_app(tmp_path)
+        register_rule(app, "presence-room", lambda user: True)
+        app.bind("auth", SimpleNamespace(user=SimpleNamespace(id=9)))
+        body = post_auth(app, channel_name="presence-room", socket_id="1.2").json()
+        assert body["channel_data"] == '{"user_id": "9"}'
+        assert body["auth"] == sign("local", "secret", "1.2", "presence-room", body["channel_data"])
+
+    def test_denied_callback_returns_403(self, tmp_path):
+        app = make_app(tmp_path)
+        register_rule(app, "private-room.{room}", lambda user, room: False)
+        assert post_auth(app, channel_name="private-room.7", socket_id="1.1").status_code == 403
+
+    def test_requires_socket_id(self, tmp_path):
+        assert post_auth(make_app(tmp_path), channel_name="orders").status_code == 422
+
+    def test_rejects_non_string_json_channel_name(self, tmp_path):
+        response = client_for(make_app(tmp_path)).post(
+            "/broadcasting/auth", json={"channel_name": 42, "socket_id": "1.1"}
+        )
         assert response.status_code == 422
 
-    async def test_rejects_file_upload_as_channel_name(self, tmp_path):
-        handler = auth_handler(mount_auth(tmp_path))
-        response = await handler(
-            FakeRequest("multipart/form-data", form_body={"channel_name": SimpleNamespace(filename="x.txt")})
+    def test_rejects_file_upload_as_channel_name(self, tmp_path):
+        response = client_for(make_app(tmp_path)).post(
+            "/broadcasting/auth", data={"socket_id": "1.1"}, files={"channel_name": ("x.txt", b"x")}
         )
         assert response.status_code == 422
 
-    async def test_uses_request_state_user(self, tmp_path):
-        handler = auth_handler(mount_auth(tmp_path))
-        response = await handler(FakeRequest("application/json", json_body={"channel_name": "orders"}, user=object()))
-        assert response.status_code == 200
+    def test_uses_request_state_user(self, tmp_path):
+        app = make_app(tmp_path)
+        register_rule(app, "private-me", lambda user: user.id == 3)
 
-    async def test_resolves_user_from_callable_auth_service(self, tmp_path):
-        app = mount_auth(tmp_path)
+        @app.fastapi.middleware("http")
+        async def authenticate(request, call_next):
+            request.state.user = SimpleNamespace(id=3)
+            return await call_next(request)
+
+        assert post_auth(app, channel_name="private-me", socket_id="1.1").status_code == 200
+
+    def test_resolves_user_from_callable_auth_service(self, tmp_path):
+        app = make_app(tmp_path)
+        register_rule(app, "private-me", lambda user: user.id == 1)
         app.bind("auth", SimpleNamespace(user=lambda: SimpleNamespace(id=1)))
-        handler = auth_handler(app)
-        response = await handler(FakeRequest("application/json", json_body={"channel_name": "orders"}))
-        assert response.status_code == 200
+        assert post_auth(app, channel_name="private-me", socket_id="1.1").status_code == 200
 
-    async def test_resolves_user_from_attribute_auth_service(self, tmp_path):
-        app = mount_auth(tmp_path)
+    def test_resolves_user_from_attribute_auth_service(self, tmp_path):
+        app = make_app(tmp_path)
+        register_rule(app, "private-me", lambda user: user.id == 2)
         app.bind("auth", SimpleNamespace(user=SimpleNamespace(id=2)))
-        handler = auth_handler(app)
-        response = await handler(FakeRequest("application/json", json_body={"channel_name": "orders"}))
-        assert response.status_code == 200
+        assert post_auth(app, channel_name="private-me", socket_id="1.1").status_code == 200
+
+
+class TestWebsocketSubscription:
+    def test_private_subscribe_requires_signature_from_auth_endpoint(self, tmp_path):
+        app = make_app(tmp_path)
+        register_rule(app, "private-room.{room}", lambda user, room: True)
+        client = client_for(app)
+        with client.websocket_connect("/app/local") as ws:
+            socket_id = json.loads(json.loads(ws.receive_text())["data"])["socket_id"]
+
+            ws.send_text(json.dumps({"event": "pusher:subscribe", "data": {"channel": "private-room.7"}}))
+            assert json.loads(ws.receive_text())["event"] == "pusher:subscription_error"
+
+            auth = post_auth(app, channel_name="private-room.7", socket_id=socket_id).json()["auth"]
+            ws.send_text(json.dumps({"event": "pusher:subscribe", "data": {"channel": "private-room.7", "auth": auth}}))
+            assert json.loads(ws.receive_text())["event"] == "pusher_internal:subscription_succeeded"
 
 
 class TestChannelsFileAutoloading:
@@ -136,14 +152,11 @@ class TestChannelsFileAutoloading:
         assert await registry.authorize("private-room.7", None) is True
 
     def test_missing_channels_file_is_ignored(self, tmp_path):
-        # No routes/channels.py — boot must still succeed.
         app = make_app(tmp_path)
         assert isinstance(app.make("broadcasting"), BroadcastManager)
 
 
 class _RaisingFastapiApp:
-    """Minimal app whose ``.fastapi`` raises, mimicking FastAPI not installed."""
-
     base_path = "/nonexistent-base-path"
 
     @property
@@ -153,13 +166,10 @@ class _RaisingFastapiApp:
 
 class TestMountingWithoutFastapi:
     def test_mount_websocket_skips_when_fastapi_unavailable(self):
-        provider = ReverbProvider(_RaisingFastapiApp())
-        provider._mount_websocket()  # returns without raising
+        ReverbProvider(_RaisingFastapiApp())._mount_websocket()
 
     def test_mount_auth_endpoint_skips_when_fastapi_unavailable(self):
-        provider = ReverbProvider(_RaisingFastapiApp())
-        provider._mount_auth_endpoint()  # returns without raising
+        ReverbProvider(_RaisingFastapiApp())._mount_auth_endpoint()
 
     def test_load_channels_file_skips_when_absent(self):
-        provider = ReverbProvider(_RaisingFastapiApp())
-        provider._load_channels_file()  # base_path has no routes/channels.py
+        ReverbProvider(_RaisingFastapiApp())._load_channels_file()
