@@ -66,6 +66,7 @@ Some default names change for configurations that already worked on `main`. Each
 | (b) A subclass that shares its parent's table and inherits a `BelongsToMany` (`CpAdmin(CpPerson)`) | `cp_person_cp_role` | `cp_admin_cp_role` | `BelongsToMany["CpRole"](table="cp_person_cp_role")` on the parent |
 | (c) Irregular plurals in the pivot (`Media` ↔ `Tag`) | `medium_tag` | `media_tag` | `BelongsToMany["Tag"](table="medium_tag")` |
 | (d) `HasOne`/`HasMany` default foreign key | `{attribute}_id` (`posts = HasMany(...)` on `User` → `posts_id`) | `{owner}_{pk}` (`user_id`) | `HasMany["Post"](foreign_key="posts_id")` |
+| (e) Relative sqlite path (`DB_DATABASE` / `DB_URL`) | relative to the current working directory | relative to `Application.base_path` | use an absolute path |
 
 The foreign keys of the pivot in (a)–(c) follow the same class-name rule (for example `media_id` instead of `medium_id`). Pass `local_key=` / `foreign_key=` to keep the old names.
 
