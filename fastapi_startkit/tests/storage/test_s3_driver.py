@@ -145,6 +145,21 @@ class TestS3DriverDelete:
 # ---------------------------------------------------------------------------
 
 
+class TestS3DriverAppend:
+    def test_append_writes_existing_content_followed_by_new_content(self, driver, mock_resource):
+        with patch.object(driver, "get", return_value="hello "):
+            result = driver.append("log.txt", "world")
+
+        mock_resource.Bucket().put_object.assert_called_with(Key="log.txt", Body="hello world")
+        assert result == "world"
+
+    def test_append_to_missing_file_writes_new_content(self, driver, mock_resource):
+        with patch.object(driver, "get", return_value=None):
+            driver.append("log.txt", "first")
+
+        mock_resource.Bucket().put_object.assert_called_with(Key="log.txt", Body="first")
+
+
 class TestS3DriverCopyMove:
     def test_copy_calls_meta_client_copy(self, driver, mock_resource):
         driver.copy("src.txt", "dst.txt")

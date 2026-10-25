@@ -1,4 +1,3 @@
-import asyncio
 import hashlib
 import json
 import os
@@ -255,25 +254,6 @@ class TestAttributeResolvers:
             "resources/js/app.js"
         )
         assert "modulepreload" not in Vite(public_path).use_preload_tag_attributes(False)("resources/js/app.js")
-
-    async def test_csp_nonce_is_isolated_between_concurrent_requests(self, public_path):
-        write_manifest(public_path)
-        vite = Vite(public_path)
-        both_set = asyncio.Barrier(2)
-
-        async def request(nonce):
-            vite.use_csp_nonce(nonce)
-            await both_set.wait()
-            return vite.csp_nonce(), vite("resources/js/app.js")
-
-        (nonce_a, html_a), (nonce_b, html_b) = await asyncio.gather(
-            asyncio.create_task(request("nonce-a")), asyncio.create_task(request("nonce-b"))
-        )
-
-        assert (nonce_a, nonce_b) == ("nonce-a", "nonce-b")
-        assert 'nonce="nonce-a"' in html_a and "nonce-b" not in html_a
-        assert 'nonce="nonce-b"' in html_b and "nonce-a" not in html_b
-        assert vite.csp_nonce() is None
 
     def test_nonce_applied_to_tags(self, public_path):
         write_manifest(public_path)

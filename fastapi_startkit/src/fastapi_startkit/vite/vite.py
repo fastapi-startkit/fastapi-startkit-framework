@@ -4,11 +4,33 @@ import os
 import re
 import secrets
 from collections.abc import Callable
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
 
 from .exceptions import ViteException, ViteManifestNotFoundException
+
+
+@dataclass
+class ViteRequestState:
+    nonce: str | None = None
+    preloaded_assets: dict[str, list[str]] = field(default_factory=dict)
+
+
+class ViteRequestScope:
+    def __init__(self, request: ContextVar[ViteRequestState | None]) -> None:
+        self._request = request
+        self._token: Token[ViteRequestState | None] | None = None
+
+    def __enter__(self) -> None:
+        if self._request.get() is None:
+            self._token = self._request.set(ViteRequestState())
+
+    def __exit__(self, *_: object) -> None:
+        if self._token is not None:
+            self._request.reset(self._token)
+            self._token = None
 
 
 class Vite:
@@ -45,7 +67,7 @@ class Vite:
         # Optional base URL prefix for all generated asset URLs.
         self._asset_url = asset_url.rstrip("/")
 
-        self._nonce: ContextVar[str | None] = ContextVar(f"vite_nonce_{id(self)}", default=None)
+        self._default_nonce: str | None = None
         self._integrity_key: str | bool = "integrity"
         self._entry_points: list[str] = []
         self._asset_path_resolver: Callable[[str], str] | None = None
@@ -55,9 +77,8 @@ class Vite:
         self._style_tag_attributes_resolvers: list[Callable[..., Any]] = []
         self._preload_tag_attributes_resolvers: list[Callable[..., Any]] = []
 
-        self._preloaded: ContextVar[dict[str, list[str]] | None] = ContextVar(
-            f"vite_preloaded_assets_{id(self)}", default=None
-        )
+        self._preloaded_assets: dict[str, list[str]] = {}
+        self._request: ContextVar[ViteRequestState | None] = ContextVar(f"vite_request_{id(self)}", default=None)
 
     # ------------------------------------------------------------------
     # Public configuration API
@@ -66,11 +87,18 @@ class Vite:
     def use_csp_nonce(self, nonce: str | None = None) -> str:
         """Generate (or set) a CSP nonce applied to all generated tags."""
         value = nonce or secrets.token_hex(20)
-        self._nonce.set(value)
+        request = self._request.get()
+        if request is not None:
+            request.nonce = value
+        else:
+            self._default_nonce = value
         return value
 
     def csp_nonce(self) -> str | None:
-        return self._nonce.get()
+        request = self._request.get()
+        if request is not None and request.nonce is not None:
+            return request.nonce
+        return self._default_nonce
 
     def use_integrity_key(self, key: str | bool) -> "Vite":
         """Set the manifest key used to read SRI integrity hashes."""
@@ -252,14 +280,14 @@ class Vite:
         return os.path.isfile(self._hot_file)
 
     def preloaded_assets(self) -> dict[str, list[str]]:
-        assets = self._preloaded.get()
-        if assets is None:
-            assets = {}
-            self._preloaded.set(assets)
-        return assets
+        request = self._request.get()
+        return request.preloaded_assets if request is not None else self._preloaded_assets
 
     def flush(self) -> None:
-        self._preloaded.set(None)
+        self.preloaded_assets().clear()
+
+    def request_scope(self) -> "ViteRequestScope":
+        return ViteRequestScope(self._request)
 
     def to_html(self) -> str:
         """Render pre-configured entry points as HTML (used as Htmlable)."""

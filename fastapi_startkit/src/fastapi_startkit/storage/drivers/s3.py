@@ -128,8 +128,8 @@ class S3Driver:
 
     def append(self, file_path, content):
         value = self.get(file_path) or ""
-        value += content
-        self.put(file_path, content)
+        self.put(file_path, value + content)
+        return content
 
     def delete(self, file_path):
         return self.get_resource().Object(self.get_bucket(), file_path).delete()
