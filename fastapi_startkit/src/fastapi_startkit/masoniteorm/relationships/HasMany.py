@@ -19,11 +19,8 @@ class HasMany(BaseRelationship[TModel, ManyResult[TModel]]):
 
         return result
 
-    def set_keys(self, owner, attribute):
-        self.local_key = self.local_key or "id"
-        self.foreign_key = self.foreign_key or f"{attribute}_id"
-
-        return self
+    def default_keys(self):
+        return {"local_key": self.owner_class.__primary_key__, "foreign_key": self.foreign_key_of(self.owner_class)}
 
     def register_related(self, key, model, collection):
         model.add_relation({key: Collection(collection.get(getattr(model, self.local_key)) or [])})

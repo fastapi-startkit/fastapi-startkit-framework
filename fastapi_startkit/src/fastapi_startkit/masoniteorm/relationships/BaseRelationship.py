@@ -3,6 +3,7 @@ import typing
 import warnings
 from typing import TYPE_CHECKING, Any, ForwardRef, Generic, Self, get_args, overload
 
+from inflection import singularize, tableize
 from typing_extensions import TypeVar
 
 from fastapi_startkit.masoniteorm.models import registry
@@ -19,7 +20,31 @@ type SingleResult[T] = T | None
 type ManyResult[T] = Collection[T]
 
 
+class RelationshipKey:
+    def __set_name__(self, owner, name):
+        self.name = name
+
+    @overload
+    def __get__(self, relationship: None, owner: Any) -> Self: ...
+    @overload
+    def __get__(self, relationship: object, owner: Any) -> str: ...
+    def __get__(self, relationship, owner=None) -> Any:
+        if relationship is None:
+            return self
+        if relationship.__dict__.get(self.name) is None and "owner_class" in relationship.__dict__:
+            for name, value in relationship.default_keys().items():
+                if relationship.__dict__.get(name) is None:
+                    relationship.__dict__[name] = value
+        return relationship.__dict__.get(self.name)
+
+    def __set__(self, relationship: object, value: str | None) -> None:
+        relationship.__dict__[self.name] = value
+
+
 class BaseRelationship(Generic[TModel, TResult]):
+    local_key: RelationshipKey = RelationshipKey()
+    foreign_key: RelationshipKey = RelationshipKey()
+
     def __init__(self, fn: str | None = None, local_key=None, foreign_key=None):
         self.bind_model(fn)
 
@@ -68,6 +93,17 @@ class BaseRelationship(Generic[TModel, TResult]):
     def get_builder(self):
         return self.fn()().get_builder()
 
+    def default_keys(self) -> dict[str, str]:
+        return {}
+
+    @staticmethod
+    def table_of(model) -> str:
+        return model.__table__ or tableize(model.__name__)
+
+    @classmethod
+    def foreign_key_of(cls, model) -> str:
+        return f"{singularize(cls.table_of(model))}_{model.__primary_key__}"
+
     @overload
     def __get__(self, instance: None, owner: Any) -> Self: ...
     @overload
@@ -92,8 +128,6 @@ class BaseRelationship(Generic[TModel, TResult]):
         """
         if instance is None:
             return self
-
-        self.set_keys(instance, self.attribute)
 
         if not instance.is_loaded():
             return self

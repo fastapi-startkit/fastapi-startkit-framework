@@ -1,11 +1,15 @@
 from ..collection import Collection
 from ..exceptions import LazyLoadingViolation
-from .BaseRelationship import BaseRelationship, SingleResult, TModel
+from .BaseRelationship import BaseRelationship, RelationshipKey, SingleResult, TModel
 from fastapi_startkit.masoniteorm.models import registry
 
 
 class HasOneThrough(BaseRelationship[TModel, SingleResult[TModel]]):
     """HasOneThrough Relationship Class."""
+
+    through_key = "m_through_key"
+    local_owner_key: RelationshipKey = RelationshipKey()
+    other_owner_key: RelationshipKey = RelationshipKey()
 
     def __init__(
         self,
@@ -17,15 +21,16 @@ class HasOneThrough(BaseRelationship[TModel, SingleResult[TModel]]):
     ):
         self.fn = fn
 
-        self.local_key = local_foreign_key or "id"
+        self.local_key = local_foreign_key
         self.foreign_key = other_foreign_key
-        self.local_owner_key = local_owner_key or "id"
-        self.other_owner_key = other_owner_key or "id"
+        self.local_owner_key = local_owner_key
+        self.other_owner_key = other_owner_key
         self.distant_builder = None
         self.intermediary_builder = None
 
     def __set_name__(self, owner, name):
         self.attribute = name
+        self.owner_class = owner
 
     def get_distance_builder(self):
         """Return a fresh distant builder (never cached — builders are stateful)."""
@@ -37,16 +42,17 @@ class HasOneThrough(BaseRelationship[TModel, SingleResult[TModel]]):
         model = registry.Registry.resolve(self.fn[1])
         return model().get_builder()
 
-    def set_keys(self, attribute):
-        self.local_key = self.local_key or "id"
-        self.foreign_key = self.foreign_key or f"{attribute}_id"
-        self.local_owner_key = self.local_owner_key or "id"
-        self.other_owner_key = self.other_owner_key or "id"
-        return self
+    def default_keys(self):
+        owner = self.owner_class
+        intermediary = registry.Registry.resolve(self.fn[1])
+        return {
+            "local_key": owner.__primary_key__,
+            "local_owner_key": self.foreign_key_of(owner),
+            "foreign_key": intermediary.__primary_key__,
+            "other_owner_key": self.foreign_key_of(intermediary),
+        }
 
     def access(self, instance, owner):
-        self.set_keys(self.attribute)
-
         if instance is None or not instance.is_loaded():
             return self
 
@@ -60,7 +66,7 @@ class HasOneThrough(BaseRelationship[TModel, SingleResult[TModel]]):
         int_table = intermediary_builder.get_table_name()
 
         return (
-            distant_builder.select(f"{dist_table}.*, {int_table}.{self.local_owner_key} as {self.local_key}")
+            distant_builder.select(f"{dist_table}.*, {int_table}.{self.local_owner_key} as {self.through_key}")
             .join(
                 f"{int_table}",
                 f"{int_table}.{self.foreign_key}",
@@ -134,7 +140,7 @@ class HasOneThrough(BaseRelationship[TModel, SingleResult[TModel]]):
         if callback:
             callback(query)
 
-        distant_builder.select(f"{dist_table}.*, {int_table}.{self.local_owner_key} as {self.local_key}").join(
+        distant_builder.select(f"{dist_table}.*, {int_table}.{self.local_owner_key} as {self.through_key}").join(
             f"{int_table}",
             f"{int_table}.{self.foreign_key}",
             "=",
@@ -193,4 +199,4 @@ class HasOneThrough(BaseRelationship[TModel, SingleResult[TModel]]):
         )
 
     def map_related(self, related_result):
-        return related_result.group_by(self.local_key)
+        return related_result.group_by(self.through_key)

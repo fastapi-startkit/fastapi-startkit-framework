@@ -1,13 +1,17 @@
 import pendulum
 from inflection import singularize
 
-from .BaseRelationship import BaseRelationship, ManyResult, TModel
+from .BaseRelationship import BaseRelationship, ManyResult, RelationshipKey, TModel
 from ..collection import Collection
 from ..models.pivot import Pivot
 
 
 class BelongsToMany(BaseRelationship[TModel, ManyResult[TModel]]):
     """Has Many Relationship Class."""
+
+    local_owner_key: RelationshipKey = RelationshipKey()
+    other_owner_key: RelationshipKey = RelationshipKey()
+    _table: RelationshipKey = RelationshipKey()
 
     def __init__(
         self,
@@ -26,8 +30,8 @@ class BelongsToMany(BaseRelationship[TModel, ManyResult[TModel]]):
 
         self.local_key = local_foreign_key
         self.foreign_key = other_foreign_key
-        self.local_owner_key = local_owner_key or "id"
-        self.other_owner_key = other_owner_key or "id"
+        self.local_owner_key = local_owner_key
+        self.other_owner_key = other_owner_key
 
         self._table = table
         self.with_timestamps = with_timestamps
@@ -35,10 +39,16 @@ class BelongsToMany(BaseRelationship[TModel, ManyResult[TModel]]):
         self.pivot_id = pivot_id
         self.with_fields = with_fields
 
-    def set_keys(self, owner, attribute):
-        self.local_key = self.local_key or "id"
-        self.foreign_key = self.foreign_key or f"{attribute}_id"
-        return self
+    def default_keys(self):
+        owner = self.owner_class
+        related = self.related_model()
+        return {
+            "_table": "_".join(sorted(singularize(self.table_of(model)) for model in (owner, related))),
+            "local_key": self.foreign_key_of(owner),
+            "foreign_key": self.foreign_key_of(related),
+            "local_owner_key": owner.__primary_key__,
+            "other_owner_key": related.__primary_key__,
+        }
 
     async def apply_query(self, foreign, owner):
         """Apply the query and return a dictionary to be hydrated.
@@ -51,21 +61,6 @@ class BelongsToMany(BaseRelationship[TModel, ManyResult[TModel]]):
         Returns:
             dict -- A dictionary of data which will be hydrated.
         """
-
-        if not self._table:
-            pivot_tables = [
-                singularize(owner.get_table_name()),
-                singularize(foreign.get_table_name()),
-            ]
-            pivot_tables.sort()
-            pivot_table_1, pivot_table_2 = pivot_tables
-            self._table = "_".join(pivot_tables)
-            self.foreign_key = self.foreign_key or f"{pivot_table_1}_id"
-            self.local_key = self.local_key or f"{pivot_table_2}_id"
-        elif self.local_key is None or self.foreign_key is None:
-            pivot_table_1, pivot_table_2 = self._table.split("_", 1)
-            self.foreign_key = self.foreign_key or f"{pivot_table_1}_id"
-            self.local_key = self.local_key or f"{pivot_table_2}_id"
 
         table1 = owner.get_table_name()
         table2 = foreign.get_table_name()
@@ -162,21 +157,6 @@ class BelongsToMany(BaseRelationship[TModel, ManyResult[TModel]]):
         """
         eagers = eagers or []
         builder = self.get_builder().with_(eagers)
-
-        if not self._table:
-            pivot_tables = [
-                singularize(builder.get_table_name()),
-                singularize(query.get_table_name()),
-            ]
-            pivot_tables.sort()
-            pivot_table_1, pivot_table_2 = pivot_tables
-            self._table = "_".join(pivot_tables)
-            self.foreign_key = self.foreign_key or f"{pivot_table_1}_id"
-            self.local_key = self.local_key or f"{pivot_table_2}_id"
-        elif self.local_key is None or self.foreign_key is None:
-            pivot_table_1, pivot_table_2 = self._table.split("_", 1)
-            self.foreign_key = self.foreign_key or f"{pivot_table_1}_id"
-            self.local_key = self.local_key or f"{pivot_table_2}_id"
 
         table2 = builder.get_table_name()
         table1 = query.get_table_name()
@@ -278,21 +258,6 @@ class BelongsToMany(BaseRelationship[TModel, ManyResult[TModel]]):
         owner = related_record.get_builder()
         query = self.get_builder()
 
-        if not self._table:
-            pivot_tables = [
-                singularize(owner.get_table_name()),
-                singularize(query.get_table_name()),
-            ]
-            pivot_tables.sort()
-            pivot_table_1, pivot_table_2 = pivot_tables
-            self._table = "_".join(pivot_tables)
-            self.foreign_key = self.foreign_key or f"{pivot_table_1}_id"
-            self.local_key = self.local_key or f"{pivot_table_2}_id"
-        elif self.local_key is None or self.foreign_key is None:
-            pivot_table_1, pivot_table_2 = self._table.split("_", 1)
-            self.foreign_key = self.foreign_key or f"{pivot_table_1}_id"
-            self.local_key = self.local_key or f"{pivot_table_2}_id"
-
         table1 = owner.get_table_name()
         table2 = query.get_table_name()
         result = query.select(
@@ -339,20 +304,6 @@ class BelongsToMany(BaseRelationship[TModel, ManyResult[TModel]]):
         model.add_relation({key: collection.where(f"{self._table}_id", getattr(model, self.local_owner_key))})
 
     def joins(self, builder, clause=None):
-        if not self._table:
-            pivot_tables = [
-                singularize(self.get_builder().get_table_name()),
-                singularize(builder.get_table_name()),
-            ]
-            pivot_tables.sort()
-            pivot_table_1, pivot_table_2 = pivot_tables
-            self._table = "_".join(pivot_tables)
-            self.foreign_key = self.foreign_key or f"{pivot_table_1}_id"
-            self.local_key = self.local_key or f"{pivot_table_2}_id"
-        elif self.local_key is None or self.foreign_key is None:
-            pivot_table_1, pivot_table_2 = self._table.split("_", 1)
-            self.foreign_key = self.foreign_key or f"{pivot_table_1}_id"
-            self.local_key = self.local_key or f"{pivot_table_2}_id"
 
         query = self.get_builder()
         table1 = query.get_table_name()
