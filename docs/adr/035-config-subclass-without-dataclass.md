@@ -60,7 +60,7 @@ class MemoryDiskConfig(Config):
 MemoryDiskConfig(prefix="app/")  # TypeError: MemoryDiskConfig() takes no arguments
 ```
 
-`MemoryDiskConfig()` also stayed a plain object, so `Configuration.set` and `Dataclass.to_dict` left it unconverted and `StorageManager.get_config_options(...).get("driver")` failed. The rule now also processes classes whose annotations all have defaults, and a body that mixes `env()` fields with `opts: dict = {}` no longer raises `ValueError` either.
+`MemoryDiskConfig()` also stayed a plain object, so `Configuration.set` and `Dataclass.to_dict` left it unconverted and `StorageManager.get_config_options(...).get("driver")` failed. The rule now also processes classes whose annotations all have defaults, and a body that mixes `env()` fields with `opts: dict = {}` no longer raises the `ValueError` the first version raised (on main its `env()` fields returned raw `Field` objects).
 
 The first version of this fix processed any class whose annotations all had defaults and deep-copied unhashable defaults. That changed classes that work on main:
 
