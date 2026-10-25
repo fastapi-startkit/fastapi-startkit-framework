@@ -10,7 +10,7 @@ _MISSING = object()
 
 
 def make_app(tmp_path):
-    return Application(base_path=tmp_path, env="testing", providers=[ReverbProvider])
+    return Application(base_path=tmp_path, providers=[ReverbProvider])
 
 
 def mount_auth(tmp_path):
@@ -19,7 +19,7 @@ def mount_auth(tmp_path):
     The full ``boot()`` mounts a catch-all WebSocket sub-app at ``""`` which
     shadows the HTTP auth route, so exercise the auth handler on its own.
     """
-    app = Application(base_path=tmp_path, env="testing", providers=[])
+    app = Application(base_path=tmp_path, providers=[])
     provider = ReverbProvider(app)
     provider.register()
     provider._mount_auth_endpoint()

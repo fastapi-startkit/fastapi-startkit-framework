@@ -1,5 +1,6 @@
 import os
 import shlex
+import warnings
 from fastapi_startkit.foundation.app_provider import AppProvider
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
@@ -41,6 +42,14 @@ class Application(Container, Generic[TConfig]):
         exception_handler: Type[ExceptionHandler] | None = None,
     ):
         super().__init__()
+
+        if env is not None:
+            warnings.warn(
+                "Application(env=...) is deprecated and will be removed in 1.0. "
+                "Set the APP_ENV environment variable or pass --env on the command line instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
         self.base_path: Path = Path(base_path) if base_path else Path(os.getcwd())
         self.env: str | None = env

@@ -62,7 +62,6 @@ class TestDatabaseProviderWiring(unittest.TestCase):
         settings = DatabaseConfig(default="sqlite", connections={"sqlite": connection_config})
         app = Application(
             base_path=self.base_path,
-            env="testing",
             providers=[
                 (
                     DatabaseProvider,
@@ -83,6 +82,5 @@ class TestDatabaseProviderWiring(unittest.TestCase):
         with self.assertRaisesRegex(TypeError, "requires a database settings dataclass"):
             Application(
                 base_path=self.base_path,
-                env="testing",
                 providers=[(DatabaseProvider, {"default": "sqlite"})],
             )
