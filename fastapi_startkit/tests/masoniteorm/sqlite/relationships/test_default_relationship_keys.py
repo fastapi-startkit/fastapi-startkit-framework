@@ -4,7 +4,8 @@ import weakref
 
 from fastapi_startkit.masoniteorm import BelongsTo, BelongsToMany, HasMany, HasOne, Model
 from fastapi_startkit.masoniteorm.models.registry import Registry
-from fastapi_startkit.masoniteorm.relationships import HasOneThrough
+from fastapi_startkit.masoniteorm.relationships import BaseRelationship, HasOneThrough
+from fastapi_startkit.masoniteorm.relationships.BaseRelationship import RelationshipKey
 
 from ..test_case import TestCase
 
@@ -59,6 +60,12 @@ with warnings.catch_warnings():
     class KeyInvoice(KeyBaseItem):
         pass
 
+    class PlainRelationship(BaseRelationship):
+        pass
+
+    class KeyPlainOwner(Model):
+        plain = PlainRelationship("KeyAccountNote")
+
 
 def keys(relationship):
     return relationship.local_key, relationship.foreign_key
@@ -81,6 +88,15 @@ def test_pivot_table_and_keys_follow_sorted_class_names():
 
 def test_irregular_plural_class_names_are_not_singularized():
     assert (Media.labels._table, *keys(Media.labels)) == ("label_media", "media_id", "label_id")
+
+
+def test_relationship_key_is_a_descriptor_at_class_level():
+    assert isinstance(BaseRelationship.local_key, RelationshipKey)
+    assert isinstance(BelongsToMany._table, RelationshipKey)
+
+
+def test_relationships_without_inferred_keys_leave_them_unset():
+    assert keys(KeyPlainOwner.plain) == (None, None)
 
 
 def test_custom_table_does_not_change_key_names():
@@ -222,3 +238,18 @@ class TestDefaultRelationshipKeys(TestCase):
 
         with_media = await Novelist.where_has("latest_media").get()
         assert [novelist.name for novelist in with_media] == ["Ada"]
+
+    async def test_belongs_to_many_existence_query_with_callback(self):
+        label_ids = [label.id for label in await Label.where("name", "math").get()]
+        unused_ids = [label.id for label in await Label.where("name", "unused").get()]
+
+        math = await Essay.where_has("labels", lambda query: label_ids).get()
+        assert [essay.title for essay in math] == ["Engines"]
+
+        unused = await Essay.where_has("labels", lambda query: unused_ids).get()
+        assert unused.count() == 0
+
+        either = await Essay.where_has("labels", lambda query: unused_ids).or_where_has(
+            "labels", lambda query: label_ids
+        ).get()
+        assert [essay.title for essay in either] == ["Engines"]
