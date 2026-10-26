@@ -30,33 +30,14 @@ class DecoratedStaticAppConfig(Config):
 def test_class_level_access_without_instantiating(monkeypatch):
     class FreshAppConfig(Config):
         name: str = env("STATIC_APP_NAME", "Startkit")
+        port: int = env("STATIC_APP_PORT", 8000)
 
     monkeypatch.delenv("STATIC_APP_NAME", raising=False)
     assert not isinstance(FreshAppConfig.name, Field)
-    assert FreshAppConfig.name == "Startkit"
-
-
-def test_class_level_access_on_undecorated_config(monkeypatch):
-    monkeypatch.delenv("STATIC_APP_NAME", raising=False)
-    monkeypatch.delenv("STATIC_APP_PORT", raising=False)
-    assert StaticAppConfig.name == "Startkit"
-    assert StaticAppConfig.port == 8000
-
-
-def test_class_level_access_on_decorated_config(monkeypatch):
-    monkeypatch.delenv("STATIC_APP_NAME", raising=False)
-    monkeypatch.delenv("STATIC_APP_PORT", raising=False)
-    assert DecoratedStaticAppConfig.name == "Startkit"
-    assert DecoratedStaticAppConfig.port == 8000
-
-
-def test_class_level_access_reads_overridden_environment(monkeypatch):
+    assert (FreshAppConfig.name, FreshAppConfig.port) == ("Startkit", 8000)
     monkeypatch.setenv("STATIC_APP_NAME", "Overridden")
     monkeypatch.setenv("STATIC_APP_PORT", "9000")
-    assert StaticAppConfig.name == "Overridden"
-    assert StaticAppConfig.port == 9000
-    assert DecoratedStaticAppConfig.name == "Overridden"
-    assert DecoratedStaticAppConfig.port == 9000
+    assert (FreshAppConfig.name, FreshAppConfig.port) == ("Overridden", 9000)
 
 
 @pytest.mark.parametrize("config_class", [StaticAppConfig, DecoratedStaticAppConfig])
@@ -64,21 +45,15 @@ def test_facade_reads_registered_config_instance(app, monkeypatch, config_class)
     monkeypatch.delenv("STATIC_APP_NAME", raising=False)
     monkeypatch.delenv("STATIC_APP_PORT", raising=False)
     app.make("config").set("app", config_class())
-    assert ConfigFacade.get("app.name") == "Startkit"
-    assert ConfigFacade.get("app.port") == 8000
+    assert (ConfigFacade.get("app.name"), ConfigFacade.get("app.port")) == ("Startkit", 8000)
+    monkeypatch.setenv("STATIC_APP_NAME", "Overridden")
+    monkeypatch.setenv("STATIC_APP_PORT", "9000")
+    app.make("config").set("app", config_class())
+    assert (ConfigFacade.get("app.name"), ConfigFacade.get("app.port")) == ("Overridden", 9000)
 
 
 @pytest.mark.parametrize("config_class", [StaticAppConfig, DecoratedStaticAppConfig])
 def test_facade_reads_registered_config_class(app, monkeypatch, config_class):
-    monkeypatch.delenv("STATIC_APP_NAME", raising=False)
-    app.make("config").set("app", config_class)
-    assert ConfigFacade.get("app.name") == "Startkit"
-
-
-@pytest.mark.parametrize("config_class", [StaticAppConfig, DecoratedStaticAppConfig])
-def test_facade_reads_overridden_environment(app, monkeypatch, config_class):
     monkeypatch.setenv("STATIC_APP_NAME", "Overridden")
-    monkeypatch.setenv("STATIC_APP_PORT", "9000")
-    app.make("config").set("app", config_class())
+    app.make("config").set("app", config_class)
     assert ConfigFacade.get("app.name") == "Overridden"
-    assert ConfigFacade.get("app.port") == 9000

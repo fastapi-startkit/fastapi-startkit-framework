@@ -95,6 +95,62 @@ def test_explicit_dataclass_options_replace_automatic_ones():
         config.host = "changed"
 
 
+def tag(klass):
+    klass.marker = 1
+    return klass
+
+
+def test_explicit_dataclass_keeps_attributes_set_by_inner_decorator(monkeypatch):
+    @dataclass
+    @tag
+    class Tagged(Config):
+        host: str = env("PLAIN_TAGGED_HOST", "localhost")
+
+    monkeypatch.setenv("PLAIN_TAGGED_HOST", "example.test")
+    assert Tagged.marker == 1
+    assert (Tagged.host, Tagged().host) == ("example.test", "example.test")
+
+
+def test_explicit_dataclass_keeps_attributes_set_after_definition(monkeypatch):
+    class Extended(Config):
+        host: str = env("PLAIN_EXTENDED_HOST", "localhost")
+
+    Extended.extra = 1
+    Extended = dataclass(Extended)
+
+    monkeypatch.setenv("PLAIN_EXTENDED_HOST", "example.test")
+    assert Extended.extra == 1
+    assert Extended().host == "example.test"
+
+
+class EmptyBase(Config):
+    def describe(self) -> str:
+        return type(self).__name__
+
+
+def test_base_without_annotations_is_left_plain():
+    assert "__dataclass_fields__" not in EmptyBase.__dict__
+
+
+def test_frozen_child_of_base_without_annotations():
+    @dataclass(frozen=True)
+    class Frozen(EmptyBase):
+        host: str = "localhost"
+
+    config = Frozen()
+    assert (config.host, config.describe()) == ("localhost", "Frozen")
+    with pytest.raises(FrozenInstanceError):
+        config.host = "changed"
+
+
+def test_child_of_base_without_annotations_has_static_access(monkeypatch):
+    class Child(EmptyBase):
+        host: str = env("PLAIN_EMPTY_BASE_HOST", "localhost")
+
+    monkeypatch.setenv("PLAIN_EMPTY_BASE_HOST", "example.test")
+    assert (Child.host, Child().host) == ("example.test", "example.test")
+
+
 def test_decorated_child_inherits_undecorated_parent_fields(monkeypatch):
     class Parent(Config):
         host: str = env("PLAIN_PARENT_HOST", "localhost")

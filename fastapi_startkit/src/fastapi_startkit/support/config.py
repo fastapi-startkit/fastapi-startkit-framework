@@ -8,13 +8,30 @@ from fastapi_startkit.environment import value
 T = TypeVar("T")
 
 _DATACLASS_PARAMS = "__dataclass_params__"
-_pre_dataclass_namespaces: WeakKeyDictionary[type, dict[str, object]] = WeakKeyDictionary()
+_OWN_ANNOTATION_KEYS = ("__annotations__", "__annotate_func__")
+
+_Changes = dict[str, tuple[object, object]]
+_automatic_changes: WeakKeyDictionary[type, _Changes] = WeakKeyDictionary()
 
 
-def _copy_fields(namespace: dict[str, object]) -> dict[str, object]:
+def _snapshot(klass: type) -> dict[str, object]:
     return {
-        name: copy(attribute) if isinstance(attribute, Field) else attribute for name, attribute in namespace.items()
+        name: copy(attribute) if isinstance(attribute, Field) else attribute
+        for name, attribute in klass.__dict__.items()
     }
+
+
+def _changes(before: dict[str, object], klass: type) -> _Changes:
+    after = dict(klass.__dict__)
+    return {
+        name: (after.get(name, MISSING), before.get(name, MISSING))
+        for name in before.keys() | after.keys()
+        if after.get(name, MISSING) is not before.get(name, MISSING)
+    }
+
+
+def _declares_annotations(klass: type) -> bool:
+    return any(key in klass.__dict__ for key in _OWN_ANNOTATION_KEYS)
 
 
 def _has_frozen_base(klass: type) -> bool:
@@ -30,18 +47,20 @@ class _ConfigMeta(type):
 
     def __setattr__(cls, name: str, attribute: object) -> None:
         if name == _DATACLASS_PARAMS:
-            namespace = _pre_dataclass_namespaces.pop(cls, None)
-            if namespace is not None:
-                _ConfigMeta.restore_namespace(cls, namespace)
+            changes = _automatic_changes.pop(cls, None)
+            if changes is not None:
+                _ConfigMeta.undo_automatic_pass(cls, changes)
         super().__setattr__(name, attribute)
 
     @staticmethod
-    def restore_namespace(klass: type, namespace: dict[str, object]) -> None:
-        for name in [name for name in klass.__dict__ if name not in namespace]:
-            type.__delattr__(klass, name)
-        for name, attribute in _copy_fields(namespace).items():
-            if klass.__dict__.get(name, MISSING) is not namespace[name]:
-                type.__setattr__(klass, name, attribute)
+    def undo_automatic_pass(klass: type, changes: _Changes) -> None:
+        for name, (after, before) in changes.items():
+            if klass.__dict__.get(name, MISSING) is not after:
+                continue
+            if before is MISSING:
+                type.__delattr__(klass, name)
+            else:
+                type.__setattr__(klass, name, copy(before) if isinstance(before, Field) else before)
 
     def __getattr__(cls, name: str) -> object:
         try:
@@ -58,8 +77,8 @@ class _ConfigMeta(type):
 class Config(metaclass=_ConfigMeta):
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
-        if "__dataclass_fields__" in cls.__dict__:
+        if "__dataclass_fields__" in cls.__dict__ or not _declares_annotations(cls):
             return
-        namespace = _copy_fields(dict(cls.__dict__))
+        before = _snapshot(cls)
         dataclass(eq=False, frozen=_has_frozen_base(cls))(cls)
-        _pre_dataclass_namespaces[cls] = namespace
+        _automatic_changes[cls] = _changes(before, cls)
