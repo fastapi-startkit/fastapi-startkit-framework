@@ -69,3 +69,11 @@ class TestSelfRelationWhereHas(TestCase):
     async def test_nested_where_has_children(self):
         query = Member.where_has("children", lambda q: q.where_has("children"))
         self.assertEqual(await self.names(query), ["Alice"])
+
+    async def test_where_has_friends_with_id_list_callback(self):
+        query = Member.where_has("friends", lambda q: [self.dave.id])
+        self.assertEqual(await self.names(query), ["Carol"])
+
+    async def test_where_has_friends_rejects_different_query_builder(self):
+        with self.assertRaises(TypeError):
+            Member.where_has("friends", lambda q: Member.where("name", "Bob"))

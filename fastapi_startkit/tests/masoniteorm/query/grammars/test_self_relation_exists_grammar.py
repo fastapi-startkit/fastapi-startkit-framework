@@ -104,6 +104,17 @@ class TestSelfRelationExistsGrammar(unittest.TestCase):
                 f"WHERE friendships.member_id = members.id)",
             )
 
+    def test_belongs_to_many_id_list_callback_uses_alias(self):
+        for d in self.dialects():
+            sql = SelfMember.where_has("friends", lambda q: [2, 3]).to_sql()
+            self.assertEqual(
+                sql,
+                f"SELECT * FROM {quote(d, 'members')} WHERE EXISTS (SELECT * FROM {quote(d, 'members')} "
+                f"AS {quote(d, 'members_self')} INNER JOIN {quote(d, 'friendships')} "
+                f"ON {quote(d, 'members_self', 'id')} = {quote(d, 'friendships', 'friend_id')} "
+                f"WHERE friendships.member_id = members.id AND {quote(d, 'members_self', 'id')} IN ('2','3'))",
+            )
+
     def test_belongs_to_many_or_where_has_aliases_inner_table(self):
         for d in self.dialects():
             sql = SelfMember.where("name", "Carol").or_where_has("friends", lambda q: q.where("name", "Bob")).to_sql()
