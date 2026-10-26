@@ -404,7 +404,11 @@ class BelongsToMany(BaseRelationship[TModel, ManyResult[TModel]]):
     def query_where_exists(self, builder, callback, method="where_exists"):
         related = self.related_exists_query(builder)
         constrained = callback(related)
-        if constrained is not None and not isinstance(constrained, QueryBuilder):
+        if isinstance(constrained, QueryBuilder) and constrained is not related:
+            raise TypeError(
+                "where_has callback must constrain and return the query it receives, not a different QueryBuilder"
+            )
+        if constrained is not None and constrained is not related:
             related.where_in(f"{related.get_table_name()}.{self.other_owner_key}", constrained)
         return getattr(builder, method)(related)
 
