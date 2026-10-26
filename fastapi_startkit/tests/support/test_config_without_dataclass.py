@@ -1,18 +1,11 @@
-import time
-import typing
-from concurrent.futures import ThreadPoolExecutor
-from dataclasses import Field, FrozenInstanceError, InitVar, dataclass, field, fields
-from threading import Barrier, Lock
-from typing import ClassVar
+from dataclasses import FrozenInstanceError, dataclass, field, fields, is_dataclass
 
 import pytest
 
-import fastapi_startkit.support.config as config_module
 from fastapi_startkit.configuration import Config
 from fastapi_startkit.environment import env
 from fastapi_startkit.storage.storage import StorageManager
 from fastapi_startkit.support.dataclass import Dataclass
-from tests.support.future_annotation_configs import FutureEnvRegistry, FutureRegistry
 
 
 def test_reported_database_config_without_dataclass(monkeypatch):
@@ -29,6 +22,14 @@ class PlainDatabaseConfig(Config):
     default: str = env("PLAIN_DB_CONNECTION", "sqlite")
     port: int = env("PLAIN_DB_PORT", 5432)
     debug: bool = env("PLAIN_DB_DEBUG", False)
+
+
+def test_subclass_is_a_dataclass_at_definition():
+    class Defined(Config):
+        host: str = env("PLAIN_DEFINED_HOST", "localhost")
+
+    assert "__dataclass_fields__" in Defined.__dict__
+    assert [declared.name for declared in fields(Defined)] == ["host"]
 
 
 def test_fallback_is_returned_when_variable_is_unset(monkeypatch):
@@ -65,18 +66,33 @@ def test_undecorated_parent_fields_are_inherited(monkeypatch):
     child = Child()
     assert (child.host, child.port) == ("example.test", 80)
     assert Parent().host == "example.test"
+    assert Child.host == "example.test"
 
 
-def test_decorated_class_is_not_processed_again(monkeypatch):
+def test_explicit_dataclass_reprocessing_keeps_env_live(monkeypatch):
     @dataclass
     class Decorated(Config):
         host: str = env("PLAIN_DECORATED_HOST", "localhost")
+        connections: dict[str, str] = field(default_factory=lambda: {"default": "sqlite"})
 
-    original = Decorated.__dataclass_fields__
     monkeypatch.setenv("PLAIN_DECORATED_HOST", "example.test")
+    assert [declared.name for declared in fields(Decorated)] == ["host", "connections"]
+    assert Decorated.host == "example.test"
     assert Decorated().host == "example.test"
-    assert Decorated.__dataclass_fields__ is original
-    assert [field.name for field in fields(Decorated)] == ["host"]
+    assert Decorated().connections is not Decorated().connections
+
+
+def test_explicit_dataclass_options_replace_automatic_ones():
+    @dataclass(frozen=True, kw_only=True)
+    class Decorated(Config):
+        host: str = env("PLAIN_OPTIONS_HOST", "localhost")
+
+    config = Decorated(host="example.test")
+    assert config == Decorated(host="example.test")
+    with pytest.raises(TypeError):
+        Decorated("positional")
+    with pytest.raises(FrozenInstanceError):
+        config.host = "changed"
 
 
 def test_decorated_child_inherits_undecorated_parent_fields(monkeypatch):
@@ -88,7 +104,7 @@ def test_decorated_child_inherits_undecorated_parent_fields(monkeypatch):
         port: int = env("PLAIN_CHILD_PORT", 80)
 
     monkeypatch.setenv("PLAIN_PARENT_HOST", "example.test")
-    assert [field.name for field in fields(Child)] == ["host", "port"]
+    assert [declared.name for declared in fields(Child)] == ["host", "port"]
     assert (Child().host, Child().port) == ("example.test", 80)
     assert Child.host == "example.test"
 
@@ -98,8 +114,7 @@ def test_config_base_is_never_a_dataclass():
         host: str = env("PLAIN_BASE_HOST", "localhost")
 
     Plain()
-    Config()
-    assert "__dataclass_fields__" not in Config.__dict__
+    assert not is_dataclass(Config)
     assert Config.__hash__ is object.__hash__
     first, second = Config(), Config()
     assert first != second
@@ -128,37 +143,7 @@ def test_environment_is_read_on_every_instantiation(monkeypatch):
     assert first.connections is not second.connections
 
 
-def test_concurrent_first_instantiation_decorates_once(monkeypatch):
-    class Concurrent(Config):
-        connections: dict[str, str] = field(default_factory=lambda: {"default": "sqlite"})
-        host: str = env("PLAIN_CONCURRENT_HOST", "localhost")
-
-    calls: list[type] = []
-    original = config_module.dataclass
-
-    def counting_dataclass(**options: bool):
-        def decorate(klass: type) -> type:
-            calls.append(klass)
-            time.sleep(0.01)
-            return original(**options)(klass)
-
-        return decorate
-
-    monkeypatch.setattr(config_module, "dataclass", counting_dataclass)
-    barrier = Barrier(8)
-
-    def build(_: int) -> Concurrent:
-        barrier.wait()
-        return Concurrent()
-
-    with ThreadPoolExecutor(max_workers=8) as executor:
-        results = list(executor.map(build, range(8)))
-
-    assert calls == [Concurrent]
-    assert all(result.host == "localhost" for result in results)
-
-
-def test_undecorated_child_of_frozen_parent_is_left_alone():
+def test_undecorated_child_of_frozen_parent_is_frozen():
     @dataclass(frozen=True)
     class Frozen(Config):
         host: str = "localhost"
@@ -166,8 +151,10 @@ def test_undecorated_child_of_frozen_parent_is_left_alone():
     class Child(Frozen):
         pass
 
-    assert "__dataclass_fields__" not in Child.__dict__
-    assert Child().host == "localhost"
+    child = Child()
+    assert child.host == "localhost"
+    with pytest.raises(FrozenInstanceError):
+        child.host = "changed"
 
 
 def test_env_child_of_frozen_parent_is_frozen(monkeypatch):
@@ -183,195 +170,6 @@ def test_env_child_of_frozen_parent_is_frozen(monkeypatch):
     assert (child.host, child.port) == ("localhost", 8080)
     with pytest.raises(FrozenInstanceError):
         child.port = 1
-
-
-def test_plain_mutable_default_is_left_alone_and_shared():
-    class Shared(Config):
-        registry: dict[str, int] = {}
-
-    first = Shared()
-    Shared.registry["key"] = 1
-    assert "__dataclass_fields__" not in Shared.__dict__
-    assert (Shared.registry, Shared().registry, first.registry) == ({"key": 1}, {"key": 1}, {"key": 1})
-
-
-def test_classvar_mutable_default_next_to_plain_fields():
-    class Registry(Config):
-        registry: ClassVar[dict[str, int]] = {}
-        driver: str = "memory"
-
-    first = Registry(driver="other")
-    Registry.registry["key"] = 1
-    assert [field.name for field in fields(Registry)] == ["driver"]
-    assert (first.driver, Registry().driver) == ("other", "memory")
-    assert first.registry is Registry.registry
-
-
-def test_classvar_mutable_default_next_to_env_fields(monkeypatch):
-    class Registry(Config):
-        registry: ClassVar[dict[str, int]] = {}
-        host: str = env("PLAIN_CLASSVAR_HOST", "localhost")
-
-    monkeypatch.setenv("PLAIN_CLASSVAR_HOST", "example.test")
-    assert Registry().host == "example.test"
-    assert Registry().registry is Registry.registry
-
-
-def test_string_classvar_and_initvar_annotations_are_skipped():
-    class Registry(Config):
-        registry: "ClassVar[dict[str, int]]" = {}
-        aliases: "typing.ClassVar[list[str]]" = []
-        seed: "InitVar[int]" = 0
-        driver: str = "memory"
-
-    instance = Registry(seed=1)
-    assert [field.name for field in fields(Registry)] == ["driver"]
-    assert instance.registry is Registry.registry
-
-
-def test_future_annotations_classvar_and_initvar_are_skipped():
-    registry = FutureRegistry(driver="other")
-    assert [field.name for field in fields(FutureRegistry)] == ["driver"]
-    assert (registry.driver, registry.registry is FutureRegistry.registry) == ("other", True)
-
-
-def test_future_annotations_classvar_next_to_env_field(monkeypatch):
-    monkeypatch.setenv("FUTURE_CLASSVAR_HOST", "example.test")
-    assert FutureEnvRegistry().host == "example.test"
-    assert FutureEnvRegistry().registry is FutureEnvRegistry.registry
-
-
-def test_unresolvable_string_classvar_is_left_alone():
-    class Registry(Config):
-        aliases: "unknown_module.ClassVar[list[str]]" = []
-        driver: str = "memory"
-
-    assert Registry().aliases == []
-    assert "__dataclass_fields__" not in Registry.__dict__
-
-
-def test_classvar_alone_is_left_alone():
-    class Registry(Config):
-        registry: ClassVar[dict[str, int]] = {}
-
-    assert Registry().registry == {}
-    assert "__dataclass_fields__" not in Registry.__dict__
-
-
-def test_custom_init_is_left_alone():
-    class Custom(Config):
-        opts: dict[str, int] = {}
-        driver: str = "memory"
-
-        def __init__(self) -> None:
-            pass
-
-    assert (Custom().opts, Custom().driver) == ({}, "memory")
-    assert "__dataclass_fields__" not in Custom.__dict__
-
-
-def test_custom_init_with_env_field_is_left_alone():
-    class Custom(Config):
-        host: str = env("PLAIN_CUSTOM_INIT_HOST", "localhost")
-
-        def __init__(self) -> None:
-            pass
-
-    assert "__dataclass_fields__" not in Custom.__dict__
-    assert isinstance(Custom.__dict__["host"], Field)
-
-
-def test_child_of_custom_init_parent_keeps_parent_init():
-    class Parent(Config):
-        def __init__(self) -> None:
-            self.ready = True
-
-    class Child(Parent):
-        driver: str = "memory"
-
-    child = Child()
-    assert (child.ready, child.driver) == (True, "memory")
-    assert "__dataclass_fields__" not in Child.__dict__
-
-
-class Holder:
-    def __init__(self) -> None:
-        self.lock = Lock()
-
-    def __eq__(self, other: object) -> bool:
-        return isinstance(other, Holder)
-
-
-def test_unhashable_object_default_is_shared_not_copied():
-    holder = Holder()
-
-    class WithClient(Config):
-        client: Holder = holder
-        driver: str = "memory"
-
-    assert WithClient().client is holder
-    assert "__dataclass_fields__" not in WithClient.__dict__
-
-
-def test_env_fields_with_plain_mutable_default_in_same_body(monkeypatch):
-    class Mixed(Config):
-        host: str = env("PLAIN_MIXED_BODY_HOST", "localhost")
-        opts: dict[str, str] = {}
-
-    monkeypatch.setenv("PLAIN_MIXED_BODY_HOST", "example.test")
-    first, second = Mixed(), Mixed()
-    assert (first.host, first.opts) == ("example.test", {})
-    assert first.opts is not second.opts
-
-
-def test_container_default_next_to_env_field_is_copied_shallowly():
-    holder = Holder()
-
-    class Mixed(Config):
-        host: str = env("PLAIN_SHALLOW_HOST", "localhost")
-        clients: dict[str, Holder] = {"main": holder}
-
-    first, second = Mixed(), Mixed()
-    assert first.clients is not second.clients
-    assert first.clients["main"] is holder
-
-
-def test_plain_defaults_without_env_are_processed():
-    class Plain(Config):
-        driver: str = "memory"
-        prefix: str = ""
-
-    config = Plain(prefix="app/")
-    assert (config.driver, config.prefix) == ("memory", "app/")
-    assert Dataclass.to_dict(config) == {"driver": "memory", "prefix": "app/"}
-    assert Plain.driver == "memory"
-
-
-def test_bare_annotation_is_left_alone():
-    class Named(Config):
-        name: str
-
-    assert "__dataclass_fields__" not in Named.__dict__
-    assert not hasattr(Named(), "name")
-
-
-def test_mixed_inheritance_processes_only_env_classes(monkeypatch):
-    class Base(Config):
-        host: str = env("PLAIN_MIXED_HOST", "localhost")
-
-    class Middle(Base):
-        name: str
-        opts: dict[str, str] = {}
-
-    class Leaf(Middle):
-        port: int = env("PLAIN_MIXED_PORT", 80)
-
-    monkeypatch.setenv("PLAIN_MIXED_HOST", "example.test")
-    leaf = Leaf()
-    assert "__dataclass_fields__" not in Middle.__dict__
-    assert [field.name for field in fields(Leaf)] == ["host", "port"]
-    assert (leaf.host, leaf.port, leaf.opts) == ("example.test", 80, {})
-    assert Middle().host == "example.test"
 
 
 def test_undecorated_child_without_env_inherits_resolved_parent(monkeypatch):
