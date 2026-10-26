@@ -80,6 +80,7 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
 
         self._columns: list[Any] = []
         self._table = ""
+        self._alias: str | None = None
         self._limit = False
         self._offset = False
         self._wheres = []
@@ -111,10 +112,11 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         return self
 
     def get_table_name(self) -> str:
-        return self._table
+        return self._alias or self._table
 
-    def table(self, table: str) -> "Self":
+    def table(self, table: str, alias: str | None = None) -> "Self":
         self._table = table
+        self._alias = alias
         return self
 
     def where_in(self, column: str, values: Iterable[Any]) -> "Self":
@@ -256,6 +258,7 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         return self.grammar(
             columns=self._columns,
             table=self._table,
+            alias=self._alias,
             limit=self._limit,
             offset=self._offset,
             wheres=self._wheres,
@@ -550,7 +553,7 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         # subgroup) prefixes its columns correctly instead of rendering a
         # table-less ."column". Callers that want a different table override it
         # with .table(...) as usual.
-        return self.connection.query().table(self._table)
+        return self.connection.query().table(self._table, self._alias)
 
     def invalid_operator(self, operator: Any) -> bool:
         """Determine whether an operator is not supported by the builder."""
