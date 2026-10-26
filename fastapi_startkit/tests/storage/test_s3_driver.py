@@ -77,6 +77,29 @@ class TestS3DriverGet:
             result = driver.get("missing.txt")
         assert result is None
 
+    def test_get_returns_bytes_for_binary_content(self, driver, mock_resource):
+        body = MagicMock()
+        body.read.return_value = b"\x89PNG\xff"
+        mock_resource.Bucket().Object().get.return_value = {"Body": body}
+
+        assert driver.get("logo.png") == b"\x89PNG\xff"
+
+    def test_get_bytes_returns_raw_content(self, driver, mock_resource):
+        body = MagicMock()
+        body.read.return_value = b"file content"
+        mock_resource.Bucket().Object().get.return_value = {"Body": body}
+
+        assert driver.get_bytes("file.txt") == b"file content"
+
+    def test_get_bytes_returns_none_on_client_error(self, driver, mock_resource):
+        class FakeClientError(Exception):
+            pass
+
+        mock_resource.Bucket().Object().get.side_effect = FakeClientError("not found")
+
+        with patch.object(driver, "missing_file_exceptions", return_value=(FakeClientError,)):
+            assert driver.get_bytes("missing.txt") is None
+
 
 # ---------------------------------------------------------------------------
 # exists
@@ -120,6 +143,21 @@ class TestS3DriverDelete:
 # ---------------------------------------------------------------------------
 # copy / move
 # ---------------------------------------------------------------------------
+
+
+class TestS3DriverAppend:
+    def test_append_writes_existing_content_followed_by_new_content(self, driver, mock_resource):
+        with patch.object(driver, "get", return_value="hello "):
+            result = driver.append("log.txt", "world")
+
+        mock_resource.Bucket().put_object.assert_called_with(Key="log.txt", Body="hello world")
+        assert result == "world"
+
+    def test_append_to_missing_file_writes_new_content(self, driver, mock_resource):
+        with patch.object(driver, "get", return_value=None):
+            driver.append("log.txt", "first")
+
+        mock_resource.Bucket().put_object.assert_called_with(Key="log.txt", Body="first")
 
 
 class TestS3DriverCopyMove:
