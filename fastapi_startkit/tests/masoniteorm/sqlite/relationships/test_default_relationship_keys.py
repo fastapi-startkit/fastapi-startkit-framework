@@ -249,7 +249,9 @@ class TestDefaultRelationshipKeys(TestCase):
         unused = await Essay.where_has("labels", lambda query: unused_ids).get()
         assert unused.count() == 0
 
-        either = await Essay.where_has("labels", lambda query: unused_ids).or_where_has(
-            "labels", lambda query: label_ids
-        ).get()
+        either = (
+            await Essay.where_has("labels", lambda query: unused_ids)
+            .or_where_has("labels", lambda query: label_ids)
+            .get()
+        )
         assert [essay.title for essay in either] == ["Engines"]
