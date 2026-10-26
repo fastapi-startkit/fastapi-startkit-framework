@@ -4,10 +4,33 @@ import os
 import re
 import secrets
 from collections.abc import Callable
+from contextvars import ContextVar, Token
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
 
 from .exceptions import ViteException, ViteManifestNotFoundException
+
+
+@dataclass
+class ViteRequestState:
+    nonce: str | None = None
+    preloaded_assets: dict[str, list[str]] = field(default_factory=dict)
+
+
+class ViteRequestScope:
+    def __init__(self, request: ContextVar[ViteRequestState | None]) -> None:
+        self._request = request
+        self._token: Token[ViteRequestState | None] | None = None
+
+    def __enter__(self) -> None:
+        if self._request.get() is None:
+            self._token = self._request.set(ViteRequestState())
+
+    def __exit__(self, *_: object) -> None:
+        if self._token is not None:
+            self._request.reset(self._token)
+            self._token = None
 
 
 class Vite:
@@ -44,7 +67,7 @@ class Vite:
         # Optional base URL prefix for all generated asset URLs.
         self._asset_url = asset_url.rstrip("/")
 
-        self._nonce: str | None = None
+        self._default_nonce: str | None = None
         self._integrity_key: str | bool = "integrity"
         self._entry_points: list[str] = []
         self._asset_path_resolver: Callable[[str], str] | None = None
@@ -55,6 +78,7 @@ class Vite:
         self._preload_tag_attributes_resolvers: list[Callable[..., Any]] = []
 
         self._preloaded_assets: dict[str, list[str]] = {}
+        self._request: ContextVar[ViteRequestState | None] = ContextVar(f"vite_request_{id(self)}", default=None)
 
     # ------------------------------------------------------------------
     # Public configuration API
@@ -62,11 +86,19 @@ class Vite:
 
     def use_csp_nonce(self, nonce: str | None = None) -> str:
         """Generate (or set) a CSP nonce applied to all generated tags."""
-        self._nonce = nonce or secrets.token_hex(20)
-        return self._nonce
+        value = nonce or secrets.token_hex(20)
+        request = self._request.get()
+        if request is not None:
+            request.nonce = value
+        else:
+            self._default_nonce = value
+        return value
 
     def csp_nonce(self) -> str | None:
-        return self._nonce
+        request = self._request.get()
+        if request is not None and request.nonce is not None:
+            return request.nonce
+        return self._default_nonce
 
     def use_integrity_key(self, key: str | bool) -> "Vite":
         """Set the manifest key used to read SRI integrity hashes."""
@@ -84,22 +116,22 @@ class Vite:
         return self
 
     def use_script_tag_attributes(self, attributes: dict[str, Any] | Callable[..., Any]) -> "Vite":
-        if not callable(attributes):
-            attributes = lambda *_: attributes  # noqa: E731
-        self._script_tag_attributes_resolvers.append(attributes)
+        self._script_tag_attributes_resolvers.append(self._as_resolver(attributes))
         return self
 
     def use_style_tag_attributes(self, attributes: dict[str, Any] | Callable[..., Any]) -> "Vite":
-        if not callable(attributes):
-            attributes = lambda *_: attributes  # noqa: E731
-        self._style_tag_attributes_resolvers.append(attributes)
+        self._style_tag_attributes_resolvers.append(self._as_resolver(attributes))
         return self
 
     def use_preload_tag_attributes(self, attributes: dict[str, Any] | bool | Callable[..., Any]) -> "Vite":
-        if not callable(attributes):
-            attributes = lambda *_: attributes  # noqa: E731
-        self._preload_tag_attributes_resolvers.append(attributes)
+        self._preload_tag_attributes_resolvers.append(self._as_resolver(attributes))
         return self
+
+    @staticmethod
+    def _as_resolver(attributes: Any) -> Callable[..., Any]:
+        if callable(attributes):
+            return attributes
+        return lambda *_: attributes
 
     # ------------------------------------------------------------------
     # Core HTML generation
@@ -215,7 +247,8 @@ class Vite:
         if not self.is_running_hot():
             return ""
 
-        nonce_attr = f' nonce="{self._nonce}"' if self._nonce else ""
+        nonce = self.csp_nonce()
+        nonce_attr = f' nonce="{nonce}"' if nonce else ""
         hot_url = f"{self._read_hot_origin()}/@react-refresh"
 
         return (
@@ -247,11 +280,14 @@ class Vite:
         return os.path.isfile(self._hot_file)
 
     def preloaded_assets(self) -> dict[str, list[str]]:
-        return self._preloaded_assets
+        request = self._request.get()
+        return request.preloaded_assets if request is not None else self._preloaded_assets
 
     def flush(self) -> None:
-        """Reset per-request state (call this after each response in long-running servers)."""
-        self._preloaded_assets = {}
+        self.preloaded_assets().clear()
+
+    def request_scope(self) -> "ViteRequestScope":
+        return ViteRequestScope(self._request)
 
     def to_html(self) -> str:
         """Render pre-configured entry points as HTML (used as Htmlable)."""
@@ -343,7 +379,7 @@ class Vite:
         if attributes is False:
             return ""
 
-        self._preloaded_assets[url] = self._parse_attributes({k: v for k, v in attributes.items() if k != "href"})
+        self.preloaded_assets()[url] = self._parse_attributes({k: v for k, v in attributes.items() if k != "href"})
         return f"<link {' '.join(self._parse_attributes(attributes))} />"
 
     def _resolve_script_tag_attributes(self, src, url, chunk, manifest) -> dict[str, Any]:
@@ -368,7 +404,7 @@ class Vite:
                 "rel": "preload",
                 "as": "style",
                 "href": url,
-                "nonce": self._nonce or False,
+                "nonce": self.csp_nonce() or False,
                 "crossorigin": self._resolve_stylesheet_tag_attributes(src, url, chunk, manifest).get(
                     "crossorigin", False
                 ),
@@ -377,7 +413,7 @@ class Vite:
             attrs = {
                 "rel": "modulepreload",
                 "href": url,
-                "nonce": self._nonce or False,
+                "nonce": self.csp_nonce() or False,
                 "crossorigin": self._resolve_script_tag_attributes(src, url, chunk, manifest).get("crossorigin", False),
             }
 
@@ -397,7 +433,7 @@ class Vite:
             {
                 "type": "module",
                 "src": url,
-                "nonce": self._nonce or False,
+                "nonce": self.csp_nonce() or False,
                 **attributes,
             }
         )
@@ -408,7 +444,7 @@ class Vite:
             {
                 "rel": "stylesheet",
                 "href": url,
-                "nonce": self._nonce or False,
+                "nonce": self.csp_nonce() or False,
                 **attributes,
             }
         )

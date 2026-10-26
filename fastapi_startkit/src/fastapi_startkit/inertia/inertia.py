@@ -42,7 +42,11 @@ class ResponseFactory:
         self.preserve_big_integers_enabled: bool = False
 
     def set_root_view(self, view: str):
-        self.root_view = view
+        state = current_state.get()
+        if state is not None:
+            state.root_view = view
+        else:
+            self.root_view = view
 
     def share(self, key: str | dict[str, Any], value: Any = None):
         state = current_state.get()
@@ -58,7 +62,12 @@ class ResponseFactory:
         return {**self.shared_props, **request_props}
 
     def set_version(self, version):
-        self.version = version
+        state = current_state.get()
+        if state is not None:
+            state.resolved_version = self.resolve_version(version)
+            state.version_resolved = True
+        else:
+            self.version = version
 
     def get_version(self) -> str | None:
         state = current_state.get()

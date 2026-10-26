@@ -95,6 +95,30 @@ class TestLocalDriverPutGet:
         assert src.exists()
         assert (storage / "copy.txt").read_text() == "copy me"
 
+    def test_copy_resolves_relative_paths_against_root(self, driver, tmp_path):
+        driver.put("orig.txt", "copy me")
+        driver.copy("orig.txt", "nested/copy.txt")
+        assert (tmp_path / "storage" / "orig.txt").read_text() == "copy me"
+        assert (tmp_path / "storage" / "nested" / "copy.txt").read_text() == "copy me"
+
+    def test_get_returns_text_for_utf8_files(self, driver):
+        driver.put("note.txt", "héllo")
+        assert driver.get("note.txt") == "héllo"
+
+    def test_get_returns_bytes_for_binary_files(self, driver):
+        png = b"\x89PNG\r\n\x1a\n\x00\xff"
+        driver.put("logo.png", png)
+        assert driver.get("logo.png") == png
+
+    def test_get_bytes_returns_raw_content(self, driver):
+        driver.put("note.txt", "hello")
+        driver.put("logo.png", b"\x89PNG\xff")
+        assert driver.get_bytes("note.txt") == b"hello"
+        assert driver.get_bytes("logo.png") == b"\x89PNG\xff"
+
+    def test_get_bytes_returns_none_when_missing(self, driver):
+        assert driver.get_bytes("missing.bin") is None
+
     def test_get_files_lists_files_in_directory(self, driver, tmp_path):
         storage = tmp_path / "storage"
         storage.mkdir(parents=True, exist_ok=True)

@@ -4,8 +4,11 @@ Covers: current_request ContextVar, X-Inertia header presence,
 non-Inertia passthrough, InertiaResponse.__call__ without middleware.
 """
 
+import asyncio
 import unittest
 from unittest.mock import MagicMock
+
+import httpx
 
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
@@ -83,3 +86,37 @@ class TestMiddlewareHeaderBehaviour(unittest.TestCase):
 
     def test_x_inertia_location_header_name_constant(self):
         assert Header.INERTIA_LOCATION == "X-Inertia-Location"
+
+
+class TestPerRequestRootViewAndVersion(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        Inertia._instance = None
+
+    def tearDown(self):
+        Inertia._instance = None
+
+    async def test_concurrent_requests_do_not_share_root_view_or_version(self):
+        app = FastAPI()
+        app.add_middleware(InertiaMiddleware)
+        both_set = asyncio.Barrier(2)
+
+        @app.get("/{name}")
+        async def page(name: str):
+            Inertia.set_root_view(f"{name}.html")
+            Inertia.version(f"v-{name}")
+            await both_set.wait()
+            return {"root_view": Inertia.instance().get_root_view(), "version": Inertia.get_version()}
+
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+            first, second = await asyncio.gather(client.get("/first"), client.get("/second"))
+
+        assert first.json() == {"root_view": "first.html", "version": "v-first"}
+        assert second.json() == {"root_view": "second.html", "version": "v-second"}
+        assert Inertia.instance().root_view == "index.html"
+        assert Inertia.instance().version is None
+
+    def test_set_root_view_and_version_outside_request_configure_defaults(self):
+        Inertia.set_root_view("app.html")
+        Inertia.version("v1")
+        assert Inertia.instance().get_root_view() == "app.html"
+        assert Inertia.get_version() == "v1"
