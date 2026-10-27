@@ -6,6 +6,8 @@ from importlib.resources import files
 from pathlib import Path
 from string import Template
 
+DRIVER_CLASSES = {"sqlite": "SQLiteConfig", "postgres": "PostgresConfig", "mysql": "MySQLConfig"}
+
 
 @dataclass(frozen=True)
 class InstallOptions:
@@ -117,7 +119,7 @@ def define_web() -> Section:
 def define_database(driver: str, project_name: str) -> Section:
     if driver == "none":
         return Section()
-    driver_class = {"sqlite": "SQLiteConfig", "postgres": "PostgresConfig", "mysql": "MySQLConfig"}[driver]
+    driver_class = DRIVER_CLASSES[driver]
     environment = {"DB_CONNECTION": driver}
     if driver == "sqlite":
         environment["DB_DATABASE"] = "databases/database.sqlite"
