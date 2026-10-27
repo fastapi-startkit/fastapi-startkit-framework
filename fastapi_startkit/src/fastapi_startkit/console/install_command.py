@@ -1,4 +1,5 @@
 import ast
+import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from importlib.resources.abc import Traversable
@@ -43,10 +44,11 @@ class ProviderEntry:
     @property
     def imports(self) -> dict[str, str]:
         references = [self.provider] if self.config is None else [self.provider, self.config]
-        return {
-            name: f"from {module} import {name}"
-            for module, _, name in (reference.rpartition(".") for reference in references)
-        }
+        return {name: module for module, _, name in (reference.rpartition(".") for reference in references)}
+
+
+class RegistrationError(Exception):
+    pass
 
 
 class InstallCommand(Command):
@@ -99,16 +101,16 @@ class InstallCommand(Command):
 
     def register_provider(self, provider: ProviderEntry) -> int:
         path = self.base_path / BOOTSTRAP_PATH
-        source = path.read_text(encoding="utf-8") if path.exists() else None
-        updated = (
-            register_provider(source, provider.name, provider.entry, provider.imports) if source is not None else None
-        )
-
-        if updated is None:
-            self.line_error(f"<error>Could not find Application(providers=[...]) in {BOOTSTRAP_PATH}.</error>")
+        try:
+            if not path.exists():
+                raise RegistrationError(f"{BOOTSTRAP_PATH} does not exist.")
+            source = path.read_text(encoding="utf-8")
+            updated = register_provider(source, provider.name, provider.entry, provider.imports)
+        except RegistrationError as error:
+            self.line_error(f"<error>Could not edit {BOOTSTRAP_PATH}: {error}</error>")
             self.line_error(f"Register {provider.name} manually:")
-            for statement in provider.imports.values():
-                self.line_error(f"  {statement}")
+            for name, module in provider.imports.items():
+                self.line_error(f"  {import_statement(name, module)}")
             self.line_error(f"  providers=[..., {provider.entry}]")
             return 1
 
@@ -121,23 +123,21 @@ class InstallCommand(Command):
         return 0
 
 
-def register_provider(source: str, provider: str, entry: str, imports: Mapping[str, str]) -> str | None:
+def register_provider(source: str, provider: str, entry: str, imports: Mapping[str, str]) -> str:
     tree = ast.parse(source)
     call = find_application_call(tree)
     if call is None:
-        return None
+        raise RegistrationError("Could not find an Application(...) call.")
+
+    providers = providers_argument(call)
+    if providers is not None and is_registered(providers, provider):
+        return source
 
     lines = source.splitlines(keepends=True)
-    keyword = next((keyword for keyword in call.keywords if keyword.arg == "providers"), None)
-
-    if keyword is None:
+    if providers is None:
         inserts = append_item(source, lines, call, [*call.args, *call.keywords], f"providers=[{entry}]")
-    elif not isinstance(keyword.value, ast.List):
-        return None
-    elif any(isinstance(node, ast.Name) and node.id == provider for node in ast.walk(keyword.value)):
-        return source
     else:
-        inserts = append_item(source, lines, keyword.value, keyword.value.elts, entry)
+        inserts = append_item(source, lines, providers, providers.elts, entry)
 
     inserts.extend(import_inserts(tree, lines, imports))
     for position, text in sorted(inserts, key=lambda insert: insert[0], reverse=True):
@@ -155,6 +155,25 @@ def find_application_call(tree: ast.Module) -> ast.Call | None:
         ):
             return node
     return None
+
+
+def providers_argument(call: ast.Call) -> ast.List | None:
+    if any(isinstance(argument, ast.Starred) for argument in call.args):
+        raise RegistrationError("Application(...) is called with *args.")
+
+    keyword = next((keyword for keyword in call.keywords if keyword.arg == "providers"), None)
+    value = keyword.value if keyword is not None else call.args[2] if len(call.args) > 2 else None
+    if value is not None and not isinstance(value, ast.List):
+        raise RegistrationError("providers is not a list literal.")
+    return value
+
+
+def is_registered(providers: ast.List, provider: str) -> bool:
+    return any(
+        (isinstance(node, ast.Name) and node.id == provider)
+        or (isinstance(node, ast.Attribute) and node.attr == provider)
+        for node in ast.walk(providers)
+    )
 
 
 def append_item(
@@ -184,8 +203,12 @@ def append_item(
 
 def import_inserts(tree: ast.Module, lines: list[str], imports: Mapping[str, str]) -> list[Insert]:
     existing = [node for node in tree.body if isinstance(node, (ast.Import, ast.ImportFrom))]
-    imported = {alias.asname or alias.name for node in existing for alias in node.names}
-    missing = [statement for name, statement in imports.items() if name not in imported]
+    bound = bound_names(existing)
+    for name, module in imports.items():
+        if name in bound and not same_object(bound[name], f"{module}.{name}"):
+            raise RegistrationError(f"{name} is already imported as {bound[name]}, not {module}.{name}.")
+
+    missing = [import_statement(name, module) for name, module in imports.items() if name not in bound]
     if not missing:
         return []
     if not existing:
@@ -194,6 +217,33 @@ def import_inserts(tree: ast.Module, lines: list[str], imports: Mapping[str, str
     last = existing[-1].end_lineno
     assert last is not None
     return [(offset(lines, last, 0) + len(lines[last - 1].rstrip("\r\n")), "\n" + "\n".join(missing))]
+
+
+def bound_names(imports: list[ast.Import | ast.ImportFrom]) -> dict[str, str]:
+    bound: dict[str, str] = {}
+    for node in imports:
+        for alias in node.names:
+            if isinstance(node, ast.Import):
+                bound[alias.asname or alias.name.partition(".")[0]] = alias.name
+            else:
+                bound[alias.asname or alias.name] = f"{'.' * node.level}{node.module or ''}.{alias.name}"
+    return bound
+
+
+def same_object(reference: str, expected: str) -> bool:
+    if reference == expected:
+        return True
+    resolved = [resolve(path) for path in (reference, expected)]
+    return resolved[0] is not None and resolved[0] is resolved[1]
+
+
+def resolve(reference: str) -> object | None:
+    module, _, name = reference.rpartition(".")
+    return getattr(sys.modules.get(module), name, None)
+
+
+def import_statement(name: str, module: str) -> str:
+    return f"from {module} import {name}"
 
 
 def offset(lines: list[str], lineno: int, col: int) -> int:
