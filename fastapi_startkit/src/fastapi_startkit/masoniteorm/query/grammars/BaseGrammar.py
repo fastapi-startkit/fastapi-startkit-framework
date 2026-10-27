@@ -765,12 +765,7 @@ class BaseGrammar:
                 query_value = 0
             elif qmark and value_type != "column":
                 query_value = "?"
-                if (
-                    value is not True
-                    and value_type != "value_equals"
-                    and value_type != "NULL"
-                    and value_type != "BETWEEN"
-                ):
+                if value_type not in ("value_equals", "NULL", "NOT NULL", "BETWEEN"):
                     self.add_binding(value)
             elif value_type == "value":
                 if qmark:
