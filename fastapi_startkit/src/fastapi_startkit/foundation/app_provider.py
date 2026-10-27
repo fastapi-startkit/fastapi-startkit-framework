@@ -1,4 +1,4 @@
-from fastapi_startkit.console.database_install_command import DatabaseInstallCommand
+from fastapi_startkit.console.db_install_command import DbInstallCommand
 from fastapi_startkit.console.publish_command import PublishCommand
 from fastapi_startkit.support import Provider
 
@@ -8,4 +8,4 @@ class AppProvider(Provider):
         pass
 
     def boot(self) -> None:
-        self.commands([PublishCommand, DatabaseInstallCommand])
+        self.commands([PublishCommand, DbInstallCommand])

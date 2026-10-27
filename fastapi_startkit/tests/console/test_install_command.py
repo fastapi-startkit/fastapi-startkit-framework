@@ -1,17 +1,16 @@
 import ast
+import re
 from importlib.resources import files
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from cleo.testers.command_tester import CommandTester
 
-from fastapi_startkit.console.install_command import InstallCommand, ProviderEntry, register_provider
+from fastapi_startkit.console.install_command import InstallCommand, ProviderEntry, RegistrationError, register_provider
 from fastapi_startkit.logging import LogProvider
 
-IMPORTS = {
-    "CacheProvider": "from fastapi_startkit.cache import CacheProvider",
-    "CacheConfig": "from config.cache import CacheConfig",
-}
+IMPORTS = {"CacheProvider": "fastapi_startkit.cache", "CacheConfig": "config.cache"}
 
 BOOTSTRAP = """from fastapi_startkit import Application
 from config.logging import LoggingConfig
@@ -52,7 +51,7 @@ def make_app(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def register(source: str) -> str | None:
+def register(source: str) -> str:
     return register_provider(source, "CacheProvider", "(CacheProvider, CacheConfig)", IMPORTS)
 
 
@@ -116,10 +115,7 @@ def test_provider_entry_from_class_derives_entry_and_imports():
 
     assert entry.name == "LogProvider"
     assert entry.entry == "(LogProvider, LoggingConfig)"
-    assert entry.imports == {
-        "LogProvider": f"from {LogProvider.__module__} import LogProvider",
-        "LoggingConfig": "from config.logging import LoggingConfig",
-    }
+    assert entry.imports == {"LogProvider": LogProvider.__module__, "LoggingConfig": "config.logging"}
 
 
 def test_registers_multiple_providers_and_copies_traversable_stub(tmp_path):
@@ -172,7 +168,7 @@ def test_missing_bootstrap_prints_manual_steps(tmp_path):
     assert tester.status_code == 1
     assert (tmp_path / "config/cache.py").exists()
     error = tester.io.fetch_error()
-    assert "Could not find Application(providers=[...]) in bootstrap/application.py" in error
+    assert "bootstrap/application.py does not exist." in error
     assert "from fastapi_startkit.cache import CacheProvider" in error
     assert "Register CacheProvider manually:" in error
     assert "providers=[..., (CacheProvider, CacheConfig)]" in error
@@ -183,19 +179,17 @@ def test_single_line_providers_list():
         "from fastapi_startkit import Application\n\napp = Application(providers=[LogProvider, Other])\n"
     )
 
-    assert updated is not None
     assert "Application(providers=[LogProvider, Other, (CacheProvider, CacheConfig)])" in updated
 
 
 def test_single_line_providers_list_with_trailing_comma_and_empty_list():
-    assert "providers=[A, (CacheProvider, CacheConfig)]" in (register("app = Application(providers=[A,])\n") or "")
-    assert "providers=[(CacheProvider, CacheConfig)]" in (register("app = Application(providers=[])\n") or "")
+    assert "providers=[A, (CacheProvider, CacheConfig)]" in register("app = Application(providers=[A,])\n")
+    assert "providers=[(CacheProvider, CacheConfig)]" in register("app = Application(providers=[])\n")
 
 
 def test_adds_providers_keyword_when_missing():
     updated = register("from fastapi_startkit import Application\n\napp = Application(\n    base_path=None\n)\n")
 
-    assert updated is not None
     assert "    base_path=None,\n    providers=[(CacheProvider, CacheConfig)],\n)" in updated
     assert providers_of(updated) == ["(CacheProvider, CacheConfig)"]
 
@@ -203,21 +197,19 @@ def test_adds_providers_keyword_when_missing():
 def test_adds_imports_to_file_without_imports():
     updated = register("app = fastapi_startkit.Application()\n")
 
-    assert updated is not None
     assert updated.startswith("from fastapi_startkit.cache import CacheProvider\n")
     assert "Application(providers=[(CacheProvider, CacheConfig)])" in updated
 
 
 def test_keeps_existing_imports():
     source = (
-        "from fastapi_startkit.cache.providers import CacheProvider\n"
+        "from fastapi_startkit.cache import CacheProvider\n"
         "from config.cache import CacheConfig\n"
         "app = Application(providers=[])\n"
     )
 
     updated = register(source)
 
-    assert updated is not None
     assert updated.count("import CacheProvider") == 1
     assert updated.count("import CacheConfig") == 1
 
@@ -228,9 +220,97 @@ def test_already_registered_returns_source_unchanged():
     assert register(source) == source
 
 
-def test_unsupported_bootstrap_shapes_return_none():
-    assert register("app = object()\n") is None
-    assert register("app = Application(providers=PROVIDERS)\n") is None
+@pytest.mark.parametrize(
+    ("source", "message"),
+    [
+        ("app = object()\n", "Could not find an Application(...) call."),
+        ("app = Application(providers=PROVIDERS)\n", "providers is not a list literal."),
+        ("app = Application('.', None, PROVIDERS)\n", "providers is not a list literal."),
+        ("app = Application(*ARGS)\n", "Application(...) is called with *args."),
+    ],
+)
+def test_unsupported_bootstrap_shapes_raise(source, message):
+    with pytest.raises(RegistrationError, match=re.escape(message)):
+        register(source)
+
+
+@pytest.mark.parametrize(
+    "item",
+    ["(cache.CacheProvider, CacheConfig)", "fastapi_startkit.cache.CacheProvider", "(cache.CacheProvider, x.Config)"],
+)
+def test_attribute_reference_counts_as_registered(item):
+    source = f"import cache\napp = Application(providers=[{item}])\n"
+
+    assert register(source) == source
+
+
+def test_inserts_into_positional_providers_list():
+    updated = register("from fastapi_startkit import Application\n\napp = Application('.', None, [A])\n")
+
+    assert "Application('.', None, [A, (CacheProvider, CacheConfig)])" in updated
+    assert "providers=" not in updated
+
+
+def test_positional_providers_already_registered_returns_source_unchanged():
+    source = "app = Application('.', None, [CacheProvider])\n"
+
+    assert register(source) == source
+
+
+def test_name_imported_from_another_module_raises():
+    source = "from fastapi_startkit.masoniteorm.config import CacheConfig\napp = Application(providers=[])\n"
+
+    with pytest.raises(
+        RegistrationError,
+        match=re.escape(
+            "CacheConfig is already imported as fastapi_startkit.masoniteorm.config.CacheConfig, not config.cache.CacheConfig."
+        ),
+    ):
+        register(source)
+
+
+def test_aliased_import_of_another_module_raises():
+    source = "from other import Something as CacheProvider\napp = Application(providers=[])\n"
+
+    with pytest.raises(
+        RegistrationError,
+        match="CacheProvider is already imported as other.Something, not fastapi_startkit.cache.CacheProvider.",
+    ):
+        register(source)
+
+
+def test_relative_import_of_same_name_raises():
+    source = "from .cache import CacheConfig\napp = Application(providers=[])\n"
+
+    with pytest.raises(RegistrationError, match=re.escape("CacheConfig is already imported as .cache.CacheConfig")):
+        register(source)
+
+
+def test_reexported_class_from_loaded_module_is_not_a_conflict():
+    source = f"from {LogProvider.__module__} import LogProvider\napp = Application(providers=[])\n"
+
+    updated = register_provider(source, "LogProvider", "LogProvider", {"LogProvider": "fastapi_startkit.logging"})
+
+    assert updated.count("import LogProvider") == 1
+    assert "Application(providers=[LogProvider])" in updated
+
+
+def test_conflicting_import_prints_manual_steps_and_leaves_bootstrap(tmp_path):
+    app = make_app(tmp_path)
+    bootstrap = BOOTSTRAP.replace(
+        "from config.logging import LoggingConfig\n",
+        "from config.logging import LoggingConfig\nfrom legacy.cache import CacheConfig\n",
+    )
+    (app / "bootstrap/application.py").write_text(bootstrap)
+
+    tester = run(cache_install(tmp_path), app)
+
+    assert tester.status_code == 1
+    assert (app / "bootstrap/application.py").read_text() == bootstrap
+    error = tester.io.fetch_error()
+    assert "CacheConfig is already imported as legacy.cache.CacheConfig, not config.cache.CacheConfig." in error
+    assert "Register CacheProvider manually:" in error
+    assert "from config.cache import CacheConfig" in error
 
 
 def test_edited_bootstrap_compiles(tmp_path):
@@ -239,3 +319,11 @@ def test_edited_bootstrap_compiles(tmp_path):
     run(cache_install(tmp_path), app)
 
     compile((app / "bootstrap/application.py").read_text(), "application.py", "exec")
+
+
+def test_plain_imports_bind_module_names():
+    updated = register("import os\napp = Application(providers=[])\n")
+
+    assert updated.startswith("import os\nfrom fastapi_startkit.cache import CacheProvider\n")
+    with pytest.raises(RegistrationError, match=re.escape("CacheConfig is already imported as config.cache, not")):
+        register("import config.cache as CacheConfig\napp = Application(providers=[])\n")
