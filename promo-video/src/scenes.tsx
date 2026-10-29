@@ -374,38 +374,47 @@ export const Caching: React.FC = () => (
 
 export const Agents: React.FC = () => (
   <Backdrop>
-    <SceneHeading step="08 · AI agents" title="Agents are classes" caption="Instructions, tools and provider settings in one place, with fakes for tests." />
+    <SceneHeading step="08 · AI agents" title="Agents are classes" caption="Instructions, tools and typed structured output in one class, with fakes for tests." />
     <div style={row}>
       <CodeCard
         file="app/agents/support_agent.py"
-        style={{ flex: 1.25 }}
+        style={{ flex: 1.15 }}
         fontSize={22}
+        perLine={3}
         lines={[
-          "from fastapi_startkit.ai import Agent, max_steps, provider",
+          "from pydantic import BaseModel",
+          "from fastapi_startkit.ai import Agent, provider",
+          "",
+          "class OrderStatus(BaseModel):",
+          "    order_id: int",
+          "    status: str",
           "",
           "@provider(\"openai\")",
-          "@max_steps(5)",
           "class SupportAgent(Agent):",
           "    def instructions(self) -> str:",
           "        return \"You answer questions about customer orders.\"",
           "",
           "    def tools(self):",
           "        return [order_status]",
+          "",
+          "    def schema(self):",
+          "        return OrderStatus",
         ]}
       />
       <CodeCard
         file="orders_controller.py"
         style={{ flex: 1 }}
         fontSize={22}
-        delay={70}
+        delay={80}
         lines={[
-          "from fastapi_startkit.ai import state",
-          "",
           "response = await SupportAgent().prompt(",
           "    \"Where is order #1042?\")",
-          "state.text(response)",
+          "order = response[\"structured_response\"]",
+          "print(order.order_id, order.status)",
           "",
-          "with SupportAgent.fake([\"It shipped today.\"]):",
+          "with SupportAgent.fake([",
+          "    '{\"order_id\": 1042, \"status\": \"shipped\"}',",
+          "]):",
           "    await SupportAgent().prompt(\"Where is it?\")",
         ]}
       />
