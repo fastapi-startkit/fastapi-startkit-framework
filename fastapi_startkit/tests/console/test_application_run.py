@@ -34,7 +34,7 @@ class ApplicationRunTest(unittest.TestCase):
         DummyCommand.received = {}
 
         self._previous = Container._instance
-        self.app = Application(env="testing")
+        self.app = Application()
         self.app.add_commands([DummyCommand])
 
     def tearDown(self) -> None:
@@ -105,7 +105,7 @@ class ApplicationRunTest(unittest.TestCase):
 class HandleCommandTest(unittest.TestCase):
     def setUp(self) -> None:
         self._previous = Container._instance
-        self.app = Application(env="testing")
+        self.app = Application()
 
     def tearDown(self) -> None:
         Container.set_instance(self._previous)
