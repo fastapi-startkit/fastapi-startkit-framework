@@ -20,7 +20,7 @@ class UpdateAccount(FormRequest):
 
 
 def make_application(base_path: Path) -> Application:
-    app = Application(base_path=base_path, env="testing", providers=[FastAPIProvider])
+    app = Application(base_path=base_path, providers=[FastAPIProvider])
 
     @app.fastapi.put("/accounts/{account_id}")
     async def update(account_id: int, data: Validated[UpdateAccount]):

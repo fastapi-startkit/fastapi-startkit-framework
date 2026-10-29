@@ -57,7 +57,7 @@ async def tenant(tenant_id: int) -> int:
 
 
 def make_application(base_path: Path) -> Application:
-    app = Application(base_path=base_path, env="testing", providers=[FastAPIProvider])
+    app = Application(base_path=base_path, providers=[FastAPIProvider])
     teams = APIRouter(prefix="/tenants/{tenant_id}/teams/{team_id}", dependencies=[Depends(tenant)])
 
     @teams.post("/members")

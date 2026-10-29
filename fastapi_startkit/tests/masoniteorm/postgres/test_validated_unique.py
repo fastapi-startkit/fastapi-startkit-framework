@@ -19,7 +19,7 @@ class UpdateMember(FormRequest):
 
 
 def make_application(base_path: Path) -> Application:
-    app = Application(base_path=base_path, env="testing", providers=[FastAPIProvider])
+    app = Application(base_path=base_path, providers=[FastAPIProvider])
 
     @app.fastapi.put("/members/{member_id}")
     async def update(member_id: int, data: Validated[UpdateMember]):
