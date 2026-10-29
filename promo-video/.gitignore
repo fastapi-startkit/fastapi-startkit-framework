@@ -1,0 +1,5 @@
+node_modules/
+out/*
+!out/promo.mp4
+!out/stills/
+!out/thumbnail.png
