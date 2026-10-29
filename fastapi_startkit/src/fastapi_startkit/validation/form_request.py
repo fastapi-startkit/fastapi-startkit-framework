@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Iterator, Mapping
+from weakref import finalize
 from typing import TYPE_CHECKING, Annotated, Any, LiteralString, Self, cast, get_args
 
 from inflection import underscore
@@ -20,7 +21,11 @@ from fastapi_startkit.validation.field import Field, coerced_values
 from fastapi_startkit.validation.message_bag import MessageBag
 
 if TYPE_CHECKING:
+    from fastapi.dependencies.models import Dependant
+    from fastapi.routing import APIRoute
     from starlette.requests import Request
+
+REQUEST_PARAMETER = "__validated_request"
 
 
 def has_rules(model: type[BaseModel]) -> bool:
@@ -144,14 +149,29 @@ class FormRequest(BaseModel):
         return await instance.validate_async(context)
 
 
+def declared_path_params(dependant: Dependant) -> list[Any]:
+    return [*dependant.path_params, *(param for sub in dependant.dependencies for param in declared_path_params(sub))]
+
+
+route_path_params: dict[int, list[Any]] = {}
+
+
+def path_params_of(route: APIRoute) -> list[Any]:
+    key = id(route)
+    if key not in route_path_params:
+        route_path_params[key] = declared_path_params(route.dependant)
+        finalize(route, route_path_params.pop, key, None)
+    return route_path_params[key]
+
+
 def typed_path_params(request: Request) -> dict[str, Any] | None:
-    from fastapi.dependencies.utils import get_flat_dependant, request_params_to_args
+    from fastapi.dependencies.utils import request_params_to_args
     from fastapi.routing import APIRoute
 
     route = request.scope.get("route")
     if not isinstance(route, APIRoute):
         return dict(request.path_params)
-    values, errors = request_params_to_args(get_flat_dependant(route.dependant).path_params, request.path_params)
+    values, errors = request_params_to_args(path_params_of(route), request.path_params)
     return None if errors else {**request.path_params, **values}
 
 
@@ -160,9 +180,9 @@ def validated_dependency(model: type[FormRequest]) -> Any:
 
     key = underscore(model.__name__)
 
-    async def dependency(request: Request, **body: Any) -> Any:
-        payload = body[key]
-        context = typed_path_params(request)
+    async def dependency(**parameters: Any) -> Any:
+        payload = parameters[key]
+        context = typed_path_params(parameters[REQUEST_PARAMETER])
         if context is None:
             return payload
         return await payload.validate_async(context)
@@ -172,7 +192,7 @@ def validated_dependency(model: type[FormRequest]) -> Any:
         "__signature__",
         inspect.Signature(
             [
-                inspect.Parameter("request", inspect.Parameter.POSITIONAL_OR_KEYWORD, annotation=Request),
+                inspect.Parameter(REQUEST_PARAMETER, inspect.Parameter.KEYWORD_ONLY, annotation=Request),
                 inspect.Parameter(key, inspect.Parameter.KEYWORD_ONLY, annotation=model),
             ]
         ),

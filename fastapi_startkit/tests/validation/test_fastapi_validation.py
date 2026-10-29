@@ -3,8 +3,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import Body
-from starlette.requests import Request
+from fastapi import APIRouter, Body, Depends
+from starlette.requests import Request as StarletteRequest
 
 from fastapi_startkit.application import Application
 from fastapi_startkit.container.container import Container
@@ -37,8 +37,38 @@ class UpdateUser(FormRequest):
     email: Annotated[str, Email().required().add(UniqueEmail())]
 
 
+class Request(FormRequest):
+    email: Annotated[str, Email().required()]
+
+
+TEAM_CONTEXT: list[dict[str, Any]] = []
+
+
+class TeamMember(FormRequest):
+    email: Annotated[str, Email().required()]
+
+    async def validate_async(self, context: Mapping[str, Any] | None = None):
+        TEAM_CONTEXT.append(dict(context or {}))
+        return await super().validate_async(context)
+
+
+async def tenant(tenant_id: int) -> int:
+    return tenant_id
+
+
 def make_application(base_path: Path) -> Application:
     app = Application(base_path=base_path, env="testing", providers=[FastAPIProvider])
+    teams = APIRouter(prefix="/tenants/{tenant_id}/teams/{team_id}", dependencies=[Depends(tenant)])
+
+    @teams.post("/members")
+    async def add_member(team_id: int, data: Validated[TeamMember]):
+        return {"email": data.email}
+
+    app.fastapi.include_router(teams)
+
+    @app.fastapi.post("/requests")
+    async def request_model(data: Validated[Request]):
+        return {"email": data.email}
 
     @app.fastapi.post("/register")
     async def register(data: Validated[RegisterUser]):
@@ -155,8 +185,24 @@ class FastAPIValidationTest(HttpTestCase):
 
         self.assertEqual(body, {"$ref": "#/components/schemas/RegisterUser"})
 
+    async def test_router_prefix_and_dependency_path_params_are_typed_context(self):
+        TEAM_CONTEXT.clear()
+
+        valid = await self.post("/tenants/7/teams/3/members", json={"email": "a@example.com"})
+        invalid = await self.post("/tenants/x/teams/3/members", json={"email": "a@example.com"})
+
+        valid.assert_status(200)
+        invalid.assert_status(422)
+        self.assertEqual(TEAM_CONTEXT, [{"tenant_id": 7, "team_id": 3}])
+
+    async def test_form_request_named_request_does_not_collide_with_the_http_request(self):
+        response = await self.post("/requests", json={"email": "a@example.com"})
+
+        response.assert_status(200)
+        self.assertEqual(response.json(), {"email": "a@example.com"})
+
 
 def test_path_params_without_a_matched_route_stay_raw():
-    request = Request({"type": "http", "path_params": {"user_id": "1"}})
+    request = StarletteRequest({"type": "http", "path_params": {"user_id": "1"}})
 
     assert typed_path_params(request) == {"user_id": "1"}

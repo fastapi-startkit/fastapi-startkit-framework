@@ -55,6 +55,13 @@ jobs:
                     flags: fastapi_startkit
                     fail_ci_if_error: false
 
+            -   name: Run validation and FastAPI tests against the latest FastAPI
+                working-directory: fastapi_startkit
+                run: |
+                    uv pip install --upgrade fastapi
+                    uv run --no-sync python -c "import fastapi; print('FastAPI', fastapi.__version__)"
+                    uv run --no-sync pytest tests/validation tests/fastapi -v
+
             -   name: Stop MySQL
                 if: always()
                 run: docker compose -f docker-compose.yml down
