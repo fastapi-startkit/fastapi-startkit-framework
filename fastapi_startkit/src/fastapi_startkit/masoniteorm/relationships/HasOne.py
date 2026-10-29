@@ -41,7 +41,7 @@ class HasOne(BaseRelationship[TModel, SingleResult[TModel]]):
         return related_result
 
     def query_has(self, current_query_builder, method="where_exists"):
-        related_builder = self.get_builder()
+        related_builder = self.get_exists_builder(current_query_builder)
 
         getattr(current_query_builder, method)(
             related_builder.where_column(
@@ -58,7 +58,7 @@ class HasOne(BaseRelationship[TModel, SingleResult[TModel]]):
         model.add_relation({key: related or None})
 
     def query_where_exists(self, builder, callback, method="where_exists"):
-        query = self.get_builder()
+        query = self.get_exists_builder(builder)
         getattr(builder, method)(
             callback(
                 query.where_column(

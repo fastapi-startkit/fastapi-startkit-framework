@@ -98,9 +98,11 @@ class BaseGrammar:
         lock=False,
         having=(),
         connection_details=None,
+        alias=None,
     ):
         self._columns = columns
         self.table = table
+        self.alias = alias
         self.database = database
         self._wheres = wheres
         self._limit = limit
@@ -161,7 +163,7 @@ class BaseGrammar:
                 .format(
                     columns=self.process_columns(separator=", ", qmark=qmark),
                     keyword="DISTINCT" if self._distinct else "",
-                    table=self.process_table(self.table),
+                    table=self.process_from_table(),
                     joins=self.process_joins(qmark=qmark),
                     wheres=self.process_wheres(qmark=qmark),
                     limit=self.process_limit(),
@@ -560,6 +562,11 @@ class BaseGrammar:
             for t in table.name.split(".")
         )
 
+    def process_from_table(self):
+        if not self.alias:
+            return self.process_table(self.table)
+        return f"{self.process_table(self.table)} AS {self.process_table(self.alias)}"
+
     def process_limit(self):
         """Compiles the limit expression.
 
@@ -955,7 +962,7 @@ class BaseGrammar:
         table = None
         if column and "." in column:
             table, column = column.split(".")
-        return self.column_string().format(column=column, separator=separator, table=table or self.table)
+        return self.column_string().format(column=column, separator=separator, table=table or self.alias or self.table)
 
     def _table_column_string(self, column, alias=None, separator=""):
         """Compiles a column into the column syntax.
@@ -977,7 +984,7 @@ class BaseGrammar:
             return self.column_strings["select_all"].format(
                 column=column,
                 separator=separator,
-                table=self.process_table(table or self.table),
+                table=self.process_table(table or self.alias or self.table),
             )
 
         alias_string = " " + self.subquery_alias_string().format(alias=alias) if alias else ""
@@ -985,7 +992,7 @@ class BaseGrammar:
             column=column,
             separator=separator,
             alias=alias_string,
-            table=self.process_table(table or self.table),
+            table=self.process_table(table or self.alias or self.table),
         )
 
     def _compile_value(self, value, separator=""):
