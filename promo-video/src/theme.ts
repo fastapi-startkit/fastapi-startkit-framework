@@ -3,6 +3,7 @@ export const theme = {
   bgAccent: "#12203f",
   panel: "#111a2e",
   panelBorder: "#24314f",
+  boxBorder: "#56688f",
   text: "#e6edf7",
   muted: "#8a9bbd",
   accent: "#22c55e",

@@ -3,7 +3,7 @@ import { theme } from "./theme";
 
 const KEYWORDS = new Set([
   "from", "import", "class", "def", "async", "await", "return", "self", "lambda",
-  "None", "True", "False", "export", "default", "const", "for", "in", "if",
+  "None", "True", "False", "export", "default", "const", "for", "in", "if", "with",
 ]);
 
 const TOKEN = /(#.*$|\/\/.*$)|("[^"]*"|'[^']*')|(@\w+)|(\{\{|\}\})|(\b\d+\b)|(\b[A-Za-z_]\w*\b)(?=\s*[(\[])|(\b[A-Za-z_]\w*\b)/g;

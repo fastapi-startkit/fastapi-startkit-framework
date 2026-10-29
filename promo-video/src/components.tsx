@@ -26,6 +26,7 @@ export const Backdrop: React.FC<{ children: React.ReactNode }> = ({ children }) 
       style={{
         background: `radial-gradient(circle at 20% 15%, ${theme.bgAccent} 0%, ${theme.bg} 60%)`,
         fontFamily: theme.sans,
+        fontVariantLigatures: "none",
         color: theme.text,
       }}
     >
@@ -97,67 +98,111 @@ export const CodeCard: React.FC<{
   );
 };
 
-export type TerminalStep = { command: string; output: { text: string; color?: string }[] };
+export type TermLine = { text: string; color?: string };
 
-export const Terminal: React.FC<{ steps: TerminalStep[]; delay?: number; charsPerFrame?: number; gap?: number; style?: React.CSSProperties }> = ({
-  steps,
-  delay = 10,
-  charsPerFrame = 1.2,
-  gap = 30,
-  style,
-}) => {
-  const frame = useCurrentFrame();
-  const appear = useRise(delay - 8);
-  let cursor = delay;
-  const rendered = steps.map((step, index) => {
-    const start = cursor;
-    const typingFrames = Math.ceil(step.command.length / charsPerFrame);
-    const outputStart = start + typingFrames + 8;
-    cursor = outputStart + step.output.length * 6 + gap;
-    if (frame < start) return null;
-    const typed = step.command.slice(0, Math.floor((frame - start) * charsPerFrame));
-    const typing = typed.length < step.command.length;
-    const blink = Math.floor(frame / 15) % 2 === 0;
+export type TermBlock =
+  | { kind: "command"; text: string; at: number }
+  | { kind: "lines"; lines: TermLine[]; at: number; stagger?: number }
+  | { kind: "prompt"; draws: string[][]; at: number[] };
+
+const BOX_LINE = /^([┌└│])(.*)([┐┘│])$/;
+
+const BoxLine: React.FC<{ text: string }> = ({ text }) => {
+  const match = BOX_LINE.exec(text);
+  if (!match) return <>{text}</>;
+  const [, left, body, right] = match;
+  const border = { color: theme.boxBorder };
+  if (left === "┌") {
+    const [, title = body, rule = ""] = /^( [^─]+ )(─*)$/.exec(body) ?? [];
     return (
-      <div key={index} style={{ marginBottom: 18 }}>
-        <div>
-          <span style={{ color: theme.accent }}>$ </span>
-          <span>{typed}</span>
-          {typing || (index === steps.length - 1 && step.output.length === 0) ? (
-            <span style={{ opacity: blink ? 1 : 0, color: theme.accent }}>▋</span>
-          ) : null}
-        </div>
-        {step.output.map((line, lineIndex) => (
-          <div key={lineIndex} style={{ opacity: interpolate(frame - outputStart - lineIndex * 6, [0, 6], [0, 1], clamp), color: line.color ?? theme.muted }}>
-            {line.text}
-          </div>
-        ))}
-      </div>
+      <>
+        <span style={border}>{left}</span>
+        <span style={{ color: theme.accent2 }}>{title}</span>
+        <span style={border}>{rule + right}</span>
+      </>
     );
-  });
+  }
+  if (left === "└") {
+    const [, rule = body, footer = ""] = /^(─*)(.*)$/.exec(body) ?? [];
+    return (
+      <>
+        <span style={border}>{left + rule}</span>
+        <span style={{ color: theme.muted }}>{footer}</span>
+        <span style={border}>{right}</span>
+      </>
+    );
+  }
+  const active = body.startsWith(" › ");
+  const inactive = body.startsWith("   ");
   return (
-    <WindowChrome title="terminal" style={{ ...appear, ...style }}>
-      <div style={{ fontFamily: theme.mono, fontSize: 34, lineHeight: 1.55, whiteSpace: "pre", minHeight: 120 }}>{rendered}</div>
-    </WindowChrome>
+    <>
+      <span style={border}>{left}</span>
+      <span style={{ color: active ? theme.accent2 : inactive ? theme.muted : theme.text }}>{body}</span>
+      <span style={border}>{right}</span>
+    </>
   );
 };
 
-export const Pill: React.FC<{ label: string; delay: number; color?: string }> = ({ label, delay, color = theme.accent2 }) => {
-  const rise = useRise(delay);
+export const ScrollTerminal: React.FC<{
+  blocks: TermBlock[];
+  rows: number;
+  fontSize?: number;
+  charsPerFrame?: number;
+  delay?: number;
+  style?: React.CSSProperties;
+}> = ({ blocks, rows, fontSize = 26, charsPerFrame = 1.4, delay = 2, style }) => {
+  const frame = useCurrentFrame();
+  const appear = useRise(delay);
+  const blink = Math.floor(frame / 15) % 2 === 0;
+  const lines: React.ReactNode[] = [];
+  blocks.forEach((block, blockIndex) => {
+    if (block.kind === "command") {
+      if (frame < block.at) return;
+      const typed = block.text.slice(0, Math.floor((frame - block.at) * charsPerFrame));
+      lines.push(
+        <div key={blockIndex}>
+          <span style={{ color: theme.accent }}>$ </span>
+          {typed}
+          {typed.length < block.text.length ? <span style={{ opacity: blink ? 1 : 0, color: theme.accent }}>▋</span> : null}
+        </div>,
+      );
+    } else if (block.kind === "lines") {
+      block.lines.forEach((line, lineIndex) => {
+        const start = block.at + lineIndex * (block.stagger ?? 5);
+        if (frame < start) return;
+        lines.push(
+          <div key={`${blockIndex}-${lineIndex}`} style={{ color: line.color ?? theme.muted, opacity: interpolate(frame - start, [0, 4], [0, 1], clamp) }}>
+            {line.text || " "}
+          </div>,
+        );
+      });
+    } else {
+      const step = block.at.filter((at) => frame >= at).length - 1;
+      if (step < 0) return;
+      block.draws[step].forEach((text, lineIndex) => {
+        lines.push(
+          <div key={`${blockIndex}-${lineIndex}`}>
+            <BoxLine text={text} />
+          </div>,
+        );
+      });
+    }
+  });
+  const lineHeight = Math.round(fontSize * 1.25);
   return (
-    <div
-      style={{
-        ...rise,
-        fontFamily: theme.mono,
-        fontSize: 28,
-        padding: "12px 24px",
-        borderRadius: 999,
-        border: `2px solid ${color}`,
-        color,
-        background: "rgba(56,189,248,0.08)",
-      }}
-    >
-      {label}
-    </div>
+    <WindowChrome title="terminal" style={{ ...appear, ...style }}>
+      <div
+        style={{
+          fontFamily: theme.mono,
+          fontSize,
+          lineHeight: `${lineHeight}px`,
+          whiteSpace: "pre",
+          height: rows * lineHeight,
+          overflow: "hidden",
+        }}
+      >
+        {lines.slice(-rows)}
+      </div>
+    </WindowChrome>
   );
 };

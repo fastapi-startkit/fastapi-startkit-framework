@@ -1,25 +1,33 @@
 # FastAPI Startkit — Promo Script
 
-Format: 1920x1080, 30fps, about 82s, no voiceover. On-screen text, code cards and terminals only.
+Format: 1920x1080, 30fps, 93s, no voiceover. Only on-screen text, code cards and terminals.
 
 | # | Scene | Time | On screen |
 |---|---|---|---|
-| 1 | Hook | 0:00–0:06 | Headline "Laravel-style productivity for FastAPI". Subtitle "A modular, provider-driven framework for Python." |
-| 2 | Install | 0:06–0:12 | Terminal: `uv add fastapi-startkit`. Caption: "One package. Optional extras: [fastapi] [database] [vite]." |
-| 3 | Providers & container | 0:12–0:23 | Code card `bootstrap/application.py`: `Application(base_path=..., providers=[LogProvider, (DatabaseProvider, DatabaseConfig), FastAPIProvider, ViteProvider, InertiaProvider])`, then a `Provider` with `register()` binding into the container and `boot()` resolving with `self.app.make(...)`. Caption: "Two-phase boot: register, then boot." |
-| 4 | Config | 0:23–0:32 | Code card `config/redis.py`: `@dataclass class RedisConfig` with `host: str = env("REDIS_HOST", "localhost")` and `port: int = env("REDIS_PORT", 6379)`. Then `Config.get("redis.host")`. Caption: ".env + .env.{APP_ENV}, typed dataclasses." |
-| 5 | Router | 0:32–0:42 | Code card `routes/web.py`: `guest = Router()` and `auth = Router(dependencies=[Depends(auth)])`, with `auth.resource("organizations", organizations_controller)`. A route list fans out: index, create, store, show, edit, update, destroy. |
-| 6 | Async ORM | 0:42–0:53 | Code card `app/Organization.py`: `class Organization(Model)` with `contacts = HasMany["Contact"](...)`, plus `Contact.organization = BelongsTo["Organization"](...)`, then `await Organization.with_("contacts").where("city", "Kathmandu").get()`. Caption: "Async-first ORM on SQLAlchemy." |
-| 7 | Artisan CLI | 0:53–1:03 | Terminal: `uv run artisan db:make:model Post` prints `Model created: app/Post.py`. Then `uv run artisan db:migrate` prints `Migrating:` and `Migrated:` lines. |
-| 8 | Inertia + Vite | 1:03–1:14 | Split view. Left: a controller returning `Inertia.render("Organizations/Index", {...})`. Right: the template with `{{ vite('resources/js/app.tsx') }}` and `{{ inertia(page) }}`, and `vite.config.js` using `fastapi-vite-plugin`. Caption: "React/Vue pages, no API boilerplate." |
-| 9 | CTA | 1:14–1:22 | "Build your next FastAPI app faster." Links: `fastapi-startkit.github.io` and `github.com/fastapi-startkit/fastapi-startkit-framework`. Also `uv add fastapi-startkit`. |
+| 1 | Hook | 0:00–0:05 | Headline "Laravel-style productivity for FastAPI". Subtitle "A modular, provider-driven framework for Python." |
+| 2 | 01 · Create a project | 0:05–0:11 | Three install cards. macOS / Linux: `/bin/bash -c "$(curl -fsSL https://fastapi-startkit.github.io/install.sh)"`. Windows: `powershell -ExecutionPolicy ByPass -c "irm https://fastapi-startkit.github.io/install.ps1 \| iex"`. With uv: `uvx fastapi-startkit@latest init`. |
+| 3 | 02 · Interactive installer | 0:11–0:24 | Terminal running `uvx fastapi-startkit@latest init`. The real boxed prompts (`src/installer-prompts.json`) answer `my-app`, the Web service, SQLite and React. Then the plan (`create ...` lines, `Dependency: fastapi-startkit[database,fastapi,inertia,sqlite,vite]==0.67.0`), the confirm prompt and the closing "Your application is ready." / `uv run python artisan serve` lines. |
+| 4 | 03 · Application | 0:24–0:33 | `bootstrap/application.py` exactly as the installer generates it: `Application(base_path=..., config=AppConfig, providers=[(LogProvider, LoggingConfig), (DatabaseProvider, DatabaseConfig), (FastapiProvider, FastAPIConfig), (ViteProvider, ViteConfig), InertiaProvider])`. Next to it, an `AppProvider(Provider)` with `register()` binding into the container and `boot()` calling `self.app.make("inertia").share(...)`. |
+| 5 | 04 · Routing | 0:33–0:41 | `routes/web.py`: `guest = Router()`, `auth = Router(dependencies=[Depends(auth)])`, `auth.resource("organizations", organizations_controller)`. The seven resource routes fan out using `{organization}` parameters. |
+| 6 | 05 · Database | 0:41–0:50 | `app/models/Organization.py` with `HasMany["Contact"]` / `BelongsTo["Organization"]`, and a controller calling `with_("contacts").where(...).get()` and `query().paginate(page=1, per_page=10)`. |
+| 7 | 06 · Console | 0:50–1:02 | Terminal: `uv run python artisan db:install` with its real output (`Created config/database.py`, `Registered DatabaseProvider in bootstrap/application.py`, next steps). Then `db:make:migration create_users_table` ("Migration file created: ...") and `db:migrate` ("Migrating:" / "Migrated: ... (0.00s)"). |
+| 8 | 07 · Cache | 1:02–1:11 | `config/cache.py` `CacheConfig(Config)` dataclass, plus `Cache.remember`, `async with Cache.lock(...)` and `Cache.tags("users").put/flush`. |
+| 9 | 08 · AI agents | 1:11–1:19 | `SupportAgent(Agent)` with `@provider("openai")`, `@max_steps(5)`, `instructions()` and `tools()`. Usage: `await SupportAgent().prompt(...)`, `state.text(response)` and `with SupportAgent.fake([...])`. |
+| 10 | 09 · Frontend | 1:19–1:27 | The generated `HomeController` returning `Inertia.render("Home")`, `resources/templates/index.html` (`vite_react_refresh`, `vite`, `inertia_head`, `inertia`) and `vite.config.ts` with `fastapi-vite-plugin`. |
+| 11 | CTA | 1:27–1:33 | "Build your next FastAPI app faster." `uvx fastapi-startkit@latest init`, `fastapi-startkit.github.io` and `github.com/fastapi-startkit/fastapi-startkit-framework`. |
 
-All snippets come from `example/inertia-pingcrm-app`, `AGENTS.md`, the masoniteorm command sources and the ORM test fixtures.
+Sources:
+
+- Installer output and generated files: `fastapi-startkit init` (dry run) and the installer stubs.
+- Prompt boxes: recorded from `installer.prompts.Prompter` with `color=False, width=64`.
+- `db:install` next steps: `console/install_command.py` and the database install command.
+- Migration lines: the masoniteorm migration commands.
+- Cache and AI snippets: executed against the package (the AI snippet runs against the fake).
 
 ## Render
 
 ```bash
 cd promo-video
 npm install
-npm run render
+npm run render -- --concurrency=4
 ```
