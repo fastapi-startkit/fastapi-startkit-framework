@@ -1,5 +1,6 @@
 import json
 import pytest
+from starlette.websockets import WebSocketDisconnect
 from starlette.testclient import TestClient
 from fastapi_startkit.broadcasting.reverb.server import ReverbServer
 
@@ -71,3 +72,74 @@ def test_socket_id_is_unique(client):
             data = json.loads(msg["data"])
             socket_ids.append(data["socket_id"])
     assert len(set(socket_ids)) == 3
+
+
+def _connect(ws):
+    return json.loads(json.loads(ws.receive_text())["data"])["socket_id"]
+
+
+def _ping(ws):
+    ws.send_text(json.dumps({"event": "pusher:ping", "data": {}}))
+    return json.loads(ws.receive_text())["event"]
+
+
+@pytest.mark.parametrize(
+    "frame",
+    [
+        "not json",
+        "[1, 2]",
+        "42",
+        json.dumps({"event": "pusher:subscribe", "data": "x"}),
+        json.dumps({"event": "pusher:subscribe", "data": {"channel": 1}}),
+        json.dumps({"event": 5}),
+    ],
+)
+def test_malformed_frame_replies_with_error_and_keeps_connection(client, frame):
+    with client.websocket_connect("/app/local") as ws:
+        _connect(ws)
+        ws.send_text(frame)
+        assert json.loads(ws.receive_text())["event"] == "pusher:error"
+        assert _ping(ws) == "pusher:pong"
+
+
+def test_binary_frame_replies_with_error(client):
+    with client.websocket_connect("/app/local") as ws:
+        _connect(ws)
+        ws.send_bytes(b"\x00\x01")
+        assert json.loads(ws.receive_text())["event"] == "pusher:error"
+        assert _ping(ws) == "pusher:pong"
+
+
+def test_oversized_frame_closes_connection(server, client):
+    with client.websocket_connect("/app/local") as ws:
+        _connect(ws)
+        ws.send_text("x" * (server.max_message_size + 1))
+        assert json.loads(ws.receive_text())["event"] == "pusher:error"
+        with pytest.raises(WebSocketDisconnect) as closed:
+            ws.receive_text()
+        assert closed.value.code == 1009
+    assert server.connections.all() == {}
+
+
+def test_connection_is_cleaned_up_after_malformed_frames(server, client):
+    with client.websocket_connect("/app/local") as ws:
+        socket_id = _connect(ws)
+        ws.send_text(json.dumps({"event": "pusher:subscribe", "data": {"channel": "orders.1"}}))
+        ws.receive_text()
+        ws.send_text("not json")
+        ws.receive_text()
+    assert socket_id not in server.connections.all()
+    assert socket_id not in server.channels.subscribers("orders.1")
+
+
+def test_connection_is_cleaned_up_when_handler_fails(server, client, monkeypatch):
+    async def explode(*args):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(server, "_handle_message", explode)
+    with pytest.raises(RuntimeError):
+        with client.websocket_connect("/app/local") as ws:
+            _connect(ws)
+            ws.send_text(json.dumps({"event": "pusher:ping"}))
+            ws.receive_text()
+    assert server.connections.all() == {}

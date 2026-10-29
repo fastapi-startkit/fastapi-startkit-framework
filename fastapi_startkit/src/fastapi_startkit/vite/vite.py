@@ -3,10 +3,34 @@ import json
 import os
 import re
 import secrets
-from typing import Callable, Literal, Optional
+from collections.abc import Callable
+from contextvars import ContextVar, Token
+from dataclasses import dataclass, field
+from typing import Any, Literal
 
 
 from .exceptions import ViteException, ViteManifestNotFoundException
+
+
+@dataclass
+class ViteRequestState:
+    nonce: str | None = None
+    preloaded_assets: dict[str, list[str]] = field(default_factory=dict)
+
+
+class ViteRequestScope:
+    def __init__(self, request: ContextVar[ViteRequestState | None]) -> None:
+        self._request = request
+        self._token: Token[ViteRequestState | None] | None = None
+
+    def __enter__(self) -> None:
+        if self._request.get() is None:
+            self._token = self._request.set(ViteRequestState())
+
+    def __exit__(self, *_: object) -> None:
+        if self._token is not None:
+            self._request.reset(self._token)
+            self._token = None
 
 
 class Vite:
@@ -26,13 +50,13 @@ class Vite:
     """
 
     # Class-level manifest cache shared across all instances.
-    _manifests: dict[str, dict] = {}
+    _manifests: dict[str, dict[str, Any]] = {}
 
     def __init__(
         self,
         public_path: str,
         build_directory: str = "build",
-        hot_file: Optional[str] = None,
+        hot_file: str | None = None,
         manifest_filename: str = "manifest.json",
         asset_url: str = "",
     ) -> None:
@@ -43,29 +67,38 @@ class Vite:
         # Optional base URL prefix for all generated asset URLs.
         self._asset_url = asset_url.rstrip("/")
 
-        self._nonce: Optional[str] = None
+        self._default_nonce: str | None = None
         self._integrity_key: str | bool = "integrity"
         self._entry_points: list[str] = []
-        self._asset_path_resolver: Optional[Callable[[str], str]] = None
+        self._asset_path_resolver: Callable[[str], str] | None = None
 
         # Tag attribute resolvers (callables)
-        self._script_tag_attributes_resolvers: list[Callable] = []
-        self._style_tag_attributes_resolvers: list[Callable] = []
-        self._preload_tag_attributes_resolvers: list[Callable] = []
+        self._script_tag_attributes_resolvers: list[Callable[..., Any]] = []
+        self._style_tag_attributes_resolvers: list[Callable[..., Any]] = []
+        self._preload_tag_attributes_resolvers: list[Callable[..., Any]] = []
 
-        self._preloaded_assets: dict[str, list] = {}
+        self._preloaded_assets: dict[str, list[str]] = {}
+        self._request: ContextVar[ViteRequestState | None] = ContextVar(f"vite_request_{id(self)}", default=None)
 
     # ------------------------------------------------------------------
     # Public configuration API
     # ------------------------------------------------------------------
 
-    def use_csp_nonce(self, nonce: Optional[str] = None) -> str:
+    def use_csp_nonce(self, nonce: str | None = None) -> str:
         """Generate (or set) a CSP nonce applied to all generated tags."""
-        self._nonce = nonce or secrets.token_hex(20)
-        return self._nonce
+        value = nonce or secrets.token_hex(20)
+        request = self._request.get()
+        if request is not None:
+            request.nonce = value
+        else:
+            self._default_nonce = value
+        return value
 
-    def csp_nonce(self) -> Optional[str]:
-        return self._nonce
+    def csp_nonce(self) -> str | None:
+        request = self._request.get()
+        if request is not None and request.nonce is not None:
+            return request.nonce
+        return self._default_nonce
 
     def use_integrity_key(self, key: str | bool) -> "Vite":
         """Set the manifest key used to read SRI integrity hashes."""
@@ -77,28 +110,28 @@ class Vite:
         self._entry_points = entry_points
         return self
 
-    def create_asset_paths_using(self, resolver: Optional[Callable[[str], str]]) -> "Vite":
+    def create_asset_paths_using(self, resolver: Callable[[str], str] | None) -> "Vite":
         """Override the default asset URL builder with a custom callable."""
         self._asset_path_resolver = resolver
         return self
 
-    def use_script_tag_attributes(self, attributes: dict | Callable) -> "Vite":
-        if not callable(attributes):
-            attributes = lambda *_: attributes  # noqa: E731
-        self._script_tag_attributes_resolvers.append(attributes)
+    def use_script_tag_attributes(self, attributes: dict[str, Any] | Callable[..., Any]) -> "Vite":
+        self._script_tag_attributes_resolvers.append(self._as_resolver(attributes))
         return self
 
-    def use_style_tag_attributes(self, attributes: dict | Callable) -> "Vite":
-        if not callable(attributes):
-            attributes = lambda *_: attributes  # noqa: E731
-        self._style_tag_attributes_resolvers.append(attributes)
+    def use_style_tag_attributes(self, attributes: dict[str, Any] | Callable[..., Any]) -> "Vite":
+        self._style_tag_attributes_resolvers.append(self._as_resolver(attributes))
         return self
 
-    def use_preload_tag_attributes(self, attributes: dict | bool | Callable) -> "Vite":
-        if not callable(attributes):
-            attributes = lambda *_: attributes  # noqa: E731
-        self._preload_tag_attributes_resolvers.append(attributes)
+    def use_preload_tag_attributes(self, attributes: dict[str, Any] | bool | Callable[..., Any]) -> "Vite":
+        self._preload_tag_attributes_resolvers.append(self._as_resolver(attributes))
         return self
+
+    @staticmethod
+    def _as_resolver(attributes: Any) -> Callable[..., Any]:
+        if callable(attributes):
+            return attributes
+        return lambda *_: attributes
 
     # ------------------------------------------------------------------
     # Core HTML generation
@@ -107,7 +140,7 @@ class Vite:
     def __call__(
         self,
         entrypoints: str | list[str],
-        build_directory: Optional[str] = None,
+        build_directory: str | None = None,
     ) -> str:
         """Return the HTML tags (preloads + stylesheets + scripts) for the given entrypoints."""
         if isinstance(entrypoints, str):
@@ -125,7 +158,7 @@ class Vite:
         manifest = self._manifest(build_directory)
 
         tags: list[str] = []
-        preloads: list[tuple] = []
+        preloads: list[tuple[str | None, str, dict[str, Any], dict[str, Any]]] = []
 
         for entrypoint in entrypoints:
             chunk = self._chunk(manifest, entrypoint)
@@ -186,7 +219,7 @@ class Vite:
 
         # Deduplicate preloads by URL, then sort CSS first.
         seen_urls: set[str] = set()
-        unique_preloads: list[tuple] = []
+        unique_preloads: list[tuple[str | None, str, dict[str, Any], dict[str, Any]]] = []
         for p in preloads:
             url = p[1]
             if url not in seen_urls:
@@ -199,7 +232,7 @@ class Vite:
 
         return "".join(preload_tags) + "".join(stylesheets) + "".join(scripts)
 
-    def asset(self, asset: str, build_directory: Optional[str] = None) -> str:
+    def asset(self, asset: str, build_directory: str | None = None) -> str:
         """Return the public URL for a non-entry-point asset (e.g. an image)."""
         build_directory = build_directory or self._build_directory
 
@@ -214,7 +247,8 @@ class Vite:
         if not self.is_running_hot():
             return ""
 
-        nonce_attr = f' nonce="{self._nonce}"' if self._nonce else ""
+        nonce = self.csp_nonce()
+        nonce_attr = f' nonce="{nonce}"' if nonce else ""
         hot_url = f"{self._read_hot_origin()}/@react-refresh"
 
         return (
@@ -227,7 +261,7 @@ class Vite:
             f"</script>"
         )
 
-    def manifest_hash(self, build_directory: Optional[str] = None) -> Optional[str]:
+    def manifest_hash(self, build_directory: str | None = None) -> str | None:
         """Return an MD5 hash of the manifest file, useful for cache-busting."""
         build_directory = build_directory or self._build_directory
 
@@ -245,12 +279,15 @@ class Vite:
         """Return True when the Vite HMR dev server is detected."""
         return os.path.isfile(self._hot_file)
 
-    def preloaded_assets(self) -> dict:
-        return self._preloaded_assets
+    def preloaded_assets(self) -> dict[str, list[str]]:
+        request = self._request.get()
+        return request.preloaded_assets if request is not None else self._preloaded_assets
 
     def flush(self) -> None:
-        """Reset per-request state (call this after each response in long-running servers)."""
-        self._preloaded_assets = {}
+        self.preloaded_assets().clear()
+
+    def request_scope(self) -> "ViteRequestScope":
+        return ViteRequestScope(self._request)
 
     def to_html(self) -> str:
         """Render pre-configured entry points as HTML (used as Htmlable)."""
@@ -272,7 +309,7 @@ class Vite:
             return f"{self._asset_url}/{path.lstrip('/')}"
         return f"/{path}"
 
-    def _manifest(self, build_directory: str) -> dict:
+    def _manifest(self, build_directory: str) -> dict[str, Any]:
         path = self._manifest_path(build_directory)
         if path not in Vite._manifests:
             if not os.path.isfile(path):
@@ -284,12 +321,12 @@ class Vite:
     def _manifest_path(self, build_directory: str) -> str:
         return os.path.join(self._public_path, build_directory, self._manifest_filename)
 
-    def _chunk(self, manifest: dict, file: str) -> dict:
+    def _chunk(self, manifest: dict[str, Any], file: str) -> dict[str, Any]:
         if file not in manifest:
             raise ViteException(f"Unable to locate file in Vite manifest: {file}")
         return manifest[file]
 
-    def _find_chunk_by_file(self, manifest: dict, file: str) -> dict:
+    def _find_chunk_by_file(self, manifest: dict[str, Any], file: str) -> dict[str, Any]:
         """Return the manifest chunk whose 'file' value matches, or a minimal stub."""
         for chunk in manifest.values():
             if chunk.get("file") == file:
@@ -298,9 +335,9 @@ class Vite:
 
     def _resolve_imports(
         self,
-        manifest: dict,
-        chunk: dict,
-        seen: Optional[dict] = None,
+        manifest: dict[str, Any],
+        chunk: dict[str, Any],
+        seen: dict[str, bool] | None = None,
     ) -> list[str]:
         if seen is None:
             seen = {}
@@ -316,10 +353,10 @@ class Vite:
 
     def _make_tag_for_chunk(
         self,
-        src: Optional[str],
+        src: str | None,
         url: str,
-        chunk: Optional[dict],
-        manifest: Optional[dict],
+        chunk: dict[str, Any] | None,
+        manifest: dict[str, Any] | None,
     ) -> str:
         if self._is_css_path(url):
             return self._make_stylesheet_tag_with_attributes(
@@ -333,41 +370,41 @@ class Vite:
 
     def _make_preload_tag_for_chunk(
         self,
-        src: Optional[str],
+        src: str | None,
         url: str,
-        chunk: dict,
-        manifest: dict,
+        chunk: dict[str, Any],
+        manifest: dict[str, Any],
     ) -> str:
         attributes = self._resolve_preload_tag_attributes(src, url, chunk, manifest)
         if attributes is False:
             return ""
 
-        self._preloaded_assets[url] = self._parse_attributes({k: v for k, v in attributes.items() if k != "href"})
+        self.preloaded_assets()[url] = self._parse_attributes({k: v for k, v in attributes.items() if k != "href"})
         return f"<link {' '.join(self._parse_attributes(attributes))} />"
 
-    def _resolve_script_tag_attributes(self, src, url, chunk, manifest) -> dict:
-        attrs: dict = {}
+    def _resolve_script_tag_attributes(self, src, url, chunk, manifest) -> dict[str, Any]:
+        attrs: dict[str, Any] = {}
         if self._integrity_key is not False:
             attrs["integrity"] = (chunk or {}).get(self._integrity_key, False)
         for resolver in self._script_tag_attributes_resolvers:
             attrs.update(resolver(src, url, chunk, manifest))
         return attrs
 
-    def _resolve_stylesheet_tag_attributes(self, src, url, chunk, manifest) -> dict:
-        attrs: dict = {}
+    def _resolve_stylesheet_tag_attributes(self, src, url, chunk, manifest) -> dict[str, Any]:
+        attrs: dict[str, Any] = {}
         if self._integrity_key is not False:
             attrs["integrity"] = (chunk or {}).get(self._integrity_key, False)
         for resolver in self._style_tag_attributes_resolvers:
             attrs.update(resolver(src, url, chunk, manifest))
         return attrs
 
-    def _resolve_preload_tag_attributes(self, src, url, chunk, manifest) -> dict | Literal[False]:
+    def _resolve_preload_tag_attributes(self, src, url, chunk, manifest) -> dict[str, Any] | Literal[False]:
         if self._is_css_path(url):
             attrs = {
                 "rel": "preload",
                 "as": "style",
                 "href": url,
-                "nonce": self._nonce or False,
+                "nonce": self.csp_nonce() or False,
                 "crossorigin": self._resolve_stylesheet_tag_attributes(src, url, chunk, manifest).get(
                     "crossorigin", False
                 ),
@@ -376,7 +413,7 @@ class Vite:
             attrs = {
                 "rel": "modulepreload",
                 "href": url,
-                "nonce": self._nonce or False,
+                "nonce": self.csp_nonce() or False,
                 "crossorigin": self._resolve_script_tag_attributes(src, url, chunk, manifest).get("crossorigin", False),
             }
 
@@ -391,23 +428,23 @@ class Vite:
 
         return attrs
 
-    def _make_script_tag_with_attributes(self, url: str, attributes: dict) -> str:
+    def _make_script_tag_with_attributes(self, url: str, attributes: dict[str, Any]) -> str:
         attrs = self._parse_attributes(
             {
                 "type": "module",
                 "src": url,
-                "nonce": self._nonce or False,
+                "nonce": self.csp_nonce() or False,
                 **attributes,
             }
         )
         return f"<script {' '.join(attrs)}></script>"
 
-    def _make_stylesheet_tag_with_attributes(self, url: str, attributes: dict) -> str:
+    def _make_stylesheet_tag_with_attributes(self, url: str, attributes: dict[str, Any]) -> str:
         attrs = self._parse_attributes(
             {
                 "rel": "stylesheet",
                 "href": url,
-                "nonce": self._nonce or False,
+                "nonce": self.csp_nonce() or False,
                 **attributes,
             }
         )
@@ -421,7 +458,7 @@ class Vite:
             )
         )
 
-    def _parse_attributes(self, attributes: dict) -> list[str]:
+    def _parse_attributes(self, attributes: dict[str, Any]) -> list[str]:
         result: list[str] = []
         for key, value in attributes.items():
             if value in (False, None):

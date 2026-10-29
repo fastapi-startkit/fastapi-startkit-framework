@@ -18,11 +18,11 @@ class TestTouch(TestCase):
 
     async def test_touch_sets_updated_at_on_instance(self):
         user = await User.create({"name": "Alex", "email": "alex@gmail.com"})
-        self.assertIsNone(user.updated_at)
+        created_value = user.updated_at
 
         await user.touch()
 
-        self.assertIsNotNone(user.updated_at)
+        self.assertGreater(user.updated_at, created_value)
 
     async def test_touch_persists_updated_at_to_the_database(self):
         user = await User.create({"name": "Alex", "email": "alex@gmail.com"})

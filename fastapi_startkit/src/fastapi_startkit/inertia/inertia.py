@@ -1,5 +1,6 @@
 import logging
-from typing import Any, Callable, Dict, Iterable, Optional, Union
+from collections.abc import Callable, Iterable
+from typing import Any
 from urllib.parse import urlparse
 
 from fastapi import Request
@@ -29,21 +30,25 @@ class ResponseFactory:
 
     def __init__(self):
         self.root_view: str = "index.html"
-        self.shared_props: dict = {}
+        self.shared_props: dict[str, Any] = {}
         self.version = None
-        self.ssr_gateway: Optional[SSRGateway] = None
+        self.ssr_gateway: SSRGateway | None = None
         self.ssr_enabled: bool = False
         self.ssr_except_paths: tuple[str, ...] = ()
         self.encrypt_history_enabled: bool = False
         self.expose_shared_prop_keys: bool = True
         self.root_id: str = "app"
-        self.url_resolver: Optional[UrlResolver] = None
+        self.url_resolver: UrlResolver | None = None
         self.preserve_big_integers_enabled: bool = False
 
     def set_root_view(self, view: str):
-        self.root_view = view
+        state = current_state.get()
+        if state is not None:
+            state.root_view = view
+        else:
+            self.root_view = view
 
-    def share(self, key: Union[str, Dict[str, Any]], value: Any = None):
+    def share(self, key: str | dict[str, Any], value: Any = None):
         state = current_state.get()
         props = state.shared_props if state is not None else self.shared_props
         if isinstance(key, dict):
@@ -51,15 +56,20 @@ class ResponseFactory:
         else:
             props[key] = value
 
-    def shared(self) -> dict:
+    def shared(self) -> dict[str, Any]:
         state = current_state.get()
         request_props = state.shared_props if state is not None else {}
         return {**self.shared_props, **request_props}
 
     def set_version(self, version):
-        self.version = version
+        state = current_state.get()
+        if state is not None:
+            state.resolved_version = self.resolve_version(version)
+            state.version_resolved = True
+        else:
+            self.version = version
 
-    def get_version(self) -> Optional[str]:
+    def get_version(self) -> str | None:
         state = current_state.get()
         if state is None:
             return self.resolve_version(self.version)
@@ -69,7 +79,7 @@ class ResponseFactory:
         return state.resolved_version
 
     @staticmethod
-    def resolve_version(version) -> Optional[str]:
+    def resolve_version(version) -> str | None:
         v = version() if callable(version) else version
         return str(v) if v is not None else None
 
@@ -92,11 +102,11 @@ class ResponseFactory:
             return state.encrypt_history
         return self.encrypt_history_enabled
 
-    def set_ssr(self, url: Optional[str], timeout: float = 1.0, enabled: bool = True, except_paths: Iterable[str] = ()):
+    def set_ssr(self, url: str | None, timeout: float = 1.0, enabled: bool = True, except_paths: Iterable[str] = ()):
         gateway = HttpSSRGateway(url, timeout) if url else None
         self.set_ssr_gateway(gateway, enabled, except_paths)
 
-    def set_ssr_gateway(self, gateway: Optional[SSRGateway], enabled: bool = True, except_paths: Iterable[str] = ()):
+    def set_ssr_gateway(self, gateway: SSRGateway | None, enabled: bool = True, except_paths: Iterable[str] = ()):
         self.ssr_gateway = gateway
         self.ssr_enabled = enabled and gateway is not None
         self.ssr_except_paths = tuple(except_paths)
@@ -106,7 +116,7 @@ class ResponseFactory:
             return False
         return await self.ssr_gateway.healthy()
 
-    def render(self, component: str, props: dict) -> "InertiaResponse":
+    def render(self, component: str, props: dict[str, Any]) -> "InertiaResponse":
         return InertiaResponse(
             component=component,
             shared_props=self.shared(),
@@ -126,15 +136,15 @@ class InertiaResponse(Response):
     def __init__(
         self,
         component: str,
-        shared_props: dict,
-        props: dict,
+        shared_props: dict[str, Any],
+        props: dict[str, Any],
         root_view: str = "index.html",
         version: str = "",
-        ssr_gateway: Optional[SSRGateway] = None,
+        ssr_gateway: SSRGateway | None = None,
         ssr_except_paths: Iterable[str] = (),
         encrypt_history: bool = False,
         expose_shared_prop_keys: bool = True,
-        url_resolver: Optional[UrlResolver] = None,
+        url_resolver: UrlResolver | None = None,
         preserve_big_integers: bool = False,
     ):
         # Do not call supper().__init__() — body is built lazily in __call__
@@ -147,15 +157,15 @@ class InertiaResponse(Response):
         self.ssr_gateway = ssr_gateway
         self.ssr_except_paths = tuple(ssr_except_paths)
         self.encrypt_history_enabled = encrypt_history
-        self.flash_data: dict = {}
+        self.flash_data: dict[str, Any] = {}
         self.expose_shared_prop_keys = expose_shared_prop_keys
         self.url_resolver = url_resolver
         self.preserve_big_integers_enabled = preserve_big_integers
-        self.view_data: dict = {}
+        self.view_data: dict[str, Any] = {}
         self.extra_headers: dict[str, str] = {}
         self.ssr_allowed = True
 
-    def with_(self, key: Union[str, Dict[str, Any]], value: Any = None) -> "InertiaResponse":
+    def with_(self, key: str | dict[str, Any], value: Any = None) -> "InertiaResponse":
         if isinstance(key, dict):
             self.props = {**self.props, **key}
         else:
@@ -166,7 +176,7 @@ class InertiaResponse(Response):
         self.root_view = root_view
         return self
 
-    def with_view_data(self, key: Union[str, Dict[str, Any]], value: Any = None) -> "InertiaResponse":
+    def with_view_data(self, key: str | dict[str, Any], value: Any = None) -> "InertiaResponse":
         self.view_data.update(key if isinstance(key, dict) else {key: value})
         return self
 
@@ -174,7 +184,7 @@ class InertiaResponse(Response):
         self.extra_headers[name] = value
         return self
 
-    def with_headers(self, headers: Dict[str, str]) -> "InertiaResponse":
+    def with_headers(self, headers: dict[str, str]) -> "InertiaResponse":
         self.extra_headers.update(headers)
         return self
 
@@ -186,7 +196,7 @@ class InertiaResponse(Response):
         self.preserve_big_integers_enabled = enabled
         return self
 
-    def flash(self, key: Union[str, Dict[str, Any]], value: Any = None) -> "InertiaResponse":
+    def flash(self, key: str | dict[str, Any], value: Any = None) -> "InertiaResponse":
         self.flash_data.update(key if isinstance(key, dict) else {key: value})
         return self
 
@@ -194,9 +204,9 @@ class InertiaResponse(Response):
         self.encrypt_history_enabled = enabled
         return self
 
-    def session_metadata(self, request: Request) -> dict:
+    def session_metadata(self, request: Request) -> dict[str, Any]:
         flash = {**(session.pull(request, session.FLASH) or {}), **self.flash_data}
-        metadata: dict = {
+        metadata: dict[str, Any] = {
             "encryptHistory": self.encrypt_history_enabled,
             "clearHistory": bool(session.pull(request, session.CLEAR_HISTORY, False)),
         }
@@ -232,13 +242,13 @@ class InertiaResponse(Response):
         response.headers.update(self.extra_headers)
         return response
 
-    def _encode_big_integers(self, page: dict) -> None:
+    def _encode_big_integers(self, page: dict[str, Any]) -> None:
         page["props"] = encode_big_integers(page["props"])
         if "flash" in page:
             page["flash"] = encode_big_integers(page["flash"])
         page["preserveBigIntegers"] = True
 
-    async def _build_response(self, request: Request, page: dict) -> Response:
+    async def _build_response(self, request: Request, page: dict[str, Any]) -> Response:
         if request.headers.get(Header.INERTIA):
             return JSONResponse(
                 content=page,
@@ -260,7 +270,7 @@ class InertiaResponse(Response):
             )
         )
 
-    def _ssr_gateway_for(self, request: Request) -> Optional[SSRGateway]:
+    def _ssr_gateway_for(self, request: Request) -> SSRGateway | None:
         if request.headers.get(Header.INERTIA):
             return None
         if not self.ssr_allowed:
@@ -269,7 +279,7 @@ class InertiaResponse(Response):
             return None
         return self.ssr_gateway
 
-    async def _render_ssr(self, gateway: SSRGateway, page: dict) -> Optional[dict]:
+    async def _render_ssr(self, gateway: SSRGateway, page: dict[str, Any]) -> dict[str, Any] | None:
         try:
             return await gateway.render(page)
         except Exception:
@@ -297,7 +307,7 @@ class InertiaResponse(Response):
 
 
 class Inertia:
-    _instance: Optional[ResponseFactory] = None
+    _instance: ResponseFactory | None = None
 
     @classmethod
     def instance(cls):
@@ -310,11 +320,11 @@ class Inertia:
         Inertia.instance().set_root_view(root_view)
 
     @staticmethod
-    def share(key: Union[str, Dict[str, Any]], value: Any = None):
+    def share(key: str | dict[str, Any], value: Any = None):
         Inertia.instance().share(key, value)
 
     @staticmethod
-    def shared() -> dict:
+    def shared() -> dict[str, Any]:
         return Inertia.instance().shared()
 
     @staticmethod
@@ -323,7 +333,7 @@ class Inertia:
 
     @staticmethod
     def ssr(
-        url: Optional[str] = "http://127.0.0.1:13714",
+        url: str | None = "http://127.0.0.1:13714",
         timeout: float = 1.0,
         enabled: bool = True,
         except_paths: Iterable[str] = (),
@@ -355,7 +365,7 @@ class Inertia:
         session.preserve_fragment()
 
     @staticmethod
-    def flash(key: Union[str, Dict[str, Any]], value: Any = None):
+    def flash(key: str | dict[str, Any], value: Any = None):
         session.flash(key, value)
 
     @staticmethod
@@ -382,7 +392,7 @@ class Inertia:
         return InertiaRedirect(same_origin_referer(current_request.get()), status_code=status_code)
 
     @staticmethod
-    def back_with_errors(errors: ErrorsInput, bag: Optional[str] = None) -> InertiaRedirect:
+    def back_with_errors(errors: ErrorsInput, bag: str | None = None) -> InertiaRedirect:
         return Inertia.back().with_errors_in(bag or session.DEFAULT_BAG, errors)
 
     @staticmethod
@@ -390,7 +400,7 @@ class Inertia:
         Inertia.instance().root_id = root_id
 
     @staticmethod
-    def resolve_url_using(resolver: Optional[UrlResolver]):
+    def resolve_url_using(resolver: UrlResolver | None):
         Inertia.instance().url_resolver = resolver
 
     @staticmethod
@@ -398,7 +408,7 @@ class Inertia:
         Inertia.instance().preserve_big_integers_enabled = enabled
 
     @staticmethod
-    def get_version() -> Optional[str]:
+    def get_version() -> str | None:
         return Inertia.instance().get_version()
 
     @staticmethod
@@ -434,7 +444,7 @@ class Inertia:
         return Prop(callback).once()
 
     @staticmethod
-    def scroll(page, metadata: Optional[ScrollMetadata] = None) -> Prop:
+    def scroll(page, metadata: ScrollMetadata | None = None) -> Prop:
         return Prop(page).scroll(metadata)
 
     @staticmethod
@@ -442,5 +452,5 @@ class Inertia:
         return Prop(callback).scroll()
 
     @staticmethod
-    def render(component: str, props: Optional[Dict[str, Any]] = None) -> InertiaResponse:
+    def render(component: str, props: dict[str, Any] | None = None) -> InertiaResponse:
         return Inertia.instance().render(component, props or {})

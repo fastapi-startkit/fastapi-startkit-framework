@@ -1,5 +1,4 @@
 import pendulum
-from fastapi_startkit.masoniteorm.expressions.expressions import UpdateQueryExpression
 
 
 class CreatedAtObserver:
@@ -9,7 +8,7 @@ class CreatedAtObserver:
         self.tz = tz
 
     def creating(self, model):
-        if model.__timestamps__:
+        if model.__timestamps__ and model.get_attributes().get(self.field_name) is None:
             setattr(model, self.field_name, pendulum.now(self.tz))
 
 
@@ -20,9 +19,9 @@ class UpdatedAtObserver:
         self.tz = tz
 
     def creating(self, model):
-        if model.__timestamps__:
+        if model.__timestamps__ and model.get_attributes().get(self.field_name) is None:
             setattr(model, self.field_name, pendulum.now(self.tz))
 
     def updating(self, model):
-        if model.__timestamps__:
-            model.builder._updates += (UpdateQueryExpression({self.field_name: pendulum.now(self.tz)}),)
+        if model.__timestamps__ and self.field_name not in model.get_dirty():
+            setattr(model, self.field_name, pendulum.now(self.tz))

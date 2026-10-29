@@ -1,0 +1,6 @@
+from worker import broker
+
+
+@broker.task
+async def send_welcome_email(email: str, name: str) -> dict:
+    return {"status": "sent", "email": email, "name": name}

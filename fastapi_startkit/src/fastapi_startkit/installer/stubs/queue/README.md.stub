@@ -1,0 +1,12 @@
+# ${project_name}
+
+Install Python dependencies with `uv sync`. Start Redis at the `QUEUE_URL`
+configured in `.env`, then run `uv run python artisan queue:work`.
+
+Use `--workers 4` to start four worker processes. Register tasks in
+`tasks/example_task.py` and dispatch them with `await task.kiq(...)`.
+Run the generated broker test with `uv run pytest`.
+
+For a selected database, configure `.env` and run `uv run python artisan db:migrate`.
+`QUEUE_DRIVER=memory` is available for tests and in-process development;
+it does not transport jobs between separate worker processes.

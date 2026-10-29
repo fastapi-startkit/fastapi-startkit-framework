@@ -9,9 +9,11 @@ from fastapi_startkit.masoniteorm.commands import (
     DBSeedCommand,
     MakeMigrationCommand,
     MakeModelCommand,
+    MakeObserverCommand,
     MakeSeedCommand,
     MigrateRollbackCommand,
     MigrateFreshCommand,
+    MigrateRefreshCommand,
     MigrateStatusCommand,
 )
 from fastapi_startkit.masoniteorm.connections.factory import ConnectionFactory
@@ -58,7 +60,9 @@ class DatabaseProvider(Provider):
                 MigrateStatusCommand,
                 MigrateRollbackCommand,
                 MakeModelCommand,
+                MakeObserverCommand,
                 MakeSeedCommand,
                 MigrateFreshCommand,
+                MigrateRefreshCommand,
             ]
         )

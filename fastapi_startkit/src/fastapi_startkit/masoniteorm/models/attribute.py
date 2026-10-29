@@ -8,8 +8,6 @@ class Attribute:
     # Assignments to these bypass set_attribute() and go straight to __dict__.
     _META_ATTRIBUTES = frozenset({"caster", "connection", "db_manager"})
 
-    __casts__ = {}
-
     if TYPE_CHECKING:
         caster: Caster
     else:

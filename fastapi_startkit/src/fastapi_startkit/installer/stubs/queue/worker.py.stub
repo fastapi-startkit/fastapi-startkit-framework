@@ -1,0 +1,3 @@
+from bootstrap.application import app
+
+broker = app.make("broker")
