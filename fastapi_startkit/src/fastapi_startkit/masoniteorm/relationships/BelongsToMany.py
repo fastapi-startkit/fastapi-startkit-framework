@@ -2,6 +2,7 @@ import pendulum
 
 from .BaseRelationship import BaseRelationship, ManyResult, RelationshipKey, TModel
 from ..collection import Collection
+from ..models.builder import QueryBuilder
 from ..models.pivot import Pivot
 
 
@@ -351,43 +352,32 @@ class BelongsToMany(BaseRelationship[TModel, ManyResult[TModel]]):
         return result
 
     def query_where_exists(self, builder, callback, method="where_exists"):
-        query = self.get_builder()
-        pivot_table = self._table
-        table = self.get_builder().get_table_name()
-
-        getattr(builder, method)(
-            query.new()
-            .table(table)
-            .join(
-                f"{pivot_table}",
-                f"{table}.{self.other_owner_key}",
-                "=",
-                f"{pivot_table}.{self.foreign_key}",
+        related = self.related_exists_query(builder)
+        constrained = callback(related)
+        if isinstance(constrained, QueryBuilder) and constrained is not related:
+            raise TypeError(
+                "where_has callback must constrain and return the query it receives, not a different QueryBuilder"
             )
-            .where_column(
-                f"{pivot_table}.{self.local_key}",
-                f"{builder.get_table_name()}.{self.local_owner_key}",
-            )
-            .where_in(self.other_owner_key, callback(query.select(self.other_owner_key)))
-        )
+        if constrained is not None and constrained is not related:
+            related.where_in(f"{related.get_table_name()}.{self.other_owner_key}", constrained)
+        return getattr(builder, method)(related)
 
     def query_has(self, current_query_builder, method="where_exists"):
+        return getattr(current_query_builder, method)(self.related_exists_query(current_query_builder))
+
+    def related_exists_query(self, builder):
         query = self.get_builder()
         pivot_table = self._table
-        table = self.get_builder().get_table_name()
-        return getattr(current_query_builder, method)(
-            query.new()
-            .table(table)
-            .join(
-                f"{pivot_table}",
-                f"{table}.{self.other_owner_key}",
-                "=",
-                f"{pivot_table}.{self.foreign_key}",
-            )
-            .where_column(
-                f"{pivot_table}.{self.local_key}",
-                f"{current_query_builder.get_table_name()}.{self.local_owner_key}",
-            )
+        related = query.new().table(query.get_table_name(), self.exists_alias(query, builder))
+        table = related.get_table_name()
+        return related.join(
+            f"{pivot_table}",
+            f"{table}.{self.other_owner_key}",
+            "=",
+            f"{pivot_table}.{self.foreign_key}",
+        ).where_column(
+            f"{pivot_table}.{self.local_key}",
+            f"{builder.get_table_name()}.{self.local_owner_key}",
         )
 
     def get_with_count_query(self, builder, callback):

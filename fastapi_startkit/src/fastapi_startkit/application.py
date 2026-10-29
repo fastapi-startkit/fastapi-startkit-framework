@@ -1,5 +1,6 @@
 import os
 import shlex
+import warnings
 from fastapi_startkit.foundation.app_provider import AppProvider
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
@@ -42,6 +43,14 @@ class Application(Container, Generic[TConfig]):
     ):
         super().__init__()
 
+        if env is not None:
+            warnings.warn(
+                "Application(env=...) is deprecated and will be removed in 1.0. "
+                "Set the APP_ENV environment variable or pass --env on the command line instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
         self.base_path: Path = Path(base_path) if base_path else Path(os.getcwd())
         self.env: str | None = env
         self.providers = self.DEFAULT_PROVIDERS + (providers or [])
@@ -61,9 +70,8 @@ class Application(Container, Generic[TConfig]):
         self.resolve_environment()
         self.configure_config()
         self.configure_paths()
-        self.register_providers()
-
         self._fastapi: Optional["FastAPI"] = None
+        self.register_providers()
         self.load_providers()
 
     def set_environment(self, env: str):

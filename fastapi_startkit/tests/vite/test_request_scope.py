@@ -182,6 +182,6 @@ def test_provider_registers_vite_middleware(tmp_path):
     from fastapi_startkit.application import Application
     from fastapi_startkit.vite import ViteProvider
 
-    app = Application(base_path=tmp_path, env="testing", providers=[ViteProvider])
+    app = Application(base_path=tmp_path, providers=[ViteProvider])
 
     assert ViteMiddleware in [m.cls for m in app.fastapi.user_middleware]

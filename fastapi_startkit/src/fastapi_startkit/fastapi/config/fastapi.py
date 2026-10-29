@@ -7,6 +7,7 @@ from fastapi_startkit.environment import env
 
 @dataclasses.dataclass
 class FastAPIConfig(Config):
+    title: str = env("APP_NAME", "FastAPI Startkit")
     app_url: str = env("APP_URL", "http://127.0.0.1:8000")
     app: str = "bootstrap.application:app"
     reload: bool = env("APP_RELOAD", True)

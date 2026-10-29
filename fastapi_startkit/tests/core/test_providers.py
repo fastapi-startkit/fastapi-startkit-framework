@@ -23,7 +23,7 @@ def restore_container_instance():
 
 @pytest.fixture
 def app(tmp_path):
-    return Application(base_path=tmp_path, env="testing")
+    return Application(base_path=tmp_path)
 
 
 # ---------------------------------------------------------------------------
@@ -145,7 +145,7 @@ class TestProviderKey:
 
 class TestRegisterPhase:
     def test_register_adds_binding_to_container(self, tmp_path):
-        app = Application(base_path=tmp_path, env="testing", providers=[BindingProvider])
+        app = Application(base_path=tmp_path, providers=[BindingProvider])
         assert app.make("binding_provider_service") == "bound_value"
 
     def test_register_multiple_providers(self, tmp_path):
@@ -157,7 +157,7 @@ class TestRegisterPhase:
             def register(self):
                 self.app.bind("svc_b", "value_b")
 
-        app = Application(base_path=tmp_path, env="testing", providers=[ProviderA, ProviderB])
+        app = Application(base_path=tmp_path, providers=[ProviderA, ProviderB])
         assert app.make("svc_a") == "value_a"
         assert app.make("svc_b") == "value_b"
 
@@ -166,7 +166,7 @@ class TestRegisterPhase:
             pass
 
         # Should not raise
-        Application(base_path=tmp_path, env="testing", providers=[NoopProvider])
+        Application(base_path=tmp_path, providers=[NoopProvider])
 
 
 # ---------------------------------------------------------------------------
@@ -186,12 +186,12 @@ class TestBootPhase:
             def boot(self):
                 call_order.append("boot")
 
-        Application(base_path=tmp_path, env="testing", providers=[TrackProvider])
+        Application(base_path=tmp_path, providers=[TrackProvider])
         assert call_order == ["register", "boot"]
 
     def test_boot_can_resolve_bindings_from_register(self, tmp_path):
         BootAccessProvider.resolved_in_boot = None
-        Application(base_path=tmp_path, env="testing", providers=[BindingProvider, BootAccessProvider])
+        Application(base_path=tmp_path, providers=[BindingProvider, BootAccessProvider])
         assert BootAccessProvider.resolved_in_boot == "bound_value"
 
     def test_all_registers_run_before_any_boot(self, tmp_path):
@@ -211,7 +211,7 @@ class TestBootPhase:
             def boot(self):
                 combined_log.append("PB.boot")
 
-        Application(base_path=tmp_path, env="testing", providers=[PA, PB])
+        Application(base_path=tmp_path, providers=[PA, PB])
 
         # All registers must precede all boots
         registers = [i for i, e in enumerate(combined_log) if "register" in e]
@@ -223,7 +223,7 @@ class TestBootPhase:
             def register(self):
                 self.app.bind("nb_svc", "val")
 
-        Application(base_path=tmp_path, env="testing", providers=[NoBootProvider])  # Should not raise
+        Application(base_path=tmp_path, providers=[NoBootProvider])  # Should not raise
 
 
 # ---------------------------------------------------------------------------
@@ -233,7 +233,7 @@ class TestBootPhase:
 
 class TestDuplicateKey:
     def test_last_write_wins(self, tmp_path):
-        app = Application(base_path=tmp_path, env="testing", providers=[DuplicateKeyProvider])
+        app = Application(base_path=tmp_path, providers=[DuplicateKeyProvider])
         assert app.make("dup_key") == "second"
 
 

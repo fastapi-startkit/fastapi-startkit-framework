@@ -8,7 +8,7 @@ from fastapi_startkit.environment import env
 class ReverbConnectionConfig(Config):
     driver: str = "reverb"
     key: str = env("REVERB_APP_KEY", "local")
-    secret: str = env("REVERB_APP_SECRET", "secret")
+    secret: str = env("REVERB_APP_SECRET", "")
     app_id: str = env("REVERB_APP_ID", "1")
     host: str = env("REVERB_HOST", "0.0.0.0")
     port: int = env("REVERB_PORT", 8080)

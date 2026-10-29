@@ -125,9 +125,63 @@ class TestBelongsToManyRelationship(TestCase):
         self.assertIn(self.store.id, store_ids)
         self.assertNotIn(store2.id, store_ids)
 
-    async def test_query_has_returns_builder(self):
-        # query_has should add a where_exists clause to the builder
+    async def test_query_has_adds_exists_clause(self):
         builder = Store.query()
-        result = Store.products.query_has(builder, method="where_exists")
-        # The builder has a where clause appended (we just verify no error is raised)
-        self.assertIsNotNone(builder)
+        Store.products.query_has(builder, method="where_exists")
+        self.assertEqual(
+            builder.to_sql(),
+            'SELECT * FROM "stores" WHERE EXISTS (SELECT * FROM "products" '
+            'INNER JOIN "product_store" ON "products"."id" = "product_store"."product_id" '
+            "WHERE product_store.store_id = stores.id)",
+        )
+
+
+class TestBelongsToManyWhereHas(TestCase):
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        self.downtown = await Store.create({"name": "Downtown"})
+        self.uptown = await Store.create({"name": "Uptown"})
+        self.empty = await Store.create({"name": "Empty"})
+        self.widget = await Product.create({"name": "Widget"})
+        self.gadget = await Product.create({"name": "Gadget"})
+        await Store.products.attach(self.downtown, self.widget)
+        await Store.products.attach(self.uptown, self.gadget)
+
+    async def names(self, query):
+        return sorted(store.name for store in await query.get())
+
+    def scoped(self):
+        return Store.where_in("id", [self.downtown.id, self.uptown.id, self.empty.id])
+
+    async def test_where_has_without_callback(self):
+        self.assertEqual(await self.names(self.scoped().where_has("products")), ["Downtown", "Uptown"])
+
+    async def test_where_has_with_query_callback(self):
+        query = self.scoped().where_has("products", lambda q: q.where("name", "Widget"))
+        self.assertEqual(await self.names(query), ["Downtown"])
+
+    async def test_where_has_with_query_callback_matching_nothing(self):
+        query = self.scoped().where_has("products", lambda q: q.where("name", "Missing"))
+        self.assertEqual(await self.names(query), [])
+
+    async def test_where_has_with_callback_returning_none(self):
+        def only_gadgets(q):
+            q.where("name", "Gadget")
+
+        self.assertEqual(await self.names(self.scoped().where_has("products", only_gadgets)), ["Uptown"])
+
+    async def test_where_has_rejects_callback_returning_a_different_builder(self):
+        with self.assertRaisesRegex(TypeError, "must constrain and return the query it receives"):
+            Store.where_has("products", lambda q: Product.where("name", "Widget"))
+
+    async def test_where_has_with_id_list_callback(self):
+        query = self.scoped().where_has("products", lambda q: [self.gadget.id])
+        self.assertEqual(await self.names(query), ["Uptown"])
+
+    async def test_or_where_has_with_query_callback(self):
+        query = Store.where("name", "Empty").or_where_has("products", lambda q: q.where("name", "Gadget"))
+        self.assertEqual(await self.names(query), ["Empty", "Uptown"])
+
+    async def test_or_where_has_without_callback(self):
+        query = Store.where("name", "Empty").or_where_has("products")
+        self.assertEqual(await self.names(query), ["Downtown", "Empty", "Uptown"])

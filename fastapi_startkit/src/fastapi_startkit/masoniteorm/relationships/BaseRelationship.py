@@ -114,6 +114,15 @@ class BaseRelationship(Generic[TModel, TResult]):
         setattr(owner, self.attribute, bound)
         return bound
 
+    def exists_alias(self, query, parent):
+        if query.get_table_name() == parent._table:
+            return f"{parent.get_table_name()}_self"
+        return None
+
+    def get_exists_builder(self, parent):
+        query = self.get_builder()
+        return query.table(query.get_table_name(), self.exists_alias(query, parent))
+
     @overload
     def __get__(self, instance: None, owner: Any) -> Self: ...
     @overload

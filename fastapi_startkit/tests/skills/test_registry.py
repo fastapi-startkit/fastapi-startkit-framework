@@ -34,14 +34,13 @@ def app(tmp_path):
     """App with a skill-declaring provider (fastapi) and a non-declaring one."""
     return Application(
         base_path=tmp_path,
-        env="testing",
         providers=[AISkillProvider, FastAPIProvider],
     )
 
 
 @pytest.fixture
 def empty_app(tmp_path):
-    return Application(base_path=tmp_path, env="testing")
+    return Application(base_path=tmp_path)
 
 
 # ---------------------------------------------------------------------------

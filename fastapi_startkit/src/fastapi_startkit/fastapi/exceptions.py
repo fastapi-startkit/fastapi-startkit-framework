@@ -9,10 +9,43 @@ class HTTPExceptionHandler:
     The base exception handler for FastAPI applications.
     """
 
+    def report(self, exc) -> None:
+        from fastapi_startkit.container import Container
+
+        status = self.http_status(exc)
+        if status is not None and status < 500:
+            return
+
+        cast("Application", Container.instance()).exception_manager.report_exception(exc)
+
+    @staticmethod
+    def http_status(exc) -> int | None:
+        from starlette.exceptions import HTTPException
+
+        from fastapi_startkit.exceptions import HttpException
+
+        if isinstance(exc, HTTPException):
+            return exc.status_code
+        if isinstance(exc, HttpException):
+            return exc.get_status()
+        return None
+
     async def render(self, request, exc):
         import traceback
+        from fastapi.exception_handlers import http_exception_handler
         from fastapi.responses import JSONResponse
+        from starlette.exceptions import HTTPException
+
         from fastapi_startkit.container import Container
+        from fastapi_startkit.exceptions import HttpException
+
+        if isinstance(exc, HTTPException):
+            return await http_exception_handler(request, exc)
+
+        if isinstance(exc, HttpException):
+            return await http_exception_handler(
+                request, HTTPException(exc.get_status(), exc.get_response(), headers=exc.get_headers())
+            )
 
         app = cast("Application", Container.instance())
         if app.is_debug():
