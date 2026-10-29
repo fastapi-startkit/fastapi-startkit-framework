@@ -4,6 +4,8 @@ import unittest
 from contextlib import redirect_stdout
 from unittest.mock import MagicMock, patch
 
+import requests
+
 from fastapi_startkit.application import Application, app as get_app
 from fastapi_startkit.logging.ChannelFactory import ChannelFactory
 from fastapi_startkit.logging.channels import (
@@ -20,7 +22,7 @@ from fastapi_startkit.logging.config import LoggingConfig
 from fastapi_startkit.logging.config import channels as config_channels
 from fastapi_startkit.logging.drivers.BaseDriver import BaseDriver
 from fastapi_startkit.logging.drivers.LogSingleDriver import LogSingleDriver
-from fastapi_startkit.logging.drivers.LogSlackDriver import LogSlackDriver, SlackChannelNotFound
+from fastapi_startkit.logging.drivers.LogSlackDriver import LogSlackDriver, SlackApiError, SlackChannelNotFound
 from fastapi_startkit.logging.drivers.LogSyslogDriver import LogSyslogDriver
 from fastapi_startkit.logging.drivers.LogTerminalDriver import LogTerminalDriver
 from fastapi_startkit.logging.factory import DriverFactory
@@ -292,48 +294,62 @@ class SingleDriverTest(unittest.TestCase):
 
 
 class SlackDriverTest(unittest.TestCase):
-    def _driver(self):
-        return LogSlackDriver(token="tok", channel="#bot", username="bot", emoji=":x:")
+    def _driver(self, **overrides):
+        options = {"token": "xoxb-tok", "channel": "#alerts", "username": "bot", "emoji": ":x:"}
+        return LogSlackDriver(**{**options, **overrides})
+
+    def _post(self, body):
+        response = MagicMock()
+        response.json.return_value = body
+        return patch("fastapi_startkit.logging.drivers.LogSlackDriver.requests.post", return_value=response)
 
     def test_get_format_includes_level_and_message(self):
         formatted = self._driver().get_format("hi", "ERROR")
         self.assertIn("ERROR", formatted)
         self.assertIn("hi", formatted)
 
-    def test_level_methods_post_to_slack(self):
-        driver = self._driver()
-        with (
-            patch("fastapi_startkit.logging.drivers.LogSlackDriver.requests") as requests_mock,
-            patch.object(driver, "find_channel", return_value="C123"),
-        ):
-            driver.error("boom")
-            requests_mock.post.assert_called_once()
-            url, payload = requests_mock.post.call_args.args
-            # Assert the concrete Slack endpoint, not driver.slack_url (that would be
-            # circular — it is the value that produced the call).
-            self.assertEqual(url, "https://slack.com/api/chat.postMessage")
-            self.assertIn("boom", payload["text"])
-            self.assertIn("ERROR", payload["text"])
-            self.assertEqual(payload["token"], "tok")
-            self.assertEqual(payload["channel"], "C123")
-            self.assertEqual(payload["username"], "bot")
+    def test_error_posts_to_chat_post_message_with_channel_name(self):
+        with self._post({"ok": True}) as post:
+            self._driver().error("boom")
 
-    def test_find_channel_resolves_channel_id(self):
-        driver = self._driver()
-        response = MagicMock()
-        response.json.return_value = {"channels": [{"name": "bot", "id": "C123"}]}
-        with patch("fastapi_startkit.logging.drivers.LogSlackDriver.requests") as requests_mock:
-            requests_mock.post.return_value = response
-            self.assertEqual(driver.find_channel("#bot"), "C123")
+        post.assert_called_once()
+        self.assertEqual(post.call_args.args, ("https://slack.com/api/chat.postMessage",))
+        kwargs = post.call_args.kwargs
+        self.assertEqual(kwargs["headers"], {"Authorization": "Bearer xoxb-tok"})
+        self.assertEqual(kwargs["json"]["channel"], "#alerts")
+        self.assertIn("ERROR - boom", kwargs["json"]["text"])
+        self.assertEqual(kwargs["json"]["username"], "bot")
+        self.assertEqual(kwargs["json"]["icon_emoji"], ":x:")
+        self.assertNotIn("token", kwargs["json"])
 
-    def test_find_channel_raises_when_missing(self):
-        driver = self._driver()
-        response = MagicMock()
-        response.json.return_value = {"channels": [{"name": "other", "id": "C999"}]}
-        with patch("fastapi_startkit.logging.drivers.LogSlackDriver.requests") as requests_mock:
-            requests_mock.post.return_value = response
-            with self.assertRaises(SlackChannelNotFound):
-                driver.find_channel("#bot")
+    def test_never_calls_retired_channels_list(self):
+        with self._post({"ok": True}) as post:
+            self._driver().critical("down")
+
+        urls = [call.args[0] for call in post.call_args_list]
+        self.assertEqual(urls, ["https://slack.com/api/chat.postMessage"])
+
+    def test_unset_username_is_not_sent(self):
+        with self._post({"ok": True}) as post:
+            self._driver(username=None).info("ping")
+
+        self.assertNotIn("username", post.call_args.kwargs["json"])
+
+    def test_slack_error_response_raises_slack_api_error(self):
+        with self._post({"ok": False, "error": "not_authed"}):
+            with self.assertRaisesRegex(SlackApiError, "not_authed"):
+                self._driver().error("boom")
+
+    def test_channel_not_found_raises_slack_channel_not_found(self):
+        with self._post({"ok": False, "error": "channel_not_found"}):
+            with self.assertRaisesRegex(SlackChannelNotFound, "#alerts"):
+                self._driver().error("boom")
+
+    def test_http_error_status_is_raised(self):
+        with self._post({"ok": False}) as post:
+            post.return_value.raise_for_status.side_effect = requests.HTTPError("429")
+            with self.assertRaises(requests.HTTPError):
+                self._driver().error("boom")
 
 
 class SyslogDriverTest(unittest.TestCase):
