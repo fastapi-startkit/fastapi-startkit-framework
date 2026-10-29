@@ -26,6 +26,10 @@ def is_empty(value: Any) -> bool:
     return False
 
 
+def display(value: Any) -> Any:
+    return str(value).lower() if isinstance(value, bool) else value
+
+
 def humanize(attribute: str) -> str:
     return attribute.replace("_", " ").replace(".", " ").strip()
 
@@ -83,7 +87,7 @@ class RequiredIf(Rule):
         self.expected = expected
 
     def replacements(self) -> Mapping[str, Any]:
-        return {"other": humanize(self.other), "value": self.expected}
+        return {"other": humanize(self.other), "value": display(self.expected)}
 
     def passes(self, attribute: str, value: Any, data: Mapping[str, Any]) -> bool:
         return data.get(self.other) != self.expected or not is_empty(value)
@@ -143,11 +147,14 @@ class Size(Rule):
         super().__init__(message)
         self.minimum = minimum
         self.maximum = maximum
+        self.numeric = False
 
     def replacements(self) -> Mapping[str, Any]:
         return {"min": self.minimum, "max": self.maximum}
 
     def default_message(self, value: Any) -> str:
+        if self.numeric:
+            return self.messages["numeric"]
         if isinstance(value, str):
             return self.messages["string"]
         if isinstance(value, Collection):
@@ -155,7 +162,7 @@ class Size(Rule):
         return self.messages["numeric"]
 
     def passes(self, attribute: str, value: Any, data: Mapping[str, Any]) -> bool:
-        size = size_of(value)
+        size = to_number(value) if self.numeric else size_of(value)
         if size is None:
             return False
         return (self.minimum is None or size >= self.minimum) and (self.maximum is None or size <= self.maximum)
@@ -237,13 +244,19 @@ class In(Rule):
         super().__init__(message)
         self.values = values
 
+    def contains(self, value: Any) -> bool:
+        try:
+            return value in self.values
+        except TypeError:
+            return False
+
     def passes(self, attribute: str, value: Any, data: Mapping[str, Any]) -> bool:
-        return value in self.values
+        return self.contains(value)
 
 
 class NotIn(In):
     def passes(self, attribute: str, value: Any, data: Mapping[str, Any]) -> bool:
-        return value not in self.values
+        return not self.contains(value)
 
 
 class SameAs(Rule):

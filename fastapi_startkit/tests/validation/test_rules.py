@@ -60,6 +60,8 @@ def test_humanize():
         (Regex(r"^\d{3}$"), ["123"], ["12", "abcd", 123]),
         (Regex(re.compile("ab")), ["xaby"], ["ba"]),
         (In(["a", "b"]), ["a", "b"], ["c", None]),
+        (In({"a", "b"}), ["a"], [["a"], {"a": 1}]),
+        (NotIn({"a", "b"}), ["c", ["a"], {"a": 1}], ["a"]),
         (NotIn(["a", "b"]), ["c"], ["a"]),
     ],
 )
@@ -76,7 +78,7 @@ def test_required_if_only_applies_when_other_matches():
     assert rule.passes("tax_id", None, {"is_business": False})
     assert rule.passes("tax_id", "123", {"is_business": True})
     assert not rule.passes("tax_id", None, {"is_business": True})
-    assert rule.format_message("tax_id", None, {}) == "The tax id field is required when is business is True."
+    assert rule.format_message("tax_id", None, {}) == "The tax id field is required when is business is true."
 
 
 def test_same_as_compares_with_other_field():
@@ -143,3 +145,22 @@ def test_base_rules_pass_by_default():
 
 async def test_base_async_rule_passes_by_default():
     assert await AsyncRule().passes("field", "value", {})
+
+
+def test_required_if_renders_booleans_in_lowercase():
+    assert RequiredIf("active", False).format_message("reason", None, {}) == (
+        "The reason field is required when active is false."
+    )
+    assert (
+        RequiredIf("kind", "pro").format_message("tax_id", None, {}) == "The tax id field is required when kind is pro."
+    )
+
+
+def test_size_rules_compare_numeric_value_when_numeric():
+    rule = Max(10)
+    rule.numeric = True
+
+    assert rule.passes("amount", "9.5", {})
+    assert not rule.passes("amount", "25", {})
+    assert not rule.passes("amount", "abc", {})
+    assert rule.format_message("amount", "25", {}) == "The amount field must not be greater than 10."

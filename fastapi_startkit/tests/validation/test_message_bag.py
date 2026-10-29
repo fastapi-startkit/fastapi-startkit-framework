@@ -1,4 +1,4 @@
-from fastapi_startkit.validation import MessageBag
+from fastapi_startkit.validation import MessageBag, ValidationException
 
 
 def test_empty_bag():
@@ -47,3 +47,10 @@ def test_from_errors_joins_locations_and_skips_prefix():
         "address.street": ["Required."],
         "items.0": ["Invalid."],
     }
+
+
+def test_string_messages_are_single_messages():
+    bag = MessageBag({"email": "Taken.", "name": ["Short.", "Odd."]})
+
+    assert bag.messages == {"email": ["Taken."], "name": ["Short.", "Odd."]}
+    assert ValidationException({"email": "Taken."}).errors == {"email": ["Taken."]}

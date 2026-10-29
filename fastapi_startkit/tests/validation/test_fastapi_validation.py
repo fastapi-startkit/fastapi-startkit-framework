@@ -3,21 +3,27 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Annotated, Any
 
+from fastapi import Body
+from starlette.requests import Request
+
 from fastapi_startkit.application import Application
 from fastapi_startkit.container.container import Container
 from fastapi_startkit.fastapi import FastAPIProvider
 from fastapi_startkit.fastapi.testing import HttpTestCase
 from fastapi_startkit.validation import AsyncRule, Email, Field, FormRequest, Validated
+from fastapi_startkit.validation.form_request import typed_path_params
 
 TAKEN = {"jane@example.com": 1}
+LOOKUPS: list[Any] = []
 
 
 class UniqueEmail(AsyncRule):
     message = "The :attribute has already been taken."
 
     async def passes(self, attribute: str, value: Any, data: Mapping[str, Any]) -> bool:
+        LOOKUPS.append(data.get("user_id"))
         owner = TAKEN.get(value)
-        return owner is None or str(owner) == str(data.get("user_id"))
+        return owner is None or owner == data.get("user_id")
 
 
 class RegisterUser(FormRequest):
@@ -41,6 +47,10 @@ def make_application(base_path: Path) -> Application:
     @app.fastapi.put("/users/{user_id}")
     async def update(user_id: int, data: Validated[UpdateUser]):
         return {"id": user_id, "email": data.email}
+
+    @app.fastapi.post("/users/{user_id}/notes")
+    async def note(user_id: int, data: Validated[UpdateUser], note: Annotated[str, Body()]):
+        return {"id": user_id, "email": data.email, "note": note}
 
     @app.fastapi.post("/plain")
     async def plain(data: RegisterUser):
@@ -110,6 +120,27 @@ class FastAPIValidationTest(HttpTestCase):
         other.assert_status(422)
         self.assertEqual(other.json()["errors"], {"email": ["The email has already been taken."]})
 
+    async def test_invalid_path_parameter_is_reported_before_async_rules(self):
+        LOOKUPS.clear()
+
+        response = await self.put("/users/abc", json={"email": "jane@example.com"})
+
+        response.assert_status(422)
+        self.assertEqual(list(response.json()["errors"]), ["user_id"])
+        self.assertEqual(LOOKUPS, [])
+
+    async def test_validated_body_is_embedded_under_the_model_name_with_other_body_params(self):
+        valid = await self.post("/users/1/notes", json={"update_user": {"email": "jane@example.com"}, "note": "hi"})
+        taken = await self.post("/users/2/notes", json={"update_user": {"email": "jane@example.com"}, "note": "hi"})
+        schema = (await self.get("/openapi.json")).json()
+        body = schema["components"]["schemas"]["Body_note_users__user_id__notes_post"]
+
+        valid.assert_status(200)
+        self.assertEqual(valid.json(), {"id": 1, "email": "jane@example.com", "note": "hi"})
+        taken.assert_status(422)
+        self.assertEqual(taken.json()["errors"], {"email": ["The email has already been taken."]})
+        self.assertEqual(sorted(body["properties"]), ["note", "update_user"])
+
     async def test_plain_body_parameter_runs_only_sync_rules(self):
         accepted = await self.post("/plain", json={**VALID, "email": "jane@example.com"})
         rejected = await self.post("/plain", json={**VALID, "username": "jo"})
@@ -123,3 +154,9 @@ class FastAPIValidationTest(HttpTestCase):
         body = schema["paths"]["/register"]["post"]["requestBody"]["content"]["application/json"]["schema"]
 
         self.assertEqual(body, {"$ref": "#/components/schemas/RegisterUser"})
+
+
+def test_path_params_without_a_matched_route_stay_raw():
+    request = Request({"type": "http", "path_params": {"user_id": "1"}})
+
+    assert typed_path_params(request) == {"user_id": "1"}

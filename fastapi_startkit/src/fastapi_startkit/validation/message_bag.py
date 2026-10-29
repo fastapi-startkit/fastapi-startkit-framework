@@ -5,10 +5,10 @@ from typing import Any, Self
 
 
 class MessageBag:
-    def __init__(self, messages: Mapping[str, Iterable[str]] | None = None) -> None:
+    def __init__(self, messages: Mapping[str, str | Iterable[str]] | None = None) -> None:
         self.messages: dict[str, list[str]] = {}
         for field, field_messages in (messages or {}).items():
-            for message in field_messages:
+            for message in [field_messages] if isinstance(field_messages, str) else field_messages:
                 self.add(field, message)
 
     @classmethod

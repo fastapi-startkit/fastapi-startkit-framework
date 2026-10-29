@@ -106,7 +106,7 @@ def test_cross_field_rules_see_fields_declared_later():
 
     assert errors == {
         "password_confirmation": ["The password confirmation field must match password."],
-        "tax_id": ["The tax id field is required when is business is True."],
+        "tax_id": ["The tax id field is required when is business is true."],
     }
 
 
@@ -116,7 +116,7 @@ def test_type_errors_are_reported_with_rule_errors():
     assert errors == {
         "age": ["Input should be a valid integer, unable to parse string as an integer"],
         "email": ["The email field must be a valid email address."],
-        "tax_id": ["The tax id field is required when is business is True."],
+        "tax_id": ["The tax id field is required when is business is true."],
     }
 
 
@@ -130,7 +130,7 @@ def test_non_mapping_input_keeps_pydantic_error():
     with pytest.raises(ValidationError) as caught:
         RegisterUser.model_validate("not a dict")
 
-    assert caught.value.errors()[0]["type"] == "model_type"
+    assert [error["type"] for error in caught.value.errors()] == ["model_type"]
 
 
 def test_field_without_nullable_rejects_none():
@@ -149,6 +149,65 @@ def test_field_rules_need_a_form_request():
 
     with pytest.raises(TypeError, match="FormRequest"):
         Plain.model_validate({"name": "jane"})
+
+
+def test_rules_on_nested_models_raise_at_class_definition():
+    class Address(BaseModel):
+        code: Annotated[str, Field().required().min(5)]
+
+    with pytest.raises(TypeError, match=r"Order\.address: validation rules on nested model Address"):
+
+        class Order(FormRequest):
+            address: Address
+
+    with pytest.raises(TypeError, match=r"Shipment\.stops: validation rules on nested model Address"):
+
+        class Shipment(FormRequest):
+            stops: list[Address] | None = None
+
+
+def test_nested_models_without_rules_are_allowed():
+    class Address(BaseModel):
+        code: str
+
+    class Order(FormRequest):
+        address: Address
+        name: Annotated[str, Field().required()]
+
+    assert Order.model_validate({"address": {"code": "ab"}, "name": "x"}).address.code == "ab"
+
+
+def test_numeric_fields_compare_size_by_value():
+    class Payment(FormRequest):
+        amount: Annotated[str, Field().required().max(10).numeric()]
+        count: Annotated[str | None, Field().integer().between(1, 3)] = None
+
+    assert Payment.model_validate({"amount": "9.5", "count": "2"}).amount == "9.5"
+    with pytest.raises(ValidationError) as caught:
+        Payment.model_validate({"amount": "25", "count": "12"})
+
+    assert MessageBag.from_errors(caught.value.errors()).messages == {
+        "amount": ["The amount field must not be greater than 10."],
+        "count": ["The count field must be between 1 and 3."],
+    }
+
+
+def test_in_rule_rejects_unhashable_values():
+    class Pick(FormRequest):
+        choice: Annotated[Any, Field().required().in_({"a", "b"})]
+
+    with pytest.raises(ValidationError) as caught:
+        Pick.model_validate({"choice": ["a"]})
+
+    assert MessageBag.from_errors(caught.value.errors()).messages == {"choice": ["The selected choice is invalid."]}
+
+
+def test_json_schema_keeps_required_fields_non_nullable():
+    properties = RegisterUser.model_json_schema()["properties"]
+
+    assert properties["email"] == {"title": "Email", "type": "string"}
+    assert properties["nickname"]["anyOf"] == [{"type": "string"}, {"type": "null"}]
+    assert properties["tax_id"]["anyOf"] == [{"type": "string"}, {"type": "null"}]
 
 
 def test_msg_without_rule_raises():

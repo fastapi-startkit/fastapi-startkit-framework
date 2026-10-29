@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Iterator, Mapping
-from typing import TYPE_CHECKING, Annotated, Any, LiteralString, Self, cast
+from typing import TYPE_CHECKING, Annotated, Any, LiteralString, Self, cast, get_args
 
+from inflection import underscore
 from pydantic import (
     BaseModel,
     ModelWrapValidatorHandler,
@@ -18,8 +19,32 @@ from fastapi_startkit.exceptions import ValidationException
 from fastapi_startkit.validation.field import Field, coerced_values
 from fastapi_startkit.validation.message_bag import MessageBag
 
+if TYPE_CHECKING:
+    from starlette.requests import Request
+
+
+def has_rules(model: type[BaseModel]) -> bool:
+    return any(isinstance(metadata, Field) for info in model.model_fields.values() for metadata in info.metadata)
+
+
+def nested_models(annotation: Any) -> Iterator[type[BaseModel]]:
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        yield annotation
+    for argument in get_args(annotation):
+        yield from nested_models(argument)
+
 
 class FormRequest(BaseModel):
+    @classmethod
+    def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
+        super().__pydantic_init_subclass__(**kwargs)
+        for name, info in cls.model_fields.items():
+            for model in nested_models(info.annotation):
+                if has_rules(model):
+                    raise TypeError(
+                        f"{cls.__name__}.{name}: validation rules on nested model {model.__name__} are not supported."
+                    )
+
     @classmethod
     def rule_fields(cls) -> Iterator[tuple[str, Field]]:
         for name, info in cls.model_fields.items():
@@ -43,7 +68,7 @@ class FormRequest(BaseModel):
         try:
             instance = handler(cls.fill_missing(data))
         except ValidationError as error:
-            raise cls.combine(cls.partial_data(data, values), error.errors(include_url=False)) from None
+            raise cls.combine(data, values, error.errors(include_url=False)) from None
         finally:
             coerced_values.reset(token)
         failures = cls.rule_failures(dict(instance), set())
@@ -64,18 +89,16 @@ class FormRequest(BaseModel):
         return {**missing, **data} if missing else data
 
     @classmethod
-    def partial_data(cls, data: Any, values: dict[str, Any]) -> dict[str, Any]:
+    def partial_data(cls, data: Mapping[str, Any], values: dict[str, Any]) -> dict[str, Any]:
         defaults = {
             name: info.get_default(call_default_factory=True)
             for name, info in cls.model_fields.items()
             if not info.is_required()
         }
-        raw = data if isinstance(data, Mapping) else {}
-        return {**defaults, **raw, **values}
+        return {**defaults, **data, **values}
 
     @classmethod
-    def combine(cls, data: dict[str, Any], errors: list[Any]) -> ValidationError:
-        failed = {error["loc"][0] for error in errors if error["loc"]}
+    def combine(cls, data: Any, values: dict[str, Any], errors: list[Any]) -> ValidationError:
         line_errors: list[InitErrorDetails] = [
             {
                 "type": PydanticCustomError(error["type"], error["msg"]),
@@ -84,7 +107,10 @@ class FormRequest(BaseModel):
             }
             for error in errors
         ]
-        return ValidationError.from_exception_data(cls.__name__, line_errors + cls.rule_failures(data, failed))
+        if isinstance(data, Mapping):
+            failed = {error["loc"][0] for error in errors if error["loc"]}
+            line_errors += cls.rule_failures(cls.partial_data(data, values), failed)
+        return ValidationError.from_exception_data(cls.__name__, line_errors)
 
     @classmethod
     def rule_failures(cls, data: Mapping[str, Any], failed: set[Any]) -> list[InitErrorDetails]:
@@ -118,11 +144,28 @@ class FormRequest(BaseModel):
         return await instance.validate_async(context)
 
 
+def typed_path_params(request: Request) -> dict[str, Any] | None:
+    from fastapi.dependencies.utils import get_flat_dependant, request_params_to_args
+    from fastapi.routing import APIRoute
+
+    route = request.scope.get("route")
+    if not isinstance(route, APIRoute):
+        return dict(request.path_params)
+    values, errors = request_params_to_args(get_flat_dependant(route.dependant).path_params, request.path_params)
+    return None if errors else {**request.path_params, **values}
+
+
 def validated_dependency(model: type[FormRequest]) -> Any:
     from fastapi import Request
 
-    async def dependency(request: Request, payload: Any) -> Any:
-        return await payload.validate_async(request.path_params)
+    key = underscore(model.__name__)
+
+    async def dependency(request: Request, **body: Any) -> Any:
+        payload = body[key]
+        context = typed_path_params(request)
+        if context is None:
+            return payload
+        return await payload.validate_async(context)
 
     setattr(
         dependency,
@@ -130,7 +173,7 @@ def validated_dependency(model: type[FormRequest]) -> Any:
         inspect.Signature(
             [
                 inspect.Parameter("request", inspect.Parameter.POSITIONAL_OR_KEYWORD, annotation=Request),
-                inspect.Parameter("payload", inspect.Parameter.POSITIONAL_OR_KEYWORD, annotation=model),
+                inspect.Parameter(key, inspect.Parameter.KEYWORD_ONLY, annotation=model),
             ]
         ),
     )

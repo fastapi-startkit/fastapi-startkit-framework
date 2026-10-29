@@ -30,6 +30,7 @@ from fastapi_startkit.validation.rules import (
     RequiredIf,
     Rule,
     SameAs,
+    Size,
     String,
     Unique,
     Url,
@@ -48,6 +49,10 @@ class Field:
 
     def add(self, rule: BaseRule) -> Self:
         self.rules.append(rule)
+        numeric = any(isinstance(rule, (Numeric, Integer)) for rule in self.rules)
+        for size in self.rules:
+            if isinstance(size, Size):
+                size.numeric = numeric
         return self
 
     def msg(self, message: Message) -> Self:
@@ -152,9 +157,15 @@ class Field:
     def __get_pydantic_core_schema__(self, source_type: Any, handler: GetCoreSchemaHandler) -> CoreSchema:
         schema = handler(source_type)
         if self.accepts_none():
-            schema = core_schema.nullable_schema(schema)
+            schema = core_schema.nullable_schema(schema, metadata=self.json_schema_metadata(schema))
         schema = core_schema.no_info_after_validator_function(self.require_form_request, schema)
         return schema
+
+    def json_schema_metadata(self, schema: CoreSchema) -> dict[str, Any] | None:
+        required = any(isinstance(rule, Required) for rule in self.rules)
+        if not required or any(isinstance(rule, Nullable) for rule in self.rules):
+            return None
+        return {"pydantic_js_functions": [lambda _, handler: handler(schema)]}
 
     @staticmethod
     def require_form_request(value: Any) -> Any:
