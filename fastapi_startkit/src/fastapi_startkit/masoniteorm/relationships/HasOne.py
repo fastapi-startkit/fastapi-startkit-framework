@@ -8,14 +8,11 @@ class HasOne(BaseRelationship[TModel, SingleResult[TModel]]):
     def __init__(self, fn: str | None = None, foreign_key=None, local_key=None):
         self.bind_model(fn)
 
-        self.local_key = local_key or "id"
+        self.local_key = local_key
         self.foreign_key = foreign_key
 
-    def set_keys(self, owner, attribute):
-        self.local_key = self.local_key or "id"
-        self.foreign_key = self.foreign_key or f"{attribute}_id"
-
-        return self
+    def default_keys(self):
+        return {"local_key": self.owner_class.__primary_key__, "foreign_key": self.foreign_key_of(self.owner_class)}
 
     def apply_query(self, foreign, owner):
         return foreign.where(self.foreign_key, owner.__attributes__[self.local_key]).first()

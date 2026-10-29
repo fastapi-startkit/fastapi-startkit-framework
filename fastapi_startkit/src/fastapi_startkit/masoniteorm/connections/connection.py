@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from contextvars import ContextVar
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from fastapi_startkit.masoniteorm.config.config import DBConfig
 
-from sqlalchemy import text
+from sqlalchemy import URL, text
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from fastapi_startkit.masoniteorm.connections.manages_transactions import ManagesTransactions, Transaction
@@ -57,6 +58,10 @@ class Connection(ManagesTransactions):
 
     async def reconnect(self) -> None:
         await self.close()
+
+    @classmethod
+    def resolve_url(cls, url: URL, base_path: Path) -> URL:
+        return url
 
     @classmethod
     def prepare_binding(cls, value: Any) -> Any:

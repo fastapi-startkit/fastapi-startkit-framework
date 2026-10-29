@@ -9,8 +9,6 @@ from cleo.io.inputs.option import Option
 from fastapi_startkit.console.install_command import InstallCommand, ProviderEntry
 from fastapi_startkit.installer.plan import DRIVER_CLASSES, define_database, project_name_for
 
-MIGRATIONS_PATH = "databases/migrations"
-
 
 class DbInstallCommand(InstallCommand):
     name = "db:install"
@@ -59,7 +57,5 @@ class DbInstallCommand(InstallCommand):
         self.line("  Add to .env:")
         for key, value in section.environment.items():
             self.line(f"    {key}={value}")
-        if not (self.base_path / MIGRATIONS_PATH).is_dir():
-            self.line(f"  Create the migrations directory: <info>mkdir -p {MIGRATIONS_PATH}</info>")
         self.line("  Create a migration: <info>uv run python artisan db:make:migration create_users_table</info>")
         self.line("  Run migrations: <info>uv run python artisan db:migrate</info>")

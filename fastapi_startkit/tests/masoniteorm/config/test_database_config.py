@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy import StaticPool, text
 
-from fastapi_startkit.application import Application
+from fastapi_startkit.application import Application, app
 from fastapi_startkit.masoniteorm import DatabaseConfig, MySQLConfig, PostgresConfig, SQLiteConfig
 from fastapi_startkit.masoniteorm.connections.factory import ConnectionFactory
 from fastapi_startkit.masoniteorm.connections.manager import DatabaseManager
@@ -77,3 +77,46 @@ def test_provider_rejects_dictionary_connection_settings(tmp_path):
     config = DatabaseConfig(default="sqlite", connections={"sqlite": {"driver": "sqlite"}})
     with pytest.raises(TypeError, match="Database connection 'sqlite' requires a database config object"):
         DatabaseProvider(app, config).register()
+
+
+def test_default_connection_is_defined(monkeypatch, tmp_path):
+    monkeypatch.setattr(app(), "base_path", tmp_path)
+    monkeypatch.delenv("DB_CONNECTION", raising=False)
+    config = DatabaseConfig()
+
+    assert config.default == "sqlite"
+    assert isinstance(DatabaseManager(ConnectionFactory(), config).connection(), SQliteConnection)
+
+
+@pytest.mark.parametrize(
+    "name,config_type",
+    [("sqlite", SQLiteConfig), ("mysql", MySQLConfig), ("postgres", PostgresConfig)],
+)
+def test_db_connection_selects_a_defined_connection(monkeypatch, name, config_type):
+    monkeypatch.setenv("DB_CONNECTION", name)
+    config = DatabaseConfig()
+
+    assert config.default == name
+    assert isinstance(config.connections[config.default], config_type)
+
+
+async def test_sqlite_connection_creates_the_database_directory(tmp_path):
+    database = tmp_path / "databases" / "sqlite.db"
+    connection = ConnectionFactory().make(SQLiteConfig(database=str(database), url=None), "sqlite")
+    try:
+        assert await connection.select_one("select 1 as one") == {"one": 1}
+        assert database.exists()
+    finally:
+        await connection.engine.dispose()
+
+
+async def test_relative_sqlite_database_resolves_against_the_base_path(monkeypatch, tmp_path):
+    monkeypatch.setattr(app(), "base_path", tmp_path / "project")
+    monkeypatch.chdir(tmp_path)
+    connection = ConnectionFactory().make(SQLiteConfig(database="databases/sqlite.db", url=None), "sqlite")
+    try:
+        assert await connection.select_one("select 1 as one") == {"one": 1}
+        assert (tmp_path / "project" / "databases" / "sqlite.db").exists()
+        assert not (tmp_path / "databases").exists()
+    finally:
+        await connection.engine.dispose()

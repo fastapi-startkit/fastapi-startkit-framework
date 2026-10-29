@@ -1,5 +1,5 @@
 from os import listdir
-from os.path import isfile, join
+from os.path import isdir, isfile, join
 from pydoc import locate
 from timeit import default_timer as timer
 from typing import TYPE_CHECKING
@@ -37,14 +37,18 @@ class Migrator:
             table.string("migration")
             table.integer("batch")
 
-    async def get_unran_migrations(self):
+    def migration_files(self) -> list[str]:
         directory_path = self.migration_directory
-        all_migrations = [
+        if not isdir(directory_path):
+            return []
+        return sorted(
             f.replace(".py", "")
             for f in listdir(directory_path)
             if isfile(join(directory_path, f)) and f != "__init__.py" and not f.startswith(".")
-        ]
-        all_migrations.sort()
+        )
+
+    async def get_unran_migrations(self):
+        all_migrations = self.migration_files()
         unran_migrations = []
         database_migrations = await self.migration_model.get()
         for migration in all_migrations:
@@ -84,13 +88,7 @@ class Migrator:
         return locate(f"{migration_directory}.{file_name}.{migration_name}")
 
     async def get_ran_migrations(self):
-        directory_path = self.migration_directory
-        all_migrations = [
-            f.replace(".py", "")
-            for f in listdir(directory_path)
-            if isfile(join(directory_path, f)) and f != "__init__.py" and not f.startswith(".")
-        ]
-        all_migrations.sort()
+        all_migrations = self.migration_files()
         ran = []
 
         database_migrations = await self.migration_model.all()

@@ -21,5 +21,6 @@ class TypedStore(Model):
         other_foreign_key="product_id",
         local_owner_key="id",
         other_owner_key="id",
+        table="product_store",
         with_timestamps=True,
     )
