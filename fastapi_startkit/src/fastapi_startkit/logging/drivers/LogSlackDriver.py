@@ -2,7 +2,11 @@ from .BaseDriver import BaseDriver
 import requests
 
 
-class SlackChannelNotFound(Exception):
+class SlackApiError(Exception):
+    pass
+
+
+class SlackChannelNotFound(SlackApiError):
     pass
 
 
@@ -44,36 +48,23 @@ class LogSlackDriver(BaseDriver):
         )
 
     def send(self, message):
-        requests.post(
+        payload = {
+            "channel": self.channel,
+            "text": message,
+            "username": self.username,
+            "icon_emoji": self.emoji,
+        }
+        response = requests.post(
             self.slack_url,
-            {
-                "token": self.token,
-                "channel": self.find_channel(self.channel),
-                "text": message,
-                "username": self.username,
-                "icon_emoji": self.emoji,
-                "as_user": False,
-                "reply_broadcast": True,
-                "unfurl_links": True,
-                "unfurl_media": True,
-            },
+            json={key: value for key, value in payload.items() if value is not None},
+            headers={"Authorization": f"Bearer {self.token}"},
+            timeout=10,
         )
+        response.raise_for_status()
+        body = response.json()
+        if body.get("ok"):
+            return
 
-    def find_channel(self, name):
-        """Calls the Slack API to find the channel name.
-        This is so we do not have to specify the channel ID's. Slack requires channel ID's
-        to be used.
-        Arguments:
-            name {string} -- The channel name to find.
-        Raises:
-            SlackChannelNotFound -- Thrown if the channel name is not found.
-        Returns:
-            self
-        """
-        response = requests.post("https://slack.com/api/channels.list", {"token": self.token})
-
-        for channel in response.json()["channels"]:
-            if channel["name"] == name.split("#")[1]:
-                return channel["id"]
-
-        raise SlackChannelNotFound("Could not find the {} channel".format(name))
+        error = body.get("error", "unknown_error")
+        exception = SlackChannelNotFound if error == "channel_not_found" else SlackApiError
+        raise exception(f"Slack chat.postMessage failed for channel {self.channel!r}: {error}")
