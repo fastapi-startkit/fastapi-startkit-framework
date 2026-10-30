@@ -25,6 +25,21 @@ class UpdateAccount(FormRequest):
     email: Annotated[str, Field().required().unique("accounts", ignore=lambda data: data["account_id"])]
 
 
+async def account_id(data):
+    return data["account_id"]
+
+
+class UpdateAccountAsync(FormRequest):
+    email: Annotated[str, Field().required().unique("accounts", ignore=account_id)]
+
+
+class StrictSignup(FormRequest):
+    stop_on_first_failure = True
+
+    email: Annotated[str, Email().required()]
+    handle: Annotated[str, Field().required().unique("accounts", "username")]
+
+
 class UpdateByHandle(FormRequest):
     email: Annotated[str, Field().unique(Account, ignore="jane", ignore_column="username")]
 
@@ -59,38 +74,68 @@ class DatabaseRulesTest(IsolatedAsyncioTestCase):
         await self.manager.clear()
         self.tmp.cleanup()
 
-    async def assert_errors(self, request: FormRequest, errors: dict[str, list[str]], context=None):
+    async def assert_errors(self, model: type[FormRequest], data: dict, errors: dict[str, list[str]], context=None):
         with self.assertRaises(ValidationException) as caught:
-            await request.validate_async(context)
+            await model.validate_input(data, context)
         self.assertEqual(caught.exception.errors, errors)
 
     async def test_unique_passes_for_new_values(self):
-        request = Signup(email="john@example.com", handle="john")
+        request = await Signup.validate_input({"email": "john@example.com", "handle": "john"})
 
-        self.assertIs(await request.validate_async(), request)
+        self.assertEqual(request.handle, "john")
 
     async def test_unique_fails_for_taken_values_by_table_and_model(self):
         await self.assert_errors(
-            Signup(email="jane@example.com", handle="jane"),
+            Signup,
+            {"email": "jane@example.com", "handle": "jane"},
             {"email": ["The email has already been taken."], "handle": ["The handle has already been taken."]},
         )
 
-    async def test_unique_ignores_the_row_from_context(self):
-        request = UpdateAccount(email="jane@example.com")
+    async def test_database_rules_run_with_sync_rule_failures_in_one_pass(self):
+        await self.assert_errors(
+            Signup,
+            {"email": "not-an-email", "handle": "jane"},
+            {
+                "email": ["The email field must be a valid email address."],
+                "handle": ["The handle has already been taken."],
+            },
+        )
 
-        self.assertIs(await request.validate_async({"account_id": 1}), request)
-        await self.assert_errors(request, {"email": ["The email has already been taken."]}, {"account_id": 2})
+    async def test_unique_ignores_the_row_from_context(self):
+        data = {"email": "jane@example.com"}
+
+        self.assertEqual((await UpdateAccount.validate_input(data, {"account_id": 1})).email, "jane@example.com")
+        await self.assert_errors(
+            UpdateAccount, data, {"email": ["The email has already been taken."]}, {"account_id": 2}
+        )
+
+    async def test_unique_ignore_can_be_async(self):
+        data = {"email": "jane@example.com"}
+
+        self.assertIsNotNone(await UpdateAccountAsync.validate_input(data, {"account_id": 1}))
+        await self.assert_errors(
+            UpdateAccountAsync, data, {"email": ["The email has already been taken."]}, {"account_id": 2}
+        )
 
     async def test_unique_ignore_value_and_column(self):
-        self.assertIsNotNone(await UpdateByHandle(email="jane@example.com").validate_async())
+        self.assertIsNotNone(await UpdateByHandle.validate_input({"email": "jane@example.com"}))
 
     async def test_unique_skips_empty_values(self):
-        self.assertIsNotNone(await UpdateByHandle(email="").validate_async())
+        self.assertIsNotNone(await UpdateByHandle.validate_input({"email": ""}))
 
     async def test_exists(self):
-        self.assertIsNotNone(await Transfer(account="jane", owner="jane@example.com").validate_async())
-        self.assertIsNotNone(await Transfer(account="jane").validate_async())
+        self.assertIsNotNone(await Transfer.validate_input({"account": "jane", "owner": "jane@example.com"}))
+        self.assertIsNotNone(await Transfer.validate_input({"account": "jane"}))
         await self.assert_errors(
-            Transfer(account="john", owner="john@example.com"),
+            Transfer,
+            {"account": "john", "owner": "john@example.com"},
             {"account": ["The selected account is invalid."], "owner": ["Unknown owner owner."]},
         )
+
+    async def test_stop_on_first_failure_skips_later_database_rules(self):
+        with patch.object(DB, "table", side_effect=AssertionError("queried")):
+            await self.assert_errors(
+                StrictSignup,
+                {"email": "nope", "handle": "jane"},
+                {"email": ["The email field must be a valid email address."]},
+            )

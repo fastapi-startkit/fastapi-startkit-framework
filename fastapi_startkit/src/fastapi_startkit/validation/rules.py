@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import inspect
 import re
-from collections.abc import Callable, Collection, Mapping
+from collections.abc import Awaitable, Callable, Collection, Mapping
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import urlparse
@@ -12,8 +13,15 @@ if TYPE_CHECKING:
 
 type Message = str | Callable[[str, Any, Mapping[str, Any]], str]
 type Ignore = Any | Callable[[Mapping[str, Any]], Any]
+type Passes = Callable[[str, Any, Mapping[str, Any]], bool | Awaitable[bool]]
 
 PLACEHOLDER = re.compile(r":(\w+)")
+
+
+async def resolve[T](value: T | Awaitable[T]) -> T:
+    if inspect.isawaitable(value):
+        return await value
+    return value
 
 
 def is_empty(value: Any) -> bool:
@@ -41,6 +49,9 @@ class BaseRule:
     def __init__(self, message: Message | None = None) -> None:
         self.custom_message: Message | None = message
 
+    def passes(self, attribute: str, value: Any, data: Mapping[str, Any]) -> bool | Awaitable[bool]:
+        return True
+
     def default_message(self, value: Any) -> str:
         return self.message
 
@@ -63,6 +74,15 @@ class Rule(BaseRule):
 class AsyncRule(BaseRule):
     async def passes(self, attribute: str, value: Any, data: Mapping[str, Any]) -> bool:
         return True
+
+
+class Closure(BaseRule):
+    def __init__(self, callback: Passes, message: Message | None = None) -> None:
+        super().__init__(message)
+        self.callback = callback
+
+    def passes(self, attribute: str, value: Any, data: Mapping[str, Any]) -> bool | Awaitable[bool]:
+        return self.callback(attribute, value, data)
 
 
 class Required(Rule):
@@ -313,7 +333,7 @@ class Unique(DatabaseRule):
 
     async def passes(self, attribute: str, value: Any, data: Mapping[str, Any]) -> bool:
         query = self.query(attribute, value)
-        ignore = self.ignore(data) if callable(self.ignore) else self.ignore
+        ignore = await resolve(self.ignore(data)) if callable(self.ignore) else self.ignore
         if ignore is not None:
             query = query.where(self.ignore_column, "!=", ignore)
         return not await query.exists()

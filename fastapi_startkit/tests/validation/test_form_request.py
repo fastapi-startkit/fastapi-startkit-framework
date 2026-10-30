@@ -1,11 +1,21 @@
 from collections.abc import Mapping
 from typing import Annotated, Any
 
+import asyncio
+
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from fastapi_startkit.exceptions import HttpException
-from fastapi_startkit.validation import AsyncRule, Email, Field, FormRequest, MessageBag, Rule, ValidationException
+from fastapi_startkit.exceptions import AuthorizationException, HttpException
+from fastapi_startkit.validation import (
+    AsyncRule,
+    Email,
+    Field,
+    FormRequest,
+    Rule,
+    ValidationException,
+    Validator,
+)
 
 
 class Captcha(Rule):
@@ -57,22 +67,22 @@ VALID = {
 }
 
 
-def errors_of(data: dict[str, Any]) -> dict[str, list[str]]:
-    with pytest.raises(ValidationError) as caught:
-        RegisterUser.model_validate(data)
-    return MessageBag.from_errors(caught.value.errors()).messages
+async def errors_of(data: Any, model: type[FormRequest] = RegisterUser, context=None) -> dict[str, list[str]]:
+    with pytest.raises(ValidationException) as caught:
+        await model.validate_input(data, context)
+    return caught.value.errors
 
 
-def test_valid_data_builds_the_model():
-    user = RegisterUser.model_validate({**VALID, "age": "20", "nickname": None})
+async def test_valid_data_builds_the_model():
+    user = await RegisterUser.validate_input({**VALID, "age": "20", "nickname": None})
 
     assert user.age == 20
     assert user.nickname is None
     assert user.tax_id is None
 
 
-def test_missing_required_fields_use_rule_messages():
-    assert errors_of({}) == {
+async def test_missing_required_fields_use_rule_messages():
+    assert await errors_of({}) == {
         "password_confirmation": ["The password confirmation field is required."],
         "email": ["The email field is required."],
         "username": ["username is required but you provided None"],
@@ -80,29 +90,31 @@ def test_missing_required_fields_use_rule_messages():
     }
 
 
-def test_required_failure_stops_the_field():
-    assert errors_of({**VALID, "username": ""})["username"] == ["username is required but you provided ''"]
+async def test_required_failure_stops_the_field():
+    assert (await errors_of({**VALID, "username": ""}))["username"] == ["username is required but you provided ''"]
 
 
-def test_first_failing_rule_stops_the_field():
-    assert errors_of({**VALID, "username": "ab"})["username"] == ["The username field must be at least 3 characters."]
+async def test_first_failing_rule_stops_the_field():
+    assert (await errors_of({**VALID, "username": "ab"}))["username"] == [
+        "The username field must be at least 3 characters."
+    ]
 
 
-def test_missing_optional_field_skips_its_rules():
-    assert RegisterUser.model_validate({**VALID, "nickname": ""}).nickname == ""
+async def test_missing_optional_field_skips_its_rules():
+    assert (await RegisterUser.validate_input({**VALID, "nickname": ""})).nickname == ""
 
 
-def test_msg_replaces_last_rule_message():
-    assert errors_of({**VALID, "age": 17}) == {"age": ["Adults only."]}
+async def test_msg_replaces_last_rule_message():
+    assert await errors_of({**VALID, "age": 17}) == {"age": ["Adults only."]}
 
 
-def test_custom_rule():
-    assert errors_of({**VALID, "captcha": "41"}) == {"captcha": ["The captcha is wrong."]}
-    assert RegisterUser.model_validate({**VALID, "captcha": "42"}).captcha == "42"
+async def test_custom_rule():
+    assert await errors_of({**VALID, "captcha": "41"}) == {"captcha": ["The captcha is wrong."]}
+    assert (await RegisterUser.validate_input({**VALID, "captcha": "42"})).captcha == "42"
 
 
-def test_cross_field_rules_see_fields_declared_later():
-    errors = errors_of({**VALID, "password_confirmation": "different", "is_business": True})
+async def test_cross_field_rules_see_fields_declared_later():
+    errors = await errors_of({**VALID, "password_confirmation": "different", "is_business": True})
 
     assert errors == {
         "password_confirmation": ["The password confirmation field must match password."],
@@ -110,8 +122,8 @@ def test_cross_field_rules_see_fields_declared_later():
     }
 
 
-def test_type_errors_are_reported_with_rule_errors():
-    errors = errors_of({**VALID, "age": "old", "email": "nope", "is_business": "true"})
+async def test_type_errors_are_reported_with_rule_errors():
+    errors = await errors_of({**VALID, "age": "old", "email": "nope", "is_business": "true"})
 
     assert errors == {
         "age": ["Input should be a valid integer, unable to parse string as an integer"],
@@ -120,27 +132,21 @@ def test_type_errors_are_reported_with_rule_errors():
     }
 
 
-def test_plain_type_errors_are_reraised_unchanged_when_no_rule_fails():
-    assert errors_of({**VALID, "is_business": "maybe"}) == {
+async def test_plain_type_errors_are_reraised_unchanged_when_no_rule_fails():
+    assert await errors_of({**VALID, "is_business": "maybe"}) == {
         "is_business": ["Input should be a valid boolean, unable to interpret input"]
     }
 
 
-def test_non_mapping_input_keeps_pydantic_error():
-    with pytest.raises(ValidationError) as caught:
-        RegisterUser.model_validate("not a dict")
-
-    assert [error["type"] for error in caught.value.errors()] == ["model_type"]
+async def test_non_mapping_input_keeps_pydantic_error():
+    assert await errors_of("not a dict") == {"": ["Input should be a valid dictionary or instance of RegisterUser"]}
 
 
-def test_field_without_nullable_rejects_none():
+async def test_field_without_nullable_rejects_none():
     class Profile(FormRequest):
         bio: Annotated[str, Field().max(5)] = "hi"
 
-    with pytest.raises(ValidationError) as caught:
-        Profile.model_validate({"bio": None})
-
-    assert caught.value.errors()[0]["type"] == "string_type"
+    assert await errors_of({"bio": None}, Profile) == {"bio": ["Input should be a valid string"]}
 
 
 def test_field_rules_need_a_form_request():
@@ -177,29 +183,23 @@ def test_nested_models_without_rules_are_allowed():
     assert Order.model_validate({"address": {"code": "ab"}, "name": "x"}).address.code == "ab"
 
 
-def test_numeric_fields_compare_size_by_value():
+async def test_numeric_fields_compare_size_by_value():
     class Payment(FormRequest):
         amount: Annotated[str, Field().required().max(10).numeric()]
         count: Annotated[str | None, Field().integer().between(1, 3)] = None
 
-    assert Payment.model_validate({"amount": "9.5", "count": "2"}).amount == "9.5"
-    with pytest.raises(ValidationError) as caught:
-        Payment.model_validate({"amount": "25", "count": "12"})
-
-    assert MessageBag.from_errors(caught.value.errors()).messages == {
+    assert (await Payment.validate_input({"amount": "9.5", "count": "2"})).amount == "9.5"
+    assert await errors_of({"amount": "25", "count": "12"}, Payment) == {
         "amount": ["The amount field must not be greater than 10."],
         "count": ["The count field must be between 1 and 3."],
     }
 
 
-def test_in_rule_rejects_unhashable_values():
+async def test_in_rule_rejects_unhashable_values():
     class Pick(FormRequest):
         choice: Annotated[Any, Field().required().in_({"a", "b"})]
 
-    with pytest.raises(ValidationError) as caught:
-        Pick.model_validate({"choice": ["a"]})
-
-    assert MessageBag.from_errors(caught.value.errors()).messages == {"choice": ["The selected choice is invalid."]}
+    assert await errors_of({"choice": ["a"]}, Pick) == {"choice": ["The selected choice is invalid."]}
 
 
 def test_json_schema_keeps_required_fields_non_nullable():
@@ -215,31 +215,157 @@ def test_msg_without_rule_raises():
         Field().msg("nothing to replace")
 
 
-async def test_validate_async_runs_async_rules():
-    user = RegisterUser.model_validate({**VALID, "username": "admin"})
-
-    with pytest.raises(ValidationException) as caught:
-        await user.validate_async()
-
-    assert caught.value.errors == {"username": ["The username admin is reserved."]}
+async def test_async_rules_run_in_the_same_pass_as_sync_rules():
+    assert await errors_of({**VALID, "username": "admin", "email": "nope"}) == {
+        "email": ["The email field must be a valid email address."],
+        "username": ["The username admin is reserved."],
+    }
 
 
-async def test_validate_async_returns_model_when_rules_pass():
+async def test_validate_input_passes_context_to_rules():
+    class Member(FormRequest):
+        role: Annotated[str, Field().required().using(lambda attribute, value, data: data["team_id"] == 3)]
+
+    assert (await Member.validate_input({"role": "x"}, {"team_id": 3})).role == "x"
+    assert await errors_of({"role": "x"}, Member, {"team_id": 4}) == {"role": ["The role field is invalid."]}
+
+
+async def test_closure_rules_can_be_sync_or_async():
+    async def not_taken(attribute: str, value: Any, data: Mapping[str, Any]) -> bool:
+        await asyncio.sleep(0)
+        return value != "taken"
+
+    class Profile(FormRequest):
+        handle: Annotated[str, Field().required().using(not_taken, "The :attribute is taken.")]
+        code: Annotated[str, Field().required().using(lambda attribute, value, data: value.isdigit())]
+
+    assert (await Profile.validate_input({"handle": "free", "code": "12"})).code == "12"
+    assert await errors_of({"handle": "taken", "code": "ab"}, Profile) == {
+        "handle": ["The handle is taken."],
+        "code": ["The code field is invalid."],
+    }
+
+
+async def test_rules_run_in_written_order_across_sync_and_async():
+    calls: list[str] = []
+
+    async def first(attribute: str, value: Any, data: Mapping[str, Any]) -> bool:
+        calls.append("async")
+        return False
+
+    class Ordered(FormRequest):
+        name: Annotated[str, Field().required().using(first).using(lambda *_: calls.append("sync") is None)]
+
+    assert await errors_of({"name": "x"}, Ordered) == {"name": ["The name field is invalid."]}
+    assert calls == ["async"]
+
+
+async def test_stop_on_first_failure_stops_after_the_first_field():
+    class Strict(FormRequest):
+        stop_on_first_failure = True
+
+        first: Annotated[str, Field().required()]
+        second: Annotated[str, Field().required()]
+
+    assert await errors_of({}, Strict) == {"first": ["The first field is required."]}
+
+
+class Comment(FormRequest):
+    body: Annotated[str, Field().required().min(3)]
+    author: str = "guest"
+
+    @classmethod
+    async def authorize(cls, validator: Validator) -> bool:
+        await asyncio.sleep(0)
+        return validator.context.get("user") != "banned"
+
+    @classmethod
+    async def prepare_for_validation(cls, validator: Validator) -> None:
+        await asyncio.sleep(0)
+        validator.merge({"body": str(validator.data.get("body", "")).strip()})
+
+    @classmethod
+    async def after(cls, validator: Validator) -> None:
+        await asyncio.sleep(0)
+        if "spam" in str(validator.data.get("body")):
+            validator.errors.add("body", "No spam.")
+        if validator.data["author"] == validator.context.get("blocked"):
+            validator.errors.add("author", "Blocked.")
+
+
+async def test_async_authorize_rejects_before_reading_input():
+    with pytest.raises(AuthorizationException) as caught:
+        await Comment.validate_input("not even a dict", {"user": "banned"})
+
+    assert caught.value.get_status() == 403
+    assert caught.value.get_response() == "This action is unauthorized."
+
+
+async def test_async_prepare_for_validation_changes_the_input():
+    assert (await Comment.validate_input({"body": "  hello  "})).body == "hello"
+    assert await errors_of({"body": "  hi  "}, Comment) == {"body": ["The body field must be at least 3 characters."]}
+
+
+async def test_async_after_hook_adds_errors_with_validated_data():
+    assert await errors_of({"body": "spam here"}, Comment, {"blocked": "guest"}) == {
+        "body": ["No spam."],
+        "author": ["Blocked."],
+    }
+
+
+async def test_sync_hooks_are_supported():
+    class Sync(FormRequest):
+        name: Annotated[str, Field().required()]
+
+        @classmethod
+        def authorize(cls, validator: Validator) -> bool:
+            return validator.request is None
+
+        @classmethod
+        def prepare_for_validation(cls, validator: Validator) -> None:
+            validator.merge({"name": "filled"})
+
+        @classmethod
+        def after(cls, validator: Validator) -> None:
+            validator.errors.add("name", "After.") if validator.data["name"] != "filled" else None
+
+    assert (await Sync.validate_input({})).name == "filled"
+
+
+async def test_concurrent_validations_keep_their_own_errors():
+    class Slow(FormRequest):
+        name: Annotated[str, Field().required().using(lambda *_: asyncio.sleep(0.01, result=False))]
+        team: Annotated[str, Field().required().using(lambda attribute, value, data: data["allowed"] == value)]
+
+    results = await asyncio.gather(
+        Slow.validate_input({"name": "a", "team": "x"}, {"allowed": "x"}),
+        Slow.validate_input({"name": "", "team": "y"}, {"allowed": "x"}),
+        Slow.validate_input({"name": "c", "team": "z"}, {"allowed": "z"}),
+        return_exceptions=True,
+    )
+
+    assert [result.errors for result in results if isinstance(result, ValidationException)] == [
+        {"name": ["The name field is invalid."]},
+        {"name": ["The name field is required."], "team": ["The team field is invalid."]},
+        {"name": ["The name field is invalid."]},
+    ]
+
+
+async def test_validate_input_accepts_a_model_instance():
     user = RegisterUser.model_validate(VALID)
 
-    assert await user.validate_async({"user_id": 1}) is user
+    assert (await RegisterUser.validate_input(user)).username == "jane"
+    assert await errors_of(RegisterUser.model_validate({**VALID, "username": "admin"})) == {
+        "username": ["The username admin is reserved."]
+    }
 
 
-async def test_validate_input_runs_both_phases():
-    assert (await RegisterUser.validate_input(VALID)).username == "jane"
+def test_model_validate_only_parses_types():
+    user = RegisterUser.model_validate({**VALID, "username": "ab"})
 
-    with pytest.raises(ValidationException) as sync_failure:
-        await RegisterUser.validate_input({**VALID, "email": "nope"})
-    assert sync_failure.value.errors == {"email": ["The email field must be a valid email address."]}
-
-    with pytest.raises(ValidationException) as async_failure:
-        await RegisterUser.validate_input({**VALID, "username": "admin"})
-    assert async_failure.value.errors == {"username": ["The username admin is reserved."]}
+    assert user.username == "ab"
+    with pytest.raises(ValidationError):
+        RegisterUser.model_validate({**VALID, "age": "old"})
 
 
 def test_validation_exception_is_a_422_http_exception():

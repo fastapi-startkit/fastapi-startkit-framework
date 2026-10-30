@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from fastapi_startkit.validation import AsyncRule, Rule
+from fastapi_startkit.validation import AsyncRule, BaseRule, Rule
 from fastapi_startkit.validation.rules import (
     Between,
     Boolean,
@@ -140,6 +140,7 @@ def test_custom_callable_message_receives_field_value_and_data():
 
 def test_base_rules_pass_by_default():
     assert Rule().passes("field", "value", {})
+    assert BaseRule().passes("field", "value", {})
     assert Rule().format_message("field", "value", {}) == "The field field is invalid."
 
 

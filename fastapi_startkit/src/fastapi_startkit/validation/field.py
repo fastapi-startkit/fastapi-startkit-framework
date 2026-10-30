@@ -9,10 +9,10 @@ from pydantic import GetCoreSchemaHandler
 from pydantic_core import CoreSchema, core_schema
 
 from fastapi_startkit.validation.rules import (
-    AsyncRule,
     BaseRule,
     Between,
     Boolean,
+    Closure,
     Confirmed,
     EmailRule,
     Exists,
@@ -25,16 +25,17 @@ from fastapi_startkit.validation.rules import (
     NotIn,
     Nullable,
     Numeric,
+    Passes,
     Regex,
     Required,
     RequiredIf,
-    Rule,
     SameAs,
     Size,
     String,
     Unique,
     Url,
     is_empty,
+    resolve,
 )
 
 if TYPE_CHECKING:
@@ -128,25 +129,20 @@ class Field:
     def exists(self, table: str | type[Model], column: str | None = None, msg: Message | None = None) -> Self:
         return self.add(Exists(table, column, msg))
 
+    def using(self, callback: Passes, msg: Message | None = None) -> Self:
+        return self.add(Closure(callback, msg))
+
     def accepts_none(self) -> bool:
         return any(isinstance(rule, (Required, RequiredIf, Nullable)) for rule in self.rules)
 
     def defaults_to_none(self) -> bool:
         return any(isinstance(rule, (Required, RequiredIf)) for rule in self.rules)
 
-    def check(self, attribute: str, value: Any, data: Mapping[str, Any]) -> str | None:
+    async def check(self, attribute: str, value: Any, data: Mapping[str, Any]) -> str | None:
         for rule in self.rules:
-            if not isinstance(rule, Rule) or self.skips(rule, value):
+            if self.skips(rule, value):
                 continue
-            if not rule.passes(attribute, value, data):
-                return rule.format_message(attribute, value, data)
-        return None
-
-    async def check_async(self, attribute: str, value: Any, data: Mapping[str, Any]) -> str | None:
-        for rule in self.rules:
-            if not isinstance(rule, AsyncRule) or self.skips(rule, value):
-                continue
-            if not await rule.passes(attribute, value, data):
+            if not await resolve(rule.passes(attribute, value, data)):
                 return rule.format_message(attribute, value, data)
         return None
 

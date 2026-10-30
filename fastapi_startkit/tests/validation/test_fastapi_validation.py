@@ -10,7 +10,7 @@ from fastapi_startkit.application import Application
 from fastapi_startkit.container.container import Container
 from fastapi_startkit.fastapi import FastAPIProvider
 from fastapi_startkit.fastapi.testing import HttpTestCase
-from fastapi_startkit.validation import AsyncRule, Email, Field, FormRequest, Validated
+from fastapi_startkit.validation import AsyncRule, Email, Field, FormRequest, Validated, Validator
 from fastapi_startkit.validation.form_request import typed_path_params
 
 TAKEN = {"jane@example.com": 1}
@@ -47,9 +47,19 @@ TEAM_CONTEXT: list[dict[str, Any]] = []
 class TeamMember(FormRequest):
     email: Annotated[str, Email().required()]
 
-    async def validate_async(self, context: Mapping[str, Any] | None = None):
-        TEAM_CONTEXT.append(dict(context or {}))
-        return await super().validate_async(context)
+    @classmethod
+    async def authorize(cls, validator: Validator) -> bool:
+        TEAM_CONTEXT.append(dict(validator.context))
+        return True
+
+
+class Publish(FormRequest):
+    title: Annotated[str, Field().required().min(3)]
+    priority: int = 0
+
+    @classmethod
+    async def authorize(cls, validator: Validator) -> bool:
+        return validator.request is not None and validator.request.headers.get("x-role") == "editor"
 
 
 async def tenant(tenant_id: int) -> int:
@@ -81,6 +91,10 @@ def make_application(base_path: Path) -> Application:
     @app.fastapi.post("/users/{user_id}/notes")
     async def note(user_id: int, data: Validated[UpdateUser], note: Annotated[str, Body()]):
         return {"id": user_id, "email": data.email, "note": note}
+
+    @app.fastapi.post("/publish")
+    async def publish(data: Validated[Publish]):
+        return {"title": data.title}
 
     @app.fastapi.post("/plain")
     async def plain(data: RegisterUser):
@@ -171,13 +185,39 @@ class FastAPIValidationTest(HttpTestCase):
         self.assertEqual(taken.json()["errors"], {"email": ["The email has already been taken."]})
         self.assertEqual(sorted(body["properties"]), ["note", "update_user"])
 
-    async def test_plain_body_parameter_runs_only_sync_rules(self):
-        accepted = await self.post("/plain", json={**VALID, "email": "jane@example.com"})
-        rejected = await self.post("/plain", json={**VALID, "username": "jo"})
+    async def test_plain_body_parameter_only_parses_types(self):
+        accepted = await self.post("/plain", json={**VALID, "username": "jo"})
+        rejected = await self.post("/plain", json={**VALID, "username": 5})
 
         accepted.assert_status(200)
         rejected.assert_status(422)
-        self.assertEqual(rejected.json()["errors"], {"username": ["The username field must be at least 3 characters."]})
+        self.assertEqual(rejected.json()["errors"], {"username": ["Input should be a valid string"]})
+
+    async def test_type_errors_and_rule_errors_share_one_response(self):
+        response = await self.post("/publish", json={"title": "ab", "priority": "high"}, headers={"x-role": "editor"})
+
+        response.assert_status(422)
+        self.assertEqual(
+            response.json()["errors"],
+            {
+                "priority": ["Input should be a valid integer, unable to parse string as an integer"],
+                "title": ["The title field must be at least 3 characters."],
+            },
+        )
+
+    async def test_async_authorize_reads_the_request(self):
+        allowed = await self.post("/publish", json={"title": "News"}, headers={"x-role": "editor"})
+        denied = await self.post("/publish", json={"title": "News"}, headers={"x-role": "viewer"})
+
+        allowed.assert_status(200)
+        self.assertEqual(allowed.json(), {"title": "News"})
+        denied.assert_status(403)
+
+    async def test_missing_body_is_reported(self):
+        response = await self.post("/register", headers={"accept": "application/json"})
+
+        response.assert_status(422)
+        self.assertEqual(list(response.json()["errors"]), [""])
 
     async def test_openapi_keeps_the_request_body_schema(self):
         schema = (await self.get("/openapi.json")).json()

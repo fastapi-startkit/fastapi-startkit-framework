@@ -1,24 +1,27 @@
 from __future__ import annotations
 
 import inspect
-from collections.abc import Iterator, Mapping
+from collections.abc import Awaitable, Iterator, Mapping
+from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Self, get_args
 from weakref import finalize
-from typing import TYPE_CHECKING, Annotated, Any, LiteralString, Self, cast, get_args
 
 from inflection import underscore
 from pydantic import (
     BaseModel,
+    GetCoreSchemaHandler,
     ModelWrapValidatorHandler,
     ValidationError,
     ValidationInfo,
     field_validator,
     model_validator,
 )
-from pydantic_core import InitErrorDetails, PydanticCustomError
+from pydantic_core import CoreSchema, core_schema
 
-from fastapi_startkit.exceptions import ValidationException
+from fastapi_startkit.exceptions import AuthorizationException, ValidationException
 from fastapi_startkit.validation.field import Field, coerced_values
 from fastapi_startkit.validation.message_bag import MessageBag
+from fastapi_startkit.validation.rules import resolve
+from fastapi_startkit.validation.validator import Validator
 
 if TYPE_CHECKING:
     from fastapi.dependencies.models import Dependant
@@ -26,6 +29,7 @@ if TYPE_CHECKING:
     from starlette.requests import Request
 
 REQUEST_PARAMETER = "__validated_request"
+RECORDED = "fastapi_startkit.validation.recorded"
 
 
 def has_rules(model: type[BaseModel]) -> bool:
@@ -57,6 +61,20 @@ class FormRequest(BaseModel):
                 if isinstance(metadata, Field):
                     yield name, metadata
 
+    stop_on_first_failure: ClassVar[bool] = False
+
+    @classmethod
+    def authorize(cls, validator: Validator) -> bool | Awaitable[bool]:
+        return True
+
+    @classmethod
+    def prepare_for_validation(cls, validator: Validator) -> None | Awaitable[None]:
+        return None
+
+    @classmethod
+    def after(cls, validator: Validator) -> None | Awaitable[None]:
+        return None
+
     @field_validator("*", mode="after")
     @classmethod
     def record_value(cls, value: Any, info: ValidationInfo) -> Any:
@@ -67,24 +85,57 @@ class FormRequest(BaseModel):
 
     @model_validator(mode="wrap")
     @classmethod
-    def run_rules(cls, data: Any, handler: ModelWrapValidatorHandler[Self]) -> Self:
+    def record_values(cls, data: Any, handler: ModelWrapValidatorHandler[Self], info: ValidationInfo) -> Self:
         values: dict[str, Any] = {}
         token = coerced_values.set(values)
         try:
-            instance = handler(cls.fill_missing(data))
-        except ValidationError as error:
-            raise cls.combine(data, values, error.errors(include_url=False)) from None
+            return handler(data)
         finally:
             coerced_values.reset(token)
-        failures = cls.rule_failures(dict(instance), set())
-        if failures:
-            raise ValidationError.from_exception_data(cls.__name__, failures)
+            if isinstance(info.context, dict):
+                info.context[RECORDED] = values
+
+    @classmethod
+    async def validate_input(
+        cls, data: Any, context: Mapping[str, Any] | None = None, request: Request | None = None
+    ) -> Self:
+        validator = Validator({}, context or {}, request)
+        if not await resolve(cls.authorize(validator)):
+            raise AuthorizationException("This action is unauthorized.")
+        validator.data = dict(cls.as_mapping(data))
+        await resolve(cls.prepare_for_validation(validator))
+        instance, failed = cls.parse(validator)
+        await cls.apply_rules(validator, failed)
+        await resolve(cls.after(validator))
+        if validator.fails() or instance is None:
+            raise ValidationException(validator.errors)
         return instance
 
     @classmethod
-    def fill_missing(cls, data: Any) -> Any:
-        if not isinstance(data, Mapping):
+    def as_mapping(cls, data: Any) -> Mapping[str, Any]:
+        if isinstance(data, Mapping):
             return data
+        try:
+            return dict(cls.model_validate(data))
+        except ValidationError as error:
+            raise ValidationException(MessageBag.from_errors(error.errors(include_url=False))) from None
+
+    @classmethod
+    def parse(cls, validator: Validator) -> tuple[Self | None, set[str]]:
+        data = validator.data
+        recorded: dict[str, Any] = {}
+        try:
+            instance = cls.model_validate(cls.fill_missing(data), context=recorded)
+        except ValidationError as error:
+            errors = error.errors(include_url=False)
+            validator.errors.merge(MessageBag.from_errors(errors))
+            validator.data = {**validator.context, **cls.partial_data(data, recorded.get(RECORDED, {}))}
+            return None, {str(error["loc"][0]) for error in errors if error["loc"]}
+        validator.data = {**validator.context, **cls.partial_data(data, dict(instance))}
+        return instance, set()
+
+    @classmethod
+    def fill_missing(cls, data: Mapping[str, Any]) -> Mapping[str, Any]:
         missing: dict[str, None] = {}
         for name, field in cls.rule_fields():
             info = cls.model_fields[name]
@@ -103,50 +154,26 @@ class FormRequest(BaseModel):
         return {**defaults, **data, **values}
 
     @classmethod
-    def combine(cls, data: Any, values: dict[str, Any], errors: list[Any]) -> ValidationError:
-        line_errors: list[InitErrorDetails] = [
-            {
-                "type": PydanticCustomError(error["type"], error["msg"]),
-                "loc": tuple(error["loc"]),
-                "input": error["input"],
-            }
-            for error in errors
-        ]
-        if isinstance(data, Mapping):
-            failed = {error["loc"][0] for error in errors if error["loc"]}
-            line_errors += cls.rule_failures(cls.partial_data(data, values), failed)
-        return ValidationError.from_exception_data(cls.__name__, line_errors)
-
-    @classmethod
-    def rule_failures(cls, data: Mapping[str, Any], failed: set[Any]) -> list[InitErrorDetails]:
-        failures: list[InitErrorDetails] = []
+    async def apply_rules(cls, validator: Validator, failed: set[str]) -> None:
+        data = validator.data
         for name, field in cls.rule_fields():
+            if cls.stop_on_first_failure and validator.fails():
+                return
             if name in failed:
                 continue
-            message = field.check(name, data.get(name), data)
+            message = await field.check(name, data.get(name), data)
             if message is not None:
-                error = PydanticCustomError("rule", cast("LiteralString", message))
-                failures.append({"type": error, "loc": (name,), "input": data.get(name)})
-        return failures
+                validator.errors.add(name, message)
 
-    async def validate_async(self, context: Mapping[str, Any] | None = None) -> Self:
-        data = {**(context or {}), **dict(self)}
-        bag = MessageBag()
-        for name, field in self.rule_fields():
-            message = await field.check_async(name, data[name], data)
-            if message is not None:
-                bag.add(name, message)
-        if bag.any():
-            raise ValidationException(bag)
-        return self
 
-    @classmethod
-    async def validate_input(cls, data: Any, context: Mapping[str, Any] | None = None) -> Self:
-        try:
-            instance = cls.model_validate(data)
-        except ValidationError as error:
-            raise ValidationException(MessageBag.from_errors(error.errors(include_url=False))) from None
-        return await instance.validate_async(context)
+class RawInput:
+    def __init__(self, model: type[FormRequest]) -> None:
+        self.model = model
+
+    def __get_pydantic_core_schema__(self, source_type: Any, handler: GetCoreSchemaHandler) -> CoreSchema:
+        return core_schema.no_info_plain_validator_function(
+            lambda value: value, json_schema_input_schema=handler.generate_schema(self.model)
+        )
 
 
 def declared_path_params(dependant: Dependant) -> list[Any]:
@@ -176,16 +203,16 @@ def typed_path_params(request: Request) -> dict[str, Any] | None:
 
 
 def validated_dependency(model: type[FormRequest]) -> Any:
-    from fastapi import Request
+    from fastapi import Body, Request
 
     key = underscore(model.__name__)
 
     async def dependency(**parameters: Any) -> Any:
-        payload = parameters[key]
-        context = typed_path_params(parameters[REQUEST_PARAMETER])
+        request = parameters[REQUEST_PARAMETER]
+        context = typed_path_params(request)
         if context is None:
-            return payload
-        return await payload.validate_async(context)
+            return None
+        return await model.validate_input(parameters[key], context, request)
 
     setattr(
         dependency,
@@ -193,7 +220,9 @@ def validated_dependency(model: type[FormRequest]) -> Any:
         inspect.Signature(
             [
                 inspect.Parameter(REQUEST_PARAMETER, inspect.Parameter.KEYWORD_ONLY, annotation=Request),
-                inspect.Parameter(key, inspect.Parameter.KEYWORD_ONLY, annotation=model),
+                inspect.Parameter(
+                    key, inspect.Parameter.KEYWORD_ONLY, annotation=Annotated[Any, RawInput(model), Body()]
+                ),
             ]
         ),
     )
