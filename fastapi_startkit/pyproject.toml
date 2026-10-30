@@ -97,6 +97,7 @@ ai = [
     "langgraph>=1.0.0",
 ]
 bedrock = [
+    "fastapi-startkit[ai]",
     "langchain-aws>=1.0.0",
 ]
 redis = [
