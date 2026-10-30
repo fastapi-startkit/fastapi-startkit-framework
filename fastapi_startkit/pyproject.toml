@@ -96,6 +96,9 @@ ai = [
     "langchain-core>=1.0.0",
     "langgraph>=1.0.0",
 ]
+bedrock = [
+    "langchain-aws>=1.0.0",
+]
 redis = [
     "redis>=5.0.1",
 ]
