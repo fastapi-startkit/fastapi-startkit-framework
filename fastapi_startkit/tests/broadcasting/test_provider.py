@@ -26,19 +26,22 @@ class TestSecret:
             monkeypatch.delenv("REVERB_APP_SECRET")
         else:
             monkeypatch.setenv("REVERB_APP_SECRET", secret)
+        monkeypatch.setenv("APP_ENV", "production")
         with pytest.raises(RuntimeError, match="REVERB_APP_SECRET"):
-            Application(base_path=tmp_path, env="production", providers=[ReverbProvider])
+            Application(base_path=tmp_path, providers=[ReverbProvider])
 
     def test_boots_in_production_with_real_secret(self, monkeypatch, tmp_path):
         monkeypatch.delenv("PYTEST_CURRENT_TEST")
-        app = Application(base_path=tmp_path, env="production", providers=[ReverbProvider])
+        monkeypatch.setenv("APP_ENV", "production")
+        app = Application(base_path=tmp_path, providers=[ReverbProvider])
         assert app.make("reverb.server").secret == SECRET
 
     @pytest.mark.parametrize("env", ["local", "testing"])
     def test_boots_in_local_and_testing_without_secret(self, monkeypatch, tmp_path, env):
         monkeypatch.delenv("PYTEST_CURRENT_TEST")
         monkeypatch.delenv("REVERB_APP_SECRET")
-        app = Application(base_path=tmp_path, env=env, providers=[ReverbProvider])
+        monkeypatch.setenv("APP_ENV", env)
+        app = Application(base_path=tmp_path, providers=[ReverbProvider])
         assert app.make("reverb.server").secret == ""
 
     def test_empty_secret_rejects_every_protected_subscription(self, monkeypatch, tmp_path):
@@ -57,7 +60,7 @@ class TestSecret:
 
 
 def make_app(tmp_path):
-    return Application(base_path=tmp_path, env="testing", providers=[ReverbProvider])
+    return Application(base_path=tmp_path, providers=[ReverbProvider])
 
 
 def client_for(app):

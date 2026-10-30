@@ -14,7 +14,7 @@ from fastapi_startkit.masoniteorm.exceptions import ModelNotFoundException
 
 
 def make_application(base_path: Path) -> Application:
-    app = Application(base_path=base_path, env="testing", providers=[FastAPIProvider])
+    app = Application(base_path=base_path, providers=[FastAPIProvider])
 
     @app.fastapi.get("/email-taken")
     def email_taken():
@@ -75,9 +75,7 @@ class FastAPITitleTest(HttpTestCase):
             original_instance = Container._instance
             self.addCleanup(lambda: setattr(Container, "_instance", original_instance))
             with patch.dict(os.environ, {"APP_NAME": "Acme Portal"}):
-                self._application = Application(
-                    base_path=Path(self._tmp_dir.name), env="testing", providers=[FastAPIProvider]
-                )
+                self._application = Application(base_path=Path(self._tmp_dir.name), providers=[FastAPIProvider])
         return self._application
 
     async def test_title_comes_from_app_name(self):
@@ -91,7 +89,7 @@ def test_title_defaults_to_fastapi_startkit():
     try:
         with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, clear=False) as environ:
             environ.pop("APP_NAME", None)
-            app = Application(base_path=Path(tmp), env="testing", providers=[FastAPIProvider])
+            app = Application(base_path=Path(tmp), providers=[FastAPIProvider])
             assert app.fastapi.title == "FastAPI Startkit"
     finally:
         Container._instance = original_instance

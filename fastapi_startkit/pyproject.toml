@@ -1,6 +1,6 @@
 [project]
 name = "fastapi-startkit"
-version = "0.69.0"
+version = "0.70.0"
 description = "A modular, provider-driven framework for building async Python web applications with FastAPI — bundling a service container, configuration system, an async-first ORM, facades, and a Cleo-powered console."
 readme = "README.md"
 keywords = [
@@ -96,6 +96,10 @@ ai = [
     "langchain-core>=1.0.0",
     "langgraph>=1.0.0",
 ]
+bedrock = [
+    "fastapi-startkit[ai]",
+    "langchain-aws>=1.0.0",
+]
 redis = [
     "redis>=5.0.1",
 ]
@@ -160,6 +164,7 @@ markers = [
     "benchmark: performance benchmark, excluded by default (run with -m benchmark)",
 ]
 addopts = "-m 'not benchmark'"
+filterwarnings = ['error:Application\(env=\.\.\.\) is deprecated:DeprecationWarning']
 
 [tool.coverage.run]
 source = ["src/fastapi_startkit"]

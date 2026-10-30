@@ -40,7 +40,7 @@ class HasMany(BaseRelationship[TModel, ManyResult[TModel]]):
         return await related_record.update({self.foreign_key: local_key_value})
 
     def query_has(self, current_query_builder, method="where_exists"):
-        related_builder = self.get_builder()
+        related_builder = self.get_exists_builder(current_query_builder)
 
         getattr(current_query_builder, method)(
             related_builder.where_column(
@@ -52,7 +52,7 @@ class HasMany(BaseRelationship[TModel, ManyResult[TModel]]):
         return related_builder
 
     def query_where_exists(self, builder, callback, method="where_exists"):
-        query = self.get_builder()
+        query = self.get_exists_builder(builder)
         getattr(builder, method)(
             callback(
                 query.where_column(

@@ -31,24 +31,26 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(RedisConfig().port, 0000)
         self.assertEqual(RedisConfig().db, 0)
 
-        # We initialize the application with production env, so it should load the production env
-        Application(base_path=Path(__file__).resolve().parent.parent, env="production")
+        # We initialize the application with APP_ENV=production, so it should load the production env
+        with patch.dict(os.environ, {"APP_ENV": "production"}):
+            Application(base_path=Path(__file__).resolve().parent.parent)
+            self.assertEqual(RedisConfig().host, "host.production")
+            self.assertEqual(RedisConfig().port, 1111)
+            self.assertEqual(RedisConfig().db, 1)
 
-        self.assertEqual(RedisConfig().host, "host.production")
-        self.assertEqual(RedisConfig().port, 1111)
-        self.assertEqual(RedisConfig().db, 1)
+        # We initialize the application with APP_ENV=testing, so it should load the testing env
+        with patch.dict(os.environ, {"APP_ENV": "testing"}):
+            Application(base_path=Path(__file__).resolve().parent.parent)
+            self.assertEqual(RedisConfig().host, "host.testing")
+            self.assertEqual(RedisConfig().port, 2222)
+            self.assertEqual(RedisConfig().db, 2)
 
-        # We initialize the application with testing env, so it should load the testing env
-        Application(base_path=Path(__file__).resolve().parent.parent, env="testing")
-        self.assertEqual(RedisConfig().host, "host.testing")
-        self.assertEqual(RedisConfig().port, 2222)
-        self.assertEqual(RedisConfig().db, 2)
-
-        # We initialize the application with wrong env, so it should load the default env
-        Application(base_path=Path(__file__).resolve().parent.parent, env="wrong-env")
-        self.assertEqual(RedisConfig().host, "host.default")
-        self.assertEqual(RedisConfig().port, 0000)
-        self.assertEqual(RedisConfig().db, 0)
+        # We initialize the application with an unknown APP_ENV, so it should load the default env
+        with patch.dict(os.environ, {"APP_ENV": "wrong-env"}):
+            Application(base_path=Path(__file__).resolve().parent.parent)
+            self.assertEqual(RedisConfig().host, "host.default")
+            self.assertEqual(RedisConfig().port, 0000)
+            self.assertEqual(RedisConfig().db, 0)
 
     def test_app_loads_env_data(self):
         os.environ.pop("PYTEST_CURRENT_TEST", None)

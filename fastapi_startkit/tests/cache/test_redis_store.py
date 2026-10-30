@@ -153,7 +153,6 @@ class TestRedisCacheProvider(IsolatedAsyncioTestCase):
     def make_app(self):
         app = Application(
             base_path=self.base_path,
-            env="testing",
             providers=[(RedisProvider, lambda: redis_config()), (CacheProvider, RedisCacheConfig)],
         )
         app.make("redis").extend("fake", lambda parameters: fakeredis.FakeAsyncRedis(server=self.server, **parameters))
@@ -191,7 +190,7 @@ class TestRedisCacheProvider(IsolatedAsyncioTestCase):
         self.assertEqual(await self.database(1).keys("*"), ["app_queue:1"])
 
     async def test_missing_redis_provider_raises_on_first_use(self):
-        Application(base_path=self.base_path, env="testing", providers=[(CacheProvider, RedisCacheConfig)])
+        Application(base_path=self.base_path, providers=[(CacheProvider, RedisCacheConfig)])
 
         repository = Cache.store("redis")
 

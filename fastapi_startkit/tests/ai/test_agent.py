@@ -11,7 +11,7 @@ from langchain_core.messages import AIMessage, AIMessageChunk, ToolCall
 from langchain_core.outputs import ChatGenerationChunk
 from langchain_core.tools import tool
 
-from fastapi_startkit.ai import AIConfig, Document
+from fastapi_startkit.ai import AIConfig, BedrockConfig, Document
 from fastapi_startkit.ai import state as ai_state
 from fastapi_startkit.ai.agent import Agent
 from fastapi_startkit.ai.runner import Runner
@@ -116,6 +116,42 @@ class TestAgent(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(captured["provider"], "google_genai")
         self.assertEqual(captured["model"], "gemini-2.5-flash-lite")
+
+    async def test_build_model_passes_bedrock_credentials(self):
+        captured = {}
+
+        def fake_init(model, **kwargs):
+            captured["model"] = model
+            captured["kwargs"] = kwargs
+            return GenericFakeChatModel(messages=iter([AIMessage(content="ok")]))
+
+        patcher = mock.patch.object(chat_models, "init_chat_model", fake_init)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+        config = AIConfig()
+        config.providers["bedrock"] = BedrockConfig(
+            key="",
+            region="us-east-1",
+            access_key_id="",
+            secret_access_key="",
+            session_token="",
+            profile="dev",
+            models={"default": "amazon.nova-pro-v1:0"},
+        )
+        app().make("config").set("ai", config)
+
+        class BedrockAgent(Agent):
+            provider = "bedrock"
+
+        await BedrockAgent().prompt("hi")
+
+        self.assertEqual(captured["model"], "amazon.nova-pro-v1:0")
+        self.assertEqual(captured["kwargs"]["model_provider"], "bedrock_converse")
+        self.assertEqual(captured["kwargs"]["region_name"], "us-east-1")
+        self.assertEqual(captured["kwargs"]["credentials_profile_name"], "dev")
+        self.assertNotIn("aws_access_key_id", captured["kwargs"])
+        self.assertNotIn("api_key", captured["kwargs"])
 
     async def test_stream_yields_astream_events_shaped_events(self):
         self.setup_agent([AIMessage(content="streamed reply")])

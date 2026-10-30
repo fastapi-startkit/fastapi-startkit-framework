@@ -54,7 +54,7 @@ def setUpModule():
     except Exception:
         _saved_state["app"] = None
 
-    Application(env="testing", providers=[LogProvider])
+    Application(providers=[LogProvider])
 
 
 def tearDownModule():
