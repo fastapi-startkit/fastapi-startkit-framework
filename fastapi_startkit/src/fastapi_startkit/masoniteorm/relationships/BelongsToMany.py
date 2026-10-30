@@ -418,20 +418,16 @@ class BelongsToMany(BaseRelationship[TModel, ManyResult[TModel]]):
     def related_exists_query(self, builder):
         query = self.get_builder()
         pivot_table = self._table or self.get_pivot_table_name(query, builder)
-        table = query.get_table_name()
-        return (
-            query.new()
-            .table(table)
-            .join(
-                f"{pivot_table}",
-                f"{table}.{self.other_owner_key}",
-                "=",
-                f"{pivot_table}.{self.foreign_key}",
-            )
-            .where_column(
-                f"{pivot_table}.{self.local_key}",
-                f"{builder.get_table_name()}.{self.local_owner_key}",
-            )
+        related = query.new().table(query.get_table_name(), self.exists_alias(query, builder))
+        table = related.get_table_name()
+        return related.join(
+            f"{pivot_table}",
+            f"{table}.{self.other_owner_key}",
+            "=",
+            f"{pivot_table}.{self.foreign_key}",
+        ).where_column(
+            f"{pivot_table}.{self.local_key}",
+            f"{builder.get_table_name()}.{self.local_owner_key}",
         )
 
     def get_pivot_table_name(self, query, builder):

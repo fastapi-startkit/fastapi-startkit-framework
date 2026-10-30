@@ -2,7 +2,7 @@ from .agent import Agent
 from .pipeline import Middleware
 from .audio import Audio, AudioResponse
 from .audio_factory import AudioFactory
-from .config.config import AnthropicConfig, ElevenLabsConfig, GoogleConfig, OpenAIConfig
+from .config.config import AnthropicConfig, BedrockConfig, ElevenLabsConfig, GoogleConfig, OpenAIConfig
 from .config.ai import AIConfig
 from .decorators import max_steps, max_tokens, model, provider, timeout, top_p
 from .document import Document
@@ -29,6 +29,7 @@ __all__ = [
     "Audio",
     "AudioResponse",
     "AudioFactory",
+    "BedrockConfig",
     "Document",
     "ElevenLabsConfig",
     "GoogleConfig",

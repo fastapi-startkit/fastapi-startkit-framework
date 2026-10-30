@@ -25,7 +25,7 @@ class TestCacheProvider(IsolatedAsyncioTestCase):
         self.base_path = Path(self.enterContext(tempfile.TemporaryDirectory()))
 
     def make_app(self, provider=(CacheProvider, ArrayCacheConfig)):
-        return Application(base_path=self.base_path, env="testing", providers=[provider])
+        return Application(base_path=self.base_path, providers=[provider])
 
     def test_binds_manager_and_merges_default_config(self):
         app = self.make_app(CacheProvider)

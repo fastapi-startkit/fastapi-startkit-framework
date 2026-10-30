@@ -73,7 +73,7 @@ def test_connection_rejects_mismatched_driver():
 
 
 def test_provider_rejects_dictionary_connection_settings(tmp_path):
-    app = Application(base_path=tmp_path, env="testing")
+    app = Application(base_path=tmp_path)
     config = DatabaseConfig(default="sqlite", connections={"sqlite": {"driver": "sqlite"}})
     with pytest.raises(TypeError, match="Database connection 'sqlite' requires a database config object"):
         DatabaseProvider(app, config).register()

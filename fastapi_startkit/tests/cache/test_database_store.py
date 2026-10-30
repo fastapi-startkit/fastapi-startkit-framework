@@ -205,7 +205,7 @@ class TestDatabaseStoreProvider(DatabaseTestCase):
         self.base_path = Path(self.enterContext(tempfile.TemporaryDirectory()))
 
     def make_app(self):
-        app = Application(base_path=self.base_path, env="testing", providers=[CacheProvider])
+        app = Application(base_path=self.base_path, providers=[CacheProvider])
         app.bind("db", self.database)
         return app
 

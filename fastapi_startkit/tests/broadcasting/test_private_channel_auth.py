@@ -47,7 +47,7 @@ def base_path(tmp_path):
 
 
 def make_client(base_path, providers, user=None):
-    app = Application(base_path=base_path, env="testing", providers=providers)
+    app = Application(base_path=base_path, providers=providers)
 
     @app.fastapi.middleware("http")
     async def attach_user(request, call_next):

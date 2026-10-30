@@ -70,6 +70,7 @@ class Ai:
         api_key = lab.get_api_key()
         if api_key:
             kwargs["api_key"] = api_key
+        kwargs.update(lab.get_client_options())
         if agent.max_tokens:
             kwargs["max_tokens"] = agent.max_tokens
         if agent.top_p != 1.0:
