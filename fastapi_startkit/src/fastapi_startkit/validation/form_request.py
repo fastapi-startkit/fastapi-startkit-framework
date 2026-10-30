@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+from dataclasses import dataclass
 from collections.abc import Awaitable, Iterator, Mapping
 from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Self, get_args
 from weakref import finalize
@@ -30,6 +31,8 @@ if TYPE_CHECKING:
 
 REQUEST_PARAMETER = "__validated_request"
 RECORDED = "fastapi_startkit.validation.recorded"
+PENDING_ERRORS = "fastapi_startkit.validation.errors"
+VALIDATED_KEY = "__validated_key__"
 
 
 def has_rules(model: type[BaseModel]) -> bool:
@@ -176,30 +179,64 @@ class RawInput:
         )
 
 
-def declared_path_params(dependant: Dependant) -> list[Any]:
-    return [*dependant.path_params, *(param for sub in dependant.dependencies for param in declared_path_params(sub))]
+def declared(dependant: Dependant, attribute: str) -> list[Any]:
+    return [
+        *getattr(dependant, attribute),
+        *(item for sub in dependant.dependencies for item in declared(sub, attribute)),
+    ]
 
 
-route_path_params: dict[int, list[Any]] = {}
+def validated_calls(dependant: Dependant) -> list[Any]:
+    calls = [call for sub in dependant.dependencies for call in validated_calls(sub)]
+    return [*calls, dependant.call] if hasattr(dependant.call, VALIDATED_KEY) else calls
 
 
-def path_params_of(route: APIRoute) -> list[Any]:
+@dataclass(frozen=True)
+class RouteValidation:
+    path_params: list[Any]
+    embedded: bool
+    last: Any
+
+    @classmethod
+    def of(cls, dependant: Dependant) -> RouteValidation:
+        body_params = declared(dependant, "body_params")
+        embedded = len({param.name for param in body_params}) > 1 or any(
+            getattr(param.field_info, "embed", False) for param in body_params
+        )
+        calls = validated_calls(dependant)
+        return cls(declared(dependant, "path_params"), embedded, calls[-1] if calls else None)
+
+
+routes: dict[int, RouteValidation] = {}
+
+
+def route_validation(route: APIRoute) -> RouteValidation:
     key = id(route)
-    if key not in route_path_params:
-        route_path_params[key] = declared_path_params(route.dependant)
-        finalize(route, route_path_params.pop, key, None)
-    return route_path_params[key]
+    if key not in routes:
+        routes[key] = RouteValidation.of(route.dependant)
+        finalize(route, routes.pop, key, None)
+    return routes[key]
+
+
+def matched_route(request: Request) -> RouteValidation | None:
+    from fastapi.routing import APIRoute
+
+    route = request.scope.get("route")
+    return route_validation(route) if isinstance(route, APIRoute) else None
 
 
 def typed_path_params(request: Request) -> dict[str, Any] | None:
     from fastapi.dependencies.utils import request_params_to_args
-    from fastapi.routing import APIRoute
 
-    route = request.scope.get("route")
-    if not isinstance(route, APIRoute):
+    route = matched_route(request)
+    if route is None:
         return dict(request.path_params)
-    values, errors = request_params_to_args(path_params_of(route), request.path_params)
+    values, errors = request_params_to_args(route.path_params, request.path_params)
     return None if errors else {**request.path_params, **values}
+
+
+def pending_errors(request: Request) -> MessageBag:
+    return request.scope.setdefault(PENDING_ERRORS, MessageBag())
 
 
 def validated_dependency(model: type[FormRequest]) -> Any:
@@ -212,8 +249,18 @@ def validated_dependency(model: type[FormRequest]) -> Any:
         context = typed_path_params(request)
         if context is None:
             return None
-        return await model.validate_input(parameters[key], context, request)
+        route = matched_route(request)
+        errors = pending_errors(request)
+        try:
+            instance = await model.validate_input(parameters[key], context, request)
+        except ValidationException as error:
+            instance = None
+            errors.merge(error.bag, prefix=key if route is not None and route.embedded else None)
+        if errors.any() and (route is None or route.last is dependency):
+            raise ValidationException(errors)
+        return instance
 
+    setattr(dependency, VALIDATED_KEY, key)
     setattr(
         dependency,
         "__signature__",

@@ -22,10 +22,10 @@ class MessageBag:
         self.messages.setdefault(field, []).append(message)
         return self
 
-    def merge(self, other: MessageBag) -> Self:
+    def merge(self, other: MessageBag, prefix: str | None = None) -> Self:
         for field, messages in other.messages.items():
             for message in messages:
-                self.add(field, message)
+                self.add(f"{prefix}.{field}" if prefix else field, message)
         return self
 
     def has(self, field: str) -> bool:

@@ -62,6 +62,14 @@ class Publish(FormRequest):
         return validator.request is not None and validator.request.headers.get("x-role") == "editor"
 
 
+class Billing(FormRequest):
+    name: Annotated[str, Field().required().min(3)]
+
+
+class Shipping(FormRequest):
+    name: Annotated[str, Field().required().min(5)]
+
+
 async def tenant(tenant_id: int) -> int:
     return tenant_id
 
@@ -91,6 +99,10 @@ def make_application(base_path: Path) -> Application:
     @app.fastapi.post("/users/{user_id}/notes")
     async def note(user_id: int, data: Validated[UpdateUser], note: Annotated[str, Body()]):
         return {"id": user_id, "email": data.email, "note": note}
+
+    @app.fastapi.post("/checkout")
+    async def checkout(billing: Validated[Billing], shipping: Validated[Shipping]):
+        return {"billing": billing.name, "shipping": shipping.name}
 
     @app.fastapi.post("/publish")
     async def publish(data: Validated[Publish]):
@@ -182,8 +194,54 @@ class FastAPIValidationTest(HttpTestCase):
         valid.assert_status(200)
         self.assertEqual(valid.json(), {"id": 1, "email": "jane@example.com", "note": "hi"})
         taken.assert_status(422)
-        self.assertEqual(taken.json()["errors"], {"email": ["The email has already been taken."]})
+        self.assertEqual(taken.json()["errors"], {"update_user.email": ["The email has already been taken."]})
         self.assertEqual(sorted(body["properties"]), ["note", "update_user"])
+
+    async def test_multiple_validated_params_are_combined_under_their_embed_keys(self):
+        both = await self.post("/checkout", json={"billing": {"name": "a"}, "shipping": {"name": "ab"}})
+        second = await self.post("/checkout", json={"billing": {"name": "abcd"}, "shipping": {"name": "ab"}})
+        valid = await self.post("/checkout", json={"billing": {"name": "abcd"}, "shipping": {"name": "abcdef"}})
+
+        both.assert_status(422)
+        self.assertEqual(
+            both.json(),
+            {
+                "message": "The name field must be at least 3 characters. (and 1 more error)",
+                "errors": {
+                    "billing.name": ["The name field must be at least 3 characters."],
+                    "shipping.name": ["The name field must be at least 5 characters."],
+                },
+            },
+        )
+        second.assert_status(422)
+        self.assertEqual(second.json()["errors"], {"shipping.name": ["The name field must be at least 5 characters."]})
+        valid.assert_status(200)
+        self.assertEqual(valid.json(), {"billing": "abcd", "shipping": "abcdef"})
+
+    async def test_missing_embedded_body_is_combined_with_rule_errors(self):
+        response = await self.post("/checkout", json={"billing": {"name": "a"}})
+
+        response.assert_status(422)
+        self.assertEqual(
+            response.json()["errors"],
+            {
+                "billing.name": ["The name field must be at least 3 characters."],
+                "shipping": ["Field required"],
+            },
+        )
+
+    async def test_multiple_validated_params_keep_the_embedded_openapi_schema(self):
+        schema = (await self.get("/openapi.json")).json()
+        body = schema["components"]["schemas"]["Body_checkout_checkout_post"]
+
+        self.assertEqual(
+            body["properties"],
+            {
+                "billing": {"$ref": "#/components/schemas/Billing"},
+                "shipping": {"$ref": "#/components/schemas/Shipping"},
+            },
+        )
+        self.assertEqual(sorted(body["required"]), ["billing", "shipping"])
 
     async def test_plain_body_parameter_only_parses_types(self):
         accepted = await self.post("/plain", json={**VALID, "username": "jo"})

@@ -85,9 +85,14 @@ class ValidationExceptionHandler:
         wants_json = "application/json" in accept or content_type.startswith("application/json")
 
         from fastapi_startkit.exceptions import ValidationException
+        from fastapi_startkit.validation.form_request import PENDING_ERRORS
         from fastapi_startkit.validation.message_bag import MessageBag
 
-        bag = exc.bag if isinstance(exc, ValidationException) else MessageBag.from_errors(exc.errors(), skip=1)
+        if isinstance(exc, ValidationException):
+            bag = exc.bag
+        else:
+            bag = MessageBag().merge(request.scope.get(PENDING_ERRORS, MessageBag()))
+            bag.merge(MessageBag.from_errors(exc.errors(), skip=1))
         errors = bag.messages
 
         if request.headers.get(Header.INERTIA):

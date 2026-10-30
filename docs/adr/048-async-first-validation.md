@@ -2,7 +2,7 @@
 
 Date: 2026-10-30
 
-Supersedes the "Pydantic schema and short-circuit", "Async phase for database rules" and the dependency part of "FastAPI integration" in [ADR 042](042-fluent-validation-rules.md). The rule builder, messages, `MessageBag`, `ValidationException` and the 422 body from ADR 042 are unchanged.
+Supersedes the "Pydantic schema and short-circuit", "Async phase for database rules" and the dependency part of "FastAPI integration" in [ADR 042](042-fluent-validation-rules.md). The rule builder, messages, `MessageBag` and `ValidationException` from ADR 042 are unchanged, and so is ADR 042's 422 body, which is not the body on `main` (see [Response shape](#response-shape)).
 
 ## Problem
 
@@ -47,7 +47,27 @@ Hooks are classmethods with defaults that do nothing. Each may be a plain or an 
 
 ### FastAPI integration
 
-`Validated[Model]` is still `Annotated[Model, Depends(dependency)]`, and the dependency still reads the route's typed path parameters as context (ADR 042). FastAPI no longer parses the body into the model. The dependency's body parameter is `Annotated[Any, RawInput(Model), Body()]`. `RawInput` gives it a pass-through core schema whose `json_schema_input_schema` is the model's schema, so OpenAPI still shows `$ref: Model` and the embed key under other body parameters is unchanged. The dependency then returns `await Model.validate_input(body, context, request)`. Type errors and rule errors are now reported together in one 422 with the ADR 042 body shape. If a declared path parameter is invalid, the dependency returns `None` without validating, and FastAPI reports its own path 422 before the endpoint runs.
+`Validated[Model]` is still `Annotated[Model, Depends(dependency)]`, and the dependency still reads the route's typed path parameters as context (ADR 042). FastAPI no longer parses the body into the model. The dependency's body parameter is `Annotated[Any, RawInput(Model), Body()]`. `RawInput` gives it a pass-through core schema whose `json_schema_input_schema` is the model's schema, so OpenAPI still shows `$ref: Model` and the embed key under other body parameters is unchanged. The dependency then returns `await Model.validate_input(body, context, request)`. Type errors and rule errors are now reported together in one 422. If a declared path parameter is invalid, the dependency returns `None` without validating, and FastAPI reports its own path 422 before the endpoint runs.
+
+### Several `Validated` parameters on one route
+
+When a route has more than one body parameter, or one declared with `Body(embed=True)`, FastAPI embeds each body under its parameter name. For `Validated` that name is the snake-cased model name (ADR 042), so `async def checkout(billing: Validated[Billing], shipping: Validated[Shipping])` expects `{"billing": {...}, "shipping": {...}}`. Each `Validated` parameter is its own dependency, so before this change the first failing model raised immediately: the second was never validated, and the errors were keyed by the model's field names (`name`), so two models with the same field could not be told apart.
+
+Per route (cached with the path parameters, keyed by `id(route)`), the dependency now records whether the body is embedded (FastAPI's own rule: more than one distinct body parameter name across the dependency tree, or an `embed` body) and which `Validated` dependency FastAPI calls last (post-order over `dependant.dependencies`, the order `solve_dependencies` calls them). Each `Validated` dependency validates its model and merges any errors into a `MessageBag` kept in the request scope, prefixed with its embed key when the body is embedded (`billing.name`, `shipping.name`, the same dotted keys FastAPI's own embedded errors get). Only the last one raises `ValidationException` with every recorded error, so all models are validated and reported in one 422. A non-embedded single `Validated` body keeps unprefixed keys.
+
+FastAPI does not call a dependency whose own parameters failed (for example a missing `shipping` key), and then raises `RequestValidationError` instead. `ValidationExceptionHandler` therefore merges the errors recorded in the request scope in front of FastAPI's own errors, so `{"billing": {"name": "a"}}` returns both `billing.name` and `shipping`. This needs `FastAPIProvider`'s handler; with FastAPI's default handler only FastAPI's errors are returned. Errors of the endpoint's own non-`Validated` parameters are checked by FastAPI after the dependencies run, so they are not added to a 422 already raised by the last `Validated` dependency.
+
+Alternatives considered: one `Validated` per route only (documented limitation), which leaves the collision for any route that needs two payloads; and a custom `APIRoute` class that validates every model before the endpoint, which only works for routers that opt in (as ADR 042 found for path parameters).
+
+### Response shape
+
+The 422 body is ADR 042's, and it differs from `main`. For apps that register `FastAPIProvider`, `ValidationExceptionHandler` renders both `RequestValidationError` (FastAPI's own type and path errors, including routes that do not use `Validated`) and `ValidationException` as:
+
+```json
+{"message": "The name field must be at least 3 characters. (and 1 more error)", "errors": {"billing.name": ["..."], "shipping.name": ["..."]}}
+```
+
+On `main` the body is `{"errors": {...}}`. The `errors` mapping keeps its keys and lists, and `message` is a new key, so clients that read `errors` keep working, but clients or tests that compare the whole body see the extra key. Inertia and session redirects are unchanged, because they only use `errors`. Apps without `FastAPIProvider` keep FastAPI's default `{"detail": [...]}`.
 
 A plain `data: Model` body parameter only parses types. Validation that should run rules goes through `Validated[Model]` or `await Model.validate_input(...)`. This replaces ADR 042's "a plain body runs only the sync phase", which half-validated without saying so.
 
@@ -57,6 +77,6 @@ A plain `data: Model` body parameter only parses types. Validation that should r
 
 - `tests/validation/test_form_request.py`: sync rules, custom `Rule`/`AsyncRule`, sync and async closures, written order of mixed sync and async rules, type errors combined with rule errors, cross-field rules regardless of declaration order, non-mapping input, `stop_on_first_failure`, sync and async `authorize` (403), `prepare_for_validation`, `after` adding errors, `model_validate` parsing types only, and two concurrent `validate_input` calls with different inputs and contexts that keep their own errors.
 - `tests/validation/test_database_rules.py` and `test_validated_database.py`: `unique`/`exists` against SQLite through the async ORM in the same pass as sync rules, an async `ignore` callable, and the typed path parameter bound as `int`. `tests/masoniteorm/postgres/test_validated_unique.py` keeps the asyncpg case.
-- `tests/validation/test_fastapi_validation.py`: the 422 body for sync, async and combined failures, a 403 from an async `authorize` that reads the request, OpenAPI `$ref` and embed key, path-parameter context, an invalid path parameter that never reaches rules, and a plain body that only parses types.
+- `tests/validation/test_fastapi_validation.py`: the 422 body for sync, async and combined failures, two `Validated` models with the same field name reported together under `billing.name`/`shipping.name`, a missing embedded body merged with the other model's rule errors, the embedded OpenAPI schema for two models, the `update_user.` prefix next to another body parameter, a 403 from an async `authorize` that reads the request, OpenAPI `$ref` and embed key, path-parameter context, an invalid path parameter that never reaches rules, and a plain body that only parses types.
 - A grep shows no `asyncio.run`, `run_until_complete` or sync database call in `fastapi_startkit/validation`.
 - `uv run pytest --ignore=tests/masoniteorm/postgres --cov` passes with total coverage at least `fail_under`, and `ruff check`, `ruff format --check` and `basedpyright` are clean for the changed files.
