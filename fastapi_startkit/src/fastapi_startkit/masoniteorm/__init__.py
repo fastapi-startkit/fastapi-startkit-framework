@@ -15,11 +15,13 @@ from .relationships import (
     HasMany,
     HasManyThrough,
     HasOne,
+    HasOneOfMany,
     HasOneThrough,
     MorphMany,
     MorphOne,
     MorphTo,
     MorphToMany,
+    relationship,
 )
 
 __all__ = [
@@ -43,6 +45,7 @@ __all__ = [
     # Relationships
     "BaseRelationship",
     "HasOne",
+    "HasOneOfMany",
     "BelongsTo",
     "HasMany",
     "HasManyThrough",
@@ -52,4 +55,5 @@ __all__ = [
     "MorphMany",
     "MorphOne",
     "MorphToMany",
+    "relationship",
 ]

@@ -1,4 +1,5 @@
 from .BaseRelationship import BaseRelationship, ManyResult, TModel
+from .HasOneOfMany import HasOneOfMany
 from ..collection import Collection
 
 
@@ -24,6 +25,15 @@ class HasMany(BaseRelationship[TModel, ManyResult[TModel]]):
         self.foreign_key = self.foreign_key or f"{attribute}_id"
 
         return self
+
+    def latest_of_many(self, column: str = "created_at") -> HasOneOfMany[TModel]:
+        return self.of_many(column, "max")
+
+    def oldest_of_many(self, column: str = "created_at") -> HasOneOfMany[TModel]:
+        return self.of_many(column, "min")
+
+    def of_many(self, column: str = "id", aggregate: str = "max") -> HasOneOfMany[TModel]:
+        return HasOneOfMany(self, column, aggregate)
 
     def register_related(self, key, model, collection):
         model.add_relation({key: Collection(collection.get(getattr(model, self.local_key)) or [])})
