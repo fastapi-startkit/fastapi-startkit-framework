@@ -11,40 +11,14 @@ if TYPE_CHECKING:
 
 
 AfterCommitCallback = Callable[[], object]
-AfterCommitFailureReporter = Callable[[Exception, AfterCommitCallback], object]
 
 logger = logging.getLogger("fastapi_startkit.masoniteorm")
 
-_failure_reporter: AfterCommitFailureReporter | None = None
-
-
-def report_after_commit_failures_using(reporter: AfterCommitFailureReporter | None) -> None:
-    global _failure_reporter
-    _failure_reporter = reporter
-
-
-async def _call(callable_: Callable[..., object], *args: object) -> None:
-    result = callable_(*args)
-    if isawaitable(result):
-        await result
-
 
 async def _invoke(callback: AfterCommitCallback) -> None:
-    try:
-        await _call(callback)
-    except Exception as error:
-        logger.exception("After-commit callback %r failed", callback)
-        await _report(error, callback)
-
-
-async def _report(error: Exception, callback: AfterCommitCallback) -> None:
-    reporter = _failure_reporter
-    if reporter is None:
-        return
-    try:
-        await _call(reporter, error, callback)
-    except Exception:
-        logger.exception("After-commit failure reporter %r failed", reporter)
+    result = callback()
+    if isawaitable(result):
+        await result
 
 
 @dataclass(eq=False)
@@ -64,8 +38,17 @@ class TransactionRecord:
         return False
 
     async def execute_callbacks(self) -> None:
+        first_error: Exception | None = None
         for callback in self.callbacks:
-            await _invoke(callback)
+            try:
+                await _invoke(callback)
+            except Exception as error:
+                if first_error is None:
+                    first_error = error
+                else:
+                    logger.exception("After-commit callback %r failed", callback)
+        if first_error is not None:
+            raise first_error
 
 
 class TransactionsManager:

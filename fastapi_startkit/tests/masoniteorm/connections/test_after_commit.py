@@ -189,14 +189,8 @@ def _failing(message):
     return fail
 
 
-@pytest.fixture
-def reporter():
-    yield
-    DB.report_after_commit_failures_using(None)
-
-
 @pytest.mark.parametrize("mode", ["manual", "context", "object"])
-async def test_failing_callback_is_logged_and_later_callbacks_run(connection, mode, caplog):
+async def test_failing_callback_raises_after_later_callbacks_run(connection, mode, caplog):
     called = []
 
     async def later():
@@ -209,16 +203,11 @@ async def test_failing_callback_is_logged_and_later_callbacks_run(connection, mo
         await connection.after_commit(partial(called.append, "sync"))
         await connection.after_commit(later)
 
-    with caplog.at_level(logging.ERROR, logger="fastapi_startkit.masoniteorm"):
+    with pytest.raises(ValueError, match="callback failed"):
         await _commit(connection, mode, register)
 
     assert called == ["sync", "async"]
-    [record] = caplog.records
-    assert record.name == "fastapi_startkit.masoniteorm"
-    assert record.levelno == logging.ERROR
-    assert "After-commit callback" in record.getMessage()
-    assert isinstance(record.exc_info[1], ValueError)
-    assert "callback failed" in caplog.text
+    assert caplog.records == []
     assert connection.connection is None
     assert connection.engine.pool.checkedout() == 0
     assert await connection.select("SELECT id FROM records") == [{"id": 1}]
@@ -227,87 +216,48 @@ async def test_failing_callback_is_logged_and_later_callbacks_run(connection, mo
     assert called == ["sync", "async", "next"]
 
 
-async def test_failing_sync_callback_does_not_stop_others(connection, caplog):
+async def test_first_failure_raises_and_later_failures_are_logged(connection, caplog):
     called = []
 
     def fail():
         raise RuntimeError("sync failed")
 
-    async with connection.transaction():
-        await connection.after_commit(fail)
-        await connection.after_commit(partial(called.append, 2))
-        await connection.after_commit(_failing("async failed"))
-        await connection.after_commit(partial(called.append, 3))
-    assert called == [2, 3]
-    assert [type(record.exc_info[1]) for record in caplog.records] == [RuntimeError, ValueError]
-
-
-async def test_failing_savepoint_callback_merges_and_runs_after_outer_commit(connection, caplog):
-    called = []
-    async with connection.transaction():
-        await connection.statement("INSERT INTO records VALUES (1)")
+    with pytest.raises(RuntimeError, match="sync failed"):
         async with connection.transaction():
-            await connection.after_commit(_failing("nested failed"))
-            await connection.after_commit(partial(called.append, "nested"))
-        assert called == []
-        assert caplog.records == []
-        await connection.after_commit(partial(called.append, "outer"))
+            await connection.after_commit(fail)
+            await connection.after_commit(partial(called.append, 2))
+            await connection.after_commit(_failing("async failed"))
+            await connection.after_commit(partial(called.append, 3))
+    assert called == [2, 3]
+    [record] = caplog.records
+    assert record.name == "fastapi_startkit.masoniteorm"
+    assert record.levelno == logging.ERROR
+    assert "After-commit callback" in record.getMessage()
+    assert isinstance(record.exc_info[1], ValueError)
+    assert "async failed" in caplog.text
+
+
+async def test_failing_savepoint_callback_raises_after_outer_commit(connection):
+    called = []
+    with pytest.raises(ValueError, match="nested failed"):
+        async with connection.transaction():
+            await connection.statement("INSERT INTO records VALUES (1)")
+            async with connection.transaction():
+                await connection.after_commit(_failing("nested failed"))
+                await connection.after_commit(partial(called.append, "nested"))
+            assert called == []
+            await connection.after_commit(partial(called.append, "outer"))
     assert called == ["nested", "outer"]
-    assert "nested failed" in caplog.text
     assert connection.engine.pool.checkedout() == 0
     assert await connection.select("SELECT id FROM records") == [{"id": 1}]
 
 
-async def test_failing_immediate_callback_is_logged_without_raising(connection, caplog):
-    await connection.after_commit(_failing("immediate failed"))
-    assert "immediate failed" in caplog.text
+async def test_failing_immediate_callback_raises(connection):
+    with pytest.raises(ValueError, match="immediate failed"):
+        await connection.after_commit(_failing("immediate failed"))
 
 
-@pytest.mark.parametrize("asynchronous", [False, True])
-async def test_reporter_receives_each_failure(connection, reporter, asynchronous):
-    reported = []
-
-    def sync_report(error, callback):
-        reported.append((str(error), callback))
-
-    async def async_report(error, callback):
-        await asyncio.sleep(0)
-        sync_report(error, callback)
-
-    first = _failing("first")
-    second = _failing("second")
-    DB.report_after_commit_failures_using(async_report if asynchronous else sync_report)
-    async with connection.transaction():
-        await connection.after_commit(first)
-        await connection.after_commit(lambda: None)
-        await connection.after_commit(second)
-    assert reported == [("first", first), ("second", second)]
-
-
-async def test_raising_reporter_is_logged_and_callbacks_continue(connection, reporter, caplog):
-    called = []
-
-    def broken(error, callback):
-        raise RuntimeError("reporter failed")
-
-    DB.report_after_commit_failures_using(broken)
-    async with connection.transaction():
-        await connection.after_commit(_failing("callback failed"))
-        await connection.after_commit(partial(called.append, "next"))
-    assert called == ["next"]
-    assert [type(record.exc_info[1]) for record in caplog.records] == [ValueError, RuntimeError]
-    assert "failure reporter" in caplog.records[1].getMessage()
-
-
-async def test_clearing_reporter_stops_reporting(connection, reporter):
-    reported = []
-    DB.report_after_commit_failures_using(lambda error, callback: reported.append(error))
-    DB.report_after_commit_failures_using(None)
-    await connection.after_commit(_failing("unreported"))
-    assert reported == []
-
-
-async def test_cancelled_callback_still_propagates(connection):
+async def test_cancelled_callback_stops_remaining_callbacks(connection):
     called = []
 
     async def cancel():
