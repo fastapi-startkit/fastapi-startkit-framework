@@ -4,6 +4,7 @@ from typing import Any
 import pendulum
 from sqlalchemy import event
 from sqlalchemy.engine import Connection as SyncConnection
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from fastapi_startkit.masoniteorm.config.config import DBConfig
@@ -22,7 +23,11 @@ class SQliteConnection(Connection):
     def on_savepoint(connection: SyncConnection, name: str) -> None:
         driver_connection = connection.connection.driver_connection
         if driver_connection is not None and not driver_connection.in_transaction:
-            connection.exec_driver_sql("BEGIN")
+            try:
+                connection.exec_driver_sql("BEGIN")
+            except OperationalError:
+                if not driver_connection.in_transaction:
+                    raise
 
     @classmethod
     def get_query_grammar(cls) -> type[SQLiteGrammar]:

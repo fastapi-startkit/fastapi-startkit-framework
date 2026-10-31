@@ -17,7 +17,7 @@ This breaks `DatabaseTransaction`/`RefreshDatabase` test isolation on SQLite whe
 
 ## Decision
 
-`SQliteConnection.__init__` registers `on_savepoint` on `engine.sync_engine` for the `savepoint` event, which SQLAlchemy fires just before it emits `SAVEPOINT`. If `connection.connection.driver_connection.in_transaction` is false, the listener runs `BEGIN`, so the savepoint is nested inside a real transaction and `RELEASE SAVEPOINT` no longer commits. The listener is a static method, and SQLAlchemy registers the same function only once per engine.
+`SQliteConnection.__init__` registers `on_savepoint` on `engine.sync_engine` for the `savepoint` event, which SQLAlchemy fires just before it emits `SAVEPOINT`. If `connection.connection.driver_connection.in_transaction` is false, the listener runs `BEGIN`, so the savepoint is nested inside a real transaction and `RELEASE SAVEPOINT` no longer commits. The check runs on the event loop and `BEGIN` runs later on aiosqlite's worker thread, so on a shared `StaticPool` connection another coroutine can start the transaction in between. The listener therefore catches `OperationalError` from `BEGIN` and re-raises it only when the driver connection is still not in a transaction. Losing that race means a transaction is already open, which is all the savepoint needs. The listener is a static method, and SQLAlchemy registers the same function only once per engine.
 
 Ordinary transactions keep their current behaviour, including concurrent use of the shared `StaticPool` connection.
 
@@ -25,7 +25,8 @@ Ordinary transactions keep their current behaviour, including concurrent use of 
 
 - Nested transactions on SQLite now roll back with their outer transaction, whatever statement comes first.
 - DDL run before any DML in an outer transaction is still autocommitted by SQLite's deferred-begin behaviour. Only the savepoint case is fixed.
-- Two coroutines that open savepoints at the same moment on one shared `StaticPool` connection, with no DML yet in either outer transaction, can still race on `BEGIN`. This path was already broken before (the savepoint committed for real), and sharing one connection gives no isolation between coroutines anyway.
+- Concurrent nested transactions on one shared `StaticPool` connection behave as on `main`: no errors, all rows written. On `main` they were not isolated from each other (each savepoint committed for real) but they did not raise. A lost `BEGIN` race is tolerated so this stays true.
+- Sharing one connection still gives no isolation between coroutines. When a plain transaction and a nested transaction overlap on it, the plain transaction's `COMMIT` also ends the other coroutine's savepoint, which then fails with `no such savepoint`. This happens on `main` too and is not changed here.
 
 ## Validation
 
@@ -35,5 +36,8 @@ Ordinary transactions keep their current behaviour, including concurrent use of 
 - a savepoint as the first statement of an outer transaction, rolled back → 0 rows;
 - `DatabaseTransaction` around an application `connection.transaction()` → 0 rows after the harness stops;
 - a rolled-back savepoint inside a committed outer transaction keeps the outer row and drops the inner one.
+- five concurrent nested transactions on a `StaticPool` `:memory:` engine → no errors and 5 rows (fails without the race tolerance);
+- a nested and a plain transaction racing on that engine, in both orders, never fail with `cannot start a transaction within a transaction`;
+- a `BEGIN` failure while the driver connection is still not in a transaction is re-raised.
 
 The full suite (`uv run pytest --ignore=tests/masoniteorm/postgres --cov`) passes, including the concurrent cache lock test that rejected alternative 1.
