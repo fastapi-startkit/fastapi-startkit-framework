@@ -80,9 +80,10 @@ class SubSelectExpression:
 class SubGroupExpression:
     """A helper class to manage subgroup expressions."""
 
-    def __init__(self, builder, alias="group"):
+    def __init__(self, builder, alias="group", exists=False):
         self.builder = builder
         self.alias = alias
+        self.exists = exists
 
 
 class SelectExpression:

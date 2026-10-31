@@ -29,8 +29,9 @@ TModel = TypeVar("TModel", bound="Model")
 # returns it, which the parent renders as a parenthesised subgroup.
 type WhereGroup[M: "Model"] = Callable[["QueryBuilder[M]"], "QueryBuilder[M]"]
 
-# select_sub()/add_select() subquery source: a builder, or a callable that
-# receives a fresh builder and returns the subquery.
+# Subquery source for select_sub(), add_select(), add_select_exists(), where_in()
+# and the exists wheres: a builder, or a callable that receives a fresh builder
+# and returns the subquery.
 type Subquery = "QueryBuilder[Any] | Callable[[QueryBuilder[Any]], QueryBuilder[Any]]"
 type SelectEntry = "str | dict[str, str | Subquery]"
 
@@ -119,12 +120,15 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         self._alias = alias
         return self
 
-    def where_in(self, column: str, values: Iterable[Any]) -> "Self":
-        if hasattr(values, "_items"):
-            values = getattr(values, "_items")
-        values = list(values) if not isinstance(values, list) else values
-        self._wheres.append(QueryExpression(column, "IN", values))
+    def where_in(self, column: str, values: "Iterable[Any] | Subquery") -> "Self":
+        self._wheres.append(QueryExpression(column, "IN", self._where_in_values(values, "where_in")))
         return self
+
+    def _where_in_values(self, values: "Iterable[Any] | Subquery", method: str) -> "list[Any] | SubSelectExpression":
+        if isinstance(values, QueryBuilder) or callable(values):
+            return SubSelectExpression(self._resolve_subquery(values, method))
+        items: Iterable[Any] = getattr(values, "_items", values)
+        return items if isinstance(items, list) else list(items)
 
     def select(self, *args: "str | list[str]") -> "Self":
         for arg in args:
@@ -142,12 +146,22 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         ``subquery`` is a builder, or a callable that receives a fresh table-less
         builder and returns one.
         """
+        self._columns.append(SubGroupExpression(self._resolve_subquery(subquery, "select_sub"), alias))
+        return self
+
+    def add_select_exists(self, alias: str, query: "Subquery") -> "Self":
+        exists = SubGroupExpression(self._resolve_subquery(query, "add_select_exists"), alias, exists=True)
+        if not self._columns:
+            self.select(f"{self.get_table_name()}.*")
+        self._columns.append(exists)
+        return self
+
+    def _resolve_subquery(self, subquery: "Subquery", method: str) -> "QueryBuilder[Any]":
         if not isinstance(subquery, QueryBuilder) and callable(subquery):
             subquery = subquery(QueryBuilder(self.connection, self.grammar, self.processor))
         if not isinstance(subquery, QueryBuilder):
-            raise TypeError("select_sub() expects a QueryBuilder subquery or a callable returning one.")
-        self._columns.append(SubGroupExpression(subquery, alias))
-        return self
+            raise TypeError(f"{method}() expects a QueryBuilder subquery or a callable returning one.")
+        return subquery
 
     def add_select(self, *columns: "SelectEntry | list[SelectEntry]") -> "Self":
         """Append columns to the current selection without replacing it.
@@ -354,9 +368,8 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         self._wheres += (QueryExpression(column, "=", None, "NOT NULL", keyword="or"),)
         return self
 
-    def where_not_in(self, column: str, values: Iterable[Any]) -> "Self":
-        values = list(values) if not isinstance(values, list) else values
-        self._wheres.append(QueryExpression(column, "NOT IN", values))
+    def where_not_in(self, column: str, values: "Iterable[Any] | Subquery") -> "Self":
+        self._wheres.append(QueryExpression(column, "NOT IN", self._where_in_values(values, "where_not_in")))
         return self
 
     def between(self, column: str, low: Any, high: Any) -> "Self":
@@ -688,12 +701,21 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
             callback(self)
         return self
 
-    def where_exists(self, builder: "QueryBuilder[Any]") -> "Self":
-        self._wheres += (QueryExpression(None, "EXISTS", SubSelectExpression(builder)),)
-        return self
+    def where_exists(self, builder: "Subquery") -> "Self":
+        return self._where_exists("EXISTS", builder, "where_exists")
 
-    def or_where_exists(self, builder: "QueryBuilder[Any]") -> "Self":
-        self._wheres += (QueryExpression(None, "EXISTS", SubSelectExpression(builder), keyword="or"),)
+    def or_where_exists(self, builder: "Subquery") -> "Self":
+        return self._where_exists("EXISTS", builder, "or_where_exists", keyword="or")
+
+    def where_not_exists(self, builder: "Subquery") -> "Self":
+        return self._where_exists("NOT EXISTS", builder, "where_not_exists")
+
+    def or_where_not_exists(self, builder: "Subquery") -> "Self":
+        return self._where_exists("NOT EXISTS", builder, "or_where_not_exists", keyword="or")
+
+    def _where_exists(self, equality: str, builder: "Subquery", method: str, keyword: str | None = None) -> "Self":
+        subquery = SubSelectExpression(self._resolve_subquery(builder, method))
+        self._wheres += (QueryExpression(None, equality, subquery, keyword=keyword),)
         return self
 
     def where_has(self, relation: str, callback: Callable[..., Any] | None = None) -> "Self":
