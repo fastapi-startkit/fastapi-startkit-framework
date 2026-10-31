@@ -452,6 +452,8 @@ class BaseGrammar:
             order_crit = ""
             for order_bys in self._order_by:
                 if order_bys.raw:
+                    if len(order_crit):
+                        order_crit += ", "
                     order_crit += order_bys.column
                     if not isinstance(order_bys.bindings, (list, tuple)):
                         raise ValueError(f"Bindings must be tuple or list. Received {type(order_bys.bindings)}")
