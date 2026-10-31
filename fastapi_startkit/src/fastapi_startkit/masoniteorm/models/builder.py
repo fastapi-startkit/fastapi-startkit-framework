@@ -90,6 +90,8 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         self._group_by = ()
         self._having = ()
         self._distinct = False
+        self._ctes: list[SubGroupExpression] = []
+        self._from_sub: SubGroupExpression | None = None
 
         self._sql = ""
         self._bindings = ()
@@ -142,12 +144,24 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         ``subquery`` is a builder, or a callable that receives a fresh table-less
         builder and returns one.
         """
+        self._columns.append(SubGroupExpression(self._resolve_subquery(subquery, "select_sub"), alias))
+        return self
+
+    def with_query(self, name: str, query: "Subquery") -> "Self":
+        self._ctes.append(SubGroupExpression(self._resolve_subquery(query, "with_query"), name))
+        return self
+
+    def from_sub(self, query: "Subquery", alias: str) -> "Self":
+        self._from_sub = SubGroupExpression(self._resolve_subquery(query, "from_sub"), alias)
+        self._alias = alias
+        return self
+
+    def _resolve_subquery(self, subquery: "Subquery", method: str) -> "QueryBuilder[Any]":
         if not isinstance(subquery, QueryBuilder) and callable(subquery):
             subquery = subquery(QueryBuilder(self.connection, self.grammar, self.processor))
         if not isinstance(subquery, QueryBuilder):
-            raise TypeError("select_sub() expects a QueryBuilder subquery or a callable returning one.")
-        self._columns.append(SubGroupExpression(subquery, alias))
-        return self
+            raise TypeError(f"{method}() expects a QueryBuilder subquery or a callable returning one.")
+        return subquery
 
     def add_select(self, *columns: "SelectEntry | list[SelectEntry]") -> "Self":
         """Append columns to the current selection without replacing it.
@@ -283,6 +297,8 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
             group_by=self._group_by,
             having=self._having,
             distinct=self._distinct,
+            ctes=self._ctes,
+            from_sub=self._from_sub,
         )
 
     def to_qmark(self) -> str:
@@ -481,6 +497,8 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         count_builder = self.connection.query().set_model(self._model).table(self._table, self._alias)
         count_builder._wheres = list(self._wheres)
         count_builder._joins = self._joins
+        count_builder._ctes = list(self._ctes)
+        count_builder._from_sub = self._from_sub
         count_builder._global_scopes = self._global_scopes
 
         if not self._group_by and not self._having:
