@@ -20,7 +20,8 @@ class SQliteConnection(Connection):
 
     @staticmethod
     def on_savepoint(connection: SyncConnection, name: str) -> None:
-        if not connection.connection.driver_connection.in_transaction:
+        driver_connection = connection.connection.driver_connection
+        if driver_connection is not None and not driver_connection.in_transaction:
             connection.exec_driver_sql("BEGIN")
 
     @classmethod
