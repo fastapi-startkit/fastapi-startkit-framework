@@ -80,9 +80,6 @@ class MSSQLGrammar(BaseGrammar):
     def where_not_regexp_string(self):
         return self.where_not_like_string()
 
-    def having_equality_string(self):
-        return "HAVING {column} {equality} {value}"
-
     def aggregate_string_without_alias(self):
         return "{aggregate_function}({column})"
 

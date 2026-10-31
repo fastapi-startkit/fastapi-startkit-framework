@@ -179,9 +179,24 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
                         "pass {alias: subquery} or use select_sub(subquery, alias)."
                     )
                 if not self._columns:
-                    self.select(f"{self._table}.*")
+                    self.select(f"{self.get_table_name()}.*")
                 self.select_sub(value, alias)
         return self
+
+    def select_raw(self, expression: str, bindings: "list[Any] | tuple[Any, ...]" = ()) -> "Self":
+        self._columns.append(SelectExpression(expression, raw=True, bindings=self._raw_bindings(bindings)))
+        return self
+
+    def add_select_raw(self, expression: str, bindings: "list[Any] | tuple[Any, ...]" = ()) -> "Self":
+        if not self._columns:
+            self.select(f"{self.get_table_name()}.*")
+        return self.select_raw(expression, bindings)
+
+    @staticmethod
+    def _raw_bindings(bindings: "list[Any] | tuple[Any, ...]") -> tuple[Any, ...]:
+        if not isinstance(bindings, (list, tuple)):
+            raise ValueError(f"Bindings must be tuple or list. Received {type(bindings)}")
+        return tuple(bindings)
 
     def _is_selected(self, column: str) -> bool:
         return any(
@@ -319,6 +334,10 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         self._having += (HavingExpression(column, equality, value),)
         return self
 
+    def having_raw(self, expression: str, bindings: "list[Any] | tuple[Any, ...]" = ()) -> "Self":
+        self._having += (HavingExpression(expression, raw=True, bindings=self._raw_bindings(bindings)),)
+        return self
+
     def where_null(self, column: str) -> "Self":
         self._wheres += (QueryExpression(column, "=", None, "NULL"),)
         return self
@@ -452,16 +471,31 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
     async def paginate(self, per_page: int = 15, page: int = 1):
         from fastapi_startkit.masoniteorm.pagination import LengthAwarePaginator
 
-        # Build a count query using a fresh builder with the same wheres/table/model
-        count_builder = self.connection.query().set_model(self._model)
-        count_builder._wheres = list(self._wheres)
-        count_builder._joins = self._joins
-        count_builder._global_scopes = self._global_scopes
-        total = await count_builder.count() or 0
+        total = await self._pagination_total()
 
         offset = (page - 1) * per_page
         results = await self.limit(per_page).offset(offset).get()
         return LengthAwarePaginator(results, per_page, page, int(total))
+
+    async def _pagination_total(self) -> int:
+        count_builder = self.connection.query().set_model(self._model).table(self._table, self._alias)
+        count_builder._wheres = list(self._wheres)
+        count_builder._joins = self._joins
+        count_builder._global_scopes = self._global_scopes
+
+        if not self._group_by and not self._having:
+            return await count_builder.count() or 0
+
+        count_builder._columns = list(self._columns)
+        count_builder._group_by = self._group_by
+        count_builder._having = self._having
+        count_builder._distinct = self._distinct
+        grouped_sql = count_builder.to_qmark()
+        row = await self.connection.select_one(
+            f"SELECT COUNT(*) AS aggregate FROM ({grouped_sql}) AS aggregate_table",
+            list(count_builder.get_bindings()),
+        )
+        return row["aggregate"] if row else 0
 
     async def simple_paginate(self, per_page: int = 15, page: int = 1):
         from fastapi_startkit.masoniteorm.pagination import SimplePaginator

@@ -180,6 +180,14 @@ class Model(Attribute, Relationship, ObservesEvents):
         return cls.query().select(*args)
 
     @classmethod
+    def select_raw(cls, expression: str, bindings: list[Any] | tuple[Any, ...] = ()) -> "QueryBuilder[Self]":
+        return cls.query().select_raw(expression, bindings)
+
+    @classmethod
+    def add_select_raw(cls, expression: str, bindings: list[Any] | tuple[Any, ...] = ()) -> "QueryBuilder[Self]":
+        return cls.query().add_select_raw(expression, bindings)
+
+    @classmethod
     def limit(cls, limit: int) -> "QueryBuilder[Self]":
         return cls.query().limit(limit)
 
@@ -214,6 +222,10 @@ class Model(Attribute, Relationship, ObservesEvents):
     @classmethod
     def having(cls, column: str, equality: str, value: Any) -> "QueryBuilder[Self]":
         return cls.query().having(column, equality, value)
+
+    @classmethod
+    def having_raw(cls, expression: str, bindings: list[Any] | tuple[Any, ...] = ()) -> "QueryBuilder[Self]":
+        return cls.query().having_raw(expression, bindings)
 
     @classmethod
     def between(cls, column: str, low: Any, high: Any) -> "QueryBuilder[Self]":

@@ -196,9 +196,6 @@ class PostgresGrammar(BaseGrammar):
     def having_string(self):
         return "HAVING {column}"
 
-    def having_equality_string(self):
-        return "HAVING {column} {equality} {value}"
-
     def where_null_string(self):
         return " {keyword} {column} IS NULL"
 
