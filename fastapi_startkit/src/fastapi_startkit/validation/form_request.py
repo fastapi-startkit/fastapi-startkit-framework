@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import inspect
 from dataclasses import dataclass
-from collections.abc import Awaitable, Iterator, Mapping
+from collections.abc import Awaitable, Iterator, Mapping, Sequence, Set
 from types import UnionType
 from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Self, Union, get_args, get_origin
 from weakref import finalize
 
 from inflection import underscore
 from pydantic import (
+    AliasChoices,
+    AliasPath,
     BaseModel,
     GetCoreSchemaHandler,
     ModelWrapValidatorHandler,
@@ -28,6 +30,7 @@ from fastapi_startkit.validation.validator import Validator
 if TYPE_CHECKING:
     from fastapi.dependencies.models import Dependant
     from fastapi.routing import APIRoute
+    from pydantic.fields import FieldInfo
     from starlette.datastructures import QueryParams
     from starlette.requests import Request
 
@@ -35,7 +38,9 @@ REQUEST_PARAMETER = "__validated_request"
 RECORDED = "fastapi_startkit.validation.recorded"
 PENDING_ERRORS = "fastapi_startkit.validation.errors"
 VALIDATED_KEY = "__validated_key__"
-SEQUENCES = (list, set, frozenset, tuple)
+QUERY_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "DELETE"})
+TEXT_TYPES = (str, bytes, bytearray)
+ABSENT: Any = object()
 
 
 def has_rules(model: type[BaseModel]) -> bool:
@@ -43,10 +48,22 @@ def has_rules(model: type[BaseModel]) -> bool:
 
 
 def is_sequence(annotation: Any) -> bool:
-    origin = get_origin(annotation)
-    if annotation in SEQUENCES or origin in SEQUENCES:
-        return True
-    return origin in (Union, UnionType) and any(is_sequence(argument) for argument in get_args(annotation))
+    origin = get_origin(annotation) or annotation
+    if origin is Annotated:
+        return is_sequence(get_args(annotation)[0])
+    if origin in (Union, UnionType):
+        return any(is_sequence(argument) for argument in get_args(annotation))
+    return isinstance(origin, type) and issubclass(origin, (Sequence, Set)) and not issubclass(origin, TEXT_TYPES)
+
+
+def alias_keys(alias: str | AliasPath | AliasChoices | None) -> Iterator[str]:
+    if isinstance(alias, str):
+        yield alias
+    elif isinstance(alias, AliasPath) and len(alias.path) == 1 and isinstance(alias.path[0], str):
+        yield alias.path[0]
+    elif isinstance(alias, AliasChoices):
+        for choice in alias.choices:
+            yield from alias_keys(choice)
 
 
 def nested_models(annotation: Any) -> Iterator[type[BaseModel]]:
@@ -125,8 +142,19 @@ class FormRequest(BaseModel):
         return instance
 
     @classmethod
+    def query_fields(cls) -> dict[str, FieldInfo]:
+        config = cls.model_config
+        by_name = bool(config.get("validate_by_name") or config.get("populate_by_name"))
+        by_alias = config.get("validate_by_alias", True)
+        fields: dict[str, FieldInfo] = {}
+        for name, info in cls.model_fields.items():
+            aliases = list(alias_keys(info.validation_alias)) if by_alias else []
+            fields.update(dict.fromkeys([*aliases, *([name] if by_name or not aliases else [])], info))
+        return fields
+
+    @classmethod
     def query_input(cls, params: QueryParams) -> dict[str, Any]:
-        fields = {info.alias or name: info for name, info in cls.model_fields.items()}
+        fields = cls.query_fields()
         return {
             key: params.getlist(key) if is_sequence(fields[key].annotation) else params[key]
             for key in params.keys()
@@ -134,8 +162,8 @@ class FormRequest(BaseModel):
         }
 
     @classmethod
-    def request_input(cls, params: QueryParams, body: Any) -> Any:
-        if body is None:
+    def request_input(cls, params: QueryParams, body: Any = ABSENT) -> Any:
+        if body is ABSENT:
             return cls.query_input(params)
         if isinstance(body, Mapping):
             return {**cls.query_input(params), **body}
@@ -277,14 +305,18 @@ def validated_dependency(model: type[FormRequest]) -> Any:
         if context is None:
             return None
         route = matched_route(request)
+        embedded = route is not None and route.embedded
         errors = pending_errors(request)
-        try:
-            instance = await model.validate_input(
-                model.request_input(request.query_params, parameters[key]), context, request
-            )
-        except ValidationException as error:
-            instance = None
-            errors.merge(error.bag, prefix=key if route is not None and route.embedded else None)
+        raw = await request.body()
+        instance = None
+        if not raw and request.method not in QUERY_METHODS:
+            errors.add(key if embedded else "", "Field required")
+        else:
+            body = parameters[key] if raw and not (embedded and parameters[key] is None) else ABSENT
+            try:
+                instance = await model.validate_input(model.request_input(request.query_params, body), context, request)
+            except ValidationException as error:
+                errors.merge(error.bag, prefix=key if embedded else None)
         if errors.any() and (route is None or route.last is dependency):
             raise ValidationException(errors)
         return instance
