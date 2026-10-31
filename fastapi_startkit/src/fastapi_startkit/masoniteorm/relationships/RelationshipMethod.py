@@ -18,6 +18,11 @@ class RelationshipMethod:
     def relation(self, owner: type) -> BaseRelationship:
         if owner not in self.relations:
             relation = self.method(owner)
+            if not isinstance(relation, BaseRelationship) or vars(relation).get("attribute") is not None:
+                raise TypeError(
+                    f"@relationship {owner.__name__}.{self.attribute} must return a new relationship, "
+                    f"got {type(relation).__name__}; derive one such as self.statuses.latest_of_many()"
+                )
             relation.__set_name__(owner, self.attribute)
             self.relations[owner] = relation
         return self.relations[owner]
