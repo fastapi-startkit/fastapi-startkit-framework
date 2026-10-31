@@ -1,4 +1,4 @@
-# 058 — Transaction-scoped advisory locks (`DB.advisory_lock`) and `LockTimeoutError`
+# 060 — Transaction-scoped advisory locks (`DB.advisory_lock`) and `LockTimeoutError`
 
 Date: 2026-10-31
 
