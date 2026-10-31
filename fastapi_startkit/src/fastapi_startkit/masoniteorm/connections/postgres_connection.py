@@ -2,12 +2,15 @@ import datetime
 from typing import Any
 
 from sqlalchemy import event
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from fastapi_startkit.masoniteorm.config.config import DBConfig
+from fastapi_startkit.masoniteorm.exceptions import LockTimeoutError
 from fastapi_startkit.masoniteorm.query.grammars import PostgresGrammar
 from fastapi_startkit.masoniteorm.query.processors import PostgresPostProcessor
 from fastapi_startkit.masoniteorm.schema.platforms import PostgresPlatform
+from .advisory_lock import LOCK_NOT_AVAILABLE, advisory_lock_key, lock_timeout_value
 from .connection import Connection
 
 POSTGRES_EPOCH = datetime.datetime(2000, 1, 1)
@@ -61,6 +64,32 @@ class PostgresConnection(Connection):
         result = await self.run(query, bindings)
         row = result.fetchone()
         return row[0] if row is not None else None
+
+    async def advisory_lock(self, key: str | int, timeout_ms: int | None = None) -> None:
+        lock_key = advisory_lock_key(key)
+        timeout = None if timeout_ms is None else lock_timeout_value(timeout_ms)
+        self._require_transaction("advisory_lock")
+        if timeout is not None:
+            await self._set_lock_timeout(timeout)
+        try:
+            await self.statement("SELECT pg_advisory_xact_lock(?)", [lock_key])
+        except DBAPIError as error:
+            if getattr(error.orig, "sqlstate", None) == LOCK_NOT_AVAILABLE:
+                raise LockTimeoutError(key, timeout_ms) from error
+            raise
+
+    async def lock_timeout(self, timeout_ms: int) -> None:
+        value = lock_timeout_value(timeout_ms)
+        self._require_transaction("lock_timeout")
+        await self._set_lock_timeout(value)
+
+    async def _set_lock_timeout(self, value: str) -> None:
+        await self.statement("SELECT set_config('lock_timeout', ?, true)", [value])
+
+    def _require_transaction(self, operation: str) -> None:
+        connection = self.connection
+        if connection is None or not connection.in_transaction():
+            raise RuntimeError(f"{operation} requires an open transaction on the [{self.config.driver}] connection")
 
     @classmethod
     def get_query_grammar(cls) -> type[PostgresGrammar]:

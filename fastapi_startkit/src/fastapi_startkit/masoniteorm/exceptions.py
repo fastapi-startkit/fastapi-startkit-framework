@@ -21,3 +21,10 @@ class LazyLoadingViolation(Exception):
             f"Attempted to lazy load [{relation}] on model [{self.model}]. "
             f'Eager load it with {self.model}.with_("{relation}") or await the model\'s load("{relation}") first.'
         )
+
+
+class LockTimeoutError(Exception):
+    def __init__(self, key: str | int, timeout_ms: int | None):
+        self.key = key
+        self.timeout_ms = timeout_ms
+        super().__init__(f"Timed out waiting for advisory lock [{key}] after {timeout_ms} ms")
