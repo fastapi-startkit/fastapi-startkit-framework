@@ -165,6 +165,25 @@ class TestSqliteSelectRaw(TestCase):
         self.assertEqual(paginator.total, 2)
         self.assertEqual([(row.site_id, row.weighted) for row in paginator], [(2, 200)])
 
+    async def test_paginate_grouped_rows_on_an_aliased_table(self):
+        paginator = await (
+            StPage.query()
+            .table("st_pages", "p")
+            .add_select_raw("COUNT(*) AS pages")
+            .where("p.words", ">", 20)
+            .group_by("p.site_id")
+            .having_raw("COUNT(*) >= ?", [2])
+            .paginate(5, 1)
+        )
+
+        self.assertEqual(paginator.total, 2)
+        self.assertEqual(sorted((row.site_id, row.pages) for row in paginator), [(1, 2), (2, 2)])
+
+    async def test_paginate_on_an_aliased_table_without_grouping(self):
+        paginator = await StPage.query().table("st_pages", "p").where("p.words", ">", 20).paginate(10, 1)
+
+        self.assertEqual(paginator.total, 4)
+
     async def test_paginate_without_grouping_counts_rows(self):
         paginator = await StPage.select_raw("words * ? AS doubled", [2]).paginate(4, 1)
 

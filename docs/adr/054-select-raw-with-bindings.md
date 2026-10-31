@@ -33,6 +33,14 @@ Raw expressions use `?` placeholders on every grammar. The connection rewrites e
 
 Aliased columns hydrate like any other: `Model.hydrate` stores every returned key as an attribute, so `row.total` reads the aggregate.
 
+`add_select_raw` and the pagination count respect a table alias set with `table(name, alias)`: the default selection is `{alias}.*` and the count query keeps the alias, so wheres and groups written against the alias still resolve.
+
+### Known limits
+
+- **`?::type` on Postgres.** `Connection.sql_alchemy_bindings` rewrites each `?` to `:pN`, so `?::text` becomes `:p0::text`, which SQLAlchemy does not read as a parameter, and asyncpg raises a syntax error. This predates this ADR and affects `where_raw` the same way. Write `CAST(? AS text)` instead.
+- **Grouped pagination wraps the query in a derived table.** Every selected column becomes a derived-table column, so MSSQL rejects an unnamed expression (`COUNT(*)` without `AS`), and MySQL rejects duplicate column names, for example `*` over a join where both tables have an `id`. Name every expression and select explicit columns. Laravel's `getCountForPagination` has the same limits.
+- **`having()` still inlines its value** (`HAVING "users"."id" > '1'`) and puts the table name in front of its column. Binding it would change the SQL that existing callers and tests get, so it is left as a follow-up. Use `having_raw` for aggregates, aliases and user input.
+
 ## Validation
 
 - `tests/masoniteorm/query/grammars/test_select_raw_grammar.py` snapshots `to_qmark()` and the bindings on SQLite, MySQL, Postgres and MSSQL for `select_raw`, `add_select_raw`, raw bindings combined with joins, wheres, `group_by_raw`, `having_raw` and `order_by`, and the bindings validation.

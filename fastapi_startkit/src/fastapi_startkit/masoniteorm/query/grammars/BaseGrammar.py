@@ -139,7 +139,6 @@ class BaseGrammar:
             [type] -- [description]
         """
         select_format = self.select_format() if self.table else self.select_no_table()
-        # Keyword arguments are evaluated in SQL clause order so positional bindings line up.
         self._sql = select_format.format(
             columns=self.process_columns(separator=", ", qmark=qmark),
             keyword="DISTINCT" if self._distinct else "",

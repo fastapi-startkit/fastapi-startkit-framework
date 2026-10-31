@@ -189,7 +189,7 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
 
     def add_select_raw(self, expression: str, bindings: "list[Any] | tuple[Any, ...]" = ()) -> "Self":
         if not self._columns:
-            self.select(f"{self._table}.*")
+            self.select(f"{self.get_table_name()}.*")
         return self.select_raw(expression, bindings)
 
     @staticmethod
@@ -478,7 +478,7 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         return LengthAwarePaginator(results, per_page, page, int(total))
 
     async def _pagination_total(self) -> int:
-        count_builder = self.connection.query().set_model(self._model)
+        count_builder = self.connection.query().set_model(self._model).table(self._table, self._alias)
         count_builder._wheres = list(self._wheres)
         count_builder._joins = self._joins
         count_builder._global_scopes = self._global_scopes

@@ -144,3 +144,11 @@ class TestSelectRawPostgresShapes(unittest.TestCase):
             'WHERE "st_user_pages"."user_id" = ?',
         )
         self.assertEqual(list(q.get_bindings()), ["2026-10-01", 7])
+
+
+class TestSelectRawTableAlias(unittest.TestCase):
+    def test_add_select_raw_selects_the_aliased_table(self):
+        q = qb(SQLiteGrammar, "orders").table("orders", "o").add_select_raw("o.amount * ? as taxed", [2])
+
+        self.assertEqual(q.to_qmark(), 'SELECT "o".*, o.amount * ? as taxed FROM "orders" AS "o"')
+        self.assertEqual(list(q.get_bindings()), [2])
