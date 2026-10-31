@@ -65,4 +65,4 @@ Coverage is collected in CI and reported to
 
 ## License
 
-Released under the [MIT License](LICENSE).
+Released under the [MIT License](https://github.com/fastapi-startkit/fastapi-startkit-framework/blob/main/LICENSE).
