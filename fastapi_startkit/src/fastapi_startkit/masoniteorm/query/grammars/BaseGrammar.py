@@ -59,7 +59,6 @@ class BaseGrammar:
         def limit_string(self, offset: Any = False) -> str: ...
         def offset_string(self) -> str: ...
         def having_string(self) -> str: ...
-        def having_equality_string(self) -> str: ...
         def first_where_string(self) -> str: ...
         def additional_where_string(self) -> str: ...
         def or_where_string(self) -> str: ...
@@ -139,43 +138,22 @@ class BaseGrammar:
         Returns:
             [type] -- [description]
         """
-        if not self.table:
-            self._sql = (
-                self.select_no_table()
-                .format(
-                    columns=self.process_columns(separator=", ", qmark=qmark),
-                    table=self.process_table(self.table),
-                    joins=self.process_joins(qmark=qmark),
-                    wheres=self.process_wheres(qmark=qmark),
-                    limit=self.process_limit(),
-                    offset=self.process_offset(),
-                    aggregates=self.process_aggregates(),
-                    order_by=self.process_order_by(qmark=qmark),
-                    group_by=self.process_group_by(),
-                    having=self.process_having(),
-                    lock=self.process_locks(),
-                )
-                .strip()
-            )
-        else:
-            self._sql = (
-                self.select_format()
-                .format(
-                    columns=self.process_columns(separator=", ", qmark=qmark),
-                    keyword="DISTINCT" if self._distinct else "",
-                    table=self.process_from_table(),
-                    joins=self.process_joins(qmark=qmark),
-                    wheres=self.process_wheres(qmark=qmark),
-                    limit=self.process_limit(),
-                    offset=self.process_offset(),
-                    aggregates=self.process_aggregates(),
-                    order_by=self.process_order_by(qmark=qmark),
-                    group_by=self.process_group_by(),
-                    having=self.process_having(),
-                    lock=self.process_locks(),
-                )
-                .strip()
-            )
+        select_format = self.select_format() if self.table else self.select_no_table()
+        # Keyword arguments are evaluated in SQL clause order so positional bindings line up.
+        self._sql = select_format.format(
+            columns=self.process_columns(separator=", ", qmark=qmark),
+            keyword="DISTINCT" if self._distinct else "",
+            table=self.process_from_table() if self.table else self.process_table(self.table),
+            joins=self.process_joins(qmark=qmark),
+            wheres=self.process_wheres(qmark=qmark),
+            group_by=self.process_group_by(),
+            having=self.process_having(qmark=qmark),
+            order_by=self.process_order_by(qmark=qmark),
+            limit=self.process_limit(),
+            offset=self.process_offset(),
+            aggregates=self.process_aggregates(),
+            lock=self.process_locks(),
+        ).strip()
 
         return self
 
@@ -601,25 +579,23 @@ class BaseGrammar:
         Returns:
             self
         """
-        sql = ""
+        conditions = []
         for having in self._having:
-            column = having.column
-            equality = having.equality
-            value = having.value
-            raw = having.raw
+            if having.raw:
+                if having.bindings:
+                    self.add_binding(*having.bindings)
+                conditions.append(having.column)
+                continue
 
-            if not equality and not value:
-                sql_string = self.having_string()
+            column = self._table_column_string(having.column)
+            if not having.equality and not having.value:
+                conditions.append(column)
             else:
-                sql_string = self.having_equality_string()
+                conditions.append(f"{column} {having.equality} {self._compile_value(having.value)}")
 
-            sql += sql_string.format(
-                column=(self._table_column_string(column) if raw is False else column),
-                equality=equality,
-                value=self._compile_value(value),
-            )
-
-        return sql
+        if not conditions:
+            return ""
+        return self.having_string().format(column=" AND ".join(conditions))
 
     def process_wheres(self, query=None, qmark=False, strip_first_where=False):
         """Compiles the where expression.
@@ -888,6 +864,8 @@ class BaseGrammar:
             if isinstance(column, SelectExpression):
                 alias = column.alias
                 if column.raw:
+                    if column.bindings:
+                        self.add_binding(*column.bindings)
                     sql += column.column + ", "
                     continue
 
