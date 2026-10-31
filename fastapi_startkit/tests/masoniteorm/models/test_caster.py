@@ -1,11 +1,20 @@
-from typing import Annotated
+import datetime
+from typing import Annotated, Optional, Union
 
 import pendulum
 import pytest
 
 from fastapi_startkit.carbon import Carbon
 from fastapi_startkit.masoniteorm import Field, ModelField
-from fastapi_startkit.masoniteorm.models.caster import BaseCast, Caster, DateCast, IntCast
+from fastapi_startkit.masoniteorm.models.caster import (
+    BaseCast,
+    BoolCast,
+    Caster,
+    DateCast,
+    FloatCast,
+    IntCast,
+    JsonCast,
+)
 from fastapi_startkit.masoniteorm.models.model import Model
 
 
@@ -109,3 +118,109 @@ def test_annotated_without_a_cast_falls_back_to_the_base_type():
 
     assert isinstance(caster.casts["visits"], IntCast)
     assert caster.get("visits", "3") == 3
+
+
+class NullableProfile(Model):
+    pipe_int: int | None
+    optional_int: Optional[int]
+    union_int: Union[int, None]
+    none_first: None | int
+    ratio: float | None
+    active: bool | None
+    born_at: datetime.datetime | None
+    meta: dict | None
+    plain_bool: bool
+    plain_dict: dict
+
+
+@pytest.mark.parametrize(
+    ("field", "cast_class"),
+    [
+        ("pipe_int", IntCast),
+        ("optional_int", IntCast),
+        ("union_int", IntCast),
+        ("none_first", IntCast),
+        ("ratio", FloatCast),
+        ("active", BoolCast),
+        ("born_at", DateCast),
+        ("meta", JsonCast),
+    ],
+)
+def test_nullable_annotation_infers_the_inner_cast(field, cast_class):
+    caster = Caster(NullableProfile)
+
+    assert isinstance(caster.casts[field], cast_class)
+    assert field in caster.nullable
+
+
+@pytest.mark.parametrize("field", ["pipe_int", "ratio", "active", "born_at", "meta"])
+def test_nullable_field_keeps_none_on_get_and_set(field):
+    caster = Caster(NullableProfile)
+
+    assert caster.get(field, None) is None
+    assert caster.set(field, None) is None
+
+
+def test_nullable_field_casts_present_values():
+    caster = Caster(NullableProfile)
+
+    assert caster.get("pipe_int", "1") == 1
+    assert caster.get("ratio", "0.5") == 0.5
+    assert caster.get("active", 0) is False
+    assert caster.get("born_at", "2026-10-31") == pendulum.datetime(2026, 10, 31)
+    assert caster.set("meta", {"a": 1}) == '{"a": 1}'
+
+
+def test_bare_annotations_keep_their_none_behaviour():
+    caster = Caster(NullableProfile)
+
+    assert "plain_bool" not in caster.nullable
+    assert caster.get("plain_bool", None) is False
+    assert caster.set("plain_dict", None) == "null"
+
+
+def test_annotated_nullable_type_infers_the_inner_cast():
+    class AnnotatedNullableProfile(Model):
+        outer: Annotated[int | None, "metadata"]
+        inner: Optional[Annotated[int, "metadata"]]
+
+    caster = Caster(AnnotatedNullableProfile)
+
+    assert isinstance(caster.casts["outer"], IntCast)
+    assert isinstance(caster.casts["inner"], IntCast)
+    assert caster.nullable >= {"outer", "inner"}
+
+
+def test_declared_cast_in_optional_annotated_is_kept_and_nullable():
+    class DeclaredNullableProfile(Model):
+        nickname: Optional[Annotated[str, UpperCast()]]
+
+    caster = Caster(DeclaredNullableProfile)
+
+    assert caster.get("nickname", "joe") == "JOE"
+    assert caster.get("nickname", None) is None
+
+
+def test_multi_type_union_passes_values_through():
+    class MixedProfile(Model):
+        code: int | str
+        maybe_code: int | str | None
+
+    caster = Caster(MixedProfile)
+
+    assert caster.get("code", 1) == 1
+    assert caster.get("code", "a1") == "a1"
+    assert caster.set("code", 1) == 1
+    assert caster.get("maybe_code", None) is None
+    assert "maybe_code" in caster.nullable
+
+
+def test_nullable_field_default_applies_to_none():
+    class DefaultedProfile(Model):
+        level = Field[int | None](default=1)
+
+    caster = Caster(DefaultedProfile)
+
+    assert isinstance(caster.casts["level"], IntCast)
+    assert caster.get("level", None) == 1
+    assert caster.get("level", "5") == 5
