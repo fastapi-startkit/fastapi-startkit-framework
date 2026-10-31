@@ -87,10 +87,11 @@ class SubGroupExpression:
 class SelectExpression:
     """A helper class to manage select expressions."""
 
-    def __init__(self, column, raw=False):
+    def __init__(self, column, raw=False, bindings=()):
         self.column = column.strip()
         self.alias = None
         self.raw = raw
+        self.bindings = tuple(bindings)
         if raw is False and " as " in self.column:
             self.column, self.alias = self.column.split(" as ")
             self.column = self.column.strip()
@@ -247,6 +248,13 @@ class JoinClause:
 
     def get_on_clauses(self):
         return self.on_clauses
+
+
+class SubqueryJoinClause(JoinClause):
+    def __init__(self, query, alias, clause="inner", bindings=()):
+        super().__init__(alias, clause=clause)
+        self.query = query
+        self.bindings = tuple(bindings)
 
 
 class OnClause:

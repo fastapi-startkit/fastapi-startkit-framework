@@ -1,11 +1,12 @@
 import inspect
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from typing import TYPE_CHECKING, Any, Generic, Self, TypeVar, overload
 
 from fastapi_startkit.masoniteorm.expressions.expressions import (
     JoinClause,
     QueryExpression,
     SelectExpression,
+    SubqueryJoinClause,
     UpdateQueryExpression,
     SubSelectExpression,
     SubGroupExpression,
@@ -134,6 +135,10 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
             else:
                 for column in arg.split(","):
                     self._columns += (SelectExpression(column),)
+        return self
+
+    def select_raw(self, expression: str, bindings: Sequence[Any] = ()) -> "Self":
+        self._columns.append(SelectExpression(expression, raw=True, bindings=bindings))
         return self
 
     def select_sub(self, subquery: "Subquery", alias: str) -> "Self":
@@ -360,8 +365,15 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         return self
 
     async def aggregate(self, function: str, column: str):
-        self._aggregates += (AggregateExpression(function, column),)
-        row = await self.connection.select_one(self.to_qmark(), list(self.get_bindings()))
+        columns, aggregates, order_by = self._columns, self._aggregates, self._order_by
+        if not self._group_by and not self._having:
+            self._columns, self._order_by = [], ()
+        self._aggregates = aggregates + (AggregateExpression(function, column),)
+        try:
+            sql = self.to_qmark()
+        finally:
+            self._columns, self._aggregates, self._order_by = columns, aggregates, order_by
+        row = await self.connection.select_one(sql, list(self.get_bindings()))
         if row is None:
             return None
         return next(iter(row.values()))
@@ -619,6 +631,36 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         join_clause.on(column1, equality, column2)
         self._joins += (join_clause,)
         return self
+
+    def join_sub(
+        self,
+        query: "QueryBuilder[Any] | str",
+        alias: str,
+        column1: str,
+        equality: str,
+        column2: str,
+        bindings: Sequence[Any] = (),
+        clause: str = "inner",
+    ) -> "Self":
+        if isinstance(query, QueryBuilder) and bindings:
+            raise TypeError("join_sub() takes bindings only with a raw SQL string; a builder subquery uses its own.")
+        if not isinstance(query, (QueryBuilder, str)):
+            raise TypeError("join_sub() expects a QueryBuilder or a raw SQL string.")
+        join_clause = SubqueryJoinClause(query, alias, clause=clause, bindings=bindings)
+        join_clause.on(column1, equality, column2)
+        self._joins += (join_clause,)
+        return self
+
+    def left_join_sub(
+        self,
+        query: "QueryBuilder[Any] | str",
+        alias: str,
+        column1: str,
+        equality: str,
+        column2: str,
+        bindings: Sequence[Any] = (),
+    ) -> "Self":
+        return self.join_sub(query, alias, column1, equality, column2, bindings, clause="left")
 
     _WHERE_COLUMN_OPERATORS = ("=", "!=", "<>", ">", ">=", "<", "<=")
 

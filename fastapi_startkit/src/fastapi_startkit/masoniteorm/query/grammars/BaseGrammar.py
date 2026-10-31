@@ -11,6 +11,7 @@ from ...expressions.expressions import (
     OnClause,
     SelectExpression,
     SubGroupExpression,
+    SubqueryJoinClause,
     SubSelectExpression,
 )
 
@@ -131,51 +132,28 @@ class BaseGrammar:
         return getattr(self, "_compile_" + action)(qmark=qmark)
 
     def _compile_select(self, qmark=False):
-        """Compile a select query statement.
-
-        Keyword Arguments:
-            qmark {bool} -- [description] (default: {False})
-
-        Returns:
-            [type] -- [description]
-        """
-        if not self.table:
-            self._sql = (
-                self.select_no_table()
-                .format(
-                    columns=self.process_columns(separator=", ", qmark=qmark),
-                    table=self.process_table(self.table),
-                    joins=self.process_joins(qmark=qmark),
-                    wheres=self.process_wheres(qmark=qmark),
-                    limit=self.process_limit(),
-                    offset=self.process_offset(),
-                    aggregates=self.process_aggregates(),
-                    order_by=self.process_order_by(qmark=qmark),
-                    group_by=self.process_group_by(),
-                    having=self.process_having(),
-                    lock=self.process_locks(),
-                )
-                .strip()
-            )
-        else:
-            self._sql = (
-                self.select_format()
-                .format(
-                    columns=self.process_columns(separator=", ", qmark=qmark),
-                    keyword="DISTINCT" if self._distinct else "",
-                    table=self.process_from_table(),
-                    joins=self.process_joins(qmark=qmark),
-                    wheres=self.process_wheres(qmark=qmark),
-                    limit=self.process_limit(),
-                    offset=self.process_offset(),
-                    aggregates=self.process_aggregates(),
-                    order_by=self.process_order_by(qmark=qmark),
-                    group_by=self.process_group_by(),
-                    having=self.process_having(),
-                    lock=self.process_locks(),
-                )
-                .strip()
-            )
+        columns = self.process_columns(separator=", ", qmark=qmark)
+        table = self.process_from_table() if self.table else self.process_table(self.table)
+        joins = self.process_joins(qmark=qmark)
+        wheres = self.process_wheres(qmark=qmark)
+        group_by = self.process_group_by()
+        having = self.process_having()
+        order_by = self.process_order_by(qmark=qmark)
+        template = self.select_format() if self.table else self.select_no_table()
+        self._sql = template.format(
+            columns=columns,
+            keyword="DISTINCT" if self._distinct else "",
+            table=table,
+            joins=joins,
+            wheres=wheres,
+            limit=self.process_limit(),
+            offset=self.process_offset(),
+            aggregates=self.process_aggregates(),
+            order_by=order_by,
+            group_by=group_by,
+            having=having,
+            lock=self.process_locks(),
+        ).strip()
 
         return self
 
@@ -329,6 +307,7 @@ class BaseGrammar:
         sql = ""
         for join in self._joins:
             if isinstance(join, JoinClause):
+                foreign_table = self.process_join_table(join, qmark=qmark)
                 on_string = ""
                 for clause_idx, clause in enumerate(join.get_on_clauses()):
                     keyword = clause.operator.upper() if clause_idx else "ON"
@@ -359,7 +338,7 @@ class BaseGrammar:
                             )
 
                 sql += self.join_string().format(
-                    foreign_table=self.process_table(join.table),
+                    foreign_table=foreign_table,
                     alias=(f" AS {self.process_table(join.alias)}" if join.alias else ""),
                     on=on_string,
                     keyword=self.join_keywords[join.clause],
@@ -367,6 +346,23 @@ class BaseGrammar:
                 sql += " "
 
         return sql
+
+    def process_join_table(self, join, qmark=False):
+        if not isinstance(join, SubqueryJoinClause):
+            return self.process_table(join.table)
+
+        if isinstance(join.query, str):
+            subquery_sql = join.query
+            if join.bindings:
+                self.add_binding(*join.bindings)
+        elif qmark:
+            subquery_sql = join.query.to_qmark()
+            if join.query._bindings:
+                self.add_binding(*join.query._bindings)
+        else:
+            subquery_sql = join.query.to_sql()
+
+        return f"{self.subquery_string().format(query=subquery_sql)} AS {self.process_table(join.table)}"
 
     # TODO: Clean
     def _compile_key_value_equals(self, qmark=False):
@@ -889,6 +885,8 @@ class BaseGrammar:
                 alias = column.alias
                 if column.raw:
                     sql += column.column + ", "
+                    if column.bindings:
+                        self.add_binding(*column.bindings)
                     continue
 
                 column = column.column
