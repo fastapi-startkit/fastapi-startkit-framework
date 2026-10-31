@@ -3,7 +3,8 @@ from __future__ import annotations
 import inspect
 from dataclasses import dataclass
 from collections.abc import Awaitable, Iterator, Mapping
-from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Self, get_args
+from types import UnionType
+from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Self, Union, get_args, get_origin
 from weakref import finalize
 
 from inflection import underscore
@@ -27,16 +28,25 @@ from fastapi_startkit.validation.validator import Validator
 if TYPE_CHECKING:
     from fastapi.dependencies.models import Dependant
     from fastapi.routing import APIRoute
+    from starlette.datastructures import QueryParams
     from starlette.requests import Request
 
 REQUEST_PARAMETER = "__validated_request"
 RECORDED = "fastapi_startkit.validation.recorded"
 PENDING_ERRORS = "fastapi_startkit.validation.errors"
 VALIDATED_KEY = "__validated_key__"
+SEQUENCES = (list, set, frozenset, tuple)
 
 
 def has_rules(model: type[BaseModel]) -> bool:
     return any(isinstance(metadata, Field) for info in model.model_fields.values() for metadata in info.metadata)
+
+
+def is_sequence(annotation: Any) -> bool:
+    origin = get_origin(annotation)
+    if annotation in SEQUENCES or origin in SEQUENCES:
+        return True
+    return origin in (Union, UnionType) and any(is_sequence(argument) for argument in get_args(annotation))
 
 
 def nested_models(annotation: Any) -> Iterator[type[BaseModel]]:
@@ -113,6 +123,23 @@ class FormRequest(BaseModel):
         if validator.fails() or instance is None:
             raise ValidationException(validator.errors)
         return instance
+
+    @classmethod
+    def query_input(cls, params: QueryParams) -> dict[str, Any]:
+        fields = {info.alias or name: info for name, info in cls.model_fields.items()}
+        return {
+            key: params.getlist(key) if is_sequence(fields[key].annotation) else params[key]
+            for key in params.keys()
+            if key in fields
+        }
+
+    @classmethod
+    def request_input(cls, params: QueryParams, body: Any) -> Any:
+        if body is None:
+            return cls.query_input(params)
+        if isinstance(body, Mapping):
+            return {**cls.query_input(params), **body}
+        return body
 
     @classmethod
     def as_mapping(cls, data: Any) -> Mapping[str, Any]:
@@ -252,7 +279,9 @@ def validated_dependency(model: type[FormRequest]) -> Any:
         route = matched_route(request)
         errors = pending_errors(request)
         try:
-            instance = await model.validate_input(parameters[key], context, request)
+            instance = await model.validate_input(
+                model.request_input(request.query_params, parameters[key]), context, request
+            )
         except ValidationException as error:
             instance = None
             errors.merge(error.bag, prefix=key if route is not None and route.embedded else None)
@@ -268,7 +297,10 @@ def validated_dependency(model: type[FormRequest]) -> Any:
             [
                 inspect.Parameter(REQUEST_PARAMETER, inspect.Parameter.KEYWORD_ONLY, annotation=Request),
                 inspect.Parameter(
-                    key, inspect.Parameter.KEYWORD_ONLY, annotation=Annotated[Any, RawInput(model), Body()]
+                    key,
+                    inspect.Parameter.KEYWORD_ONLY,
+                    default=None,
+                    annotation=Annotated[Any, RawInput(model), Body()],
                 ),
             ]
         ),

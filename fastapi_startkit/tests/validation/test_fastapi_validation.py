@@ -70,6 +70,18 @@ class Shipping(FormRequest):
     name: Annotated[str, Field().required().min(5)]
 
 
+class Listing(FormRequest):
+    window: Annotated[str, Field().in_(["today", "week"])] = "today"
+    q: Annotated[str, Field().string().max(5)] = ""
+    page: Annotated[int, Field().integer().min(1)] = 1
+    tags: list[str] = []
+    archived: bool = False
+
+
+class Search(FormRequest):
+    term: Annotated[str, Field().required().min(2)]
+
+
 async def tenant(tenant_id: int) -> int:
     return tenant_id
 
@@ -108,12 +120,34 @@ def make_application(base_path: Path) -> Application:
     async def publish(data: Validated[Publish]):
         return {"title": data.title}
 
+    @app.fastapi.get("/listing")
+    async def listing(query: Validated[Listing]):
+        return query.model_dump()
+
+    @app.fastapi.get("/search")
+    async def search(query: Validated[Search]):
+        return {"term": query.term}
+
+    @app.fastapi.get("/users/{user_id}/email")
+    async def check_email(user_id: int, query: Validated[UpdateUser]):
+        return {"id": user_id, "email": query.email}
+
+    @app.fastapi.get("/drafts")
+    async def drafts(query: Validated[Publish]):
+        return {"title": query.title}
+
+    @app.fastapi.post("/search/billing")
+    async def search_billing(query: Validated[Search], billing: Validated[Billing]):
+        return {"term": query.term, "billing": billing.name}
+
     @app.fastapi.post("/plain")
     async def plain(data: RegisterUser):
         return {"username": data.username}
 
     return app
 
+
+JSON = {"accept": "application/json"}
 
 VALID = {
     "email": "john@example.com",
@@ -218,7 +252,7 @@ class FastAPIValidationTest(HttpTestCase):
         valid.assert_status(200)
         self.assertEqual(valid.json(), {"billing": "abcd", "shipping": "abcdef"})
 
-    async def test_missing_embedded_body_is_combined_with_rule_errors(self):
+    async def test_missing_embedded_body_runs_its_required_rules(self):
         response = await self.post("/checkout", json={"billing": {"name": "a"}})
 
         response.assert_status(422)
@@ -226,7 +260,7 @@ class FastAPIValidationTest(HttpTestCase):
             response.json()["errors"],
             {
                 "billing.name": ["The name field must be at least 3 characters."],
-                "shipping": ["Field required"],
+                "shipping.name": ["The name field is required."],
             },
         )
 
@@ -241,7 +275,7 @@ class FastAPIValidationTest(HttpTestCase):
                 "shipping": {"$ref": "#/components/schemas/Shipping"},
             },
         )
-        self.assertEqual(sorted(body["required"]), ["billing", "shipping"])
+        self.assertNotIn("required", body)
 
     async def test_plain_body_parameter_only_parses_types(self):
         accepted = await self.post("/plain", json={**VALID, "username": "jo"})
@@ -271,11 +305,11 @@ class FastAPIValidationTest(HttpTestCase):
         self.assertEqual(allowed.json(), {"title": "News"})
         denied.assert_status(403)
 
-    async def test_missing_body_is_reported(self):
-        response = await self.post("/register", headers={"accept": "application/json"})
+    async def test_missing_body_runs_the_required_rules(self):
+        response = await self.post("/register", headers=JSON)
 
         response.assert_status(422)
-        self.assertEqual(list(response.json()["errors"]), [""])
+        self.assertEqual(list(response.json()["errors"]), ["email", "username", "password", "password_confirmation"])
 
     async def test_openapi_keeps_the_request_body_schema(self):
         schema = (await self.get("/openapi.json")).json()
@@ -298,6 +332,101 @@ class FastAPIValidationTest(HttpTestCase):
 
         response.assert_status(200)
         self.assertEqual(response.json(), {"email": "a@example.com"})
+
+    async def test_validated_applies_model_defaults_when_no_parameter_is_given(self):
+        response = await self.get("/listing", headers=JSON)
+
+        response.assert_status(200)
+        self.assertEqual(response.json(), {"window": "today", "q": "", "page": 1, "tags": [], "archived": False})
+
+    async def test_validated_coerces_query_strings_and_repeated_keys(self):
+        response = await self.get("/listing?window=week&q=abc&page=2&archived=1&tags=a&tags=b", headers=JSON)
+
+        response.assert_status(200)
+        self.assertEqual(
+            response.json(), {"window": "week", "q": "abc", "page": 2, "tags": ["a", "b"], "archived": True}
+        )
+
+    async def test_validated_rule_failures_return_laravel_shape(self):
+        response = await self.get("/listing?window=year&q=toolong&page=0", headers=JSON)
+
+        response.assert_status(422)
+        self.assertEqual(
+            response.json()["errors"],
+            {
+                "window": ["The selected window is invalid."],
+                "q": ["The q field must not be greater than 5 characters."],
+                "page": ["The page field must be at least 1."],
+            },
+        )
+
+    async def test_validated_type_errors_and_rule_errors_share_one_response(self):
+        response = await self.get("/listing?page=abc&q=toolong", headers=JSON)
+
+        response.assert_status(422)
+        self.assertEqual(
+            response.json()["errors"],
+            {
+                "page": ["Input should be a valid integer, unable to parse string as an integer"],
+                "q": ["The q field must not be greater than 5 characters."],
+            },
+        )
+
+    async def test_validated_reports_a_missing_required_parameter_with_the_rule_message(self):
+        response = await self.get("/search", headers=JSON)
+
+        response.assert_status(422)
+        self.assertEqual(response.json()["errors"], {"term": ["The term field is required."]})
+
+    async def test_validated_receives_path_parameters_as_context(self):
+        own = await self.get("/users/1/email?email=jane@example.com", headers=JSON)
+        other = await self.get("/users/2/email?email=jane@example.com", headers=JSON)
+
+        own.assert_status(200)
+        self.assertEqual(own.json(), {"id": 1, "email": "jane@example.com"})
+        other.assert_status(422)
+        self.assertEqual(other.json()["errors"], {"email": ["The email has already been taken."]})
+
+    async def test_validated_runs_authorize(self):
+        allowed = await self.get("/drafts?title=News", headers={**JSON, "x-role": "editor"})
+        denied = await self.get("/drafts?title=News", headers={**JSON, "x-role": "viewer"})
+
+        allowed.assert_status(200)
+        self.assertEqual(allowed.json(), {"title": "News"})
+        denied.assert_status(403)
+
+    async def test_validated_and_validated_body_errors_are_combined(self):
+        valid = await self.post("/search/billing?term=paris", json={"billing": {"name": "abcd"}})
+        invalid = await self.post("/search/billing?term=p", json={"billing": {"name": "a"}}, headers=JSON)
+
+        valid.assert_status(200)
+        self.assertEqual(valid.json(), {"term": "paris", "billing": "abcd"})
+        invalid.assert_status(422)
+        self.assertEqual(
+            invalid.json()["errors"],
+            {
+                "search.term": ["The term field must be at least 2 characters."],
+                "billing.name": ["The name field must be at least 3 characters."],
+            },
+        )
+
+    async def test_body_values_override_query_values_of_the_same_field(self):
+        response = await self.post("/requests?email=query@example.com", json={"email": "body@example.com"})
+
+        response.assert_status(200)
+        self.assertEqual(response.json(), {"email": "body@example.com"})
+
+    async def test_query_values_fill_fields_missing_from_the_body(self):
+        response = await self.post("/requests?email=query@example.com", json={})
+
+        response.assert_status(200)
+        self.assertEqual(response.json(), {"email": "query@example.com"})
+
+    async def test_openapi_documents_the_request_body_as_optional(self):
+        schema = (await self.get("/openapi.json")).json()
+        body = schema["paths"]["/register"]["post"]["requestBody"]
+
+        self.assertFalse(body.get("required", False))
 
 
 def test_path_params_without_a_matched_route_stay_raw():
