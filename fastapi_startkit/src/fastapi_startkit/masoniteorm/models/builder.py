@@ -179,7 +179,7 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
                         "pass {alias: subquery} or use select_sub(subquery, alias)."
                     )
                 if not self._columns:
-                    self.select(f"{self._table}.*")
+                    self.select(f"{self.get_table_name()}.*")
                 self.select_sub(value, alias)
         return self
 

@@ -33,7 +33,7 @@ Raw expressions use `?` placeholders on every grammar. The connection rewrites e
 
 Aliased columns hydrate like any other: `Model.hydrate` stores every returned key as an attribute, so `row.total` reads the aggregate.
 
-`add_select_raw` and the pagination count respect a table alias set with `table(name, alias)`: the default selection is `{alias}.*` and the count query keeps the alias, so wheres and groups written against the alias still resolve.
+`add_select_raw`, `add_select({alias: subquery})` and the pagination count respect a table alias set with `table(name, alias)`: the default selection is `{alias}.*` and the count query keeps the alias, so wheres and groups written against the alias still resolve.
 
 ### Known limits
 

@@ -152,3 +152,13 @@ class TestSelectRawTableAlias(unittest.TestCase):
 
         self.assertEqual(q.to_qmark(), 'SELECT "o".*, o.amount * ? as taxed FROM "orders" AS "o"')
         self.assertEqual(list(q.get_bindings()), [2])
+
+    def test_add_select_subquery_selects_the_aliased_table(self):
+        subquery = qb(SQLiteGrammar, "users").select("name").where_column("users.id", "o.user_id").limit(1)
+        q = qb(SQLiteGrammar, "orders").table("orders", "o").add_select({"buyer": subquery})
+
+        self.assertEqual(
+            q.to_sql(),
+            'SELECT "o".*, (SELECT "users"."name" FROM "users" WHERE users.id = o.user_id LIMIT 1) AS buyer '
+            'FROM "orders" AS "o"',
+        )
