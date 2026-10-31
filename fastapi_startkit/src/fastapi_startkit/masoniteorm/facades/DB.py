@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from fastapi_startkit.masoniteorm.connections.connection import AfterCommitCallback, Connection
+    from fastapi_startkit.masoniteorm.connections.transactions import AfterCommitFailureReporter
     from fastapi_startkit.masoniteorm.connections.manager import DatabaseManager
     from fastapi_startkit.masoniteorm.models.builder import QueryBuilder
 
@@ -68,3 +69,9 @@ class DB:
     @classmethod
     async def after_commit(cls, callback: AfterCommitCallback, name: str | None = None) -> None:
         await cls.instance().connection(name).after_commit(callback)
+
+    @classmethod
+    def report_after_commit_failures_using(cls, reporter: "AfterCommitFailureReporter | None") -> None:
+        from fastapi_startkit.masoniteorm.connections.transactions import report_after_commit_failures_using
+
+        report_after_commit_failures_using(reporter)

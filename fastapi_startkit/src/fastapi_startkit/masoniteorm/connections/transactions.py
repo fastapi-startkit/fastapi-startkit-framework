@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from inspect import isawaitable
@@ -10,12 +11,40 @@ if TYPE_CHECKING:
 
 
 AfterCommitCallback = Callable[[], object]
+AfterCommitFailureReporter = Callable[[Exception, AfterCommitCallback], object]
+
+logger = logging.getLogger("fastapi_startkit.masoniteorm")
+
+_failure_reporter: AfterCommitFailureReporter | None = None
+
+
+def report_after_commit_failures_using(reporter: AfterCommitFailureReporter | None) -> None:
+    global _failure_reporter
+    _failure_reporter = reporter
+
+
+async def _call(callable_: Callable[..., object], *args: object) -> None:
+    result = callable_(*args)
+    if isawaitable(result):
+        await result
 
 
 async def _invoke(callback: AfterCommitCallback) -> None:
-    result = callback()
-    if isawaitable(result):
-        await result
+    try:
+        await _call(callback)
+    except Exception as error:
+        logger.exception("After-commit callback %r failed", callback)
+        await _report(error, callback)
+
+
+async def _report(error: Exception, callback: AfterCommitCallback) -> None:
+    reporter = _failure_reporter
+    if reporter is None:
+        return
+    try:
+        await _call(reporter, error, callback)
+    except Exception:
+        logger.exception("After-commit failure reporter %r failed", reporter)
 
 
 @dataclass(eq=False)
