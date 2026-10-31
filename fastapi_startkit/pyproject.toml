@@ -1,8 +1,10 @@
 [project]
 name = "fastapi-startkit"
-version = "0.70.0"
+version = "0.71.0"
 description = "A modular, provider-driven framework for building async Python web applications with FastAPI — bundling a service container, configuration system, an async-first ORM, facades, and a Cleo-powered console."
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 keywords = [
     "fastapi",
     "framework",
