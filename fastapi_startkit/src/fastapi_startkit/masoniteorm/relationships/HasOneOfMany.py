@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from .BaseRelationship import TModel
 from .HasOne import HasOne
@@ -6,19 +6,21 @@ from .HasOne import HasOne
 if TYPE_CHECKING:
     from .HasMany import HasMany
 
-AGGREGATE_DIRECTIONS = {"max": "desc", "min": "asc"}
+type OfManyAggregate = Literal["max", "min"]
+
+AGGREGATE_DIRECTIONS: dict[str, str] = {"max": "desc", "min": "asc"}
 
 
 class HasOneOfMany(HasOne[TModel]):
-    def __init__(self, relation: "HasMany[TModel]", column: str, aggregate: str):
+    def __init__(self, relation: "HasMany[TModel]", column: str | None, aggregate: OfManyAggregate):
         if aggregate not in AGGREGATE_DIRECTIONS:
             raise ValueError(f"of_many() aggregate must be one of {', '.join(AGGREGATE_DIRECTIONS)}, got {aggregate!r}")
+        if relation.foreign_key is None and relation.attribute is None:
+            raise TypeError("of_many() needs a HasMany declared on a model or given an explicit foreign_key")
 
         relation.set_keys(None, relation.attribute)
+        super().__init__(foreign_key=relation.foreign_key, local_key=relation.local_key)
         self.relation = relation
-        self.fn = self.related_model
-        self.local_key = relation.local_key
-        self.foreign_key = relation.foreign_key
         self.column = column
         self.direction = AGGREGATE_DIRECTIONS[aggregate]
         self.attribute = None
@@ -44,11 +46,12 @@ class HasOneOfMany(HasOne[TModel]):
         builder = self.relation.get_builder()
         alias = f"{builder.get_table_name()}_of_many"
         key = builder._model.__primary_key__
-        return (
+        column = self.column or key
+        query = (
             builder.table(builder.get_table_name(), alias)
             .select(f"{alias}.{key}")
             .where_column(f"{alias}.{self.foreign_key}", f"{table}.{self.foreign_key}")
-            .order_by(f"{alias}.{self.column}", self.direction)
-            .order_by(f"{alias}.{key}", self.direction)
-            .limit(1)
         )
+        if column != key:
+            query.where_not_null(f"{alias}.{column}").order_by(f"{alias}.{column}", self.direction)
+        return query.order_by(f"{alias}.{key}", self.direction).limit(1)

@@ -52,7 +52,7 @@ class TestHasOneOfMany(TestCase):
             table.integer("user_id")
             table.string("name")
             table.integer("priority")
-            table.timestamp("created_at")
+            table.timestamp("created_at", nullable=True)
 
         self.alice = await OfManyUser.create({"name": "Alice"})
         self.bob = await OfManyUser.create({"name": "Bob"})
@@ -144,4 +144,170 @@ class TestHasOneOfMany(TestCase):
 
     async def test_unknown_aggregate_is_rejected(self):
         with pytest.raises(ValueError, match="aggregate"):
-            OfManyUser.statuses.of_many("priority", "avg")
+            OfManyUser.statuses.of_many("priority", "avg")  # pyright: ignore[reportArgumentType]
+
+    async def test_related_model_resolves_through_the_parent_relation(self):
+        self.assertIs(OfManyUser.due_date.related_model(), OfManyStatus)
+
+    async def test_returning_an_existing_relation_is_rejected_and_leaves_it_intact(self):
+        class AliasedUser(Model):
+            __table__ = "of_many_users"
+            __timestamps__ = False
+
+            statuses = HasMany["OfManyStatus"](local_key="id", foreign_key="user_id")
+
+            @relationship
+            def items(self) -> HasMany["OfManyStatus"]:
+                return self.statuses
+
+            @relationship
+            def done_statuses(self) -> HasMany["OfManyStatus"]:
+                return self.statuses.where("name", "done")
+
+        with pytest.raises(TypeError, match="must return a new relationship"):
+            AliasedUser.items
+        with pytest.raises(TypeError, match="must return a new relationship"):
+            AliasedUser.done_statuses
+
+        user = await AliasedUser.with_("statuses").find(self.alice.id)
+        self.assertEqual(len(user.statuses), 3)
+
+    async def test_previous_module_path_still_imports_the_decorator(self):
+        from fastapi_startkit.masoniteorm import relationships
+        from fastapi_startkit.masoniteorm.relationships.relationship import RelationshipMethod
+        from fastapi_startkit.masoniteorm.relationships.relationship import relationship as legacy
+
+        self.assertIs(legacy, relationship)
+        self.assertIs(relationships.relationship, relationship)
+        self.assertIsInstance(vars(OfManyUser)["due_date"], RelationshipMethod)
+
+    async def test_unnamed_has_many_without_foreign_key_is_rejected(self):
+        with pytest.raises(TypeError, match="explicit foreign_key"):
+            HasMany["OfManyStatus"]().latest_of_many()
+
+
+class OfManyEvent(Model):
+    __table__ = "of_many_events"
+    __timestamps__ = False
+
+
+class OfManyTicket(Model):
+    __table__ = "of_many_tickets"
+    __primary_key__ = "ticket_id"
+    __timestamps__ = False
+
+
+class OfManyAccount(Model):
+    __table__ = "of_many_accounts"
+    __timestamps__ = False
+
+    events = HasMany["OfManyEvent"](local_key="id", foreign_key="account_id")
+    tickets = HasMany["OfManyTicket"](local_key="id", foreign_key="account_id")
+
+    @relationship
+    def latest_event(self) -> HasOne["OfManyEvent"]:
+        return self.events.latest_of_many()
+
+    @relationship
+    def oldest_event(self) -> HasOne["OfManyEvent"]:
+        return self.events.oldest_of_many()
+
+    @relationship
+    def newest_ticket(self) -> HasOne["OfManyTicket"]:
+        return self.tickets.of_many()
+
+    @relationship
+    def first_ticket(self) -> HasOne["OfManyTicket"]:
+        return self.tickets.of_many(aggregate="min")
+
+
+class OfManyPremiumAccount(OfManyAccount):
+    pass
+
+
+class OfManyNode(Model):
+    __table__ = "of_many_nodes"
+    __timestamps__ = False
+
+    children = HasMany["OfManyNode"](local_key="id", foreign_key="parent_id")
+
+    @relationship
+    def newest_child(self) -> HasOne["OfManyNode"]:
+        return self.children.of_many()
+
+
+class TestHasOneOfManyEdgeCases(TestCase):
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        async with await self.schema.create_table_if_not_exists("of_many_accounts") as table:
+            table.id()
+            table.string("name")
+        async with await self.schema.create_table_if_not_exists("of_many_events") as table:
+            table.id()
+            table.integer("account_id")
+            table.string("name")
+            table.timestamp("created_at", nullable=True)
+        async with await self.schema.create_table_if_not_exists("of_many_tickets") as table:
+            table.increments("ticket_id")
+            table.integer("account_id")
+            table.string("name")
+        async with await self.schema.create_table_if_not_exists("of_many_nodes") as table:
+            table.id()
+            table.string("name")
+            table.integer("parent_id").nullable()
+
+        self.acme = await OfManyAccount.create({"name": "Acme"})
+        self.blank = await OfManyAccount.create({"name": "Blank"})
+        events = [("dated-old", "2026-01-01 00:00:00"), ("null-ts", None), ("dated-new", "2026-02-01 00:00:00")]
+        for name, created_at in events:
+            await OfManyEvent.create({"account_id": self.acme.id, "name": name, "created_at": created_at})
+        await OfManyEvent.create({"account_id": self.blank.id, "name": "only-null", "created_at": None})
+        for name in ["ticket-1", "ticket-2"]:
+            await OfManyTicket.create({"account_id": self.acme.id, "name": name})
+
+        root = await OfManyNode.create({"name": "root"})
+        await OfManyNode.create({"name": "child-1", "parent_id": root.id})
+        await OfManyNode.create({"name": "child-2", "parent_id": root.id})
+
+    async def names_by_parent(self, model, relation):
+        parents = await model.with_(relation).order_by("id").get()
+        return {parent.name: getattr(getattr(parent, relation), "name", None) for parent in parents}
+
+    async def test_null_columns_are_ignored_like_max_and_min(self):
+        self.assertEqual(
+            await self.names_by_parent(OfManyAccount, "latest_event"), {"Acme": "dated-new", "Blank": None}
+        )
+        self.assertEqual(
+            await self.names_by_parent(OfManyAccount, "oldest_event"), {"Acme": "dated-old", "Blank": None}
+        )
+
+    async def test_of_many_defaults_to_the_related_primary_key(self):
+        self.assertEqual(
+            await self.names_by_parent(OfManyAccount, "newest_ticket"), {"Acme": "ticket-2", "Blank": None}
+        )
+        self.assertEqual(await self.names_by_parent(OfManyAccount, "first_ticket"), {"Acme": "ticket-1", "Blank": None})
+
+    async def test_primary_key_column_is_ordered_once_without_a_null_filter(self):
+        sql = OfManyAccount.newest_ticket.to_sql()
+
+        self.assertIn('ORDER BY "of_many_tickets_of_many"."ticket_id" DESC LIMIT 1', sql)
+        self.assertEqual(sql.count("ORDER BY"), 1)
+        self.assertNotIn("IS NOT NULL", sql)
+
+    async def test_subclass_of_the_owner_resolves_its_own_relation(self):
+        self.assertEqual(
+            await self.names_by_parent(OfManyPremiumAccount, "latest_event"), {"Acme": "dated-new", "Blank": None}
+        )
+        self.assertIsNot(OfManyPremiumAccount.latest_event, OfManyAccount.latest_event)
+
+    async def test_self_referencing_relation_eager_and_where_has(self):
+        nodes = await OfManyNode.with_("newest_child").order_by("id").get()
+        with_child_two = await OfManyNode.where_has("newest_child", lambda q: q.where("name", "child-2")).get()
+        with_child_one = await OfManyNode.where_has("newest_child", lambda q: q.where("name", "child-1")).get()
+
+        self.assertEqual(
+            {node.name: getattr(node.newest_child, "name", None) for node in nodes},
+            {"root": "child-2", "child-1": None, "child-2": None},
+        )
+        self.assertEqual(with_child_two.pluck("name").all(), ["root"])
+        self.assertTrue(with_child_one.is_empty())
