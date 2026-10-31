@@ -4,6 +4,8 @@ Date: 2026-10-31
 
 Extends the FastAPI integration of [ADR 048](048-async-first-validation.md).
 
+Status: amended by [ADR 056](056-validated-write-methods-read-the-body-only.md). Write methods with a body now read the body only, unless the model sets `merge_query = True`.
+
 ## Problem
 
 `Validated[Model]` declared its input as a required `Body()`, so a `FormRequest` could only validate a JSON body. A `GET` endpoint with filters (`/lexemes?window=today&page=2`) could not use the same class: FastAPI answered `422 body: Field required` before the dependency ran, even when every query parameter was valid. Applications fell back to binding the model with `Annotated[Model, Query()]`, which only runs pydantic, so `authorize`, `prepare_for_validation`, the fluent rules and `after` were silently skipped.
@@ -33,6 +35,8 @@ Option 3.
 - `validate_input` is unchanged. Query values arrive as strings and pydantic coerces them (`"2"` to `2`, `"1"` to `True`, a string to an enum) before the rules run, exactly as for JSON values, so type errors and rule errors still share one 422.
 
 ### Query input on write methods
+
+Amended by [ADR 056](056-validated-write-methods-read-the-body-only.md): this merge now needs `merge_query = True`.
 
 Write methods with a JSON body still merge the query, as Laravel's `$request->all()` does. As a result, a declared field can be set from the URL: `PATCH /profile?role=admin` with `{"name": "n"}` validates with `role == "admin"`, and `role` is in `model_fields_set`, so `update(data.model_dump(exclude_unset=True))` writes it. This gives the client no new power. The same client can put `role` in the body, the model's declared fields remain the only assignable fields, and the cross-site path is closed because the merge needs a JSON body. URLs end up in access logs and proxies, so a sensitive field (a role or a password) must not be accepted from the query. Exclude the field from the model, or reject it in `prepare_for_validation` or `after`. Keeping the merge lets one model take its filters from the URL and its payload from the body.
 

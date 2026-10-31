@@ -38,7 +38,8 @@ REQUEST_PARAMETER = "__validated_request"
 RECORDED = "fastapi_startkit.validation.recorded"
 PENDING_ERRORS = "fastapi_startkit.validation.errors"
 VALIDATED_KEY = "__validated_key__"
-QUERY_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "DELETE"})
+SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+QUERY_METHODS = SAFE_METHODS | {"DELETE"}
 TEXT_TYPES = (str, bytes, bytearray)
 ABSENT: Any = object()
 
@@ -92,6 +93,7 @@ class FormRequest(BaseModel):
                     yield name, metadata
 
     stop_on_first_failure: ClassVar[bool] = False
+    merge_query: ClassVar[bool] = False
 
     @classmethod
     def authorize(cls, validator: Validator) -> bool | Awaitable[bool]:
@@ -162,10 +164,10 @@ class FormRequest(BaseModel):
         }
 
     @classmethod
-    def request_input(cls, params: QueryParams, body: Any = ABSENT) -> Any:
+    def request_input(cls, params: QueryParams, body: Any = ABSENT, *, method: str) -> Any:
         if body is ABSENT:
             return cls.query_input(params)
-        if isinstance(body, Mapping):
+        if isinstance(body, Mapping) and (cls.merge_query or method in SAFE_METHODS):
             return {**cls.query_input(params), **body}
         return body
 
@@ -312,9 +314,10 @@ def validated_dependency(model: type[FormRequest]) -> Any:
         if not raw and request.method not in QUERY_METHODS:
             errors.add(key if embedded else "", "Field required")
         else:
-            body = parameters[key] if raw and not (embedded and parameters[key] is None) else ABSENT
+            body = ABSENT if not raw else {} if embedded and parameters[key] is None else parameters[key]
+            data = model.request_input(request.query_params, body, method=request.method)
             try:
-                instance = await model.validate_input(model.request_input(request.query_params, body), context, request)
+                instance = await model.validate_input(data, context, request)
             except ValidationException as error:
                 errors.merge(error.bag, prefix=key if embedded else None)
         if errors.any() and (route is None or route.last is dependency):
