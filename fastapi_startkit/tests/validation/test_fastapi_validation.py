@@ -96,6 +96,26 @@ class Profile(FormRequest):
     role: str = "member"
 
 
+class MergedProfile(Profile):
+    merge_query = True
+
+
+class MergedSearch(Search):
+    merge_query = True
+
+
+class Login(FormRequest):
+    email: Annotated[str, Email().required()]
+    password: Annotated[str, Field().required()]
+
+
+class SearchOnRequest(Search):
+    @classmethod
+    def prepare_for_validation(cls, validator: Validator) -> None:
+        if validator.request is not None and validator.request.headers.get("x-merge-query"):
+            validator.data = {**cls.query_input(validator.request.query_params), **validator.data}
+
+
 class Paging(FormRequest):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -187,9 +207,29 @@ def make_application(base_path: Path) -> Application:
     async def transfer(data: Validated[Transfer]):
         return data.model_dump()
 
+    @app.fastapi.post("/profile")
+    @app.fastapi.put("/profile")
     @app.fastapi.patch("/profile")
     async def profile(data: Validated[Profile]):
         return {"set": sorted(data.model_fields_set), **data.model_dump()}
+
+    @app.fastapi.post("/merged/profile")
+    @app.fastapi.put("/merged/profile")
+    @app.fastapi.patch("/merged/profile")
+    async def merged_profile(data: Validated[MergedProfile]):
+        return {"set": sorted(data.model_fields_set), **data.model_dump()}
+
+    @app.fastapi.post("/merged/search/billing")
+    async def merged_search_billing(query: Validated[MergedSearch], billing: Validated[Billing]):
+        return {"term": query.term, "billing": billing.name}
+
+    @app.fastapi.post("/login")
+    async def login(data: Validated[Login]):
+        return {"email": data.email}
+
+    @app.fastapi.post("/search/on-request")
+    async def search_on_request(data: Validated[SearchOnRequest]):
+        return {"term": data.term}
 
     @app.fastapi.get("/paging")
     async def paging(query: Validated[Paging]):
@@ -461,8 +501,8 @@ class FastAPIValidationTest(HttpTestCase):
         denied.assert_status(403)
 
     async def test_validated_and_validated_body_errors_are_combined(self):
-        valid = await self.post("/search/billing?term=paris", json={"billing": {"name": "abcd"}})
-        invalid = await self.post("/search/billing?term=p", json={"billing": {"name": "a"}}, headers=JSON)
+        valid = await self.post("/merged/search/billing?term=paris", json={"billing": {"name": "abcd"}})
+        invalid = await self.post("/merged/search/billing?term=p", json={"billing": {"name": "a"}}, headers=JSON)
 
         valid.assert_status(200)
         self.assertEqual(valid.json(), {"term": "paris", "billing": "abcd"})
@@ -470,7 +510,7 @@ class FastAPIValidationTest(HttpTestCase):
         self.assertEqual(
             invalid.json()["errors"],
             {
-                "search.term": ["The term field must be at least 2 characters."],
+                "merged_search.term": ["The term field must be at least 2 characters."],
                 "billing.name": ["The name field must be at least 3 characters."],
             },
         )
@@ -481,11 +521,70 @@ class FastAPIValidationTest(HttpTestCase):
         response.assert_status(200)
         self.assertEqual(response.json(), {"email": "body@example.com"})
 
-    async def test_query_values_fill_fields_missing_from_the_body(self):
+    async def test_query_is_ignored_on_write_methods_by_default(self):
         response = await self.post("/requests?email=query@example.com", json={})
 
+        response.assert_status(422)
+        self.assertEqual(response.json()["errors"], {"email": ["The email field is required."]})
+
+    async def test_credentials_in_the_query_are_not_read_on_post(self):
+        response = await self.post("/login?password=secret", json={"email": "a@example.com"})
+
+        response.assert_status(422)
+        self.assertEqual(response.json()["errors"], {"password": ["The password field is required."]})
+
+    async def test_post_put_and_patch_validate_the_body_only(self):
+        for method in ("POST", "PUT", "PATCH"):
+            response = await self.client.request(method, "/profile?name=query&role=admin", json={"name": "n"})
+
+            self.assertEqual(response.status_code, 200, method)
+            self.assertEqual(response.json(), {"set": ["name"], "name": "n", "role": "member"}, method)
+
+    async def test_merge_query_merges_the_query_with_the_body_winning(self):
+        for method in ("POST", "PUT", "PATCH"):
+            response = await self.client.request(method, "/merged/profile?name=query&role=admin", json={"name": "n"})
+
+            self.assertEqual(response.status_code, 200, method)
+            self.assertEqual(response.json(), {"set": ["name", "role"], "name": "n", "role": "admin"}, method)
+
+    async def test_merge_query_fills_fields_missing_from_the_body(self):
+        response = await self.patch("/merged/profile?name=query", json={})
+
         response.assert_status(200)
-        self.assertEqual(response.json(), {"email": "query@example.com"})
+        self.assertEqual(response.json(), {"set": ["name"], "name": "query", "role": "member"})
+
+    async def test_prepare_for_validation_can_merge_the_query_per_request(self):
+        merged = await self.post("/search/on-request?term=paris", json={}, headers={"x-merge-query": "1"})
+        ignored = await self.post("/search/on-request?term=paris", json={}, headers=JSON)
+
+        merged.assert_status(200)
+        self.assertEqual(merged.json(), {"term": "paris"})
+        ignored.assert_status(422)
+        self.assertEqual(ignored.json()["errors"], {"term": ["The term field is required."]})
+
+    async def test_delete_with_a_body_validates_the_body_only(self):
+        response = await self.client.request("DELETE", "/listing?page=3&q=abc", json={"page": 2})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"window": "today", "q": "", "page": 2, "tags": [], "archived": False})
+
+    async def test_get_with_a_body_still_merges_the_query(self):
+        response = await self.client.request("GET", "/listing?page=3&q=abc", json={"page": 2})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"window": "today", "q": "abc", "page": 2, "tags": [], "archived": False})
+
+    async def test_embedded_model_missing_from_a_write_body_ignores_the_query(self):
+        response = await self.post("/search/billing?term=paris", json={"billing": {"name": "abcd"}}, headers=JSON)
+
+        response.assert_status(422)
+        self.assertEqual(response.json()["errors"], {"search.term": ["The term field is required."]})
+
+    async def test_embedded_model_missing_from_a_get_body_reads_the_query(self):
+        response = await self.client.request("GET", "/search/notes?term=paris", json={"note": "hi"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"term": "paris", "note": "hi"})
 
     async def test_openapi_documents_the_request_body_as_optional(self):
         schema = (await self.get("/openapi.json")).json()
@@ -518,17 +617,11 @@ class FastAPIValidationTest(HttpTestCase):
         response.assert_status(422)
         self.assertEqual(list(response.json()["errors"]), [""])
 
-    async def test_json_body_is_merged_with_the_query_on_write_methods(self):
-        response = await self.post("/transfer?to=friend", json={"amount": 5})
-
-        response.assert_status(200)
-        self.assertEqual(response.json(), {"to": "friend", "amount": 5})
-
-    async def test_query_values_of_declared_fields_are_set_on_write_methods(self):
+    async def test_query_values_of_declared_fields_are_not_set_on_write_methods(self):
         response = await self.patch("/profile?role=admin&unknown=1", json={"name": "n"})
 
         response.assert_status(200)
-        self.assertEqual(response.json(), {"set": ["name", "role"], "name": "n", "role": "admin"})
+        self.assertEqual(response.json(), {"set": ["name"], "name": "n", "role": "member"})
 
     async def test_json_null_body_is_rejected_as_a_non_object_body(self):
         post = await self.post(
