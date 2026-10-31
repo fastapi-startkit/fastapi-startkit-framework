@@ -116,3 +116,9 @@ class Connection(ManagesTransactions):
         query, params = self.sql_alchemy_bindings(query, bindings)
         await self._execute(query, params)
         return True
+
+    async def advisory_lock(self, key: str | int, timeout_ms: int | None = None) -> None:
+        raise NotImplementedError(f"Advisory locks are only supported on Postgres, not the {self.config.driver} driver")
+
+    async def lock_timeout(self, timeout_ms: int) -> None:
+        raise NotImplementedError(f"lock_timeout is only supported on Postgres, not the {self.config.driver} driver")

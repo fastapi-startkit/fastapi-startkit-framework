@@ -1,6 +1,6 @@
 from .config.config import DBConfig, MySQLConfig, PostgresConfig, SQLiteConfig
 from .config.database import DatabaseConfig
-from .exceptions import ModelNotFoundException
+from .exceptions import LockTimeoutError, ModelNotFoundException
 from .facades import DB
 from .factory.factory import Factory
 from .migrations.Migration import Migration
@@ -33,6 +33,7 @@ __all__ = [
     "SQLiteConfig",
     "Model",
     "ModelNotFoundException",
+    "LockTimeoutError",
     "DB",
     "Factory",
     "Migration",

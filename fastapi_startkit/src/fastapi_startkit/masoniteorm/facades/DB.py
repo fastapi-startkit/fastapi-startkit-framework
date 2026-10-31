@@ -54,6 +54,14 @@ class DB:
         return await cls.instance().connection(None).statement(query, bindings)
 
     @classmethod
+    async def advisory_lock(cls, key: str | int, timeout_ms: int | None = None, connection: str | None = None) -> None:
+        await cls.instance().connection(connection).advisory_lock(key, timeout_ms)
+
+    @classmethod
+    async def lock_timeout(cls, timeout_ms: int, connection: str | None = None) -> None:
+        await cls.instance().connection(connection).lock_timeout(timeout_ms)
+
+    @classmethod
     async def begin_transaction(cls, name: str | None = None) -> None:
         await cls.instance().connection(name).begin_transaction()
 
