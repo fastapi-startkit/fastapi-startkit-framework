@@ -5,6 +5,7 @@ from fastapi_startkit.fastapi.commands import ServeCommand
 from fastapi_startkit.fastapi.config import FastAPIConfig
 from fastapi_startkit.fastapi.middleware import REQUEST_ID_HEADER, RequestLifecycleMiddleware
 from fastapi_startkit.support import Provider
+from fastapi_startkit.validation.openapi import document_query_input
 
 
 class FastAPIProvider(Provider):
@@ -19,6 +20,7 @@ class FastAPIProvider(Provider):
             title=config["title"],
             version="1.0.0",
         )
+        document_query_input(fastapi)
 
         self.app.use_fastapi(fastapi)
 
