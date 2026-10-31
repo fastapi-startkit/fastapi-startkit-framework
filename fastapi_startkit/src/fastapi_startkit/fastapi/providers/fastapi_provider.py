@@ -37,12 +37,13 @@ class FastAPIProvider(Provider):
         from fastapi.exceptions import RequestValidationError
         from starlette.exceptions import HTTPException
 
-        from fastapi_startkit.exceptions import HttpException
+        from fastapi_startkit.exceptions import HttpException, ValidationException
 
         exception_manager = self.app.exception_manager
         exception_manager.register_handler(Exception, HTTPExceptionHandler())
         exception_manager.register_handler(HTTPException, HTTPExceptionHandler())
         exception_manager.register_handler(RequestValidationError, ValidationExceptionHandler())
+        exception_manager.register_handler(ValidationException, ValidationExceptionHandler())
 
         async def handler(request, exc):
             response = await exception_manager.handle(exc, {"request": request})
