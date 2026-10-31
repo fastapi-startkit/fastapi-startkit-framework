@@ -23,7 +23,7 @@ from fastapi_startkit.masoniteorm.observers import ObservesEvents
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
-    from fastapi_startkit.masoniteorm.models.builder import QueryBuilder, WhereGroup
+    from fastapi_startkit.masoniteorm.models.builder import QueryBuilder, Subquery, WhereGroup
 
 
 @dataclass_transform(field_specifiers=(Field, ModelField))
@@ -186,6 +186,14 @@ class Model(Attribute, Relationship, ObservesEvents):
     @classmethod
     def add_select_raw(cls, expression: str, bindings: list[Any] | tuple[Any, ...] = ()) -> "QueryBuilder[Self]":
         return cls.query().add_select_raw(expression, bindings)
+
+    @classmethod
+    def with_query(cls, name: str, query: "Subquery") -> "QueryBuilder[Self]":
+        return cls.query().with_query(name, query)
+
+    @classmethod
+    def from_sub(cls, query: "Subquery", alias: str) -> "QueryBuilder[Self]":
+        return cls.query().from_sub(query, alias)
 
     @classmethod
     def limit(cls, limit: int) -> "QueryBuilder[Self]":

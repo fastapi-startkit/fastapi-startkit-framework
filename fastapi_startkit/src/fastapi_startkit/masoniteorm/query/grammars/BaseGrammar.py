@@ -98,6 +98,8 @@ class BaseGrammar:
         having=(),
         connection_details=None,
         alias=None,
+        ctes=(),
+        from_sub=None,
     ):
         self._columns = columns
         self.table = table
@@ -113,6 +115,8 @@ class BaseGrammar:
         self._distinct = distinct
         self._joins = joins
         self._having = having
+        self._ctes = ctes
+        self._from_sub = from_sub
         self.lock = lock
         self._connection_details = connection_details or {}
         self._column = None
@@ -138,21 +142,25 @@ class BaseGrammar:
         Returns:
             [type] -- [description]
         """
-        select_format = self.select_format() if self.table else self.select_no_table()
-        self._sql = select_format.format(
-            columns=self.process_columns(separator=", ", qmark=qmark),
-            keyword="DISTINCT" if self._distinct else "",
-            table=self.process_from_table() if self.table else self.process_table(self.table),
-            joins=self.process_joins(qmark=qmark),
-            wheres=self.process_wheres(qmark=qmark),
-            group_by=self.process_group_by(),
-            having=self.process_having(qmark=qmark),
-            order_by=self.process_order_by(qmark=qmark),
-            limit=self.process_limit(),
-            offset=self.process_offset(),
-            aggregates=self.process_aggregates(),
-            lock=self.process_locks(),
-        ).strip()
+        ctes = self.process_ctes(qmark=qmark)
+        select_format = self.select_format() if self.table or self._from_sub else self.select_no_table()
+        self._sql = (
+            ctes
+            + select_format.format(
+                columns=self.process_columns(separator=", ", qmark=qmark),
+                keyword="DISTINCT" if self._distinct else "",
+                table=self.process_from_table(qmark=qmark),
+                joins=self.process_joins(qmark=qmark),
+                wheres=self.process_wheres(qmark=qmark),
+                group_by=self.process_group_by(),
+                having=self.process_having(qmark=qmark),
+                order_by=self.process_order_by(qmark=qmark),
+                limit=self.process_limit(),
+                offset=self.process_offset(),
+                aggregates=self.process_aggregates(),
+                lock=self.process_locks(),
+            ).strip()
+        )
 
         return self
 
@@ -539,7 +547,26 @@ class BaseGrammar:
             for t in table.name.split(".")
         )
 
-    def process_from_table(self):
+    def process_ctes(self, qmark=False):
+        if not self._ctes:
+            return ""
+        ctes = ", ".join(
+            f"{self.process_table(cte.alias)} AS {self.subquery_string().format(query=self._compile_subquery(cte.builder, qmark))}"
+            for cte in self._ctes
+        )
+        return f"WITH {ctes} "
+
+    def _compile_subquery(self, builder, qmark=False):
+        if not qmark:
+            return builder.to_sql()
+        sql = builder.to_qmark()
+        self.add_binding(*builder.get_bindings())
+        return sql
+
+    def process_from_table(self, qmark=False):
+        if self._from_sub:
+            query = self.subquery_string().format(query=self._compile_subquery(self._from_sub.builder, qmark))
+            return f"{query} AS {self.process_table(self._from_sub.alias)}"
         if not self.alias:
             return self.process_table(self.table)
         return f"{self.process_table(self.table)} AS {self.process_table(self.alias)}"
