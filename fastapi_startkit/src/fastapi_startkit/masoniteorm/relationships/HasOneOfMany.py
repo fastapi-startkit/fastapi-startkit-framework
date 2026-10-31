@@ -47,8 +47,11 @@ class HasOneOfMany(HasOne[TModel]):
         alias = f"{builder.get_table_name()}_of_many"
         key = builder._model.__primary_key__
         column = self.column or key
-        query = builder.table(builder.get_table_name(), alias).select(f"{alias}.{key}")
-        query.where_column(f"{alias}.{self.foreign_key}", f"{table}.{self.foreign_key}")
+        query = (
+            builder.table(builder.get_table_name(), alias)
+            .select(f"{alias}.{key}")
+            .where_column(f"{alias}.{self.foreign_key}", f"{table}.{self.foreign_key}")
+        )
         if column != key:
             query.where_not_null(f"{alias}.{column}").order_by(f"{alias}.{column}", self.direction)
         return query.order_by(f"{alias}.{key}", self.direction).limit(1)

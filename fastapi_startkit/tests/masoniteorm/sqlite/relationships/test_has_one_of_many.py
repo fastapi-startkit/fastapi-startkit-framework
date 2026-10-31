@@ -172,6 +172,15 @@ class TestHasOneOfMany(TestCase):
         user = await AliasedUser.with_("statuses").find(self.alice.id)
         self.assertEqual(len(user.statuses), 3)
 
+    async def test_previous_module_path_still_imports_the_decorator(self):
+        from fastapi_startkit.masoniteorm import relationships
+        from fastapi_startkit.masoniteorm.relationships.relationship import RelationshipMethod
+        from fastapi_startkit.masoniteorm.relationships.relationship import relationship as legacy
+
+        self.assertIs(legacy, relationship)
+        self.assertIs(relationships.relationship, relationship)
+        self.assertIsInstance(vars(OfManyUser)["due_date"], RelationshipMethod)
+
     async def test_unnamed_has_many_without_foreign_key_is_rejected(self):
         with pytest.raises(TypeError, match="explicit foreign_key"):
             HasMany["OfManyStatus"]().latest_of_many()

@@ -10,7 +10,7 @@ from .MorphMany import MorphMany
 from .MorphOne import MorphOne
 from .MorphTo import MorphTo
 from .MorphToMany import MorphToMany
-from .RelationshipMethod import relationship
+from .relationship import relationship
 
 __all__ = [
     "BaseRelationship",
