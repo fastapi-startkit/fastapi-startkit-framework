@@ -30,7 +30,7 @@ class MSSQLGrammar(BaseGrammar):
         "delete": "{table}.[{column}]{separator}",
     }
 
-    locks = {"share": "WITH(ROWLOCK)", "update": "WITH(ROWLOCK)"}
+    locks = {"share": "WITH(ROWLOCK, HOLDLOCK)", "update": "WITH(ROWLOCK, UPDLOCK, HOLDLOCK)"}
 
     def select_no_table(self):
         return "SELECT {columns}"
