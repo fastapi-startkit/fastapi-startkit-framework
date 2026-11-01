@@ -240,6 +240,14 @@ class Model(Attribute, Relationship, ObservesEvents):
         return cls.query().distinct()
 
     @classmethod
+    def lock_for_update(cls) -> "QueryBuilder[Self]":
+        return cls.query().lock_for_update()
+
+    @classmethod
+    def shared_lock(cls) -> "QueryBuilder[Self]":
+        return cls.query().shared_lock()
+
+    @classmethod
     def join(cls, table: str, column1: str, equality: str, column2: str, clause: str = "join") -> "QueryBuilder[Self]":
         return cls.query().join(table, column1, equality, column2, clause)
 

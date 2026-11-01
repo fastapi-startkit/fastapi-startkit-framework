@@ -1,6 +1,6 @@
 import inspect
 from collections.abc import Callable, Iterable
-from typing import TYPE_CHECKING, Any, Generic, Self, TypeVar, overload
+from typing import TYPE_CHECKING, Any, Generic, Literal, Self, TypeVar, overload
 
 from fastapi_startkit.masoniteorm.expressions.expressions import (
     JoinClause,
@@ -90,6 +90,7 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         self._group_by = ()
         self._having = ()
         self._distinct = False
+        self._lock: Literal["update", "share", False] = False
 
         self._sql = ""
         self._bindings = ()
@@ -283,6 +284,7 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
             group_by=self._group_by,
             having=self._having,
             distinct=self._distinct,
+            lock=self._lock,
         )
 
     def to_qmark(self) -> str:
@@ -376,6 +378,14 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
 
     def distinct(self) -> "Self":
         self._distinct = True
+        return self
+
+    def lock_for_update(self) -> "Self":
+        self._lock = "update"
+        return self
+
+    def shared_lock(self) -> "Self":
+        self._lock = "share"
         return self
 
     async def aggregate(self, function: str, column: str):
