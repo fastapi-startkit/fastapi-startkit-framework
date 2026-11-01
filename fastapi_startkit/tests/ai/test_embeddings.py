@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from fastapi_startkit.ai import AIConfig, Embeddings, EmbeddingsPrompt
+from fastapi_startkit.ai import AIConfig, Embeddings, EmbeddingsFake, EmbeddingsPrompt, EmbeddingsResponse
 from fastapi_startkit.application import app
 
 
@@ -150,3 +150,152 @@ async def test_generated_assertions():
 def test_assertions_require_a_fake():
     with pytest.raises(RuntimeError, match="not faked"):
         Embeddings.assert_nothing_generated()
+
+
+def test_prompt_contains_matches_substrings_of_any_input():
+    prompt = EmbeddingsPrompt(["Napa Valley has great wine.", "Laravel is a PHP framework."], None, "openai", "m")
+
+    assert prompt.contains("Valley")
+    assert prompt.contains("PHP framework")
+    assert not prompt.contains("Django")
+
+
+def test_prompt_contains_is_false_without_inputs():
+    assert not EmbeddingsPrompt([], None, "openai", "m").contains("anything")
+
+
+def test_response_first_returns_the_first_vector():
+    response = EmbeddingsResponse([[1.0, 0.0], [0.0, 1.0]], "openai", "m")
+
+    assert response.first() == [1.0, 0.0]
+
+
+def test_fake_embedding_is_a_unit_vector_of_the_given_size():
+    vector = Embeddings.fake_embedding(64)
+
+    assert len(vector) == 64
+    assert math.isclose(math.sqrt(sum(value * value for value in vector)), 1.0)
+
+
+def test_fake_embedding_defaults_to_1536_dimensions():
+    assert len(Embeddings.fake_embedding()) == 1536
+
+
+def test_fake_embedding_vectors_differ():
+    assert Embeddings.fake_embedding(16) != Embeddings.fake_embedding(16)
+
+
+def test_embeddings_fake_records_prompts_in_order():
+    fake = EmbeddingsFake()
+    first = EmbeddingsPrompt(["a"], 2, "openai", "m")
+    second = EmbeddingsPrompt(["b", "c"], 3, "openai", "m")
+
+    assert len(fake.respond(first)[0]) == 2
+    assert [len(vector) for vector in fake.respond(second)] == [3, 3]
+    assert fake.prompts == [first, second]
+
+
+def test_embeddings_fake_returns_no_vectors_for_no_inputs():
+    assert EmbeddingsFake().respond(EmbeddingsPrompt([], None, "openai", "m")) == []
+
+
+def test_embeddings_fake_callable_wins_over_prevent_stray():
+    fake = EmbeddingsFake(lambda prompt: [[0.5]] * len(prompt.inputs)).prevent_stray_embeddings()
+
+    assert fake.respond(EmbeddingsPrompt(["a", "b"], None, "openai", "m")) == [[0.5], [0.5]]
+
+
+def test_prevent_stray_without_responses_raises_on_first_call():
+    fake = EmbeddingsFake().prevent_stray_embeddings()
+
+    with pytest.raises(RuntimeError, match=r"\['a'\]"):
+        fake.respond(EmbeddingsPrompt(["a"], None, "openai", "m"))
+    assert len(fake.prompts) == 1
+
+
+def test_prevent_stray_embeddings_returns_the_fake():
+    fake = EmbeddingsFake()
+
+    assert fake.prevent_stray_embeddings() is fake
+
+
+def test_listed_responses_are_copied():
+    responses = [[[1.0]]]
+    fake = EmbeddingsFake(responses)
+
+    fake.respond(EmbeddingsPrompt(["a"], None, "openai", "m"))
+
+    assert responses == [[[1.0]]]
+
+
+async def test_fake_replaces_the_previous_fake():
+    Embeddings.fake()
+    await Embeddings.of(["old"]).generate()
+
+    Embeddings.fake()
+
+    Embeddings.assert_nothing_generated()
+
+
+async def test_reset_fake_sends_calls_to_the_provider_again(init_embeddings):
+    Embeddings.fake()
+    Embeddings.reset_fake()
+
+    response = await Embeddings.of(["a", "b"]).generate()
+
+    assert response.embeddings == [[0.1, 0.2], [0.3, 0.4]]
+    init_embeddings.assert_called_once()
+    with pytest.raises(RuntimeError, match="not faked"):
+        Embeddings.assert_nothing_generated()
+
+
+async def test_fake_records_resolved_provider_model_and_dimensions():
+    fake = Embeddings.fake()
+
+    await Embeddings.of(["a"]).dimensions(32).generate("bedrock")
+    await Embeddings.of(["b"]).generate(model="text-embedding-3-large")
+
+    assert fake.prompts == [
+        EmbeddingsPrompt(["a"], 32, "bedrock", "amazon.titan-embed-text-v2:0"),
+        EmbeddingsPrompt(["b"], None, "openai", "text-embedding-3-large"),
+    ]
+
+
+async def test_default_provider_follows_config(ai_config):
+    ai_config.default_embeddings = "google"
+    app().make("config").set("ai", ai_config)
+    Embeddings.fake()
+
+    response = await Embeddings.of(["a"]).generate()
+
+    assert (response.provider, response.model) == ("google", "gemini-embedding-001")
+
+
+async def test_builder_copies_inputs():
+    inputs = ["a"]
+    builder = Embeddings.of(inputs)
+    inputs.append("b")
+    fake = Embeddings.fake()
+
+    await builder.generate()
+
+    assert fake.prompts[0].inputs == ["a"]
+
+
+def test_dimensions_returns_the_builder():
+    builder = Embeddings.of(["a"])
+
+    assert builder.dimensions(8) is builder
+
+
+async def test_unknown_provider_raises():
+    with pytest.raises(ValueError):
+        await Embeddings.of(["a"]).generate("nope")
+
+
+async def test_assert_not_generated_passes_with_no_prompts():
+    Embeddings.fake()
+
+    Embeddings.assert_not_generated("anything")
+    with pytest.raises(AssertionError, match="Expected embeddings matching 'anything'"):
+        Embeddings.assert_generated("anything")

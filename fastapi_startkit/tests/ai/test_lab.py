@@ -31,6 +31,17 @@ class TestLab(unittest.TestCase):
         self.assertEqual(Lab.OPENAI.get_model(model_type=ModelType.IMAGE), "dall-e-3")
         self.assertEqual(Lab.GOOGLE.get_model(model_type=ModelType.IMAGE), "imagen-3.0-generate-002")
 
+    def test_embeddings_model_type_reads_default_embeddings(self):
+        self.assertEqual(ModelType.EMBEDDINGS.key, "default_embeddings")
+
+    def test_get_model_embeddings_default(self):
+        self.assertEqual(Lab.OPENAI.get_model(model_type=ModelType.EMBEDDINGS), "text-embedding-3-small")
+        self.assertEqual(Lab.GOOGLE.get_model(model_type=ModelType.EMBEDDINGS), "gemini-embedding-001")
+        self.assertEqual(Lab.BEDROCK.get_model(model_type=ModelType.EMBEDDINGS), "amazon.titan-embed-text-v2:0")
+
+    def test_get_provider_embeddings_uses_default_embeddings(self):
+        self.assertIs(Lab.get_provider(model_type=ModelType.EMBEDDINGS), Lab.OPENAI)
+
     def test_get_provider_uses_config_default(self):
         self.assertEqual(Lab.get_provider().value, "google")
 
