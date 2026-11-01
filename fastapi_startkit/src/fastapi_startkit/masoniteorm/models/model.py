@@ -244,6 +244,10 @@ class Model(Attribute, Relationship, ObservesEvents):
         return cls.query().distinct()
 
     @classmethod
+    def lock(cls, value: bool | str = True) -> "QueryBuilder[Self]":
+        return cls.query().lock(value)
+
+    @classmethod
     def lock_for_update(cls) -> "QueryBuilder[Self]":
         return cls.query().lock_for_update()
 

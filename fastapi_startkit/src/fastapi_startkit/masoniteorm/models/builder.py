@@ -91,7 +91,7 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         self._group_by = ()
         self._having = ()
         self._distinct = False
-        self._lock: Literal["update", "share", False] = False
+        self._lock: str | Literal[False] = False
 
         self._sql = ""
         self._bindings = ()
@@ -393,13 +393,18 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         self._distinct = True
         return self
 
-    def lock_for_update(self) -> "Self":
-        self._lock = "update"
+    def lock(self, value: bool | str = True) -> "Self":
+        if isinstance(value, str):
+            self._lock = value
+        else:
+            self._lock = "update" if value else "share"
         return self
 
+    def lock_for_update(self) -> "Self":
+        return self.lock(True)
+
     def shared_lock(self) -> "Self":
-        self._lock = "share"
-        return self
+        return self.lock(False)
 
     async def aggregate(self, function: str, column: str):
         self._aggregates += (AggregateExpression(function, column),)
