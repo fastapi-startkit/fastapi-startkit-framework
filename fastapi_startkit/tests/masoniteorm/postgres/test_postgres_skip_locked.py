@@ -83,3 +83,18 @@ class TestPostgresSkipLocked(TestCase):
         self.assertEqual(done, set())
         self.release.set()
         self.assertNotIn(held[0], await asyncio.wait_for(blocked, SETTLES_WITHIN))
+
+    async def test_one_update_through_a_skip_locked_subquery_claims_a_free_row(self):
+        held = await asyncio.wait_for(
+            await self.claim_and_hold(1, lambda query: query.lock("FOR UPDATE SKIP LOCKED")), SETTLES_WITHIN
+        )
+        next_free = pending(1).select("id").lock("FOR UPDATE SKIP LOCKED")
+
+        updated = await asyncio.wait_for(
+            PskQueueItem.where("id", next_free).update({"status": "processing"}), SETTLES_WITHIN
+        )
+
+        processing = [item.id for item in await PskQueueItem.where("status", "processing").get()]
+        self.assertEqual(updated, 1)
+        self.assertEqual(len(processing), 1)
+        self.assertNotIn(held[0], processing)

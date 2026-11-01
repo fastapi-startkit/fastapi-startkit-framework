@@ -157,18 +157,6 @@ class BaseGrammar:
         return self
 
     def _compile_update(self, query=None, values=None, qmark=False):
-        """Compiles an update query statement.
-
-        Arguments:
-            query  -- The QueryBuilder instance (provides table/wheres context).
-            values {list} -- Runtime UpdateQueryExpression list.
-
-        Keyword Arguments:
-            qmark {bool} -- Use positional ? bindings. (default: {False})
-
-        Returns:
-            self
-        """
         self._action = "update"
 
         if values is not None:
