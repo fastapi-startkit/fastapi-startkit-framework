@@ -69,6 +69,21 @@ class TestPostgresSubqueryWhere(TestCase):
         self.assertEqual([user.id for user in users], [1, 2, 3])
         self.assertEqual([user.id for user in await PgSqUser.where_not_exists(orders_of_user()).get()], [3])
 
+    async def test_not_exists_and_exists_inside_nested_where_groups(self):
+        users = await (
+            PgSqUser.where(
+                lambda group: group.where_exists(orders_of_user()).where(
+                    lambda inner: inner.where_not_exists(
+                        orders_of_user().where("pg_sq_orders.status", "paid")
+                    ).or_where_exists(orders_of_user().where("pg_sq_orders.total", ">=", 500))
+                )
+            )
+            .order_by("id")
+            .get()
+        )
+
+        self.assertEqual([user.id for user in users], [1, 2])
+
     async def test_add_select_exists_returns_booleans(self):
         users = await (
             PgSqUser.add_select_exists("has_big_order", orders_of_user().where("pg_sq_orders.total", ">", 100))

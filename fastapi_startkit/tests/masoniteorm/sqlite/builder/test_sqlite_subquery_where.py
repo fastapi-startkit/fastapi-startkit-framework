@@ -110,6 +110,28 @@ class TestSqliteSubqueryWhere(TestCase):
 
         self.assertEqual([user.id for user in users], [1, 2, 4])
 
+    async def test_not_exists_and_exists_inside_nested_where_groups(self):
+        users = await (
+            SqUser.where(
+                lambda group: group.where_exists(
+                    orders_of_user().where("sq_orders.total", ">=", 500)
+                ).or_where_not_exists(orders_of_user())
+            )
+            .where(
+                lambda group: group.where_not_exists(
+                    SqBan.query().where_column("sq_bans.user_id", "sq_users.id")
+                ).where(
+                    lambda inner: inner.where("country", "US").or_where_exists(
+                        orders_of_user().where("sq_orders.status", "paid")
+                    )
+                )
+            )
+            .order_by("id")
+            .get()
+        )
+
+        self.assertEqual([user.id for user in users], [1, 4])
+
     async def test_where_exists_accepts_a_callable(self):
         users = await (
             SqUser.query()

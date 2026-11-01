@@ -21,6 +21,7 @@ EXPECTED = {
         "where_not_exists": 'SELECT * FROM "users" WHERE "users"."active" = ? AND NOT EXISTS (SELECT * FROM "orders" WHERE orders.user_id = users.id AND "orders"."total" > ?) OR NOT EXISTS (SELECT * FROM "bans" WHERE "bans"."active" = ?)',
         "add_select_exists": 'SELECT "users".*, EXISTS(SELECT * FROM "orders" WHERE orders.user_id = users.id AND "orders"."total" > ?) AS has_big_order FROM "users"',
         "combined": 'SELECT "users"."country", count(*) as total, EXISTS(SELECT * FROM "orders" WHERE orders.user_id = users.id AND "orders"."total" > ?) AS has_big_order FROM "users" INNER JOIN "teams" ON "teams"."id" = "users"."team_id" WHERE "users"."age" > ? AND NOT EXISTS (SELECT * FROM "bans" WHERE bans.user_id = users.id AND "bans"."active" = ?) AND "users"."id" IN (SELECT "orders"."user_id" FROM "orders" WHERE "orders"."status" = ?) GROUP BY "users"."country" HAVING count(*) > ? ORDER BY "country" ASC LIMIT 10 OFFSET 20',
+        "nested": 'SELECT * FROM "users" WHERE "users"."active" = ? AND ( EXISTS (SELECT * FROM "orders" WHERE orders.user_id = users.id AND "orders"."total" > ?) OR NOT EXISTS (SELECT * FROM "bans" WHERE bans.user_id = users.id AND "bans"."active" = ?)) AND ( NOT EXISTS (SELECT * FROM "refunds" WHERE "refunds"."amount" > ?) AND ("users"."age" > ? OR EXISTS (SELECT * FROM "guardians" WHERE "guardians"."verified" = ?)))',
     },
     "mysql": {
         "where_in": "SELECT * FROM `users` WHERE `users`.`id` IN (SELECT `orders`.`user_id` FROM `orders` WHERE `orders`.`status` = ?)",
@@ -28,6 +29,7 @@ EXPECTED = {
         "where_not_exists": "SELECT * FROM `users` WHERE `users`.`active` = ? AND NOT EXISTS (SELECT * FROM `orders` WHERE orders.user_id = users.id AND `orders`.`total` > ?) OR NOT EXISTS (SELECT * FROM `bans` WHERE `bans`.`active` = ?)",
         "add_select_exists": "SELECT `users`.*, EXISTS(SELECT * FROM `orders` WHERE orders.user_id = users.id AND `orders`.`total` > ?) AS has_big_order FROM `users`",
         "combined": "SELECT `users`.`country`, count(*) as total, EXISTS(SELECT * FROM `orders` WHERE orders.user_id = users.id AND `orders`.`total` > ?) AS has_big_order FROM `users` INNER JOIN `teams` ON `teams`.`id` = `users`.`team_id` WHERE `users`.`age` > ? AND NOT EXISTS (SELECT * FROM `bans` WHERE bans.user_id = users.id AND `bans`.`active` = ?) AND `users`.`id` IN (SELECT `orders`.`user_id` FROM `orders` WHERE `orders`.`status` = ?) GROUP BY `users`.`country` HAVING count(*) > ? ORDER BY `country` ASC LIMIT 10 OFFSET 20",
+        "nested": "SELECT * FROM `users` WHERE `users`.`active` = ? AND ( EXISTS (SELECT * FROM `orders` WHERE orders.user_id = users.id AND `orders`.`total` > ?) OR NOT EXISTS (SELECT * FROM `bans` WHERE bans.user_id = users.id AND `bans`.`active` = ?)) AND ( NOT EXISTS (SELECT * FROM `refunds` WHERE `refunds`.`amount` > ?) AND (`users`.`age` > ? OR EXISTS (SELECT * FROM `guardians` WHERE `guardians`.`verified` = ?)))",
     },
     "postgres": {
         "where_in": 'SELECT * FROM "users" WHERE "users"."id" IN (SELECT "orders"."user_id" FROM "orders" WHERE "orders"."status" = ?)',
@@ -35,6 +37,7 @@ EXPECTED = {
         "where_not_exists": 'SELECT * FROM "users" WHERE "users"."active" = ? AND NOT EXISTS (SELECT * FROM "orders" WHERE orders.user_id = users.id AND "orders"."total" > ?) OR NOT EXISTS (SELECT * FROM "bans" WHERE "bans"."active" = ?)',
         "add_select_exists": 'SELECT "users".*, EXISTS(SELECT * FROM "orders" WHERE orders.user_id = users.id AND "orders"."total" > ?) AS has_big_order FROM "users"',
         "combined": 'SELECT "users"."country", count(*) as total, EXISTS(SELECT * FROM "orders" WHERE orders.user_id = users.id AND "orders"."total" > ?) AS has_big_order FROM "users" INNER JOIN "teams" ON "teams"."id" = "users"."team_id" WHERE "users"."age" > ? AND NOT EXISTS (SELECT * FROM "bans" WHERE bans.user_id = users.id AND "bans"."active" = ?) AND "users"."id" IN (SELECT "orders"."user_id" FROM "orders" WHERE "orders"."status" = ?) GROUP BY "users"."country" HAVING count(*) > ? ORDER BY "country" ASC LIMIT 10 OFFSET 20',
+        "nested": 'SELECT * FROM "users" WHERE "users"."active" = ? AND ( EXISTS (SELECT * FROM "orders" WHERE orders.user_id = users.id AND "orders"."total" > ?) OR NOT EXISTS (SELECT * FROM "bans" WHERE bans.user_id = users.id AND "bans"."active" = ?)) AND ( NOT EXISTS (SELECT * FROM "refunds" WHERE "refunds"."amount" > ?) AND ("users"."age" > ? OR EXISTS (SELECT * FROM "guardians" WHERE "guardians"."verified" = ?)))',
     },
     "mssql": {
         "where_in": "SELECT * FROM [users] WHERE [users].[id] IN (SELECT [orders].[user_id] FROM [orders] WHERE [orders].[status] = ?)",
@@ -42,12 +45,21 @@ EXPECTED = {
         "where_not_exists": "SELECT * FROM [users] WHERE [users].[active] = ? AND NOT EXISTS (SELECT * FROM [orders] WHERE orders.user_id = users.id AND [orders].[total] > ?) OR NOT EXISTS (SELECT * FROM [bans] WHERE [bans].[active] = ?)",
         "add_select_exists": "SELECT [users].*, CASE WHEN EXISTS(SELECT * FROM [orders] WHERE orders.user_id = users.id AND [orders].[total] > ?) THEN 1 ELSE 0 END AS has_big_order FROM [users]",
         "combined": "SELECT [users].[country], count(*) as total, CASE WHEN EXISTS(SELECT * FROM [orders] WHERE orders.user_id = users.id AND [orders].[total] > ?) THEN 1 ELSE 0 END AS has_big_order FROM [users] INNER JOIN [teams] ON [teams].[id] = [users].[team_id] WHERE [users].[age] > ? AND NOT EXISTS (SELECT * FROM [bans] WHERE bans.user_id = users.id AND [bans].[active] = ?) AND [users].[id] IN (SELECT [orders].[user_id] FROM [orders] WHERE [orders].[status] = ?) GROUP BY [users].[country] HAVING count(*) > ? ORDER BY [country] ASC OFFSET 20 ROWS FETCH NEXT 10 ROWS ONLY",
+        "nested": "SELECT * FROM [users] WHERE [users].[active] = ? AND ( EXISTS (SELECT * FROM [orders] WHERE orders.user_id = users.id AND [orders].[total] > ?) OR NOT EXISTS (SELECT * FROM [bans] WHERE bans.user_id = users.id AND [bans].[active] = ?)) AND ( NOT EXISTS (SELECT * FROM [refunds] WHERE [refunds].[amount] > ?) AND ([users].[age] > ? OR EXISTS (SELECT * FROM [guardians] WHERE [guardians].[verified] = ?)))",
     },
 }
 
 
+class GrammarConnection:
+    def __init__(self, grammar):
+        self.grammar = grammar
+
+    def query(self):
+        return QueryBuilder(connection=self, grammar=self.grammar, processor=None)
+
+
 def qb(grammar, table):
-    q = QueryBuilder(connection=None, grammar=grammar, processor=None)
+    q = GrammarConnection(grammar).query()
     q._table = table
     return q
 
@@ -94,6 +106,32 @@ class TestSubqueryWhereGrammar(unittest.TestCase):
                 )
                 self.assertEqual(q.to_qmark(), EXPECTED[name]["where_not_exists"])
                 self.assertEqual(list(q.get_bindings()), [1, 100, 2])
+
+    def test_not_exists_and_exists_inside_nested_where_groups(self):
+        for name, grammar in GRAMMARS.items():
+            with self.subTest(grammar=name):
+                q = (
+                    qb(grammar, "users")
+                    .where("active", 1)
+                    .where(
+                        lambda group: group.where_exists(big_orders(grammar)).or_where_not_exists(
+                            lambda sub: (
+                                sub.table("bans").where_column("bans.user_id", "users.id").where("bans.active", 2)
+                            )
+                        )
+                    )
+                    .where(
+                        lambda group: group.where_not_exists(
+                            lambda sub: sub.table("refunds").where("refunds.amount", ">", 50)
+                        ).where(
+                            lambda inner: inner.where("age", ">", 18).or_where_exists(
+                                lambda sub: sub.table("guardians").where("guardians.verified", 3)
+                            )
+                        )
+                    )
+                )
+                self.assertEqual(q.to_qmark(), EXPECTED[name]["nested"])
+                self.assertEqual(list(q.get_bindings()), [1, 100, 2, 50, 18, 3])
 
     def test_add_select_exists_keeps_table_columns(self):
         for name, grammar in GRAMMARS.items():
