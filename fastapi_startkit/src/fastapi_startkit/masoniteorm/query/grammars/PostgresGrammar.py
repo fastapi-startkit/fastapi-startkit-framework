@@ -10,6 +10,8 @@ if TYPE_CHECKING:
 class PostgresGrammar(BaseGrammar):
     """Postgres grammar class."""
 
+    supports_vectors = True
+
     types_without_lengths: list[str]
     _creates: Any
 

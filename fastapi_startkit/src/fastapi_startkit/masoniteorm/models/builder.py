@@ -1,5 +1,6 @@
 import inspect
-from collections.abc import Callable, Iterable
+import json
+from collections.abc import Callable, Iterable, Sequence
 from typing import TYPE_CHECKING, Any, Generic, Literal, Self, TypeVar, overload
 
 from fastapi_startkit.masoniteorm.expressions.expressions import (
@@ -670,6 +671,46 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
     def or_where_raw(self, expression: str, bindings: tuple[Any, ...] = ()) -> "Self":
         self._wheres += (QueryExpression(expression, "=", None, raw=True, keyword="or", bindings=bindings),)
         return self
+
+    def select_vector_distance(self, column: str, vector: Sequence[float], as_: str | None = None) -> "Self":
+        alias = as_ or f"{column.split('.')[-1]}_distance"
+        return self.add_select_raw(
+            f"({self._vector_column(column)} <=> ?) AS {self._vector_column(alias)}", [self._vector_binding(vector)]
+        )
+
+    def where_vector_distance_less_than(self, column: str, vector: Sequence[float], max_distance: float) -> "Self":
+        return self.where_raw(
+            f"({self._vector_column(column)} <=> ?) <= ?", (self._vector_binding(vector), max_distance)
+        )
+
+    def or_where_vector_distance_less_than(self, column: str, vector: Sequence[float], max_distance: float) -> "Self":
+        return self.or_where_raw(
+            f"({self._vector_column(column)} <=> ?) <= ?", (self._vector_binding(vector), max_distance)
+        )
+
+    def order_by_vector_distance(self, column: str, vector: Sequence[float]) -> "Self":
+        expression = f"({self._vector_column(column)} <=> ?) ASC"
+        self._order_by += (OrderByExpression(expression, raw=True, bindings=(self._vector_binding(vector),)),)
+        return self
+
+    def where_vector_similar_to(
+        self, column: str, vector: Sequence[float], min_similarity: float = 0.6, order: bool = True
+    ) -> "Self":
+        self.where_vector_distance_less_than(column, vector, 1 - min_similarity)
+        return self.order_by_vector_distance(column, vector) if order else self
+
+    def _vector_column(self, column: str) -> str:
+        if not self.grammar.supports_vectors:
+            raise ValueError(f"{self.grammar.__name__} does not support vector queries; use PostgreSQL with pgvector.")
+        return ".".join(f'"{part}"' for part in column.split("."))
+
+    @staticmethod
+    def _vector_binding(vector: Sequence[float]) -> str:
+        if isinstance(vector, str):
+            raise TypeError(
+                "Vector queries need a list of floats; embed text first with await Str.of(text).to_embeddings()."
+            )
+        return json.dumps([float(value) for value in vector])
 
     def join(self, table: str, column1: str, equality: str, column2: str, clause: str = "join") -> "Self":
         join_clause = JoinClause(table, clause=clause)

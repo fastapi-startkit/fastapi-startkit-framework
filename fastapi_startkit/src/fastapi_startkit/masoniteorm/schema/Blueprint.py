@@ -636,6 +636,12 @@ class Blueprint:
         self._last_column = self.table.add_column(column, "geometry", nullable=nullable)
         return self
 
+    def vector(self, column: str, dimensions: int, nullable: bool = False):
+        if not self.platform.supports_vectors:
+            raise ValueError(f"{self.platform.__name__} does not support vector columns; use PostgreSQL with pgvector.")
+        self._last_column = self.table.add_column(column, "vector", length=dimensions, nullable=nullable)
+        return self
+
     def year(self, column: str, length: int = 4, default: object = None, nullable: bool = False):
         """Sets a column to be the year representation for the table.
 
@@ -807,7 +813,9 @@ class Blueprint:
         Returns:
             self
         """
+        index_type = "index"
         if not column:
+            index_type = "vector" if self._column().column_type == "vector" else "index"
             column = self._column().name
 
         if not isinstance(column, list):
@@ -816,7 +824,7 @@ class Blueprint:
         self.table.add_index(
             column,
             name or f"{self.table.name}_{'_'.join(column)}_index",
-            "index",
+            index_type,
         )
 
         return self

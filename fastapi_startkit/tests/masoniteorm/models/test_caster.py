@@ -224,3 +224,14 @@ def test_nullable_field_default_applies_to_none():
     assert isinstance(caster.casts["level"], IntCast)
     assert caster.get("level", None) == 1
     assert caster.get("level", "5") == 5
+
+
+@pytest.mark.parametrize("annotation", [list, dict, list[float], dict[str, int], list[float] | None])
+def test_list_and_dict_annotations_cast_as_json(annotation):
+    class CasterJsonDocument(Model):
+        payload: annotation  # pyright: ignore[reportInvalidTypeForm]
+
+    cast = Caster(CasterJsonDocument).casts["payload"]
+
+    assert isinstance(cast, JsonCast)
+    assert cast.get("[0.1, 0.2]") == [0.1, 0.2]
