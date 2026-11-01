@@ -18,6 +18,7 @@ class ModelType(StrEnum):
     IMAGE = "image"
     AUDIO = "audio"
     TRANSCRIBE = "transcribe"
+    EMBEDDINGS = "embeddings"
 
     @property
     def key(self) -> str:
@@ -26,6 +27,7 @@ class ModelType(StrEnum):
             ModelType.IMAGE: "default_image",
             ModelType.AUDIO: "default_audio",
             ModelType.TRANSCRIBE: "default_transcribe",
+            ModelType.EMBEDDINGS: "default_embeddings",
         }[self]
 
 

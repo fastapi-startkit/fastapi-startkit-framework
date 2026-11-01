@@ -36,6 +36,7 @@ class OpenAIConfig(Config):
         default_factory=lambda: {
             "default": "gpt-4o",
             "default_image": "dall-e-3",
+            "default_embeddings": "text-embedding-3-small",
         }
     )
 
@@ -51,6 +52,7 @@ class GoogleConfig(Config):
         default_factory=lambda: {
             "default": "gemini-2.5-flash-lite",
             "default_image": "imagen-3.0-generate-002",
+            "default_embeddings": "gemini-embedding-001",
         }
     )
 
@@ -83,5 +85,6 @@ class BedrockConfig(Config):
     models: dict[str, str] = field(
         default_factory=lambda: {
             "default": os.getenv("AWS_BEDROCK_MODEL") or "us.anthropic.claude-sonnet-4-6",
+            "default_embeddings": "amazon.titan-embed-text-v2:0",
         }
     )
