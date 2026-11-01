@@ -486,7 +486,7 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
 
     async def update(self, values: dict[str, Any]) -> int:
         updates = [UpdateQueryExpression(col, val) for col, val in values.items()]
-        grammar = self.grammar()
+        grammar = self.grammar(table=self._table)
         sql = grammar._compile_update(query=self, values=updates, qmark=True).to_sql()
         bindings = list(grammar._bindings)
         return await self.connection.update(sql, bindings)
