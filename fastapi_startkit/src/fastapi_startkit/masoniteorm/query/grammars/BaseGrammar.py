@@ -567,7 +567,7 @@ class BaseGrammar:
         return self.offset_string().format(offset=self._offset, limit=self._limit or 1)
 
     def process_locks(self):
-        return self.locks.get(self.lock, "")
+        return self.locks.get(self.lock, self.lock or "")
 
     def process_having(self, qmark=False):
         """Compiles having expression.
