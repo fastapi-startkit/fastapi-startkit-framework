@@ -37,6 +37,9 @@ class SQLiteGrammar(BaseGrammar):
 
     locks = {"share": "", "update": ""}
 
+    def process_locks(self):
+        return ""
+
     def select_format(self):
         return "SELECT {keyword} {columns} FROM {table} {joins} {wheres} {group_by} {having} {order_by} {limit} {offset} {lock}"
 
