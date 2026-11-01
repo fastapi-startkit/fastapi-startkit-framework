@@ -776,6 +776,9 @@ class BaseGrammar:
 
         return sql
 
+    def select_exists_string(self) -> str:
+        return "EXISTS({query})"
+
     def get_true_column_string(self) -> str:
         return "{keyword} {column} = '1'"
 
@@ -877,7 +880,13 @@ class BaseGrammar:
                         self.add_binding(*column.builder._bindings)
                 else:
                     builder_sql = column.builder.to_sql()
-                sql += f"({builder_sql}) " + self.subquery_alias_string().format(alias=column.alias) + ", "
+                subquery_format = self.select_exists_string() if column.exists else "({query})"
+                sql += (
+                    subquery_format.format(query=builder_sql)
+                    + " "
+                    + self.subquery_alias_string().format(alias=column.alias)
+                    + ", "
+                )
                 continue
 
             sql += self._table_column_string(column, alias=alias, separator=separator)

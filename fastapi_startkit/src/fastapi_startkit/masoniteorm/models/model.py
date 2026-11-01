@@ -23,7 +23,7 @@ from fastapi_startkit.masoniteorm.observers import ObservesEvents
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
-    from fastapi_startkit.masoniteorm.models.builder import QueryBuilder, WhereGroup
+    from fastapi_startkit.masoniteorm.models.builder import QueryBuilder, Subquery, WhereGroup
 
 
 @dataclass_transform(field_specifiers=(Field, ModelField))
@@ -168,11 +168,11 @@ class Model(Attribute, Relationship, ObservesEvents):
         return cls.query().or_where_raw(expression, bindings)
 
     @classmethod
-    def where_in(cls, column: str, values: Iterable[Any]) -> "QueryBuilder[Self]":
+    def where_in(cls, column: str, values: Iterable[Any] | Subquery) -> "QueryBuilder[Self]":
         return cls.query().where_in(column, values)
 
     @classmethod
-    def where_not_in(cls, column: str, values: Iterable[Any]) -> "QueryBuilder[Self]":
+    def where_not_in(cls, column: str, values: Iterable[Any] | Subquery) -> "QueryBuilder[Self]":
         return cls.query().where_not_in(column, values)
 
     @classmethod
@@ -186,6 +186,10 @@ class Model(Attribute, Relationship, ObservesEvents):
     @classmethod
     def add_select_raw(cls, expression: str, bindings: list[Any] | tuple[Any, ...] = ()) -> "QueryBuilder[Self]":
         return cls.query().add_select_raw(expression, bindings)
+
+    @classmethod
+    def add_select_exists(cls, alias: str, query: Subquery) -> "QueryBuilder[Self]":
+        return cls.query().add_select_exists(alias, query)
 
     @classmethod
     def limit(cls, limit: int) -> "QueryBuilder[Self]":
@@ -268,12 +272,20 @@ class Model(Attribute, Relationship, ObservesEvents):
         return cls.query().when(condition, callback)
 
     @classmethod
-    def where_exists(cls, builder: "QueryBuilder[Any]") -> "QueryBuilder[Self]":
+    def where_exists(cls, builder: Subquery) -> "QueryBuilder[Self]":
         return cls.query().where_exists(builder)
 
     @classmethod
-    def or_where_exists(cls, builder: "QueryBuilder[Any]") -> "QueryBuilder[Self]":
+    def or_where_exists(cls, builder: Subquery) -> "QueryBuilder[Self]":
         return cls.query().or_where_exists(builder)
+
+    @classmethod
+    def where_not_exists(cls, builder: Subquery) -> "QueryBuilder[Self]":
+        return cls.query().where_not_exists(builder)
+
+    @classmethod
+    def or_where_not_exists(cls, builder: Subquery) -> "QueryBuilder[Self]":
+        return cls.query().or_where_not_exists(builder)
 
     @classmethod
     def where_has(cls, relation: str, callback: Callable[..., Any] | None = None) -> "QueryBuilder[Self]":
