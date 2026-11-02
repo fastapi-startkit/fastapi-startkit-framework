@@ -6,6 +6,7 @@ from .config.config import AnthropicConfig, BedrockConfig, ElevenLabsConfig, Goo
 from .config.ai import AIConfig
 from .decorators import max_steps, max_tokens, model, provider, timeout, top_p
 from .document import Document
+from .embeddings import Embeddings, EmbeddingsFake, EmbeddingsPrompt, EmbeddingsResponse
 from .image import Image, ImageResponse
 from .image_factory import ImageFactory
 from .ai import Ai
@@ -31,6 +32,10 @@ __all__ = [
     "AudioFactory",
     "BedrockConfig",
     "Document",
+    "Embeddings",
+    "EmbeddingsFake",
+    "EmbeddingsPrompt",
+    "EmbeddingsResponse",
     "ElevenLabsConfig",
     "GoogleConfig",
     "Image",

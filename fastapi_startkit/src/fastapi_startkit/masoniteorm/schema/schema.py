@@ -47,6 +47,7 @@ class Schema:
         "tiny_increments": int,
         "unsigned": int,
         "unsigned_integer": int,
+        "vector": list,
     }
 
     def __init__(self, manager) -> None:
@@ -157,6 +158,9 @@ class Schema:
         connection = self.get_connection()
         sql = connection.get_default_platform()().enable_foreign_key_constraints()
         await connection.statement(sql, ())
+
+    async def ensure_vector_extension_exists(self) -> None:
+        await self.get_connection().statement(self.platform().compile_ensure_vector_extension(), ())
 
     async def get_all_tables(self) -> list[Any]:
         """Gets all tables in the database."""

@@ -20,6 +20,17 @@ class Stringable:
     def snake_case(self) -> "Stringable":
         return Stringable(Str.snake_case(self.text))
 
+    async def to_embeddings(
+        self, provider: str | None = None, model: str | None = None, dimensions: int | None = None
+    ) -> list[float]:
+        from fastapi_startkit.ai.embeddings import Embeddings
+
+        embeddings = Embeddings.of([self.text])
+        if dimensions:
+            embeddings.dimensions(dimensions)
+        response = await embeddings.generate(provider, model)
+        return response.first()
+
 
 class Str:
     @classmethod
