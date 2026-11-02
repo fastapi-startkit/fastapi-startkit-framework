@@ -813,20 +813,25 @@ class Blueprint:
         Returns:
             self
         """
-        index_type = "index"
-        if not column:
-            index_type = "vector" if self._column().column_type == "vector" else "index"
-            column = self._column().name
+        columns = self._index_columns(column)
+        index_type = "vector" if any(self._is_vector_column(name) for name in columns) else "index"
+        return self._add_index(columns, name, index_type)
 
-        if not isinstance(column, list):
-            column = [column]
+    def vector_index(self, column: str | None = None, name: str | None = None):
+        if not self.platform.supports_vectors:
+            raise ValueError(f"{self.platform.__name__} does not support vector indexes; use PostgreSQL with pgvector.")
+        return self._add_index(self._index_columns(column), name, "vector")
 
-        self.table.add_index(
-            column,
-            name or f"{self.table.name}_{'_'.join(column)}_index",
-            index_type,
-        )
+    def _index_columns(self, column: str | list[str] | None) -> list[str]:
+        column = column or self._column().name
+        return column if isinstance(column, list) else [column]
 
+    def _is_vector_column(self, name: str) -> bool:
+        added = self.table.added_columns.get(name)
+        return added is not None and added.column_type == "vector"
+
+    def _add_index(self, columns: list[str], name: str | None, index_type: str):
+        self.table.add_index(columns, name or f"{self.table.name}_{'_'.join(columns)}_index", index_type)
         return self
 
     def fulltext(self, column: str | list[str] | None = None, name: str | None = None):

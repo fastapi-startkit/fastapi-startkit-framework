@@ -55,9 +55,44 @@ def test_adding_an_indexed_vector_column_to_an_existing_table():
     assert PostgresPlatform().compile_alter_sql(table) == [
         'ALTER TABLE "documents" ADD COLUMN "embedding" VECTOR(8) NOT NULL, '
         'ADD COLUMN "summary_embedding" VECTOR(8) NOT NULL',
-        'CREATE INDEX documents_embedding_index ON "documents"(embedding)',
+        'CREATE INDEX documents_embedding_index ON "documents" USING hnsw (embedding vector_cosine_ops)',
         'CREATE INDEX documents_summary_embedding_index ON "documents" USING hnsw (summary_embedding vector_cosine_ops)',
     ]
+
+
+def test_named_index_on_a_vector_column_creates_an_hnsw_index():
+    table = Table("documents")
+    blueprint(table).vector("embedding", dimensions=1536).string("title")
+    blueprint(table).index("embedding", name="documents_embedding_hnsw")
+
+    assert PostgresPlatform().compile_create_sql(table)[1] == (
+        'CREATE INDEX documents_embedding_hnsw ON "documents" USING hnsw (embedding vector_cosine_ops)'
+    )
+
+
+def test_named_index_on_a_regular_column_stays_a_btree_index():
+    table = Table("documents")
+    blueprint(table).vector("embedding", dimensions=3).string("title")
+    blueprint(table).index("title")
+
+    assert PostgresPlatform().compile_create_sql(table)[1] == (
+        'CREATE INDEX documents_title_index ON "documents"(title)'
+    )
+
+
+def test_vector_index_on_an_existing_column():
+    table = TableDiff("documents")
+    blueprint(table).vector_index("embedding")
+
+    assert PostgresPlatform().compile_alter_sql(table) == [
+        'CREATE INDEX documents_embedding_index ON "documents" USING hnsw (embedding vector_cosine_ops)'
+    ]
+
+
+@pytest.mark.parametrize("platform", [SQLitePlatform, MySQLPlatform, MSSQLPlatform])
+def test_vector_indexes_require_postgres(platform):
+    with pytest.raises(ValueError, match="does not support vector indexes"):
+        blueprint(Table("documents"), platform).vector_index("embedding")
 
 
 @pytest.mark.parametrize("platform", [SQLitePlatform, MySQLPlatform, MSSQLPlatform])
