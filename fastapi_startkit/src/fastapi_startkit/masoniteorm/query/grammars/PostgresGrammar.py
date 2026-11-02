@@ -153,6 +153,11 @@ class PostgresGrammar(BaseGrammar):
     def table_string(self):
         return '"{table}"'
 
+    @staticmethod
+    def wrap_identifier(name: str) -> str:
+        escaped = name.replace('"', '""')
+        return f'"{escaped}"'
+
     def order_by_format(self):
         return "{column} {direction}"
 

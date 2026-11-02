@@ -675,7 +675,7 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
     def select_vector_distance(self, column: str, vector: Sequence[float], as_: str | None = None) -> "Self":
         alias = as_ or f"{column.split('.')[-1]}_distance"
         return self.add_select_raw(
-            f"({self._vector_column(column)} <=> ?) AS {self._vector_column(alias)}", [self._vector_binding(vector)]
+            f"({self._vector_column(column)} <=> ?) AS {self._vector_identifier(alias)}", [self._vector_binding(vector)]
         )
 
     def where_vector_distance_less_than(self, column: str, vector: Sequence[float], max_distance: float) -> "Self":
@@ -700,9 +700,14 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         return self.order_by_vector_distance(column, vector) if order else self
 
     def _vector_column(self, column: str) -> str:
+        table = self._alias or self._table
+        qualified = column if "." in column or not table else f"{table}.{column}"
+        return ".".join(self._vector_identifier(part) for part in qualified.split("."))
+
+    def _vector_identifier(self, name: str) -> str:
         if not self.grammar.supports_vectors:
             raise ValueError(f"{self.grammar.__name__} does not support vector queries; use PostgreSQL with pgvector.")
-        return ".".join(f'"{part}"' for part in column.split("."))
+        return self.grammar.wrap_identifier(name)
 
     @staticmethod
     def _vector_binding(vector: Sequence[float]) -> str:
