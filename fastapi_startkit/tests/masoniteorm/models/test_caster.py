@@ -1,4 +1,5 @@
 import datetime
+import unittest
 from typing import Annotated, Optional, Union
 
 import pendulum
@@ -171,14 +172,6 @@ def test_nullable_field_casts_present_values():
     assert caster.set("meta", {"a": 1}) == '{"a": 1}'
 
 
-def test_bare_annotations_keep_their_none_behaviour():
-    caster = Caster(NullableProfile)
-
-    assert "plain_bool" not in caster.nullable
-    assert caster.get("plain_bool", None) is False
-    assert caster.set("plain_dict", None) is None
-
-
 def test_annotated_nullable_type_infers_the_inner_cast():
     class AnnotatedNullableProfile(Model):
         outer: Annotated[int | None, "metadata"]
@@ -226,19 +219,28 @@ def test_nullable_field_default_applies_to_none():
     assert caster.get("level", "5") == 5
 
 
-@pytest.mark.parametrize("annotation", [list, dict, list[float], dict[str, int], list[float] | None])
-def test_list_and_dict_annotations_cast_as_json(annotation):
-    class CasterJsonDocument(Model):
-        payload: annotation  # pyright: ignore[reportInvalidTypeForm]
+class TestCasterJsonAnnotations(unittest.TestCase):
+    def test_bare_annotations_keep_their_none_behaviour(self):
+        caster = Caster(NullableProfile)
 
-    cast = Caster(CasterJsonDocument).casts["payload"]
+        self.assertNotIn("plain_bool", caster.nullable)
+        self.assertIs(caster.get("plain_bool", None), False)
+        self.assertIsNone(caster.set("plain_dict", None))
 
-    assert isinstance(cast, JsonCast)
-    assert cast.get("[0.1, 0.2]") == [0.1, 0.2]
+    def test_list_and_dict_annotations_cast_as_json(self):
+        for annotation in (list, dict, list[float], dict[str, int], list[float] | None):
+            with self.subTest(annotation=annotation):
 
+                class CasterJsonDocument(Model):
+                    payload: annotation  # pyright: ignore[reportInvalidTypeForm]
 
-def test_json_cast_stores_none_as_sql_null():
-    class CasterVectorDocument(Model):
-        embedding: list[float]
+                cast = Caster(CasterJsonDocument).casts["payload"]
 
-    assert Caster(CasterVectorDocument).set("embedding", None) is None
+                self.assertIsInstance(cast, JsonCast)
+                self.assertEqual(cast.get("[0.1, 0.2]"), [0.1, 0.2])
+
+    def test_json_cast_stores_none_as_sql_null(self):
+        class CasterVectorDocument(Model):
+            embedding: list[float]
+
+        self.assertIsNone(Caster(CasterVectorDocument).set("embedding", None))
