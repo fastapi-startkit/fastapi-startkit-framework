@@ -176,7 +176,7 @@ def test_bare_annotations_keep_their_none_behaviour():
 
     assert "plain_bool" not in caster.nullable
     assert caster.get("plain_bool", None) is False
-    assert caster.set("plain_dict", None) == "null"
+    assert caster.set("plain_dict", None) is None
 
 
 def test_annotated_nullable_type_infers_the_inner_cast():
@@ -235,3 +235,10 @@ def test_list_and_dict_annotations_cast_as_json(annotation):
 
     assert isinstance(cast, JsonCast)
     assert cast.get("[0.1, 0.2]") == [0.1, 0.2]
+
+
+def test_json_cast_stores_none_as_sql_null():
+    class CasterVectorDocument(Model):
+        embedding: list[float]
+
+    assert Caster(CasterVectorDocument).set("embedding", None) is None

@@ -56,6 +56,9 @@ class JsonCast(BaseCast):
         return value
 
     def set(self, value):
+        if value is None:
+            return None
+
         if isinstance(value, str):
             # make sure the string is valid JSON
             json.loads(value)

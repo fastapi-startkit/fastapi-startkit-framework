@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from fastapi_startkit.ai import AIConfig, Embeddings, EmbeddingsFake, EmbeddingsPrompt, EmbeddingsResponse
+from fastapi_startkit.ai import Ai, AIConfig, Embeddings, EmbeddingsFake, EmbeddingsPrompt, EmbeddingsResponse
 from fastapi_startkit.application import app
 
 
@@ -299,3 +299,12 @@ async def test_assert_not_generated_passes_with_no_prompts():
     Embeddings.assert_not_generated("anything")
     with pytest.raises(AssertionError, match="Expected embeddings matching 'anything'"):
         Embeddings.assert_generated("anything")
+
+
+async def test_ai_reset_fakes_clears_the_embeddings_fake(init_embeddings):
+    Embeddings.fake()
+    Ai.reset_fakes()
+
+    response = await Embeddings.of(["hello"]).generate()
+
+    assert response.embeddings == [[0.1, 0.2], [0.3, 0.4]]
