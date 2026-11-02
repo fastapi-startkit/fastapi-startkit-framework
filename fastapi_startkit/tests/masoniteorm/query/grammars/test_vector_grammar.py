@@ -19,7 +19,9 @@ def qb(grammar=PostgresGrammar):
 def test_select_vector_distance_adds_the_distance_after_all_columns():
     q = qb().select_vector_distance("embedding", VECTOR)
 
-    assert q.to_qmark() == 'SELECT "documents".*, ("documents"."embedding" <=> ?) AS "embedding_distance" FROM "documents"'
+    assert (
+        q.to_qmark() == 'SELECT "documents".*, ("documents"."embedding" <=> ?) AS "embedding_distance" FROM "documents"'
+    )
     assert list(q.get_bindings()) == [LITERAL]
 
 
@@ -32,14 +34,19 @@ def test_select_vector_distance_accepts_an_alias_and_a_qualified_column():
 def test_where_vector_distance_less_than_binds_vector_and_distance():
     q = qb().where("team_id", 7).where_vector_distance_less_than("embedding", VECTOR, 0.3)
 
-    assert q.to_qmark() == 'SELECT * FROM "documents" WHERE "documents"."team_id" = ? AND ("documents"."embedding" <=> ?) <= ?'
+    assert (
+        q.to_qmark()
+        == 'SELECT * FROM "documents" WHERE "documents"."team_id" = ? AND ("documents"."embedding" <=> ?) <= ?'
+    )
     assert list(q.get_bindings()) == [7, LITERAL, 0.3]
 
 
 def test_or_where_vector_distance_less_than():
     q = qb().where("id", 1).or_where_vector_distance_less_than("embedding", VECTOR, 0.2)
 
-    assert q.to_qmark() == 'SELECT * FROM "documents" WHERE "documents"."id" = ? OR ("documents"."embedding" <=> ?) <= ?'
+    assert (
+        q.to_qmark() == 'SELECT * FROM "documents" WHERE "documents"."id" = ? OR ("documents"."embedding" <=> ?) <= ?'
+    )
     assert list(q.get_bindings()) == [1, LITERAL, 0.2]
 
 
@@ -113,7 +120,11 @@ def test_vector_columns_keep_a_schema_qualified_table():
 
 def test_vector_identifiers_escape_embedded_quotes():
     injected = 'emb" <=> ?) AS x FROM pg_shadow --'
-    q = qb().select_vector_distance(injected, VECTOR, as_=injected).where_vector_distance_less_than(injected, VECTOR, 0.5)
+    q = (
+        qb()
+        .select_vector_distance(injected, VECTOR, as_=injected)
+        .where_vector_distance_less_than(injected, VECTOR, 0.5)
+    )
 
     assert q.to_qmark() == (
         'SELECT "documents".*, ("documents"."emb"" <=> ?) AS x FROM pg_shadow --" <=> ?) '
