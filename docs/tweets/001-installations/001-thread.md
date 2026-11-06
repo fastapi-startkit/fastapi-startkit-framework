@@ -1,5 +1,5 @@
-Introducing fastapi-startkit: full-stack productivity for FastAPI 🚀
+FastAPI is a joy for building APIs quickly. But it deliberately leaves the rest of your app up to you: environments, config, logging, database, CLI commands, storage, queues, cache, Redis…
 
-Start with a plain web app. Add a database, logging channels, tests, a Vite + Inertia frontend and AI agents when you need them, without leaving Python.
+fastapi-startkit wires it all together, so you can focus on your product 🚀
 
 <!-- attach promo-video/out/promo.mp4 from the task/promo-video branch -->
