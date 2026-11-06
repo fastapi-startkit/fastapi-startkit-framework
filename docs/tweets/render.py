@@ -1,37 +1,41 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["pillow>=10", "pygments>=2.17", "svgelements>=1.9"]
+# dependencies = ["pillow>=10", "pygments>=2.17"]
 # ///
 import os
 import sys
 from functools import cache
 from pathlib import Path
 
-from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 from pygments.lexers import get_lexer_for_filename
-from pygments.token import Comment, Keyword, Name, Number, Operator, String
-from svgelements import SVG, Close, Line, Move
-from svgelements import Path as SvgPath
+from pygments.styles import get_style_by_name
+from pygments.token import Comment, Keyword, Name, Operator, Punctuation, Text
 
 WIDTH, HEIGHT = 1600, 900
 GRADIENT = ("#a13d17", "#f27a4c")
-LOGO = Path(__file__).parent / "logo.svg"
-LOGO_SIZE = 96
-LOGO_GAP = 190
-LOGO_ALPHA = 0.1
+DOT_GAP = 32
+DOT_RADIUS = 2
+DOT_COLOR = (255, 255, 255, 34)
 SHADOW = (60, 15, 0, 150)
-CARD = "#0d1117"
+STYLE = get_style_by_name("github-dark")
+CARD = STYLE.background_color
 CARD_BORDER = "#30363d"
-TEXT = "#e6edf3"
+WINDOW_BUTTONS = ("#ff5f57", "#febc2e", "#28c840")
+BUTTON_RADIUS = 9
+TITLE_BAR = 56
 PADDING = 64
 LINE_HEIGHT = 1.9
 MAX_FONT_SIZE = 40
 MIN_FONT_SIZE = 16
+ITALIC_TOKENS = (Comment, Keyword, Operator.Word)
 FONT_DIRS = [
     Path(os.environ.get("TWEET_FONT_DIR", Path.home() / "Library" / "Fonts")),
     Path("/Library/Fonts"),
 ]
 FALLBACK_FONT = Path(__file__).parent / "fonts" / "JetBrainsMono-Regular.ttf"
+
+Span = tuple[str, str, bool]
 
 
 def font_file(name: str) -> Path:
@@ -44,88 +48,69 @@ def font_file(name: str) -> Path:
 REGULAR = font_file("DankMono-Regular.otf")
 ITALIC = font_file("DankMono-Italic.otf")
 
-ITALIC_TOKENS = (Comment, Keyword, Operator.Word)
-PALETTE = [
-    (Comment, "#8b949e"),
-    (Keyword, "#ff7b72"),
-    (Operator.Word, "#ff7b72"),
-    (Name.Function, "#d2a8ff"),
-    (Name.Decorator, "#d2a8ff"),
-    (Name.Class, "#79c0ff"),
-    (Name.Builtin, "#79c0ff"),
-    (String, "#a5d6ff"),
-    (Number, "#79c0ff"),
-]
+
+def refined(tokens: list[tuple], shell: bool) -> list[tuple]:
+    result = []
+    command_expected = True
+    for index, (token_type, value) in enumerate(tokens):
+        following = next((v for _, v in tokens[index + 1 :] if v.strip()), "")
+        is_call = token_type in (
+            Name,
+            Name.Builtin,
+            Name.Other,
+        ) and following.startswith("(")
+        is_command = (
+            shell and command_expected and token_type in Text and bool(value.strip())
+        )
+        if token_type is Name.Namespace:
+            token_type = Name
+        elif token_type in Operator and value == ".":
+            token_type = Punctuation
+        elif is_call or is_command:
+            token_type = Name.Function
+        if value.strip():
+            command_expected = False
+        if "\n" in value:
+            command_expected = True
+        result.append((token_type, value))
+    return result
 
 
-def color_for(token_type) -> str:
-    for parent, color in PALETTE:
-        if token_type in parent:
-            return color
-    return TEXT
+def span(token_type, text: str) -> Span:
+    color = STYLE.style_for_token(token_type)["color"] or "e6edf3"
+    slanted = any(token_type in parent for parent in ITALIC_TOKENS)
+    return text, f"#{color}", slanted
 
 
-def is_italic(token_type) -> bool:
-    return any(token_type in parent for parent in ITALIC_TOKENS)
-
-
-def tokenized_lines(path: Path) -> list[list[tuple[str, str, bool]]]:
+def tokenized_lines(path: Path) -> list[list[Span]]:
     lexer = get_lexer_for_filename(path.name, stripnl=False)
-    lines: list[list[tuple[str, str, bool]]] = [[]]
-    for token_type, value in lexer.get_tokens(path.read_text().rstrip("\n")):
+    tokens = list(lexer.get_tokens(path.read_text().rstrip("\n")))
+    shell = path.suffix == ".sh"
+    lines: list[list[Span]] = [[]]
+    for token_type, value in refined(tokens, shell):
         for index, part in enumerate(value.split("\n")):
             if index:
                 lines.append([])
             if part:
-                lines[-1].append((part, color_for(token_type), is_italic(token_type)))
+                lines[-1].append(span(token_type, part))
     if not lines[-1]:
         lines.pop()
     return lines
 
 
-def fitting_size(lines: list[list[tuple[str, str, bool]]]) -> int:
-    columns = max(sum(len(text) for text, _, _ in line) for line in lines)
+def columns_of(lines: list[list[Span]]) -> int:
+    return max(sum(len(text) for text, _, _ in line) for line in lines)
+
+
+def fitting_size(lines: list[list[Span]]) -> int:
+    columns = columns_of(lines)
     for size in range(MAX_FONT_SIZE, MIN_FONT_SIZE - 1, -1):
-        width = (
-            ImageFont.truetype(str(REGULAR), size).getlength("M") * columns
-            + PADDING * 2
-        )
-        height = size * LINE_HEIGHT * len(lines) + PADDING * 2
-        if width <= WIDTH - 320 and height <= HEIGHT - 160:
+        advance = ImageFont.truetype(str(REGULAR), size).getlength("M")
+        width = advance * columns + PADDING * 2
+        height = size * LINE_HEIGHT * len(lines) + PADDING * 2 + TITLE_BAR
+        if width <= WIDTH - 320 and height <= HEIGHT - 120:
             return size
     return MIN_FONT_SIZE
-
-
-def outline(path: SvgPath) -> list[tuple[float, float]]:
-    points = []
-    for segment in path:
-        if isinstance(segment, (Move, Line, Close)):
-            points.append(segment.end)
-        else:
-            points.extend(segment.point(step / 16) for step in range(1, 17))
-    return [(point.x, point.y) for point in points if point is not None]
-
-
-def logo_mask(size: int) -> Image.Image:
-    supersample = 4
-    svg = SVG.parse(str(LOGO))
-    left, top, right, bottom = svg.bbox()
-    factor = size * supersample / max(right - left, bottom - top)
-    mask = Image.new("1", (size * supersample, size * supersample), 0)
-    for element in svg.elements():
-        if not isinstance(element, SvgPath):
-            continue
-        for subpath in element.as_subpaths():
-            points = [
-                ((x - left) * factor, (y - top) * factor)
-                for x, y in outline(SvgPath(subpath))
-            ]
-            if len(points) < 3:
-                continue
-            layer = Image.new("1", mask.size, 0)
-            ImageDraw.Draw(layer).polygon(points, fill=1)
-            mask = ImageChops.logical_xor(mask, layer)
-    return mask.convert("L").resize((size, size), Image.Resampling.LANCZOS)
 
 
 def gradient() -> Image.Image:
@@ -140,13 +125,40 @@ def gradient() -> Image.Image:
 @cache
 def background() -> Image.Image:
     image = gradient()
-    mark = logo_mask(LOGO_SIZE).point(lambda value: int(value * LOGO_ALPHA))
-    white = Image.new("RGB", mark.size, "white")
-    for row, y in enumerate(range(-LOGO_SIZE // 2, HEIGHT, LOGO_GAP // 2)):
-        shift = LOGO_GAP // 2 if row % 2 else 0
-        for x in range(-LOGO_SIZE + shift, WIDTH, LOGO_GAP):
-            image.paste(white, (x, y), mark)
+    dots = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(dots)
+    for y in range(DOT_GAP // 2, HEIGHT, DOT_GAP):
+        for x in range(DOT_GAP // 2, WIDTH, DOT_GAP):
+            draw.ellipse(
+                (x - DOT_RADIUS, y - DOT_RADIUS, x + DOT_RADIUS, y + DOT_RADIUS),
+                fill=DOT_COLOR,
+            )
+    image.paste(dots, mask=dots)
     return image
+
+
+def draw_shadow(image: Image.Image, box: tuple[int, int, int, int]) -> None:
+    shadow = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).rounded_rectangle(
+        (box[0], box[1] + 24, box[2], box[3] + 24), 28, fill=SHADOW
+    )
+    shadow = shadow.filter(ImageFilter.GaussianBlur(36))
+    image.paste(shadow, mask=shadow)
+
+
+def draw_window_buttons(draw: ImageDraw.ImageDraw, left: int, top: int) -> None:
+    center_y = top + TITLE_BAR // 2 + 8
+    for index, color in enumerate(WINDOW_BUTTONS):
+        center_x = left + 36 + index * 30
+        draw.ellipse(
+            (
+                center_x - BUTTON_RADIUS,
+                center_y - BUTTON_RADIUS,
+                center_x + BUTTON_RADIUS,
+                center_y + BUTTON_RADIUS,
+            ),
+            fill=color,
+        )
 
 
 def render(source: Path, target: Path) -> None:
@@ -155,29 +167,22 @@ def render(source: Path, target: Path) -> None:
     font = ImageFont.truetype(str(REGULAR), size)
     italic = ImageFont.truetype(str(ITALIC), size)
     advance = font.getlength("M")
-    line_height = font.size * LINE_HEIGHT
-    columns = max(sum(len(text) for text, _, _ in line) for line in lines)
-    card_width = int(advance * columns + PADDING * 2)
-    card_height = int(
-        line_height * len(lines) + PADDING * 2 - (line_height - font.size)
-    )
+    line_height = size * LINE_HEIGHT
+    card_width = int(advance * columns_of(lines) + PADDING * 2)
+    code_height = line_height * (len(lines) - 1) + size
+    card_height = int(TITLE_BAR + code_height + PADDING * 2 - 16)
     left = (WIDTH - card_width) // 2
     top = (HEIGHT - card_height) // 2
     box = (left, top, left + card_width, top + card_height)
 
     image = background().copy()
-    shadow = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
-    ImageDraw.Draw(shadow).rounded_rectangle(
-        (box[0], box[1] + 24, box[2], box[3] + 24), 28, fill=SHADOW
-    )
-    shadow = shadow.filter(ImageFilter.GaussianBlur(36))
-    image.paste(shadow, mask=shadow)
-
+    draw_shadow(image, box)
     draw = ImageDraw.Draw(image)
     draw.rounded_rectangle(box, 24, fill=CARD, outline=CARD_BORDER, width=2)
+    draw_window_buttons(draw, left, top)
     for row, line in enumerate(lines):
         x = left + PADDING
-        y = top + PADDING + row * line_height
+        y = top + TITLE_BAR + PADDING - 16 + row * line_height
         for text, color, slanted in line:
             draw.text((x, y), text, font=italic if slanted else font, fill=color)
             x += advance * len(text)
