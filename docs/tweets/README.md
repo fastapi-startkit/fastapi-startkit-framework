@@ -18,3 +18,5 @@ uv run docs/tweets/render.py docs/tweets/001-installations
 ```
 
 Code is set in Dank Mono when it is installed (`~/Library/Fonts`, `/Library/Fonts`, or `TWEET_FONT_DIR`). Otherwise the bundled JetBrains Mono is used.
+
+To show a change, name the file `<name>.diff` (e.g. `cards/008/bootstrap/application.py.diff`) and start every line with `+`, `-` or a space. Added and removed lines get GitHub's diff tint, and the title drops `.diff`.

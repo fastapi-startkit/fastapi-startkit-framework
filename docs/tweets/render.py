@@ -31,6 +31,8 @@ LINE_HEIGHT = 1.9
 MAX_FONT_SIZE = 40
 MIN_FONT_SIZE = 16
 ITALIC_TOKENS = (Comment, Keyword, Operator.Word)
+DIFF_SUFFIX = ".diff"
+DIFF_MARKS = {"+": ("#12261e", "#3fb950"), "-": ("#301b1f", "#f85149")}
 FONT_DIRS = [
     Path(os.environ.get("TWEET_FONT_DIR", Path.home() / "Library" / "Fonts")),
     Path("/Library/Fonts"),
@@ -84,9 +86,20 @@ def span(token_type, text: str) -> Span:
     return text, f"#{color}", slanted
 
 
-def tokenized_lines(path: Path) -> list[list[Span]]:
+def displayed(path: Path) -> Path:
+    return path.with_suffix("") if path.suffix == DIFF_SUFFIX else path
+
+
+def code_and_marks(path: Path) -> tuple[str, list[str]]:
+    rows = path.read_text().rstrip("\n").split("\n")
+    if path.suffix != DIFF_SUFFIX:
+        return "\n".join(rows), [" "] * len(rows)
+    return "\n".join(row[1:] for row in rows), [row[:1] or " " for row in rows]
+
+
+def tokenized_lines(path: Path, code: str) -> list[list[Span]]:
     lexer = get_lexer_for_filename(path.name, stripnl=False)
-    tokens = list(lexer.get_tokens(path.read_text().rstrip("\n")))
+    tokens = list(lexer.get_tokens(code))
     shell = path.suffix == ".sh"
     lines: list[list[Span]] = [[]]
     for token_type, value in refined(tokens, shell):
@@ -95,9 +108,7 @@ def tokenized_lines(path: Path) -> list[list[Span]]:
                 lines.append([])
             if part:
                 lines[-1].append(span(token_type, part))
-    if not lines[-1]:
-        lines.pop()
-    return lines
+    return lines[: code.count("\n") + 1]
 
 
 def columns_of(lines: list[list[Span]]) -> int:
@@ -163,8 +174,18 @@ def draw_window_buttons(draw: ImageDraw.ImageDraw, left: int, top: int) -> None:
         )
 
 
+def draw_mark(draw, mark, box, y, size, line_height, font) -> None:
+    if mark not in DIFF_MARKS:
+        return
+    tint, sign = DIFF_MARKS[mark]
+    gap = (line_height - size) / 2
+    draw.rectangle((box[0] + 2, y - gap, box[2] - 2, y + size + gap), fill=tint)
+    draw.text((box[0] + PADDING / 2 - 6, y), mark, font=font, fill=sign)
+
+
 def render(source: Path, title: str, target: Path) -> None:
-    lines = tokenized_lines(source)
+    code, marks = code_and_marks(source)
+    lines = tokenized_lines(displayed(source), code)
     size = fitting_size(lines)
     font = ImageFont.truetype(str(REGULAR), size)
     italic = ImageFont.truetype(str(ITALIC), size)
@@ -194,6 +215,7 @@ def render(source: Path, title: str, target: Path) -> None:
     for row, line in enumerate(lines):
         x = left + PADDING
         y = top + TITLE_BAR + PADDING - 16 + row * line_height
+        draw_mark(draw, marks[row], box, y, size, line_height, font)
         for text, color, slanted in line:
             draw.text((x, y), text, font=italic if slanted else font, fill=color)
             x += advance * len(text)
@@ -203,7 +225,8 @@ def render(source: Path, title: str, target: Path) -> None:
 
 
 def title_of(source: Path, card: Path) -> str:
-    return "Terminal" if source.suffix == ".sh" else source.relative_to(card).as_posix()
+    shown = displayed(source)
+    return "Terminal" if shown.suffix == ".sh" else shown.relative_to(card).as_posix()
 
 
 def main(thread: Path) -> None:
