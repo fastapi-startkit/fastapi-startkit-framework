@@ -1,3 +1,7 @@
+from fastapi_startkit.inertia import InertiaProvider
+from fastapi_startkit.vite import ViteProvider
+from config.vite import ViteConfig
+
 app = Application(
     providers=[
         (LogProvider, LoggingConfig),

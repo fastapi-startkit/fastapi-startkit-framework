@@ -1,7 +1,5 @@
-class Post(Model):
-    id: int
-    title: str
-    body: str
+from app.Post import Post
+
 
 class PostsController:
     async def index(self):

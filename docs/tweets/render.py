@@ -21,6 +21,8 @@ SHADOW = (60, 15, 0, 150)
 STYLE = get_style_by_name("github-dark")
 CARD = STYLE.background_color
 CARD_BORDER = "#30363d"
+TITLE_COLOR = "#8b949e"
+TITLE_SIZE = 22
 WINDOW_BUTTONS = ("#ff5f57", "#febc2e", "#28c840")
 BUTTON_RADIUS = 9
 TITLE_BAR = 56
@@ -161,14 +163,16 @@ def draw_window_buttons(draw: ImageDraw.ImageDraw, left: int, top: int) -> None:
         )
 
 
-def render(source: Path, target: Path) -> None:
+def render(source: Path, title: str, target: Path) -> None:
     lines = tokenized_lines(source)
     size = fitting_size(lines)
     font = ImageFont.truetype(str(REGULAR), size)
     italic = ImageFont.truetype(str(ITALIC), size)
     advance = font.getlength("M")
     line_height = size * LINE_HEIGHT
-    card_width = int(advance * columns_of(lines) + PADDING * 2)
+    title_font = ImageFont.truetype(str(REGULAR), TITLE_SIZE)
+    title_width = title_font.getlength(title)
+    card_width = int(max(advance * columns_of(lines) + PADDING * 2, title_width + 280))
     code_height = line_height * (len(lines) - 1) + size
     card_height = int(TITLE_BAR + code_height + PADDING * 2 - 16)
     left = (WIDTH - card_width) // 2
@@ -180,6 +184,13 @@ def render(source: Path, target: Path) -> None:
     draw = ImageDraw.Draw(image)
     draw.rounded_rectangle(box, 24, fill=CARD, outline=CARD_BORDER, width=2)
     draw_window_buttons(draw, left, top)
+    draw.text(
+        (left + card_width / 2, top + TITLE_BAR // 2 + 8),
+        title,
+        font=title_font,
+        fill=TITLE_COLOR,
+        anchor="mm",
+    )
     for row, line in enumerate(lines):
         x = left + PADDING
         y = top + TITLE_BAR + PADDING - 16 + row * line_height
@@ -191,11 +202,18 @@ def render(source: Path, target: Path) -> None:
     image.save(target, optimize=True)
 
 
+def title_of(source: Path, card: Path) -> str:
+    return "Terminal" if source.suffix == ".sh" else source.relative_to(card).as_posix()
+
+
 def main(thread: Path) -> None:
-    for source in sorted((thread / "cards").iterdir()):
-        target = thread / "images" / f"{source.stem}.png"
-        render(source, target)
-        print(target)
+    for card in sorted(path for path in (thread / "cards").iterdir() if path.is_dir()):
+        sources = sorted(path for path in card.rglob("*") if path.is_file())
+        for index, source in enumerate(sources, start=1):
+            stem = card.name if len(sources) == 1 else f"{card.name}-{index}"
+            target = thread / "images" / f"{stem}.png"
+            render(source, title_of(source, card), target)
+            print(target)
 
 
 if __name__ == "__main__":

@@ -4,10 +4,12 @@ Each folder is one thread. `NNN-thread.md` is the exact text to post, plus the i
 
 ```
 001-installations/
-  001-thread.md      tweet text + ![](images/001.png)
-  cards/003.py       code shown on the card
-  images/003.png     generated
+  003-thread.md                        tweet text + ![](images/003.png)
+  cards/003/providers/app_provider.py  code on the card; the path under 003/ is the window title
+  images/003.png                       generated
 ```
+
+A card folder with several files renders `NNN-1.png`, `NNN-2.png`, … in file-name order. Shell files are titled `Terminal`.
 
 Render the images after editing a card:
 

@@ -1,3 +1,12 @@
+from pydantic import BaseModel
+from fastapi_startkit.ai import Agent, provider
+
+
+class OrderStatus(BaseModel):
+    order_id: int
+    status: str
+
+
 @provider("openai")
 class SupportAgent(Agent):
     def instructions(self) -> str:
@@ -8,6 +17,3 @@ class SupportAgent(Agent):
 
     def schema(self):
         return OrderStatus
-
-with SupportAgent.fake(['{"order_id": 1042, "status": "shipped"}']):
-    await SupportAgent().prompt("Where is it?")
