@@ -1,17 +1,25 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["pillow>=10", "pygments>=2.17"]
+# dependencies = ["pillow>=10", "pygments>=2.17", "svgelements>=1.9"]
 # ///
 import os
 import sys
+from functools import cache
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 from pygments.lexers import get_lexer_for_filename
 from pygments.token import Comment, Keyword, Name, Number, Operator, String
+from svgelements import SVG, Close, Line, Move
+from svgelements import Path as SvgPath
 
 WIDTH, HEIGHT = 1600, 900
-BACKGROUND = "#4255ff"
+GRADIENT = ("#a13d17", "#f27a4c")
+LOGO = Path(__file__).parent / "logo.svg"
+LOGO_SIZE = 96
+LOGO_GAP = 190
+LOGO_ALPHA = 0.1
+SHADOW = (60, 15, 0, 150)
 CARD = "#0d1117"
 CARD_BORDER = "#30363d"
 TEXT = "#e6edf3"
@@ -88,6 +96,59 @@ def fitting_size(lines: list[list[tuple[str, str, bool]]]) -> int:
     return MIN_FONT_SIZE
 
 
+def outline(path: SvgPath) -> list[tuple[float, float]]:
+    points = []
+    for segment in path:
+        if isinstance(segment, (Move, Line, Close)):
+            points.append(segment.end)
+        else:
+            points.extend(segment.point(step / 16) for step in range(1, 17))
+    return [(point.x, point.y) for point in points if point is not None]
+
+
+def logo_mask(size: int) -> Image.Image:
+    supersample = 4
+    svg = SVG.parse(str(LOGO))
+    left, top, right, bottom = svg.bbox()
+    factor = size * supersample / max(right - left, bottom - top)
+    mask = Image.new("1", (size * supersample, size * supersample), 0)
+    for element in svg.elements():
+        if not isinstance(element, SvgPath):
+            continue
+        for subpath in element.as_subpaths():
+            points = [
+                ((x - left) * factor, (y - top) * factor)
+                for x, y in outline(SvgPath(subpath))
+            ]
+            if len(points) < 3:
+                continue
+            layer = Image.new("1", mask.size, 0)
+            ImageDraw.Draw(layer).polygon(points, fill=1)
+            mask = ImageChops.logical_xor(mask, layer)
+    return mask.convert("L").resize((size, size), Image.Resampling.LANCZOS)
+
+
+def gradient() -> Image.Image:
+    diagonal = int((WIDTH**2 + HEIGHT**2) ** 0.5) + 2
+    ramp = Image.linear_gradient("L").resize((diagonal, diagonal)).rotate(-60)
+    offset = ((diagonal - WIDTH) // 2, (diagonal - HEIGHT) // 2)
+    ramp = ramp.crop((*offset, offset[0] + WIDTH, offset[1] + HEIGHT))
+    start, end = (Image.new("RGB", (WIDTH, HEIGHT), color) for color in GRADIENT)
+    return Image.composite(end, start, ramp)
+
+
+@cache
+def background() -> Image.Image:
+    image = gradient()
+    mark = logo_mask(LOGO_SIZE).point(lambda value: int(value * LOGO_ALPHA))
+    white = Image.new("RGB", mark.size, "white")
+    for row, y in enumerate(range(-LOGO_SIZE // 2, HEIGHT, LOGO_GAP // 2)):
+        shift = LOGO_GAP // 2 if row % 2 else 0
+        for x in range(-LOGO_SIZE + shift, WIDTH, LOGO_GAP):
+            image.paste(white, (x, y), mark)
+    return image
+
+
 def render(source: Path, target: Path) -> None:
     lines = tokenized_lines(source)
     size = fitting_size(lines)
@@ -104,10 +165,10 @@ def render(source: Path, target: Path) -> None:
     top = (HEIGHT - card_height) // 2
     box = (left, top, left + card_width, top + card_height)
 
-    image = Image.new("RGB", (WIDTH, HEIGHT), BACKGROUND)
+    image = background().copy()
     shadow = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
     ImageDraw.Draw(shadow).rounded_rectangle(
-        (box[0], box[1] + 24, box[2], box[3] + 24), 28, fill=(0, 0, 40, 120)
+        (box[0], box[1] + 24, box[2], box[3] + 24), 28, fill=SHADOW
     )
     shadow = shadow.filter(ImageFilter.GaussianBlur(36))
     image.paste(shadow, mask=shadow)

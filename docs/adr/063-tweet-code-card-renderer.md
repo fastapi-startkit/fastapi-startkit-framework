@@ -14,7 +14,7 @@ Tweet threads in `docs/tweets/` need code card images in one consistent style: a
 
 ## Decision
 
-`docs/tweets/render.py` is a PEP 723 script (`uv run docs/tweets/render.py <thread-dir>`). For every file in `<thread-dir>/cards/`, it picks a Pygments lexer from the file extension, colours the tokens and draws a 1600x900 PNG to `<thread-dir>/images/<stem>.png`.
+`docs/tweets/render.py` is a PEP 723 script (`uv run docs/tweets/render.py <thread-dir>`). For every file in `<thread-dir>/cards/`, it picks a Pygments lexer from the file extension, colours the tokens and draws a 1600x900 PNG to `<thread-dir>/images/<stem>.png`. The background is a diagonal gradient between the brand oranges `#a13d17` and `#f27a4c`, overlaid with a staggered pattern of the logo at 10% white. The logo paths are traced from `docs/tweets/logo.svg` with `svgelements`, so no native SVG library is needed.
 
 The font size shrinks from 40px until the card fits the canvas. Code uses Dank Mono from the local font folders (`~/Library/Fonts`, `/Library/Fonts` or `TWEET_FONT_DIR`), with keywords and comments in its italic cut. Dank Mono is a paid font and is not committed. When it is missing, the script falls back to the bundled JetBrains Mono (OFL).
 
