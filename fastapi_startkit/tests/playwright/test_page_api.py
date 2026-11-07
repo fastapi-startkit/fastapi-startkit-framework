@@ -1,10 +1,8 @@
 import asyncio
 import re
-from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
-import pytest_asyncio
 
 pytest.importorskip("playwright")
 
@@ -324,14 +322,10 @@ def test_port_of_falls_back_to_the_scheme_default():
     assert port_of(urlsplit("ftp://example.com/")) is None
 
 
+@pytest.mark.usefixtures("requires_chromium")
 class TestPageApi(BrowserTestCase):
     def get_application(self):
         return APP
-
-    @pytest_asyncio.fixture(autouse=True, loop_scope="session")
-    async def requires_chromium(self):
-        if not Path((await browser_session.driver()).chromium.executable_path).exists():
-            pytest.skip("Chromium is not installed; run `playwright install chromium`.")
 
     @pytest.fixture
     def short_timeout(self, monkeypatch):

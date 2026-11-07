@@ -170,3 +170,4 @@ A `pytest11` entry point registers `fastapi_startkit.pytest_plugin`. It loads th
   - timezone, locale and user agent, as the page's JavaScript reports them.
 - **`tests/masoniteorm/testing/test_database_truncation.py`:** covers fresh migration first, truncation that respects the skipped tables, the seeding options, and truncation through a `BrowserTestCase`.
 - **Full suite:** passes with coverage above the threshold.
+- **CI:** the test workflow runs `playwright install --with-deps chromium` before pytest. The shared `requires_chromium` fixture in `tests/playwright/conftest.py` skips every class that launches a browser when Chromium is missing.

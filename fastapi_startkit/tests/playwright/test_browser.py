@@ -3,7 +3,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-import pytest_asyncio
 
 pytest.importorskip("playwright")
 
@@ -14,6 +13,8 @@ from fastapi_startkit.playwright import BrowserSession, BrowserTestCase, LiveSer
 from fastapi_startkit.playwright.plugin import calls_debug, pytest_collection_modifyitems, pytest_runtest_makereport
 from fastapi_startkit.playwright.server import load_app
 from fastapi_startkit.playwright.session import CALL_REPORT, slugify
+
+from .conftest import installed
 
 HOME = """
 <!doctype html>
@@ -63,10 +64,6 @@ OTHER_APP = FastAPI()
 OTHER_APP.get("/", response_class=HTMLResponse)(lambda: "<h1>Served from get_application</h1>")
 
 
-async def installed(name: str) -> bool:
-    return Path(getattr(await browser_session.driver(), name).executable_path).exists()
-
-
 def png_size(path: Path) -> tuple[int, int]:
     header = path.read_bytes()[16:24]
     return int.from_bytes(header[:4], "big"), int.from_bytes(header[4:], "big")
@@ -77,14 +74,13 @@ def screenshot_dir(tmp_path_factory):
     return tmp_path_factory.mktemp("screenshots")
 
 
+@pytest.mark.usefixtures("requires_chromium")
 class TestPage(BrowserTestCase):
     def get_application(self):
         return APP
 
-    @pytest_asyncio.fixture(autouse=True, loop_scope="session")
-    async def requires_chromium(self, monkeypatch, screenshot_dir):
-        if not await installed("chromium"):
-            pytest.skip("Chromium is not installed; run `playwright install chromium`.")
+    @pytest.fixture(autouse=True)
+    def isolated_screenshot_dir(self, monkeypatch, screenshot_dir):
         monkeypatch.setattr(browser_session, "screenshot_dir", screenshot_dir)
 
     @pytest.fixture
@@ -356,6 +352,7 @@ class TestPage(BrowserTestCase):
         assert browser_session.pages == []
 
 
+@pytest.mark.usefixtures("requires_chromium")
 class TestApplicationSelection(BrowserTestCase):
     def get_application(self):
         return OTHER_APP
