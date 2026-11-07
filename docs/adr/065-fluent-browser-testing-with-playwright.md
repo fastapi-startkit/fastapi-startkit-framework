@@ -132,7 +132,7 @@ Every assertion retries until the timeout. It uses Playwright's `expect` where a
 
 ### Plugin
 
-A `pytest11` entry point registers `fastapi_startkit.pytest_plugin`. It loads the browser plugin only when `playwright` and `pytest-asyncio` are installed, so projects without the extra see no options or hooks. The browser plugin imports nothing from Playwright until a page opens.
+A `pytest11` entry point registers `fastapi_startkit.pytest_plugin`. It loads the browser plugin only when `playwright` and `pytest-asyncio` are installed, so projects without the extra see no options or hooks. The entry point declares the options itself and registers `fastapi_startkit.playwright.plugin` from `pytest_configure`, after pytest-cov starts. Importing the package from the entry point hid every import and `def` line from coverage. The browser plugin imports nothing from Playwright until a page opens.
 
 - **Ini options:** `browser_default` (`chromium`), `browser_timeout` (5000 ms) and `browser_screenshot_dir` (`tests/browser/screenshots`).
 - **`--headed`:** shows the browsers. The plugin reuses this option if `pytest-playwright` already defines it.

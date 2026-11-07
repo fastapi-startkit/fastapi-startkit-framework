@@ -12,26 +12,6 @@ from fastapi_startkit.playwright.test_case import BrowserTestCase
 __all__ = ["browser_session_lifetime"]
 
 
-def pytest_addoption(parser: pytest.Parser) -> None:
-    parser.addini("browser_default", "Browser used when a test does not choose one.", default="chromium")
-    parser.addini("browser_timeout", "Milliseconds browser actions and assertions wait.", default="5000")
-    parser.addini(
-        "browser_screenshot_dir",
-        "Directory, relative to the rootdir, for screenshots of failed browser tests.",
-        default="tests/browser/screenshots",
-    )
-    try:
-        parser.addoption("--headed", action="store_true", default=False, help="Show the browser during browser tests.")
-    except ValueError:
-        pass
-    parser.addoption(
-        "--browser-debug",
-        action="store_true",
-        default=False,
-        help="Show the browser and pause failed browser tests in the Playwright inspector.",
-    )
-
-
 def pytest_configure(config: pytest.Config) -> None:
     browser_session.configure(
         browser=config.getini("browser_default"),
