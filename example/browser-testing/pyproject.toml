@@ -1,0 +1,25 @@
+[project]
+name = "browser-testing"
+version = "0.1.0"
+requires-python = ">=3.12,<4.0"
+dependencies = [
+    "fastapi-startkit-auth[startkit]>=0.7.0",
+    "fastapi-startkit[database,fastapi,inertia,sqlite,vite]==0.74.0",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-asyncio>=0.24", "httpx>=0.28", "fastapi-startkit[playwright]"]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+fastapi-startkit = { path = "../../fastapi_startkit", editable = true }
+fastapi-startkit-auth = { git = "https://github.com/fastapi-startkit/fastapi-startkit-auth", branch = "main" }
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+pythonpath = ["."]
+testpaths = ["tests"]
+python_classes = ["Test*", "*Test"]
