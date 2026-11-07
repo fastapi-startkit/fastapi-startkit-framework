@@ -10,6 +10,8 @@ if TYPE_CHECKING:
 class PostgresGrammar(BaseGrammar):
     """Postgres grammar class."""
 
+    supports_vectors = True
+
     types_without_lengths: list[str]
     _creates: Any
 
@@ -150,6 +152,11 @@ class PostgresGrammar(BaseGrammar):
 
     def table_string(self):
         return '"{table}"'
+
+    @staticmethod
+    def wrap_identifier(name: str) -> str:
+        escaped = name.replace('"', '""')
+        return f'"{escaped}"'
 
     def order_by_format(self):
         return "{column} {direction}"

@@ -75,6 +75,11 @@ class Platform:
     def get_foreign_key_constraint_string(self) -> str:
         raise NotImplementedError
 
+    supports_vectors = False
+
+    def compile_ensure_vector_extension(self) -> str:
+        raise ValueError(f"{type(self).__name__} does not support vector columns; use PostgreSQL with pgvector.")
+
     def create_column_length(self, column_type):
         if column_type in self.types_without_lengths:
             return ""

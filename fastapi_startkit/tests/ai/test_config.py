@@ -23,6 +23,14 @@ class TestAIConfiguration(unittest.TestCase):
         self._patch_env({"AI_PROVIDER": "anthropic"})
         self.assertEqual(AIConfig().default, "anthropic")
 
+    def test_aiconfig_default_embeddings_provider_is_openai(self):
+        self._patch_env(unset=["AI_DEFAULT_EMBEDDINGS_PROVIDER"])
+        self.assertEqual(AIConfig().default_embeddings, "openai")
+
+    def test_aiconfig_default_embeddings_reads_env(self):
+        self._patch_env({"AI_DEFAULT_EMBEDDINGS_PROVIDER": "google"})
+        self.assertEqual(AIConfig().default_embeddings, "google")
+
     def test_aiconfig_providers_has_anthropic_key(self):
         self.assertIn("anthropic", AIConfig().providers)
 

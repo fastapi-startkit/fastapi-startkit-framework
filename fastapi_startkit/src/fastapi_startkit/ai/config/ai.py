@@ -14,6 +14,7 @@ class AIConfig(Config):
     default_image: str = env("AI_DEFAULT_IMAGE_PROVIDER", "openai")
     default_audio: str = env("AI_DEFAULT_AUDIO_PROVIDER", "openai")
     default_transcribe: str = env("AI_DEFAULT_TRANSCRIBE_PROVIDER", "openai")
+    default_embeddings: str = env("AI_DEFAULT_EMBEDDINGS_PROVIDER", "openai")
 
     providers: dict[str, Config] = field(
         default_factory=lambda: {

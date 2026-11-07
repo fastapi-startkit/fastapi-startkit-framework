@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from .embeddings import Embeddings
 from .lab import Lab
 
 if TYPE_CHECKING:
@@ -45,6 +46,7 @@ class Ai:
     @classmethod
     def reset_fakes(cls) -> None:
         cls._fakes.clear()
+        Embeddings.reset_fake()
 
     def get_model_for(
         self,

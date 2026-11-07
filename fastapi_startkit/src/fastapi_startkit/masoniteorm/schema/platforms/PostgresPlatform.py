@@ -57,7 +57,10 @@ class PostgresPlatform(Platform):
         "datetime": "TIMESTAMPTZ",
         "tiny_increments": "TINYINT AUTO_INCREMENT",
         "unsigned": "INT",
+        "vector": "VECTOR",
     }
+
+    supports_vectors = True
 
     table_info_map = {
         "CHARACTER VARYING": "string",
@@ -72,6 +75,17 @@ class PostgresPlatform(Platform):
     }
 
     premapped_nulls = {True: "NULL", False: "NOT NULL"}
+
+    def compile_ensure_vector_extension(self) -> str:
+        return "CREATE EXTENSION IF NOT EXISTS vector"
+
+    def compile_create_index(self, table_name, index):
+        if index.index_type == "vector":
+            return (
+                f"CREATE INDEX {index.name} ON {self.wrap_table(table_name)} "
+                f"USING hnsw ({','.join(index.column)} vector_cosine_ops)"
+            )
+        return f"CREATE INDEX {index.name} ON {self.wrap_table(table_name)}({','.join(index.column)})"
 
     def compile_create_sql(self, table, if_not_exists=False):
         sql = []
@@ -94,14 +108,8 @@ class PostgresPlatform(Platform):
         )
 
         if table.added_indexes:
-            for name, index in table.added_indexes.items():
-                sql.append(
-                    "CREATE INDEX {name} ON {table}({column})".format(
-                        name=index.name,
-                        table=self.wrap_table(table.name),
-                        column=",".join(index.column),
-                    )
-                )
+            for index in table.added_indexes.values():
+                sql.append(self.compile_create_index(table.name, index))
 
         for name, column in table.get_added_columns().items():
             if column.comment:
@@ -306,14 +314,8 @@ class PostgresPlatform(Platform):
                 sql.append(f"ALTER TABLE {self.wrap_table(table.name)} DROP CONSTRAINT {constraint}")
 
         if table.added_indexes:
-            for name, index in table.added_indexes.items():
-                sql.append(
-                    "CREATE INDEX {name} ON {table}({column})".format(
-                        name=index.name,
-                        table=self.wrap_table(table.name),
-                        column=",".join(index.column),
-                    )
-                )
+            for index in table.added_indexes.values():
+                sql.append(self.compile_create_index(table.name, index))
 
         if table.added_constraints:
             for name, constraint in table.added_constraints.items():

@@ -636,6 +636,12 @@ class Blueprint:
         self._last_column = self.table.add_column(column, "geometry", nullable=nullable)
         return self
 
+    def vector(self, column: str, dimensions: int, nullable: bool = False):
+        if not self.platform.supports_vectors:
+            raise ValueError(f"{self.platform.__name__} does not support vector columns; use PostgreSQL with pgvector.")
+        self._last_column = self.table.add_column(column, "vector", length=dimensions, nullable=nullable)
+        return self
+
     def year(self, column: str, length: int = 4, default: object = None, nullable: bool = False):
         """Sets a column to be the year representation for the table.
 
@@ -807,18 +813,25 @@ class Blueprint:
         Returns:
             self
         """
-        if not column:
-            column = self._column().name
+        columns = self._index_columns(column)
+        index_type = "vector" if any(self._is_vector_column(name) for name in columns) else "index"
+        return self._add_index(columns, name, index_type)
 
-        if not isinstance(column, list):
-            column = [column]
+    def vector_index(self, column: str | None = None, name: str | None = None):
+        if not self.platform.supports_vectors:
+            raise ValueError(f"{self.platform.__name__} does not support vector indexes; use PostgreSQL with pgvector.")
+        return self._add_index(self._index_columns(column), name, "vector")
 
-        self.table.add_index(
-            column,
-            name or f"{self.table.name}_{'_'.join(column)}_index",
-            "index",
-        )
+    def _index_columns(self, column: str | list[str] | None) -> list[str]:
+        column = column or self._column().name
+        return column if isinstance(column, list) else [column]
 
+    def _is_vector_column(self, name: str) -> bool:
+        added = self.table.added_columns.get(name)
+        return added is not None and added.column_type == "vector"
+
+    def _add_index(self, columns: list[str], name: str | None, index_type: str):
+        self.table.add_index(columns, name or f"{self.table.name}_{'_'.join(columns)}_index", index_type)
         return self
 
     def fulltext(self, column: str | list[str] | None = None, name: str | None = None):

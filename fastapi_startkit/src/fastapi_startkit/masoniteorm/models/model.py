@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, Self, dataclass_transform, overload
 
 import inflection
@@ -242,6 +243,28 @@ class Model(Attribute, Relationship, ObservesEvents):
     @classmethod
     def distinct(cls) -> "QueryBuilder[Self]":
         return cls.query().distinct()
+
+    @classmethod
+    def select_vector_distance(
+        cls, column: str, vector: Sequence[float], as_: str | None = None
+    ) -> "QueryBuilder[Self]":
+        return cls.query().select_vector_distance(column, vector, as_)
+
+    @classmethod
+    def where_vector_distance_less_than(
+        cls, column: str, vector: Sequence[float], max_distance: float
+    ) -> "QueryBuilder[Self]":
+        return cls.query().where_vector_distance_less_than(column, vector, max_distance)
+
+    @classmethod
+    def order_by_vector_distance(cls, column: str, vector: Sequence[float]) -> "QueryBuilder[Self]":
+        return cls.query().order_by_vector_distance(column, vector)
+
+    @classmethod
+    def where_vector_similar_to(
+        cls, column: str, vector: Sequence[float], min_similarity: float = 0.6, order: bool = True
+    ) -> "QueryBuilder[Self]":
+        return cls.query().where_vector_similar_to(column, vector, min_similarity, order)
 
     @classmethod
     def lock_for_update(cls) -> "QueryBuilder[Self]":
