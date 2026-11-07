@@ -379,6 +379,10 @@ class Assertions(BasePage):
         )
 
     def _dont_see_in(self, selector: str, text: str, message: Message) -> Self:
+        self._expect(
+            lambda expect: expect(self._find(selector).first).to_be_attached(timeout=self._session.timeout),
+            lambda: f'Expected to find "{selector}" on {self.path}.',
+        )
         return self._expect(
             lambda expect: expect(self._find(selector).first).not_to_contain_text(
                 text, use_inner_text=True, timeout=self._session.timeout

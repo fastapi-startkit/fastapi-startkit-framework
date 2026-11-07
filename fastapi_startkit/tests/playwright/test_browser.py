@@ -103,8 +103,11 @@ class TestPage(BrowserTestCase):
         assert page.url == browser_session.server.url + "/"
 
     async def test_playwright_needs_an_awaited_page(self):
+        page = visit("/")
+
         with pytest.raises(RuntimeError, match=r'Await visit\("/"\) before using page.playwright\.'):
-            visit("/").playwright
+            page.playwright
+        await page.close()
 
     async def test_assertions_wait_for_client_side_changes(self):
         await (
@@ -245,8 +248,10 @@ class TestPage(BrowserTestCase):
         assert await page.script("'ontouchstart' in window")
 
     async def test_unknown_browser_and_device_are_rejected(self):
+        page = visit("/")
         with pytest.raises(ValueError, match='Unknown browser "opera"'):
-            visit("/").browser("opera")
+            page.browser("opera")
+        await page.close()
         with pytest.raises(ValueError, match='Unknown device "Toaster"'):
             await visit("/").on().device("Toaster")
 
@@ -290,9 +295,10 @@ class TestPage(BrowserTestCase):
     async def test_failure_screenshots_cover_every_open_page(self):
         first = await visit("/")
         await visit("/form")
-        visit("/never-opened")
+        never_opened = visit("/never-opened")
 
         paths = await browser_session.screenshot_pages("tests/test_x.py::test_y[1]")
+        await never_opened.close()
 
         assert [path.name for path in paths] == ["tests-test_x.py-test_y-1.png", "tests-test_x.py-test_y-1-2.png"]
         assert all(path.exists() for path in paths)
@@ -303,7 +309,7 @@ class TestPage(BrowserTestCase):
         paused = []
         first = await visit("/")
         second = await visit("/form")
-        visit("/never-opened")
+        await visit("/never-opened").close()
 
         async def pause_at(path):
             paused.append(path)
@@ -328,12 +334,22 @@ class TestPage(BrowserTestCase):
         assert paused == ["/"]
 
     async def test_unawaited_chains_are_reported(self):
-        visit("/")
+        bare = visit("/")
         pending = visit("/form").fill("nickname", "never")
 
-        assert browser_session.unawaited_pages() == [pending]
+        assert browser_session.unawaited_pages() == [bare, pending]
         assert pending.describe() == 'visit("/form")'
+        await bare.close()
         await pending.close()
+        assert browser_session.unawaited_pages() == []
+
+    async def test_awaited_pages_are_not_reported(self):
+        page = await visit("/")
+
+        assert browser_session.unawaited_pages() == []
+        page.assert_see("Welcome home")
+        assert browser_session.unawaited_pages() == [page]
+        await page
         assert browser_session.unawaited_pages() == []
 
     async def test_pages_from_earlier_tests_are_closed(self):
@@ -441,7 +457,8 @@ def test_collection_keeps_only_debugging_tests_and_shows_the_browser(monkeypatch
     deselected = []
     monkeypatch.setattr(browser_session, "configure", lambda **options: configured.append(options))
     config = SimpleNamespace(hook=SimpleNamespace(pytest_deselected=lambda items: deselected.extend(items)))
-    debugging, plain = SimpleNamespace(function=debugging_test), SimpleNamespace(function=plain_test)
+    debugging = SimpleNamespace(cls=BrowserTestCase, function=debugging_test)
+    plain = SimpleNamespace(cls=BrowserTestCase, function=plain_test)
     items = [plain, debugging]
 
     pytest_collection_modifyitems(config, items)
@@ -451,10 +468,27 @@ def test_collection_keeps_only_debugging_tests_and_shows_the_browser(monkeypatch
     assert configured == [{"headed": True}]
 
 
+def test_collection_ignores_debug_calls_outside_browser_tests(monkeypatch):
+    configured = []
+    monkeypatch.setattr(browser_session, "configure", lambda **options: configured.append(options))
+    items = [
+        SimpleNamespace(function=debugging_test),
+        SimpleNamespace(cls=object, function=debugging_test),
+        SimpleNamespace(cls=BrowserTestCase, function=plain_test),
+    ]
+
+    pytest_collection_modifyitems(SimpleNamespace(), list(items))
+
+    assert configured == []
+
+
 def test_collection_without_debug_calls_is_untouched(monkeypatch):
     configured = []
     monkeypatch.setattr(browser_session, "configure", lambda **options: configured.append(options))
-    items = [SimpleNamespace(function=plain_test), SimpleNamespace(function=logging_test)]
+    items = [
+        SimpleNamespace(cls=BrowserTestCase, function=plain_test),
+        SimpleNamespace(cls=BrowserTestCase, function=logging_test),
+    ]
 
     pytest_collection_modifyitems(SimpleNamespace(), list(items))
 

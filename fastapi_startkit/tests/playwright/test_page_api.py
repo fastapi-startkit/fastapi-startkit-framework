@@ -118,6 +118,10 @@ FAILURES = {
         lambda: visit("/elements").assert_dont_see_in("#greeting", "Ada"),
         'Expected not to see "Ada" in "#greeting" on /elements.',
     ),
+    "dont_see_in_missing": (
+        lambda: visit("/elements").assert_dont_see_in("#missing", "Ada"),
+        'Expected to find "#missing" on /elements.',
+    ),
     "see_anything_in": (
         lambda: visit("/elements").assert_see_anything_in("#empty"),
         'Expected to see text in "#empty" on /elements.',

@@ -64,7 +64,7 @@ How steps run:
 - A failing step drops the steps after it and raises `AssertionError`.
 - The readers `text`, `attribute`, `value`, `script` and `content` are coroutines. Each one runs the pending steps first.
 - `page.playwright` is the opened async Playwright page. Using it before the page has been awaited raises `RuntimeError`.
-- A chain that is never awaited would silently test nothing. So a test fails with `"... was never awaited"` if a page still has recorded steps when it ends.
+- A chain that is never awaited would silently test nothing. So a test fails with `"... was never awaited"` if a page was never awaited or closed, or still has recorded steps when it ends. A bare `visit("/")` counts.
 
 ### Finding elements
 
@@ -86,7 +86,7 @@ Names follow Pest's browser plugin, in snake_case.
 **Assertions:**
 
 - **Title:** `assert_title`, `assert_title_contains`.
-- **Text:** `assert_see`, `assert_dont_see`, `assert_see_in`, `assert_dont_see_in`, `assert_see_anything_in`, `assert_see_nothing_in`, `assert_see_link`, `assert_dont_see_link`. These compare rendered text and are case-sensitive.
+- **Text:** `assert_see`, `assert_dont_see`, `assert_see_in`, `assert_dont_see_in`, `assert_see_anything_in`, `assert_see_nothing_in`, `assert_see_link`, `assert_dont_see_link`. These compare rendered text and are case-sensitive. `assert_dont_see_in` first requires the selector to match, so a typo in it fails instead of passing.
 - **Source and script:** `assert_source_has`, `assert_source_missing`, `assert_script`.
 - **Elements:** `assert_count`, `assert_visible`, `assert_present`, `assert_not_present`, `assert_missing`.
 - **Attributes:** `assert_attribute`, `assert_attribute_missing`, `assert_attribute_contains`, `assert_attribute_doesnt_contain`, `assert_aria_attribute`, `assert_data_attribute`.
@@ -125,27 +125,27 @@ Every assertion retries until the timeout. It uses Playwright's `expect` where a
   1. serves the app returned by `get_application()` (a different app restarts the server);
   2. awaits `asyncStartTestRun()` and `asyncStopTestRun()`;
   3. takes failure screenshots;
-  4. pauses failed tests under `--debug`;
+  4. pauses failed tests under `--browser-debug`;
   5. checks for unawaited chains;
   6. closes the test's pages.
 - **User fixtures.** A user's own async fixtures need `loop_scope="session"`, or the project sets `asyncio_default_fixture_loop_scope = "session"`.
 
 ### Plugin
 
-A `pytest11` entry point registers the plugin. It imports nothing from Playwright until a page opens.
+A `pytest11` entry point registers `fastapi_startkit.pytest_plugin`. It loads the browser plugin only when `playwright` and `pytest-asyncio` are installed, so projects without the extra see no options or hooks. The browser plugin imports nothing from Playwright until a page opens.
 
 - **Ini options:** `browser_default` (`chromium`), `browser_timeout` (5000 ms) and `browser_screenshot_dir` (`tests/browser/screenshots`).
 - **`--headed`:** shows the browsers. The plugin reuses this option if `pytest-playwright` already defines it.
-- **`--debug`:** pytest's own option. With it, browsers run headed and each open page of a failed test pauses in the Playwright inspector.
-- **`page.debug()`:** limits the run to the tests that call it. The plugin finds those tests by parsing their source at collection. They run headed and pause at that point.
+- **`--browser-debug`:** browsers run headed and each open page of a failed test pauses in the Playwright inspector. pytest's own `--debug` writes a debug log and is left alone.
+- **`page.debug()`:** limits the run to the tests that call it. The plugin finds those tests by parsing their source at collection, and only looks at methods of `BrowserTestCase` subclasses, so a `logger.debug()` or `MagicMock().debug()` elsewhere never deselects other tests. They run headed and pause at that point.
 - **Shutdown:** a session fixture shuts everything down on the session loop. It is registered only when pytest-asyncio is installed.
 
 ### Database truncation
 
 `DatabaseTruncation` hooks into `asyncStartTestRun`, so it works the same in `TestCase` and `BrowserTestCase`.
 
-- The first test of the process runs `migrate:fresh`.
-- Each later test empties every table with foreign keys off. It skips `migrations`, `sqlite_*` and `except_tables`, or empties only `tables_to_truncate` when that is set.
+- The first test of the process runs `migrate:fresh` once per `(connection, migration_directory)` pair.
+- Each later test empties every table on a single checked-out connection, committing after each statement, so MySQL's `FOREIGN_KEY_CHECKS` toggle applies to its `TRUNCATE`. Postgres uses one `TRUNCATE ... RESTART IDENTITY CASCADE` over all tables, because it refuses to truncate a referenced table on its own and `DISABLE TRIGGER ALL` needs a superuser. SQLite and SQL Server use the platform's foreign-key-safe truncate. It skips `migrations`, `sqlite_*` and `except_tables`, or empties only `tables_to_truncate` when that is set.
 - After the reset it seeds: `DatabaseSeeder` by default, or the class named by `seeder`. `seed = False` skips seeding.
 - `connection`, `seed_directory` and `migration_directory` are configurable.
 

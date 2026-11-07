@@ -5,7 +5,7 @@ if TYPE_CHECKING:
 
 
 class DatabaseTruncation:
-    migrated: ClassVar[bool] = False
+    migrated: ClassVar[set[tuple[str, str]]] = set()
 
     tables_to_truncate: ClassVar[list[str] | None] = None
     except_tables: ClassVar[list[str]] = []
@@ -19,14 +19,18 @@ class DatabaseTruncation:
         await self.truncate_database()
 
     async def truncate_database(self) -> None:
-        if DatabaseTruncation.migrated:
+        if self.migration_key in DatabaseTruncation.migrated:
             await self.truncate_tables()
         else:
             await self.migrate_fresh()
-            DatabaseTruncation.migrated = True
+            DatabaseTruncation.migrated.add(self.migration_key)
 
         if self.seed or self.seeder:
             await self.seed_database()
+
+    @property
+    def migration_key(self) -> tuple[str, str]:
+        return (self.connection or "default", self.migration_directory)
 
     async def migrate_fresh(self) -> None:
         from fastapi_startkit.masoniteorm.migrations import Migrator
@@ -38,13 +42,34 @@ class DatabaseTruncation:
         await migrator.fresh(ignore_fk=True)
 
     async def truncate_tables(self) -> None:
+        from sqlalchemy import text
+
         from fastapi_startkit.masoniteorm.models import Model
 
         schema = Model.resolve_db_manager().get_schema_builder()
         if self.connection:
             schema.on(self.connection)
-        for table in await self.tables_for_truncation(schema.get_all_tables):
-            await schema.truncate(table, foreign_keys=True)
+        tables = await self.tables_for_truncation(schema.get_all_tables)
+        if not tables:
+            return
+
+        async with schema.get_connection().engine.connect() as connection:
+            for statement in self.truncate_statements(schema.platform(), tables):
+                await connection.execute(text(statement))
+                await connection.commit()
+
+    @staticmethod
+    def truncate_statements(platform, tables: list[str]) -> list[str]:
+        from fastapi_startkit.masoniteorm.schema.platforms import PostgresPlatform
+
+        if isinstance(platform, PostgresPlatform):
+            return [f"TRUNCATE {', '.join(platform.wrap_table(table) for table in tables)} RESTART IDENTITY CASCADE"]
+
+        statements = []
+        for table in tables:
+            sql = platform.compile_truncate(table, foreign_keys=True)
+            statements.extend(sql if isinstance(sql, list) else [sql])
+        return statements
 
     async def tables_for_truncation(self, all_tables) -> list[str]:
         if self.tables_to_truncate is not None:

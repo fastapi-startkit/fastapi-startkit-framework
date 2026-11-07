@@ -29,6 +29,7 @@ class BasePage:
         self._page: "PlaywrightPage | None" = None
         self._frame: "FrameLocator | None" = None
         self._steps: list[Step] = []
+        self._settled = False
         self.console_logs: list[str] = []
         self.javascript_errors: list[str] = []
         session.track(self)
@@ -70,7 +71,7 @@ class BasePage:
 
     @property
     def pending(self) -> bool:
-        return bool(self._steps)
+        return not self._settled or bool(self._steps)
 
     @property
     def playwright(self) -> "PlaywrightPage":
@@ -88,6 +89,7 @@ class BasePage:
         return parts.path + (f"?{parts.query}" if parts.query else "")
 
     async def close(self) -> None:
+        self._settled = True
         self._steps.clear()
         if self._page is not None:
             await self._page.context.close()
@@ -102,6 +104,7 @@ class BasePage:
         return self._frame if self._frame is not None else self.playwright
 
     async def _run(self) -> Self:
+        self._settled = True
         await self._open()
         try:
             while self._steps:

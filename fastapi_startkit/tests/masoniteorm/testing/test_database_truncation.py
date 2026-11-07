@@ -4,6 +4,7 @@ import pytest
 from fastapi import FastAPI
 
 from fastapi_startkit.masoniteorm.models.MigrationModel import MigrationModel
+from fastapi_startkit.masoniteorm.schema.platforms import MySQLPlatform, PostgresPlatform
 from fastapi_startkit.masoniteorm.testing import DatabaseTruncation
 from fastapi_startkit.playwright import BrowserTestCase
 from fastapi_startkit.testing.test_case import TestCase
@@ -56,7 +57,7 @@ async def count(schema, table: str) -> int:
 class TestTruncateDatabase:
     @pytest.fixture(autouse=True)
     async def reset(self, application):
-        with patch.object(DatabaseTruncation, "migrated", False):
+        with patch.object(DatabaseTruncation, "migrated", set()):
             yield
         await application.make("db").clear()
 
@@ -67,7 +68,7 @@ class TestTruncateDatabase:
     async def test_first_call_migrates_fresh_and_seeds(self):
         await Truncation().truncate_database()
 
-        assert DatabaseTruncation.migrated is True
+        assert DatabaseTruncation.migrated == {("default", "databases/seed_migrations")}
         assert await migrations() == ["2026_01_01_000000_create_seed_users_table"]
         assert await names() == ["database-seeder"]
 
@@ -82,6 +83,21 @@ class TestTruncateDatabase:
         assert await names() == ["database-seeder"]
         assert await count(schema, "notes") == 0
         assert await migrations() == ["2026_01_01_000000_create_seed_users_table"]
+
+    async def test_each_migration_directory_migrates_fresh_once(self):
+        class OtherDirectory(Truncation):
+            migration_directory = "databases/other_migrations"
+
+        await Truncation().truncate_database()
+        with patch.object(DatabaseTruncation, "migrate_fresh") as migrate_fresh:
+            await OtherDirectory().truncate_database()
+            await OtherDirectory().truncate_database()
+
+        migrate_fresh.assert_awaited_once()
+        assert DatabaseTruncation.migrated == {
+            ("default", "databases/seed_migrations"),
+            ("default", "databases/other_migrations"),
+        }
 
     async def test_except_tables_are_kept(self, schema):
         class KeepNotes(Truncation):
@@ -154,3 +170,17 @@ class TestTruncationInBrowserTestCase(Truncation, BrowserTestCase):
 
     async def test_next_visit_sees_a_reset_database(self):
         assert await names() == ["database-seeder"]
+
+
+def test_postgres_truncates_every_table_in_one_cascading_statement():
+    assert DatabaseTruncation.truncate_statements(PostgresPlatform(), ["users", "posts"]) == [
+        'TRUNCATE "users", "posts" RESTART IDENTITY CASCADE'
+    ]
+
+
+def test_mysql_toggles_foreign_keys_around_each_truncate():
+    assert DatabaseTruncation.truncate_statements(MySQLPlatform(), ["users"]) == [
+        "SET FOREIGN_KEY_CHECKS=0",
+        "TRUNCATE `users`",
+        "SET FOREIGN_KEY_CHECKS=1",
+    ]

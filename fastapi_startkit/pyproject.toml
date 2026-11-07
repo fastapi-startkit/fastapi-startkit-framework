@@ -55,7 +55,7 @@ dependencies = [
 fastapi-startkit = "fastapi_startkit.installer.cli:main"
 
 [project.entry-points.pytest11]
-fastapi_startkit_playwright = "fastapi_startkit.playwright.plugin"
+fastapi_startkit_playwright = "fastapi_startkit.pytest_plugin"
 
 [project.urls]
 Homepage = "https://fastapi-startkit.github.io"

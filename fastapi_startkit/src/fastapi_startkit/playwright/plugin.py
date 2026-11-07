@@ -1,17 +1,15 @@
 import ast
 import inspect
 import textwrap
-from importlib.util import find_spec
 from pathlib import Path
 
 import pytest
 
+from fastapi_startkit.playwright.fixtures import browser_session_lifetime
 from fastapi_startkit.playwright.session import CALL_REPORT, browser_session
+from fastapi_startkit.playwright.test_case import BrowserTestCase
 
-if find_spec("pytest_asyncio") is not None:
-    from fastapi_startkit.playwright.fixtures import browser_session_lifetime
-
-    __all__ = ["browser_session_lifetime"]
+__all__ = ["browser_session_lifetime"]
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -26,13 +24,19 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         parser.addoption("--headed", action="store_true", default=False, help="Show the browser during browser tests.")
     except ValueError:
         pass
+    parser.addoption(
+        "--browser-debug",
+        action="store_true",
+        default=False,
+        help="Show the browser and pause failed browser tests in the Playwright inspector.",
+    )
 
 
 def pytest_configure(config: pytest.Config) -> None:
     browser_session.configure(
         browser=config.getini("browser_default"),
         headed=bool(config.getoption("headed", False)),
-        debug=config.getoption("debug", None) is not None,
+        debug=bool(config.getoption("browser_debug", False)),
         timeout=int(config.getini("browser_timeout")),
         screenshot_dir=Path(config.rootpath) / config.getini("browser_screenshot_dir"),
     )
@@ -57,8 +61,13 @@ def calls_debug(function: object) -> bool:
     )
 
 
+def is_browser_test(item: pytest.Item) -> bool:
+    cls = getattr(item, "cls", None)
+    return isinstance(cls, type) and issubclass(cls, BrowserTestCase)
+
+
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    debugged = [item for item in items if calls_debug(getattr(item, "function", None))]
+    debugged = [item for item in items if is_browser_test(item) and calls_debug(getattr(item, "function", None))]
     if not debugged:
         return
 
