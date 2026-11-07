@@ -22,3 +22,4 @@ application
 .uv_cache
 .claude/
 **/.vscode/settings.json
+**/tests/browser/screenshots/

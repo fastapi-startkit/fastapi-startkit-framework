@@ -865,7 +865,7 @@ wheels = [
 
 [[package]]
 name = "fastapi-startkit"
-version = "0.70.0"
+version = "0.74.0"
 source = { editable = "." }
 dependencies = [
     { name = "cleo" },
@@ -906,6 +906,13 @@ inertia = [
 mysql = [
     { name = "aiomysql" },
 ]
+playwright = [
+    { name = "fastapi", extra = ["standard"] },
+    { name = "httpx" },
+    { name = "itsdangerous" },
+    { name = "playwright" },
+    { name = "pytest-asyncio" },
+]
 postgres = [
     { name = "asyncpg" },
 ]
@@ -932,6 +939,7 @@ dev = [
     { name = "itsdangerous" },
     { name = "langchain", marker = "python_full_version < '3.15'" },
     { name = "langchain-core" },
+    { name = "playwright" },
     { name = "pyright" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -956,6 +964,7 @@ requires-dist = [
     { name = "faker", marker = "extra == 'database'", specifier = ">=40.13.0" },
     { name = "fastapi", extras = ["standard"], marker = "extra == 'fastapi'", specifier = ">=0.124.4" },
     { name = "fastapi-startkit", extras = ["ai"], marker = "extra == 'bedrock'" },
+    { name = "fastapi-startkit", extras = ["fastapi"], marker = "extra == 'playwright'" },
     { name = "httpx", marker = "extra == 'fastapi'", specifier = ">=0.28.1" },
     { name = "inflection", specifier = ">=0.5.1" },
     { name = "itsdangerous", marker = "extra == 'fastapi'", specifier = ">=2.2.0" },
@@ -967,13 +976,15 @@ requires-dist = [
     { name = "langgraph", marker = "extra == 'ai'", specifier = ">=1.0.0" },
     { name = "markupsafe", marker = "extra == 'inertia'", specifier = ">=2.0" },
     { name = "pendulum", specifier = ">=3.1.0,<4.0.0" },
+    { name = "playwright", marker = "extra == 'playwright'", specifier = ">=1.55.0" },
     { name = "pydantic", specifier = ">=2.12.5" },
+    { name = "pytest-asyncio", marker = "extra == 'playwright'", specifier = ">=1.3.0" },
     { name = "redis", marker = "extra == 'redis'", specifier = ">=5.0.1" },
     { name = "requests", specifier = ">=2.32.5,<3.0.0" },
     { name = "sqlalchemy", extras = ["asyncio"], marker = "extra == 'database'", specifier = ">=2.0.38" },
     { name = "typing-extensions", specifier = ">=4.12.0" },
 ]
-provides-extras = ["fastapi", "database", "sqlite", "postgres", "mysql", "vite", "inertia", "ai", "bedrock", "redis"]
+provides-extras = ["fastapi", "database", "sqlite", "postgres", "mysql", "vite", "inertia", "ai", "bedrock", "redis", "playwright"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -988,6 +999,7 @@ dev = [
     { name = "itsdangerous", specifier = ">=2.2.0" },
     { name = "langchain", marker = "python_full_version < '3.15'", specifier = ">=1.0.0" },
     { name = "langchain-core", specifier = ">=1.0.0" },
+    { name = "playwright", specifier = ">=1.55.0" },
     { name = "pyright", specifier = ">=1.1.411" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-asyncio", specifier = ">=1.3.0" },
@@ -2307,6 +2319,25 @@ wheels = [
 ]
 
 [[package]]
+name = "playwright"
+version = "1.64.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "greenlet" },
+    { name = "pyee" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8d/c8/cc677856d89a0c077673b40ab915ed5597bf1347b205cabe70121c431ca9/playwright-1.64.1-py3-none-macosx_10_13_x86_64.whl", hash = "sha256:29453ff76e25c17d0b45658cacd6b92e9eec46e8db21e134fb3b7143df50f013", size = 44508971, upload-time = "2026-10-22T16:29:58.12Z" },
+    { url = "https://files.pythonhosted.org/packages/72/4f/572bbbe60a5787ca61a84bad934c3ce19c08c2bc9c0e9781bf0d99cad1a6/playwright-1.64.1-py3-none-macosx_11_0_arm64.whl", hash = "sha256:59f7b041284ce8d1b72098ae50ca48a2d83692eec25154ab5ba79d4b6b4fe8a9", size = 43155232, upload-time = "2026-10-22T16:30:02.415Z" },
+    { url = "https://files.pythonhosted.org/packages/44/fa/468f313a56d33a6420705147c8d47bef558f087856edf38c5b13eef8aa6c/playwright-1.64.1-py3-none-macosx_11_0_universal2.whl", hash = "sha256:6a6f99adad1ae40e6ee62efe89785db861ce7ddd57651521cb31894183cc4ae3", size = 44508977, upload-time = "2026-10-22T16:30:07.632Z" },
+    { url = "https://files.pythonhosted.org/packages/15/b9/e481a34572933b5cf179d5637c98da488c732ee339dff5b73a0624d2e42b/playwright-1.64.1-py3-none-manylinux1_x86_64.whl", hash = "sha256:577b8d88778c245cfbd145ae17cf53044f084b1b46c55c69081d4069d56057e2", size = 48471931, upload-time = "2026-10-22T16:30:12.831Z" },
+    { url = "https://files.pythonhosted.org/packages/0c/11/545f25e47ec54e1e8a2892ef9994fc2b298f909ab37b88578e3a1f87ac2e/playwright-1.64.1-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:a29fda44725e11b0b625c4bff6458a1f6dbee97b88c9788d12e18a8344458c2d", size = 48150994, upload-time = "2026-10-22T16:30:18.297Z" },
+    { url = "https://files.pythonhosted.org/packages/33/87/8ff7af99387ee72ae9b46a66ece7a0c0aa63f73320ecf6dd3dd087fa840a/playwright-1.64.1-py3-none-win32.whl", hash = "sha256:d3c48b31da426c2f3562d0919cb9ea4e5415f6dbd29d7211fa4d66cca24fbd2f", size = 38801828, upload-time = "2026-10-22T16:30:23.154Z" },
+    { url = "https://files.pythonhosted.org/packages/96/0a/64db6851aa1852a4f76be28eea71d4e2bf9f3ce493ee2e66939426729046/playwright-1.64.1-py3-none-win_amd64.whl", hash = "sha256:5e240a79464434c9260957b9ef59a5808e02e96e3fcabdc717fd7485260b9730", size = 38801836, upload-time = "2026-10-22T16:30:28.092Z" },
+    { url = "https://files.pythonhosted.org/packages/c5/4b/d7ddde9467a5fcfe6a0d3c954732332e98a4f4a9025fd42c8d091c16e5f9/playwright-1.64.1-py3-none-win_arm64.whl", hash = "sha256:983ccd085453ea5a7588193657fc349a6ffbf7bf7ba663fd58dc81e4aa3af9d9", size = 34693875, upload-time = "2026-10-22T16:30:32.724Z" },
+]
+
+[[package]]
 name = "pluggy"
 version = "1.6.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2577,6 +2608,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/3d/81/f02de95eec7794dfc7a5bc69a834f0e834b31b3009014ce6de903855f775/pydantic_core-2.50.1-graalpy312-graalpy250_312_native-macosx_11_0_arm64.whl", hash = "sha256:a51eee75939cf811ac09b278745a6cee7dc873ccfbc8b9af3cc88fe4b7ce25b5", size = 2039027, upload-time = "2026-10-11T18:35:18.07Z" },
     { url = "https://files.pythonhosted.org/packages/4d/16/227746ed3771d9bf2304568b55134849ece34e13b38b1d76de763015c77f/pydantic_core-2.50.1-graalpy312-graalpy250_312_native-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:ae28183297fb0d2b8dc46a1f01d51f5e45825fc5afe76a835a6cb7fb34821295", size = 2109009, upload-time = "2026-10-11T18:35:20.218Z" },
     { url = "https://files.pythonhosted.org/packages/e5/b9/7664d1592a0e5a74903f357cd5b28ceb7336f3473256c5a4e8c8432f1881/pydantic_core-2.50.1-graalpy312-graalpy250_312_native-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:88e492e8b9d0312e7dc13667c30222abf284dc3b79b5302b3607b41a5784ce61", size = 2269883, upload-time = "2026-10-11T18:35:22.48Z" },
+]
+
+[[package]]
+name = "pyee"
+version = "14.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1d/f1/fdedc2c75c3e31a330659c85e5793bb18b3397981fbf0844c6dee5b18926/pyee-14.0.0.tar.gz", hash = "sha256:76dd0f4314ecd27f02dc73589dea7fd3853f9b6176d8ef9b122860657e3602de", size = 98760, upload-time = "2026-08-13T04:26:11.021Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/81/12/5347938b1f9a6453f0dbdfcc3e2388a1320ef9b9ec17fbefbc4ab647ea98/pyee-14.0.0-py3-none-any.whl", hash = "sha256:3ac2d3229a9677f7de2c33d7f52fe25b638a46b19c413fea2edc8c6d0a644e4d", size = 15553, upload-time = "2026-08-13T04:26:09.916Z" },
 ]
 
 [[package]]
