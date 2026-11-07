@@ -1,71 +1,172 @@
-# 063. Fluent browser testing with Playwright
+# 063. Fluent async browser testing with Playwright
 
 Date: 2026-11-07
 
-Superseded in part by ADR 067: tests are async, the page chain is awaited on Playwright's async API, and `self.query` is removed.
-
 ## Problem
 
-Apps built on the framework, Inertia apps in particular, have no way to test what a user sees in a real browser. `HttpTestCase` sends requests through `ASGITransport`, so it never runs the frontend, follows a client-side Inertia visit, or fills a form. Writing raw Playwright against a live server means starting uvicorn by hand, managing browsers, contexts and base URLs, and writing CSS selectors for every button. We want tests that read like a user's script:
+Apps built on the framework, especially Inertia apps, can't test what a user sees in a real browser. `HttpTestCase` sends requests through `ASGITransport`, so it never runs the frontend, follows a client-side Inertia visit, or fills in a form.
+
+Raw Playwright against a live server means a lot of hand work:
+
+- starting uvicorn yourself;
+- managing browsers, contexts and base URLs;
+- writing a CSS selector for every button.
+
+There is also no way to reset a database that the server writes to from its own connections. The framework is async by default, so browser tests should be too. They should `await` the ORM and factories on the same connection the application uses, and read like a user's script, as Pest's browser plugin does:
 
 ```python
-from fastapi_startkit.playwright import BrowserTestCase, visit
+class RegistrationTest(TestCase, DatabaseTruncation):
+    async def test_user_can_sign_in(self) -> None:
+        await UserFactory.new().create({"email": "ada@example.com"})
 
-
-class RegistrationTest(BrowserTestCase):
-    def get_application(self):
-        from bootstrap.application import app
-
-        return app
-
-    def test_user_can_sign_in(self) -> None:
-        page = visit("/register").on().mobile().firefox()
-
-        (
-            page.click("Sign In")
-            .assert_url_is("/login")
-            .assert_see("Sign in to your account")
-            .fill("email", "tmgbedu@gmail.com")
+        await (
+            visit("/login")
+            .on().mobile().firefox()
+            .fill("email", "ada@example.com")
             .fill("password", "password")
             .click("submit")
-            .assert_see("dashboard")
+            .assert_path_is("/dashboard")
         )
 ```
 
 ## Alternatives
 
-1. **Depend on `pytest-playwright`.** It gives `page` fixtures but no live server, no fluent chain and no text-based element lookup, and its `--browser`/`--headed` options and fixtures would shape our API. Tests would still be raw Playwright.
-2. **Async API (`await visit(...)`).** Matches the async-first framework, but every chained call needs its own `await`, which breaks the fluent chain the request asks for.
-3. **Serve the app in a subprocess.** Isolates event loops, but loses in-process access to the app for future helpers (an authenticated-user assertion, factories) and needs an import string and environment plumbing for every app.
-4. **Sync fluent wrapper over Playwright's sync API, with the app served by uvicorn in a background thread of the test process, and a pytest plugin wiring it up.**
+1. **`pytest-playwright`.** It provides `page` fixtures, but no live server, no fluent chain and no lookup by visible text. Its options and fixtures would shape our API.
+2. **Sync Playwright, with uvicorn on a thread and its own loop.** The chain reads well. But the ORM's connections belong to the server loop, so every database touch needs a wrapper that ships the coroutine across threads. The sync driver also blocks any loop that calls it.
+3. **Async tests on their own loop, with sync Playwright on a worker thread.** The test and the app would use different connections, which needs loop-keyed connection caches. Every raw Playwright call would need marshalling.
+4. **Everything on one loop.** The test, the app server, Playwright's async API and the database all share one loop. The page chain records steps and runs them when awaited. The database is reset by truncation.
+
+For the database, `RefreshDatabase`'s rollback can't cover writes the live server makes on its own connections. Migrating before every test is correct but slow. Laravel truncates instead.
 
 ## Decision
 
-Option 4, shipped as `fastapi_startkit.playwright` behind a `playwright` extra (`fastapi-startkit[playwright]`, which adds `playwright` on top of the `fastapi` extra).
+Option 4, shipped as `fastapi_startkit.playwright` behind the `playwright` extra. The extra adds `playwright` and `pytest-asyncio` on top of `fastapi`. Truncation lives in `fastapi_startkit.masoniteorm.testing.DatabaseTruncation`.
 
-- `visit(path)` returns a lazy `Page`. Nothing starts until the first action or assertion, so device and browser can be chosen fluently first: `.on().mobile()`, `.on().tablet()`, `.on().desktop()`, `.on().device("Pixel 7")`, and `.chromium()`, `.firefox()`, `.webkit()`. Configuring an opened page raises `RuntimeError`.
-- Actions return the page: `click`, `fill`, `check`, `uncheck`, `select`, `navigate`, `screenshot`. Assertions return the page too: `assert_see`, `assert_dont_see`, `assert_url_is`, `assert_path_is`, `assert_title`, `assert_value`. The underlying Playwright page is available as `page.playwright` for anything else.
-- `screenshot(full_page=False, filename=None)` saves a PNG into `browser_screenshot_dir`, like Pest's `screenshot()`: the visible viewport by default, the whole scrollable page with `full_page=True`. The file is named after the running test (its node id, slugified) unless `filename` is given; `.png` is added when missing. Taking another unnamed screenshot in the same test overwrites the file.
-- Elements are found by what a user sees. `click(target)` matches a button or link whose accessible name contains `target`, an element with that `id` or `name`, a `button`/`input` with that `type` (so `click("submit")` presses the submit button), or a selector when `target` starts with `#`, `.`, `[`, `//`, `css=`, `xpath=` or `text=`. `fill`, `check`, `select` and `assert_value` match a form control by label, `name`, `id` or placeholder, or by such a selector. Candidates are combined with `Locator.or_()` and the first match in document order wins, so Playwright's auto-waiting still applies. Values are placed in quoted attribute selectors, so any text is a valid target.
-- Assertions go through Playwright's `expect`, so they wait for Inertia's client-side visits. `assert_see` is case-sensitive, like Dusk. `assert_url_is("/login")` compares against the live server's URL and ignores the query string and fragment; a full URL is compared as given. Failures raise `AssertionError` naming the target and the current path. A missing element raises `AssertionError` instead of Playwright's `TimeoutError`.
-- `BrowserSession` holds the configuration, the live server, the Playwright driver, one launched browser per engine, and the pages opened by the current test. Each page gets its own browser context with `base_url` set to the server and the chosen device descriptor. Firefox does not support `is_mobile`, so the flag is dropped for Firefox and the viewport, user agent and touch support are kept.
-- Browser test classes extend `BrowserTestCase` and return the application from `get_application()`, as `TestCase` and `HttpTestCase` do. An app usually puts this in one base class under `tests/` that its browser tests extend. Before a test's fixtures are set up, the plugin calls `get_application()` and hands the result to the session; returning the same object keeps the running server, returning a different one restarts it. There is no ini option or default import path for the app, so a page opened with no application configured raises `RuntimeError` pointing at `BrowserTestCase`.
-- `BrowserTestCase.query(coroutine)` awaits a coroutine on the live server's loop and returns its result, so a sync browser test can check what the app wrote with the ORM, as `docs/testing/database.md` does in async tests: `self.query(User.where("email", email).first())`. The app's connections are bound to that loop, so awaiting there avoids a second set of connections.
-- `LiveServer` takes `.fastapi` from an `Application` (anything else is served as an ASGI app; an `module:attribute` string is imported), binds a socket on `127.0.0.1` port 0 and runs `uvicorn.Server` on it in a daemon thread. It waits for `started`, and raises if the thread dies first. The app module is imported in the test process, so under pytest it boots with `APP_ENV=testing`.
-- The pytest plugin is registered through the `pytest11` entry point and imports nothing from Playwright until a page opens, so installs without the extra are unaffected. It adds ini options `browser_default` (`chromium`), `browser_timeout` (milliseconds, default 5000) and `browser_screenshot_dir` (`tests/browser/screenshots`), and a `--headed` flag that shows the browsers (reused when `pytest-playwright` already defines it). Debugging rides on pytest's built-in `--debug`: when it is passed the browsers run headed too, and after a failed test call each open page is paused in the Playwright inspector so the failing state can be inspected before teardown closes it; resuming in the inspector continues the run. pytest owns `--debug`, so a plugin cannot register it, and passing it also makes pytest write its own trace to `pytestdebug.log`. On a failed test call the plugin saves a screenshot of every open page, named after the test node id, before pausing. It closes the test's pages at teardown and shuts the browsers and server down at session end.
-- `page.debug()` debugs a single test, like Pest's `->debug()`: it limits the run to the tests that call it, shows the browser and pauses there in the Playwright inspector, then returns the page so the chain continues after resuming. The limit is applied at collection: the plugin parses each collected test function's source with `ast` and, when any contains a `.debug()` call with no arguments, keeps only those tests (the others are reported as deselected) and runs the browsers headed. Calls with arguments, such as `logger.debug("x")`, do not count, and tests whose source cannot be read are kept out of the check. Detection is by name, so an unrelated zero-argument `.debug()` call in a test also selects it.
-- Browser tests are plain sync methods. Playwright's sync API cannot run inside a running event loop, so `async def` browser tests are not supported.
-- While it runs, Playwright's sync driver registers its own loop as the main thread's running loop, so pytest-asyncio and `IsolatedAsyncioTestCase` fail with "cannot be called from a running event loop". The plugin therefore stops the driver (browsers included, the server stays up) at teardown when the next test needs a loop, and at the last test. A test needs a loop if its function is a coroutine, its class subclasses `IsolatedAsyncioTestCase`, or any of its fixtures is async. Consecutive sync browser tests share one driver and one browser per engine.
-- Coverage cannot trace code run under Playwright's greenlets on the pure-Python tracer (Python 3.15), and the plugin module is imported before pytest-cov starts, so the module's measured coverage understates what the tests exercise. The total stays above the threshold.
+### Page chains
 
-`assert_authenticated()` is left out: the framework has no auth layer to ask yet.
+`visit(path)` returns a `Page` without opening anything. It is composed of three parts:
 
-## Example application
+- `BasePage` (`base.py`): configuration, opening and step running.
+- `Interactions` (`interactions.py`).
+- `Assertions` (`assertions.py`).
 
-`example/browser-testing` gains register, login and dashboard pages (Inertia + Vue), a `users` migration, a `User` model with salted PBKDF2 password hashes (replaced by `fastapi-startkit-auth` in ADR 066), a session middleware, a seeder creating the demo account, and a committed `.env.testing` pointing at `databases/testing.sqlite`. The frontend is built (`npm run build`) or served by `npm run dev` before the tests run; the tests do not build it. The database is reset by `DatabaseTruncation` (ADR 064). `tests/browser/test_case.py` defines the app's `TestCase(BrowserTestCase)` returning `bootstrap.application.app`, which the browser tests extend. The example sets `python_classes = ["Test*", "*Test"]` so `RegistrationTest` is collected, and uses the local framework through `tool.uv.sources`.
+Configuration is synchronous and must happen before the page opens; doing it later raises `RuntimeError`. It covers:
+
+- devices: `.on().mobile()`, `.tablet()`, `.desktop()`, `.device("Pixel 7")`;
+- browsers: `.chromium()`, `.firefox()`, `.webkit()`;
+- context options: `with_timezone`, `with_locale`, `with_user_agent`. These are applied over the device descriptor, so an explicit user agent wins.
+
+Firefox doesn't support `is_mobile`. For Firefox the flag is dropped, and the viewport, user agent and touch support are kept.
+
+How steps run:
+
+- Actions and assertions record a step and return the page. Awaiting the page opens it if needed, runs the steps in order and returns the page.
+- A failing step drops the steps after it and raises `AssertionError`.
+- The readers `text`, `attribute`, `value`, `script` and `content` are coroutines. Each one runs the pending steps first.
+- `page.playwright` is the opened async Playwright page. Using it before the page has been awaited raises `RuntimeError`.
+- A chain that is never awaited would silently test nothing. So a test fails with `"... was never awaited"` if a page still has recorded steps when it ends.
+
+### Finding elements
+
+Elements are found by what a user sees. The candidates are combined with `Locator.or_()`, so Playwright's auto-waiting still applies.
+
+| What | Resolved by | Used by |
+|---|---|---|
+| Buttons and links | accessible name, `id`, `name` or `type` (so `click("submit")` presses the submit button) | `click`, `press`, `press_and_wait_for`, `assert_button_enabled`, `assert_button_disabled` |
+| Form controls | label, `name`, `id` or placeholder | `fill`, `type`, `check`, `select`, `value`, `assert_value`, and so on |
+| Elements | CSS or XPath; `@name` is shorthand for `[data-testid="name"]` | element assertions, `hover`, `drag`, `text`, `within_frame` |
+| Radios | group name and value | `radio("plan", "pro")` |
+
+A target that starts with `#`, `.`, `[`, `//`, `css=`, `xpath=` or `text=` is used as a selector. Values are placed in quoted attribute selectors, so any text is a valid target.
+
+### Vocabulary
+
+Names follow Pest's browser plugin, in snake_case.
+
+**Assertions:**
+
+- **Title:** `assert_title`, `assert_title_contains`.
+- **Text:** `assert_see`, `assert_dont_see`, `assert_see_in`, `assert_dont_see_in`, `assert_see_anything_in`, `assert_see_nothing_in`, `assert_see_link`, `assert_dont_see_link`. These compare rendered text and are case-sensitive.
+- **Source and script:** `assert_source_has`, `assert_source_missing`, `assert_script`.
+- **Elements:** `assert_count`, `assert_visible`, `assert_present`, `assert_not_present`, `assert_missing`.
+- **Attributes:** `assert_attribute`, `assert_attribute_missing`, `assert_attribute_contains`, `assert_attribute_doesnt_contain`, `assert_aria_attribute`, `assert_data_attribute`.
+- **Form state:** `assert_checked`, `assert_not_checked`, `assert_indeterminate`, `assert_radio_selected`, `assert_radio_not_selected`, `assert_selected`, `assert_not_selected`, `assert_value`, `assert_value_is_not`, `assert_enabled`, `assert_disabled`.
+- **URL:**
+  - Every part has an assertion and its negation: scheme, host, port (the scheme's default when none is given), path and fragment.
+  - The path also has `begins_with`, `ends_with` and `contains`; the fragment has `begins_with`.
+  - `assert_query_string_has` and `assert_query_string_missing`.
+  - `assert_url_is` and `assert_path_is` ignore the query string and fragment.
+- **Console:** `assert_no_console_logs`, `assert_no_javascript_errors`, `assert_no_smoke`. These wait for the `load` event, then list what the page recorded.
+
+Every assertion retries until the timeout. It uses Playwright's `expect` where a matcher exists, and otherwise polls every 50 ms. A failure names the target, the expectation and the current path.
+
+**Interactions:**
+
+- **Clicking:** `click`, `press`, `press_and_wait_for`.
+- **Typing:**
+  - `fill`, `type`, `type_slowly`, `append`, `clear`.
+  - `keys(field, *keys)`: text is typed, `{Enter}` is a named key, and a list is a chord.
+  - `with_key_down(key, callback)`.
+- **Choosing:** `select`, `radio`, `check`, `uncheck`, `attach`.
+- **Pointer:** `hover`, `drag`.
+- **Page:** `submit`, `within_frame(selector, callback)`, `resize`, `navigate`.
+- **Waiting:** `wait`, `wait_for_text`, `wait_for_key`.
+- **Debugging:** `screenshot(full_page=, filename=)`, `debug`.
+
+`within_frame` scopes element lookups to the frame. URL and console assertions still read the top page. The callbacks of `with_key_down` and `within_frame` add steps that run in place, and they may be async. `screenshot` writes into `browser_screenshot_dir`, named after the test unless a filename is given.
+
+### One session loop
+
+- **Test class.** `BrowserTestCase` is marked `pytest.mark.asyncio(loop_scope="session")`. A sync test method fails with a message asking for `async def`.
+- **Shared loop.** The live server, the Playwright driver, the browsers and the app's database connections are all created on that loop and live until the session ends.
+- **Live server.** `LiveServer.start()` binds a free port on `127.0.0.1` and runs `uvicorn.Server.serve` as a task. Signal capture is disabled, so Ctrl-C still interrupts pytest.
+- **Pages.** There is one browser per engine and one context per page, with `base_url` set to the server.
+- **Per test**, an autouse fixture:
+  1. serves the app returned by `get_application()` (a different app restarts the server);
+  2. awaits `asyncStartTestRun()` and `asyncStopTestRun()`;
+  3. takes failure screenshots;
+  4. pauses failed tests under `--debug`;
+  5. checks for unawaited chains;
+  6. closes the test's pages.
+- **User fixtures.** A user's own async fixtures need `loop_scope="session"`, or the project sets `asyncio_default_fixture_loop_scope = "session"`.
+
+### Plugin
+
+A `pytest11` entry point registers the plugin. It imports nothing from Playwright until a page opens.
+
+- **Ini options:** `browser_default` (`chromium`), `browser_timeout` (5000 ms) and `browser_screenshot_dir` (`tests/browser/screenshots`).
+- **`--headed`:** shows the browsers. The plugin reuses this option if `pytest-playwright` already defines it.
+- **`--debug`:** pytest's own option. With it, browsers run headed and each open page of a failed test pauses in the Playwright inspector.
+- **`page.debug()`:** limits the run to the tests that call it. The plugin finds those tests by parsing their source at collection. They run headed and pause at that point.
+- **Shutdown:** a session fixture shuts everything down on the session loop. It is registered only when pytest-asyncio is installed.
+
+### Database truncation
+
+`DatabaseTruncation` hooks into `asyncStartTestRun`, so it works the same in `TestCase` and `BrowserTestCase`.
+
+- The first test of the process runs `migrate:fresh`.
+- Each later test empties every table with foreign keys off. It skips `migrations`, `sqlite_*` and `except_tables`, or empties only `tables_to_truncate` when that is set.
+- After the reset it seeds: `DatabaseSeeder` by default, or the class named by `seeder`. `seed = False` skips seeding.
+- `connection`, `seed_directory` and `migration_directory` are configurable.
+
+### Deferred
+
+- **Accessibility and screenshot-diff assertions** (`assertNoAccessibilityIssues`, `assertScreenshotMatches`): they need axe-core and an image-diff baseline store, so they wait for a dependency decision.
+- **`assert_authenticated`:** it belongs with the auth package.
 
 ## Validation
 
-- `fastapi_startkit/tests/playwright/` serves a small FastAPI app and checks the lazy page, device and browser selection (including mobile Firefox), every locator strategy, each assertion's pass and failure message, the `RuntimeError` on late configuration, manual screenshots (viewport, full page, test-named and custom-named), failure screenshots, server start-up and shutdown, that `BrowserTestCase.get_application()` selects the served app and `query()` runs on the server loop, and that opening a page with no application raises. The tests skip when a browser is not installed.
-- `example/browser-testing/tests/browser/test_registration_page.py` passes on mobile Firefox against the real app, as do tests that sign up a new account and reject a wrong password, and the existing async `HttpTestCase` test still passes after them.
-- The full framework suite passes with coverage at or above the threshold.
+- **`tests/playwright/test_browser.py`:** covers
+  - lazy chains, step order and readers flushing pending steps;
+  - nested callbacks, dropped steps after a failure, and unawaited-chain failures;
+  - devices, browsers and every locator strategy;
+  - screenshots and debug pauses;
+  - the live server's start, stop and failure messages;
+  - `get_application()` switching servers.
+- **`tests/playwright/test_page_api.py`:** serves fixture pages and checks:
+  - every assertion, both passing and failing with its message;
+  - every interaction's effect in the DOM;
+  - the readers, frames, key chords, file attachment and console capture;
+  - timezone, locale and user agent, as the page's JavaScript reports them.
+- **`tests/masoniteorm/testing/test_database_truncation.py`:** covers fresh migration first, truncation that respects the skipped tables, the seeding options, and truncation through a `BrowserTestCase`.
+- **Full suite:** passes with coverage above the threshold.
