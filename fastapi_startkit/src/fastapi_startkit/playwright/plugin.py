@@ -16,7 +16,7 @@ def pytest_configure(config: pytest.Config) -> None:
     browser_session.configure(
         browser=config.getini("browser_default"),
         headed=bool(config.getoption("headed", False)),
-        debug=bool(config.getoption("browser_debug", False)),
+        debug=bool(config.getoption("inspect", False)),
         timeout=int(config.getini("browser_timeout")),
         screenshot_dir=Path(config.rootpath) / config.getini("browser_screenshot_dir"),
     )

@@ -125,7 +125,7 @@ Every assertion retries until the timeout. It uses Playwright's `expect` where a
   1. serves the app returned by `get_application()` (a different app restarts the server);
   2. awaits `asyncStartTestRun()` and `asyncStopTestRun()`;
   3. takes failure screenshots;
-  4. pauses failed tests under `--browser-debug`;
+  4. pauses failed tests under `--inspect`;
   5. checks for unawaited chains;
   6. closes the test's pages.
 - **User fixtures.** A user's own async fixtures need `loop_scope="session"`, or the project sets `asyncio_default_fixture_loop_scope = "session"`.
@@ -136,7 +136,7 @@ A `pytest11` entry point registers `fastapi_startkit.pytest_plugin`. It loads th
 
 - **Ini options:** `browser_default` (`chromium`), `browser_timeout` (5000 ms) and `browser_screenshot_dir` (`tests/browser/screenshots`).
 - **`--headed`:** shows the browsers. The plugin reuses this option if `pytest-playwright` already defines it.
-- **`--browser-debug`:** browsers run headed and each open page of a failed test pauses in the Playwright inspector. pytest's own `--debug` writes a debug log and is left alone.
+- **`--inspect`:** browsers run headed and each open page of a failed test pauses in the Playwright inspector. pytest's own `--debug` writes a debug log and is left alone.
 - **`page.debug()`:** limits the run to the tests that call it. The plugin finds those tests by parsing their source at collection, and only looks at methods of `BrowserTestCase` subclasses, so a `logger.debug()` or `MagicMock().debug()` elsewhere never deselects other tests. They run headed and pause at that point.
 - **Shutdown:** a session fixture shuts everything down on the session loop. It is registered only when pytest-asyncio is installed.
 

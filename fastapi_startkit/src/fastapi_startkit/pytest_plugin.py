@@ -21,7 +21,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     except ValueError:
         pass
     parser.addoption(
-        "--browser-debug",
+        "--inspect",
         action="store_true",
         default=False,
         help="Show the browser and pause failed browser tests in the Playwright inspector.",

@@ -23,7 +23,7 @@ def test_mock_debug_calls_do_not_deselect_other_tests(pytester: pytest.Pytester)
     result.assert_outcomes(passed=1, failed=1)
 
 
-def test_browser_debug_option_enables_debugging(pytester: pytest.Pytester):
+def test_inspect_option_enables_debugging(pytester: pytest.Pytester):
     pytester.makepyfile(
         """
         from fastapi_startkit.playwright import browser_session
@@ -33,7 +33,7 @@ def test_browser_debug_option_enables_debugging(pytester: pytest.Pytester):
         """
     )
 
-    result = pytester.runpytest("--browser-debug")
+    result = pytester.runpytest("--inspect")
 
     result.assert_outcomes(passed=1)
 
