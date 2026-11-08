@@ -3,6 +3,7 @@ import typing
 import warnings
 from typing import TYPE_CHECKING, Any, ForwardRef, Generic, Self, get_args, overload
 
+from inflection import underscore
 from typing_extensions import TypeVar
 
 from fastapi_startkit.masoniteorm.models import registry
@@ -19,7 +20,32 @@ type SingleResult[T] = T | None
 type ManyResult[T] = Collection[T]
 
 
+class RelationshipKey:
+    def __set_name__(self, owner, name):
+        self.name = name
+
+    @overload
+    def __get__(self, relationship: None, owner: Any) -> Self: ...
+    @overload
+    def __get__(self, relationship: object, owner: Any) -> str: ...
+    def __get__(self, relationship, owner=None) -> Any:
+        if relationship is None:
+            return self
+        explicit = relationship.__dict__.get(self.name)
+        if explicit is not None or "owner_class" not in relationship.__dict__:
+            return explicit
+        if "_inferred_keys" not in relationship.__dict__:
+            relationship.__dict__["_inferred_keys"] = relationship.default_keys()
+        return relationship.__dict__["_inferred_keys"].get(self.name)
+
+    def __set__(self, relationship: object, value: str | None) -> None:
+        relationship.__dict__[self.name] = value
+
+
 class BaseRelationship(Generic[TModel, TResult]):
+    local_key: RelationshipKey = RelationshipKey()
+    foreign_key: RelationshipKey = RelationshipKey()
+
     def __init__(self, fn: str | None = None, local_key=None, foreign_key=None):
         self.bind_model(fn)
 
@@ -68,6 +94,26 @@ class BaseRelationship(Generic[TModel, TResult]):
     def get_builder(self):
         return self.fn()().get_builder()
 
+    def default_keys(self) -> dict[str, str]:
+        return {}
+
+    @staticmethod
+    def snake_name_of(model) -> str:
+        return underscore(model.__name__)
+
+    @classmethod
+    def foreign_key_of(cls, model) -> str:
+        return f"{cls.snake_name_of(model)}_{model.__primary_key__}"
+
+    def bound_to(self, owner) -> Self:
+        if owner is None or self.attribute is None or owner is self.__dict__.get("owner_class", owner):
+            return self
+        bound = object.__new__(type(self))
+        bound.__dict__.update({key: value for key, value in self.__dict__.items() if key != "_inferred_keys"})
+        bound.owner_class = owner
+        setattr(owner, self.attribute, bound)
+        return bound
+
     def exists_alias(self, query, parent):
         if query.get_table_name() == parent._table:
             return f"{parent.get_table_name()}_self"
@@ -84,7 +130,7 @@ class BaseRelationship(Generic[TModel, TResult]):
     @overload
     def __get__(self, instance: object, owner: Any) -> TResult: ...
     def __get__(self, instance, owner) -> Any:
-        return self.access(instance, owner)
+        return self.bound_to(owner).access(instance, owner)
 
     def access(self, instance, owner):
         """
@@ -101,8 +147,6 @@ class BaseRelationship(Generic[TModel, TResult]):
         """
         if instance is None:
             return self
-
-        self.set_keys(instance, self.attribute)
 
         if not instance.is_loaded():
             return self

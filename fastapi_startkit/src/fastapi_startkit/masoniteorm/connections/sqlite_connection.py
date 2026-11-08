@@ -1,8 +1,9 @@
 import datetime
+from pathlib import Path
 from typing import Any
 
 import pendulum
-from sqlalchemy import event
+from sqlalchemy import URL, event
 from sqlalchemy.engine import Connection as SyncConnection
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -17,7 +18,20 @@ from .connection import Connection
 class SQliteConnection(Connection):
     def __init__(self, engine: AsyncEngine, config: DBConfig):
         super().__init__(engine, config)
+        if self.is_file_database(engine.url):
+            Path(str(engine.url.database)).parent.mkdir(parents=True, exist_ok=True)
         event.listen(engine.sync_engine, "savepoint", self.on_savepoint)
+
+    @staticmethod
+    def is_file_database(url: URL) -> bool:
+        database = url.database
+        return bool(database) and database != ":memory:" and not str(database).startswith("file:")
+
+    @classmethod
+    def resolve_url(cls, url: URL, base_path: Path) -> URL:
+        if not cls.is_file_database(url) or Path(str(url.database)).is_absolute():
+            return url
+        return url.set(database=str(base_path / str(url.database)))
 
     @staticmethod
     def on_savepoint(connection: SyncConnection, name: str) -> None:

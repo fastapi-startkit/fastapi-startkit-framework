@@ -18,7 +18,6 @@ class HasOneOfMany(HasOne[TModel]):
         if relation.foreign_key is None and relation.attribute is None:
             raise TypeError("of_many() needs a HasMany declared on a model or given an explicit foreign_key")
 
-        relation.set_keys(None, relation.attribute)
         super().__init__(foreign_key=relation.foreign_key, local_key=relation.local_key)
         self.relation = relation
         self.column = column
@@ -27,9 +26,6 @@ class HasOneOfMany(HasOne[TModel]):
 
     def model_reference(self) -> str | type:
         return self.relation.model_reference()
-
-    def set_keys(self, owner, attribute):
-        return self
 
     def get_builder(self):
         return self.constrain(self.relation.get_builder())

@@ -186,30 +186,26 @@ class TestMakeModelCommand(_TempCwdTestCase):
     # there is nothing to run against a database -- the generated file content
     # is the only meaningful contract to assert.
     def test_creates_model_file(self):
-        os.makedirs("app")
         tester = self._tester(MakeModelCommand)
         tester.execute("Post")
 
         output = tester.io.fetch_output()
         self.assertIn("Model created:", output)
 
-        content = open(os.path.join("app", "Post.py")).read()
+        content = open(os.path.join("app/models", "Post.py")).read()
         self.assertIn("class Post(Model)", content)
 
     def test_generated_model_imports(self):
-        os.makedirs("app")
         self._tester(MakeModelCommand).execute("Post")
 
-        content = open(os.path.join("app", "Post.py")).read()
+        content = open(os.path.join("app/models", "Post.py")).read()
         self.assertIn("from fastapi_startkit.masoniteorm.models import Model", content)
         self.assertNotIn('"""', content)
 
-        post_class = self._load_class(os.path.join("app", "Post.py"), "Post")
+        post_class = self._load_class(os.path.join("app/models", "Post.py"), "Post")
         self.assertTrue(issubclass(post_class, Model))
 
     def test_migration_option_creates_migration_through_console(self):
-        os.makedirs("app")
-        os.makedirs("databases/migrations")
         app = create_app()
 
         self.assertEqual(app.run("db:make:model", "Post --migration"), 0)
@@ -220,8 +216,6 @@ class TestMakeModelCommand(_TempCwdTestCase):
         self.assertIn('self.schema.create("posts")', content)
 
     def test_migration_and_table_options_create_update_migration_through_console(self):
-        os.makedirs("app")
-        os.makedirs("databases/migrations")
         app = create_app()
 
         self.assertEqual(app.run("db:make:model", "Post --migration --table"), 0)
@@ -232,8 +226,6 @@ class TestMakeModelCommand(_TempCwdTestCase):
         self.assertIn('self.schema.table("posts")', content)
 
     def test_seeder_option_creates_seeder_through_console(self):
-        os.makedirs("app")
-        os.makedirs("databases/seeders")
         app = create_app()
 
         self.assertEqual(app.run("db:make:model", "Post --seeder"), 0)
@@ -241,14 +233,12 @@ class TestMakeModelCommand(_TempCwdTestCase):
         self.assertTrue(os.path.exists(os.path.join("databases/seeders", "post_table_seeder.py")))
 
     def test_pep_option_uses_underscore_filename(self):
-        os.makedirs("app")
         tester = self._tester(MakeModelCommand)
         tester.execute("BlogPost --pep")
 
-        self.assertTrue(os.path.exists(os.path.join("app", "blog_post.py")))
+        self.assertTrue(os.path.exists(os.path.join("app/models", "blog_post.py")))
 
     def test_reports_when_model_already_exists(self):
-        os.makedirs("app")
         self._tester(MakeModelCommand).execute("Post")
 
         tester = self._tester(MakeModelCommand)
@@ -257,11 +247,17 @@ class TestMakeModelCommand(_TempCwdTestCase):
         self.assertIn('Model "Post" Already Exists', output)
 
     def test_custom_directory_option(self):
-        os.makedirs("models")
         tester = self._tester(MakeModelCommand)
         tester.execute("Post --directory models")
 
         self.assertTrue(os.path.exists(os.path.join("models", "Post.py")))
+
+    def test_generated_model_resolves_through_the_package_import(self):
+        self._tester(MakeModelCommand).execute("Post")
+
+        content = open(os.path.join("app/models", "Post.py")).read()
+        self.assertNotIn("from masoniteorm", content)
+        self.assertTrue(issubclass(self._load_class(os.path.join("app/models", "Post.py"), "Post"), Model))
 
 
 class TestMakeSeedCommand(_TempCwdTestCase):

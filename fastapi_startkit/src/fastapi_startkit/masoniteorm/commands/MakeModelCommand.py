@@ -36,7 +36,7 @@ class MakeModelCommand(Command):
             "directory",
             "d",
             flag=False,
-            default="app",
+            default="app/models",
             description="The location of the model directory",
         ),
         option(
@@ -75,9 +75,9 @@ class MakeModelCommand(Command):
             self.line(f'<error>Model "{name}" Already Exists ({full_directory_path}/{file_name})</error>')
             return 0
 
-        os.makedirs(os.path.dirname(os.path.join(full_directory_path)), exist_ok=True)
+        os.makedirs(full_directory_path, exist_ok=True)
 
-        with open(os.path.join(os.getcwd(), model_directory, file_name), "w+") as fp:
+        with open(os.path.join(full_directory_path, file_name), "w+") as fp:
             fp.write(output)
 
         self.info(f"Model created: {os.path.join(model_directory, file_name)}")

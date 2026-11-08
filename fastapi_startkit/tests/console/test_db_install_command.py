@@ -147,17 +147,10 @@ def test_prints_next_steps_after_install(tmp_path):
     assert "Next steps:" in output
     assert "DB_CONNECTION=sqlite\n" in output
     assert "DB_DATABASE=databases/database.sqlite\n" in output
-    assert "mkdir -p databases/migrations" in output
+    assert "mkdir" not in output
     assert "uv run python artisan db:make:migration create_users_table" in output
     assert "uv run python artisan db:migrate" in output
     assert "uv add" not in output
-
-
-def test_next_steps_skip_existing_migrations_directory(tmp_path):
-    app = make_app(tmp_path)
-    (app / "databases/migrations").mkdir(parents=True)
-
-    assert "mkdir" not in run(app).io.fetch_output()
 
 
 def test_next_steps_use_driver_environment(tmp_path):

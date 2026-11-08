@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING, cast
 
+from sqlalchemy import make_url
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -41,12 +42,14 @@ class ConnectionFactory:
         from fastapi_startkit.application import app
 
         cls._ensure_supported(config.driver)
+        application = cast("Application[AppConfig]", app())
+        url = cls.CONNECTIONS[config.driver].resolve_url(make_url(config.build_url()), application.base_path)
         options: dict[str, object] = {"echo": config.echo}
-        if cast("Application[AppConfig]", app()).is_testing():
+        if application.is_testing():
             options["poolclass"] = NullPool
         else:
             options.update(config.engine_options())
-        return create_async_engine(config.build_url(), **options)
+        return create_async_engine(url, **options)
 
     @classmethod
     def create_connection(cls, driver: str, config: DBConfig) -> Connection:

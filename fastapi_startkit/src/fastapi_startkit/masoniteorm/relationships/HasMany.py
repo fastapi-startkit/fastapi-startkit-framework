@@ -20,11 +20,8 @@ class HasMany(BaseRelationship[TModel, ManyResult[TModel]]):
 
         return result
 
-    def set_keys(self, owner, attribute):
-        self.local_key = self.local_key or "id"
-        self.foreign_key = self.foreign_key or f"{attribute}_id"
-
-        return self
+    def default_keys(self):
+        return {"local_key": self.owner_class.__primary_key__, "foreign_key": self.foreign_key_of(self.owner_class)}
 
     def latest_of_many(self, column: str = "created_at") -> HasOneOfMany[TModel]:
         return self.of_many(column, "max")
