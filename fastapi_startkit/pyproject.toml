@@ -139,6 +139,7 @@ dev = [
     "redis>=5.0.1",
     "fakeredis[lua]>=2.26.0",
     "playwright>=1.55.0",
+    "cryptography>=44.0.0",
 ]
 
 

@@ -47,7 +47,7 @@ class TestPostgresPlatformCreate(unittest.TestCase):
         table = self._basic_table()
         table.add_index(["email"], "users_email_index", "index")
         sql = self.platform.compile_create_sql(table)
-        self.assertEqual(sql[1], 'CREATE INDEX users_email_index ON "users"(email)')
+        self.assertEqual(sql[1], 'CREATE INDEX users_email_index ON "users"("email")')
 
     def test_integer_types_have_no_length(self):
         table = Table("users")
@@ -175,7 +175,7 @@ class TestPostgresPlatformAlter(unittest.TestCase):
         diff.add_constraint("pk", "primary_key", columns=["id"])
         self.assertEqual(
             self.platform.compile_alter_sql(diff),
-            ['ALTER TABLE "users" ADD CONSTRAINT pk PRIMARY KEY (id)'],
+            ['ALTER TABLE "users" ADD CONSTRAINT pk PRIMARY KEY ("id")'],
         )
 
     def test_add_index(self):
@@ -183,7 +183,7 @@ class TestPostgresPlatformAlter(unittest.TestCase):
         diff.add_index(["email"], "users_email_index", "index")
         self.assertEqual(
             self.platform.compile_alter_sql(diff),
-            ['CREATE INDEX users_email_index ON "users"(email)'],
+            ['CREATE INDEX users_email_index ON "users"("email")'],
         )
 
     def test_add_unique_constraint(self):
@@ -191,7 +191,7 @@ class TestPostgresPlatformAlter(unittest.TestCase):
         diff.add_constraint("u_uniq", "unique", columns=["email"])
         self.assertEqual(
             self.platform.compile_alter_sql(diff),
-            ['ALTER TABLE "users" ADD CONSTRAINT u_uniq UNIQUE(email)'],
+            ['ALTER TABLE "users" ADD CONSTRAINT u_uniq UNIQUE("email")'],
         )
 
     def test_drop_foreign_key_and_index(self):

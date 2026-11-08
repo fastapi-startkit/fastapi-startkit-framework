@@ -39,7 +39,7 @@ class TestSQLiteSchemaBuilderAlter(TestCase):
         self.assertEqual(len(blueprint.table.added_columns), 0)
         self.assertEqual(
             await blueprint.to_sql(),
-            ['CREATE UNIQUE INDEX table_unique ON "users"(name)'],
+            ['CREATE UNIQUE INDEX table_unique ON "users"("name")'],
         )
 
     async def test_alter_rename(self):
@@ -171,7 +171,7 @@ class TestSQLiteSchemaBuilderAlter(TestCase):
 
         self.assertEqual(
             await blueprint.to_sql(),
-            ['ALTER TABLE "users" ADD CONSTRAINT users_playlist_id_primary PRIMARY KEY (playlist_id)'],
+            ['ALTER TABLE "users" ADD CONSTRAINT users_playlist_id_primary PRIMARY KEY ("playlist_id")'],
         )
 
     async def test_alter_add_column_and_foreign_key(self):

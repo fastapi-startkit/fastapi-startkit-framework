@@ -83,9 +83,9 @@ class PostgresPlatform(Platform):
         if index.index_type == "vector":
             return (
                 f"CREATE INDEX {index.name} ON {self.wrap_table(table_name)} "
-                f"USING hnsw ({','.join(index.column)} vector_cosine_ops)"
+                f"USING hnsw ({self.wrap_columns(index.column, ',')} vector_cosine_ops)"
             )
-        return f"CREATE INDEX {index.name} ON {self.wrap_table(table_name)}({','.join(index.column)})"
+        return f"CREATE INDEX {index.name} ON {self.wrap_table(table_name)}({self.wrap_columns(index.column, ',')})"
 
     def compile_create_sql(self, table, if_not_exists=False):
         sql = []
@@ -321,11 +321,11 @@ class PostgresPlatform(Platform):
             for name, constraint in table.added_constraints.items():
                 if constraint.constraint_type == "unique":
                     sql.append(
-                        f"ALTER TABLE {self.wrap_table(table.name)} ADD CONSTRAINT {constraint.name} UNIQUE({','.join(constraint._columns)})"
+                        f"ALTER TABLE {self.wrap_table(table.name)} ADD CONSTRAINT {constraint.name} UNIQUE({self.wrap_columns(constraint._columns, ',')})"
                     )
                 elif constraint.constraint_type == "primary_key":
                     sql.append(
-                        f"ALTER TABLE {self.wrap_table(table.name)} ADD CONSTRAINT {constraint.name} PRIMARY KEY ({','.join(constraint._columns)})"
+                        f"ALTER TABLE {self.wrap_table(table.name)} ADD CONSTRAINT {constraint.name} PRIMARY KEY ({self.wrap_columns(constraint._columns, ',')})"
                     )
 
         for name, column in table.get_added_columns().items():
@@ -401,7 +401,7 @@ class PostgresPlatform(Platform):
         for name, constraint in constraints.items():
             sql.append(
                 getattr(self, f"get_{constraint.constraint_type}_constraint_string")().format(
-                    columns=", ".join(constraint._columns),
+                    columns=self.wrap_columns(constraint._columns),
                     name_columns="_".join(constraint._columns),
                     constraint_name=constraint.name,
                     table=table.name,

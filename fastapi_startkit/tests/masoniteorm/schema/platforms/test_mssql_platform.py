@@ -52,7 +52,7 @@ class TestMSSQLPlatformCreate(unittest.TestCase):
         table = self._basic_table()
         table.add_index(["email"], "users_email_index", "index")
         sql = self.platform.compile_create_sql(table)
-        self.assertEqual(sql[1], "CREATE INDEX users_email_index ON [users](email)")
+        self.assertEqual(sql[1], "CREATE INDEX users_email_index ON [users]([email])")
 
 
 class TestMSSQLPlatformAlter(unittest.TestCase):
@@ -174,7 +174,7 @@ class TestMSSQLPlatformAlter(unittest.TestCase):
         diff.add_constraint("pk", "primary_key", columns=["id"])
         self.assertEqual(
             self.platform.compile_alter_sql(diff),
-            ["ALTER TABLE [users] ADD CONSTRAINT pk PRIMARY KEY (id)"],
+            ["ALTER TABLE [users] ADD CONSTRAINT pk PRIMARY KEY ([id])"],
         )
 
     def test_drop_foreign_key(self):
