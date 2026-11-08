@@ -102,10 +102,14 @@ class BaseGrammar:
         having=(),
         connection_details=None,
         alias=None,
+        from_sub=None,
+        unions=(),
     ):
         self._columns = columns
         self.table = table
         self.alias = alias
+        self.from_sub = from_sub
+        self._unions = unions
         self.database = database
         self._wheres = wheres
         self._limit = limit
@@ -142,11 +146,12 @@ class BaseGrammar:
         Returns:
             [type] -- [description]
         """
-        select_format = self.select_format() if self.table else self.select_no_table()
+        has_source = self.table or self.from_sub
+        select_format = self.select_format() if has_source else self.select_no_table()
         self._sql = select_format.format(
             columns=self.process_columns(separator=", ", qmark=qmark),
             keyword="DISTINCT" if self._distinct else "",
-            table=self.process_from_table() if self.table else self.process_table(self.table),
+            table=self.process_from_table(qmark=qmark) if has_source else self.process_table(self.table),
             joins=self.process_joins(qmark=qmark),
             wheres=self.process_wheres(qmark=qmark),
             group_by=self.process_group_by(),
@@ -158,7 +163,28 @@ class BaseGrammar:
             lock=self.process_locks(),
         ).strip()
 
+        if self._unions:
+            self._sql = self.process_unions(qmark=qmark)
+
         return self
+
+    def process_unions(self, qmark=False):
+        sql = self.union_member_string().format(query=self._sql)
+        for keyword, builder in self._unions:
+            member = self.union_member_string().format(query=self._compile_subquery(builder, qmark))
+            sql += f" {keyword} {member}"
+        return sql
+
+    def _compile_subquery(self, builder, qmark=False):
+        if not qmark:
+            return builder.to_sql()
+        sql = builder.to_qmark()
+        if builder._bindings:
+            self.add_binding(*builder._bindings)
+        return sql
+
+    def union_member_string(self) -> str:
+        return "({query})"
 
     def _compile_update(self, query=None, values=None, qmark=False):
         """Compiles an update query statement.
@@ -569,7 +595,10 @@ class BaseGrammar:
             for t in table.name.split(".")
         )
 
-    def process_from_table(self):
+    def process_from_table(self, qmark=False):
+        if self.from_sub is not None:
+            query = self._compile_subquery(self.from_sub, qmark)
+            return f"({query}) AS {self.process_table(self.alias)}"
         if not self.alias:
             return self.process_table(self.table)
         return f"{self.process_table(self.table)} AS {self.process_table(self.alias)}"

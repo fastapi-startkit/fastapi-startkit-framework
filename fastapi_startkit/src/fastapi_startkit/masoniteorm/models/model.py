@@ -193,6 +193,18 @@ class Model(Attribute, Relationship, ObservesEvents):
         return cls.query().add_select_exists(alias, query)
 
     @classmethod
+    def from_sub(cls, subquery: Subquery, alias: str) -> "QueryBuilder[Self]":
+        return cls.query().from_sub(subquery, alias)
+
+    @classmethod
+    def union(cls, query: Subquery) -> "QueryBuilder[Self]":
+        return cls.query().union(query)
+
+    @classmethod
+    def union_all(cls, query: Subquery) -> "QueryBuilder[Self]":
+        return cls.query().union_all(query)
+
+    @classmethod
     def limit(cls, limit: int) -> "QueryBuilder[Self]":
         return cls.query().limit(limit)
 

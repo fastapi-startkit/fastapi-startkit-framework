@@ -70,3 +70,25 @@ class TestJsonPathWhereGrammar(unittest.TestCase):
     def test_order_by_a_json_path(self):
         sql = builder(PostgresGrammar).order_by("settings->headline").to_sql()
         self.assertEqual(sql, 'SELECT * FROM "posts" ORDER BY "posts"."settings"->>\'headline\' ASC')
+
+    def test_union_members_compile_json_paths(self):
+        pages = builder(PostgresGrammar).select("id").where("meta->seo->title", "Rome")
+        pages._table = "pages"
+        query = builder(PostgresGrammar).select("id").where("settings->headline", "Paris").union_all(pages)
+        self.assertEqual(
+            query.to_qmark(),
+            '(SELECT "posts"."id" FROM "posts" WHERE "posts"."settings"->>\'headline\' = ?) UNION ALL '
+            '(SELECT "pages"."id" FROM "pages" WHERE "pages"."meta"->\'seo\'->>\'title\' = ?)',
+        )
+        self.assertEqual(list(query.get_bindings()), ["Paris", "Rome"])
+
+    def test_from_sub_compiles_json_paths_inside_and_outside(self):
+        subquery = builder(SQLiteGrammar).select("id", "settings").where("settings->headline", "Paris")
+        query = builder(SQLiteGrammar).from_sub(subquery, "events").where("events.settings->lang", "fr")
+        self.assertEqual(
+            query.to_qmark(),
+            'SELECT * FROM (SELECT "posts"."id", "posts"."settings" FROM "posts" '
+            'WHERE json_extract("posts"."settings", \'$."headline"\') = ?) AS "events" '
+            'WHERE json_extract("events"."settings", \'$."lang"\') = ?',
+        )
+        self.assertEqual(list(query.get_bindings()), ["Paris", "fr"])
