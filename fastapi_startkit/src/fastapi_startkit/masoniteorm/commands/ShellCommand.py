@@ -1,4 +1,4 @@
-from fastapi_startkit.masoniteorm.config.database import DatabaseConfig
+from fastapi_startkit.masoniteorm.config.database import DatabaseSettings
 from cleo.helpers import option
 import os
 import re
@@ -69,7 +69,7 @@ class ShellCommand(Command):
             exit(-1)
         return 0
 
-    def get_connection_information(self, database_config: DatabaseConfig, connection: str) -> dict[str, Any]:
+    def get_connection_information(self, database_config: DatabaseSettings, connection: str) -> dict[str, Any]:
         connection_config = database_config.connections.get(connection)
         if connection_config is None:
             return {}

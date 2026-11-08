@@ -79,7 +79,7 @@ class TestDatabaseProviderWiring(unittest.TestCase):
         self.assertIs(connection.config, connection_config)
 
     def test_provider_rejects_dictionary_settings(self):
-        with self.assertRaisesRegex(TypeError, "requires a database settings dataclass"):
+        with self.assertRaisesRegex(TypeError, "requires DatabaseSettings; missing attributes: default, connections$"):
             Application(
                 base_path=self.base_path,
                 providers=[(DatabaseProvider, {"default": "sqlite"})],
