@@ -99,6 +99,10 @@ class Connection(ManagesTransactions):
         result = await self.execute(query, bindings)
         return result.rowcount  # type: ignore[return-value]
 
+    async def affecting_statement(self, query: str, bindings: list[Any] | None = None) -> int:
+        result = await self.execute(query, bindings)
+        return result.rowcount  # type: ignore[return-value]
+
     async def delete(self, query: str, bindings: list[Any] | None = None) -> int:
         result = await self.execute(query, bindings)
         return result.rowcount  # type: ignore[return-value]

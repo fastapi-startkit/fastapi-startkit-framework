@@ -63,6 +63,16 @@ class MySQLGrammar(BaseGrammar):
     def bulk_insert_format(self):
         return "INSERT INTO {table} ({columns}) VALUES {values}"
 
+    def compile_insert_or_ignore(self, query, values, unique_by):
+        return "INSERT IGNORE" + self.compile_insert(query, values).removeprefix("INSERT")
+
+    def compile_upsert(self, query, values, unique_by, update):
+        assignments = ", ".join(
+            f"{self.columnize_bulk_columns([column])} = VALUES({self.columnize_bulk_columns([column])})"
+            for column in update
+        )
+        return f"{self.compile_insert(query, values)} ON DUPLICATE KEY UPDATE {assignments}"
+
     def delete_format(self):
         return "DELETE FROM {table} {wheres}"
 
