@@ -132,8 +132,8 @@ class TestMySQLPlatformAlter(unittest.TestCase):
         self.assertEqual(
             self.platform.compile_alter_sql(diff),
             [
-                "ALTER TABLE `users` ADD CONSTRAINT users_profile_id_foreign FOREIGN KEY (profile_id) "
-                "REFERENCES profiles(id) ON DELETE CASCADE"
+                "ALTER TABLE `users` ADD CONSTRAINT users_profile_id_foreign FOREIGN KEY (`profile_id`) "
+                "REFERENCES `profiles`(`id`) ON DELETE CASCADE"
             ],
         )
 

@@ -71,6 +71,18 @@ class TestReservedWordColumns(unittest.TestCase):
                 diff.add_index(["key"], "caches_key_index", "index")
                 self.assert_key_is_quoted(platform().compile_alter_sql(diff), quoted_key)
 
+    def test_alter_quotes_a_foreign_key_column_and_its_reference(self):
+        quoted_references = {
+            MySQLPlatform: "FOREIGN KEY (`key`) REFERENCES `order`(`key`)",
+            PostgresPlatform: 'FOREIGN KEY ("key") REFERENCES "order"("key")',
+            MSSQLPlatform: "FOREIGN KEY ([key]) REFERENCES [order]([key])",
+        }
+        for platform, quoted_reference in quoted_references.items():
+            with self.subTest(platform=platform.__name__):
+                diff = TableDiff("caches")
+                diff.add_foreign_key("key", table="order", foreign_column="key")
+                self.assertIn(quoted_reference, platform().compile_alter_sql(diff)[0])
+
     def test_mysql_alter_quotes_a_fulltext_column(self):
         diff = TableDiff("caches")
         diff.add_constraint("caches_key_fulltext", "fulltext", columns=["key"])
