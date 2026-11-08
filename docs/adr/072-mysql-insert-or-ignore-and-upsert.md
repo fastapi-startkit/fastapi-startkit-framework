@@ -29,4 +29,5 @@ Option 3.
 ## Validation
 
 - `tests/masoniteorm/mysql/test_mysql_insert_or_ignore.py` runs against MySQL 8.0 from `docker-compose.yml` with a unique `(slug, language)` index. It checks that `insert_or_ignore` keeps the first row for a key and that `upsert` inserts and then updates the named columns.
+- `tests/masoniteorm/query/grammars/test_insert_or_ignore_grammar.py` adds MySQL to its SQL and binding snapshots, and only MSSQL is still expected to raise.
 - The full framework suite passes with coverage at or above the threshold.

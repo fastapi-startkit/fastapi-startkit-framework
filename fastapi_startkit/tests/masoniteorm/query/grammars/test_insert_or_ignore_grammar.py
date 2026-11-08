@@ -9,6 +9,7 @@ from fastapi_startkit.masoniteorm.query.grammars.SQLiteGrammar import SQLiteGram
 GRAMMARS = {
     "sqlite": SQLiteGrammar,
     "postgres": PostgresGrammar,
+    "mysql": MySQLGrammar,
 }
 
 EXPECTED = {
@@ -25,6 +26,13 @@ EXPECTED = {
         "ignore_any": 'INSERT INTO "lexemes" ("slug", "language", "word") VALUES (?, ?, ?) ON CONFLICT DO NOTHING',
         "ignore_many": 'INSERT INTO "lexemes" ("slug", "language", "word") VALUES (?, ?, ?), (?, ?, ?) ON CONFLICT ("slug", "language") DO NOTHING',
         "upsert": 'INSERT INTO "lexemes" ("slug", "language", "word") VALUES (?, ?, ?) ON CONFLICT ("slug", "language") DO UPDATE SET "word" = EXCLUDED."word"',
+    },
+    "mysql": {
+        "ignore_keys": "INSERT IGNORE INTO `lexemes` (`slug`, `language`) VALUES (?, ?)",
+        "ignore": "INSERT IGNORE INTO `lexemes` (`slug`, `language`, `word`) VALUES (?, ?, ?)",
+        "ignore_any": "INSERT IGNORE INTO `lexemes` (`slug`, `language`, `word`) VALUES (?, ?, ?)",
+        "ignore_many": "INSERT IGNORE INTO `lexemes` (`slug`, `language`, `word`) VALUES (?, ?, ?), (?, ?, ?)",
+        "upsert": "INSERT INTO `lexemes` (`slug`, `language`, `word`) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE `word` = VALUES(`word`)",
     },
 }
 
@@ -120,12 +128,10 @@ class TestInsertOrIgnoreGrammar(unittest.IsolatedAsyncioTestCase):
             await connection.query().upsert(ROW, ["slug", "language"], ["definition"])
         self.assertEqual(connection.calls, [])
 
-    async def test_mysql_and_mssql_refuse_both(self):
-        for grammar in (MySQLGrammar, MSSQLGrammar):
-            with self.subTest(grammar=grammar.__name__):
-                connection = RecordingConnection(grammar)
-                with self.assertRaises(NotImplementedError):
-                    await connection.query().insert_or_ignore(ROW, "slug")
-                with self.assertRaises(NotImplementedError):
-                    await connection.query().upsert(ROW, "slug")
-                self.assertEqual(connection.calls, [])
+    async def test_mssql_refuses_both(self):
+        connection = RecordingConnection(MSSQLGrammar)
+        with self.assertRaises(NotImplementedError):
+            await connection.query().insert_or_ignore(ROW, "slug")
+        with self.assertRaises(NotImplementedError):
+            await connection.query().upsert(ROW, "slug")
+        self.assertEqual(connection.calls, [])
