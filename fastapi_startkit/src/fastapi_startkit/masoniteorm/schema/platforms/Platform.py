@@ -110,7 +110,7 @@ class Platform:
         for name, constraint in constraints.items():
             sql.append(
                 getattr(self, f"get_{constraint.constraint_type}_constraint_string")().format(
-                    columns=", ".join(constraint._columns)
+                    columns=self.wrap_columns(constraint._columns)
                 )
             )
         return sql
@@ -120,6 +120,9 @@ class Platform:
 
     def wrap_column(self, column_name):
         return self.get_column_string().format(column=column_name)
+
+    def wrap_columns(self, column_names, separator=", "):
+        return separator.join(self.wrap_column(column_name) for column_name in column_names)
 
     def compile_create_sql(self, table: Table, /, if_not_exists: bool = False) -> str | list[str]:
         raise NotImplementedError

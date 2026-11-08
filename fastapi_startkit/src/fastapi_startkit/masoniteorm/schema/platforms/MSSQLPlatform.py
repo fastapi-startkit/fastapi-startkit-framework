@@ -87,7 +87,7 @@ class MSSQLPlatform(Platform):
                     "CREATE INDEX {name} ON {table}({column})".format(
                         name=index.name,
                         table=self.wrap_table(table.name),
-                        column=",".join(index.column),
+                        column=self.wrap_columns(index.column, ","),
                     )
                 )
 
@@ -162,7 +162,7 @@ class MSSQLPlatform(Platform):
                     "CREATE INDEX {name} ON {table}({column})".format(
                         name=index.name,
                         table=self.wrap_table(table.name),
-                        column=",".join(index.column),
+                        column=self.wrap_columns(index.column, ","),
                     )
                 )
 
@@ -177,13 +177,13 @@ class MSSQLPlatform(Platform):
             for name, constraint in table.added_constraints.items():
                 if constraint.constraint_type == "unique":
                     sql.append(
-                        f"ALTER TABLE {self.wrap_table(table.name)} ADD CONSTRAINT {constraint.name} UNIQUE({','.join(constraint._columns)})"
+                        f"ALTER TABLE {self.wrap_table(table.name)} ADD CONSTRAINT {constraint.name} UNIQUE({self.wrap_columns(constraint._columns, ',')})"
                     )
                 elif constraint.constraint_type == "fulltext":
                     pass
                 elif constraint.constraint_type == "primary_key":
                     sql.append(
-                        f"ALTER TABLE {self.wrap_table(table.name)} ADD CONSTRAINT {constraint.name} PRIMARY KEY ({','.join(constraint._columns)})"
+                        f"ALTER TABLE {self.wrap_table(table.name)} ADD CONSTRAINT {constraint.name} PRIMARY KEY ({self.wrap_columns(constraint._columns, ',')})"
                     )
         return sql
 
@@ -293,7 +293,7 @@ class MSSQLPlatform(Platform):
         for name, constraint in constraints.items():
             sql.append(
                 getattr(self, f"get_{constraint.constraint_type}_constraint_string")().format(
-                    columns=", ".join(constraint._columns),
+                    columns=self.wrap_columns(constraint._columns),
                     name_columns="_".join(constraint._columns),
                     constraint_name=constraint.name,
                     table=table.name,
