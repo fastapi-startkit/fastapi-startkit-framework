@@ -35,6 +35,9 @@ class MSSQLGrammar(BaseGrammar):
     def select_no_table(self):
         return "SELECT {columns}"
 
+    def union_member_string(self):
+        return "SELECT * FROM ({query}) AS [temp_table]"
+
     def select_format(self):
         return "SELECT {keyword} {limit} {columns} FROM {table} {lock} {joins} {wheres} {group_by} {having} {order_by} {offset}"
 
