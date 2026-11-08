@@ -228,6 +228,30 @@ class BaseGrammar:
     ) -> str:
         return self.compile_insert(query, values)
 
+    def compile_insert_or_ignore(
+        self,
+        query: QueryBuilder[Any],
+        values: list[dict[str, Any]],
+        unique_by: list[str],
+    ) -> str:
+        return f"{self.compile_insert(query, values)} ON CONFLICT {self.conflict_target(unique_by)}DO NOTHING"
+
+    def compile_upsert(
+        self,
+        query: QueryBuilder[Any],
+        values: list[dict[str, Any]],
+        unique_by: list[str],
+        update: list[str],
+    ) -> str:
+        assignments = ", ".join(
+            f"{self.columnize_bulk_columns([column])} = EXCLUDED.{self.columnize_bulk_columns([column])}"
+            for column in update
+        )
+        return f"{self.compile_insert(query, values)} ON CONFLICT {self.conflict_target(unique_by)}DO UPDATE SET {assignments}"
+
+    def conflict_target(self, unique_by: list[str]) -> str:
+        return f"({self.columnize_bulk_columns(unique_by)}) " if unique_by else ""
+
     def _compile_bulk_create(self, qmark=False):
         """Compiles an insert expression.
 

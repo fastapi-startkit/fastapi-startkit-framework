@@ -63,6 +63,12 @@ class MySQLGrammar(BaseGrammar):
     def bulk_insert_format(self):
         return "INSERT INTO {table} ({columns}) VALUES {values}"
 
+    def compile_insert_or_ignore(self, query, values, unique_by):
+        raise NotImplementedError("insert_or_ignore() is not supported on MySQL.")
+
+    def compile_upsert(self, query, values, unique_by, update):
+        raise NotImplementedError("upsert() is not supported on MySQL.")
+
     def delete_format(self):
         return "DELETE FROM {table} {wheres}"
 

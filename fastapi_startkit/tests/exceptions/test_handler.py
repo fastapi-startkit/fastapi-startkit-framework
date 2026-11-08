@@ -10,7 +10,10 @@ import sys
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import requests
+
 from fastapi_startkit.exceptions.handler import ExceptionHandler
+from fastapi_startkit.logging.drivers.LogSlackDriver import LogSlackDriver
 
 
 class CustomError(Exception):
@@ -134,6 +137,22 @@ class TestRenderAndHandle:
             result = await handler.handle(CustomError("boom"), {"request": None})
         report.assert_called_once()
         assert result == "done"
+
+    async def test_handle_renders_original_exception_when_slack_fails(self, capsys):
+        slack = LogSlackDriver(token="xoxb-tok", channel="#alerts")
+        handler = ExceptionHandler(_app(has_logger=True))
+        handler.register_render(CustomError, lambda request, exc: f"rendered {exc}")
+        with (
+            patch("fastapi_startkit.logging.logger.Logger.error", side_effect=slack.error),
+            patch(
+                "fastapi_startkit.logging.drivers.LogSlackDriver.requests.post",
+                side_effect=requests.ConnectionError("refused"),
+            ),
+        ):
+            result = await handler.handle(CustomError("boom"), {"request": None})
+
+        assert result == "rendered boom"
+        assert "refused" in capsys.readouterr().err
 
     async def test_handle_defaults_context_to_empty_dict(self):
         handler = ExceptionHandler()
