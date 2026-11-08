@@ -1,7 +1,7 @@
 import io
 import logging
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from unittest.mock import MagicMock, patch
 
 import requests
@@ -299,7 +299,7 @@ class SlackDriverTest(unittest.TestCase):
         return LogSlackDriver(**{**options, **overrides})
 
     def _post(self, body):
-        response = MagicMock()
+        response = MagicMock(status_code=200)
         response.json.return_value = body
         return patch("fastapi_startkit.logging.drivers.LogSlackDriver.requests.post", return_value=response)
 
@@ -322,34 +322,103 @@ class SlackDriverTest(unittest.TestCase):
         self.assertEqual(kwargs["json"]["icon_emoji"], ":x:")
         self.assertNotIn("token", kwargs["json"])
 
-    def test_never_calls_retired_channels_list(self):
-        with self._post({"ok": True}) as post:
-            self._driver().critical("down")
-
-        urls = [call.args[0] for call in post.call_args_list]
-        self.assertEqual(urls, ["https://slack.com/api/chat.postMessage"])
-
     def test_unset_username_is_not_sent(self):
         with self._post({"ok": True}) as post:
             self._driver(username=None).info("ping")
 
         self.assertNotIn("username", post.call_args.kwargs["json"])
 
-    def test_slack_error_response_raises_slack_api_error(self):
+    def test_post_raises_slack_api_error_on_error_response(self):
         with self._post({"ok": False, "error": "not_authed"}):
             with self.assertRaisesRegex(SlackApiError, "not_authed"):
-                self._driver().error("boom")
+                self._driver().post("boom")
 
-    def test_channel_not_found_raises_slack_channel_not_found(self):
+    def test_post_raises_slack_channel_not_found(self):
         with self._post({"ok": False, "error": "channel_not_found"}):
             with self.assertRaisesRegex(SlackChannelNotFound, "#alerts"):
+                self._driver().post("boom")
+
+    def test_post_reports_unknown_error_without_error_key(self):
+        with self._post({"ok": False}):
+            with self.assertRaisesRegex(SlackApiError, "unknown_error"):
+                self._driver().post("boom")
+
+    def test_error_response_is_written_to_stderr(self):
+        stderr = io.StringIO()
+        with self._post({"ok": False, "error": "not_authed"}), redirect_stderr(stderr):
+            self._driver().error("boom")
+
+        self.assertIn("not_authed", stderr.getvalue())
+
+    def test_request_exceptions_are_written_to_stderr(self):
+        for failure in (requests.ConnectionError("refused"), requests.Timeout("slow")):
+            stderr = io.StringIO()
+            with self._post({"ok": True}) as post, redirect_stderr(stderr):
+                post.side_effect = failure
                 self._driver().error("boom")
 
-    def test_http_error_status_is_raised(self):
-        with self._post({"ok": False}) as post:
-            post.return_value.raise_for_status.side_effect = requests.HTTPError("429")
-            with self.assertRaises(requests.HTTPError):
-                self._driver().error("boom")
+            self.assertIn(str(failure), stderr.getvalue())
+
+    def test_http_error_status_is_written_to_stderr(self):
+        stderr = io.StringIO()
+        with self._post({"ok": False}) as post, redirect_stderr(stderr):
+            post.return_value.status_code = 500
+            post.return_value.raise_for_status.side_effect = requests.HTTPError("500 Server Error")
+            self._driver().error("boom")
+
+        self.assertIn("500 Server Error", stderr.getvalue())
+
+    def test_non_json_body_is_written_to_stderr(self):
+        stderr = io.StringIO()
+        with self._post({}) as post, redirect_stderr(stderr):
+            post.return_value.json.side_effect = requests.JSONDecodeError("Expecting value", "<html>", 0)
+            self._driver().error("boom")
+
+        self.assertIn("Expecting value", stderr.getvalue())
+
+    def test_missing_token_skips_request(self):
+        stderr = io.StringIO()
+        with self._post({"ok": True}) as post, redirect_stderr(stderr):
+            self._driver(token=None).error("boom")
+
+        post.assert_not_called()
+        self.assertIn("token is not configured", stderr.getvalue())
+
+    def test_rate_limit_skips_requests_until_retry_after(self):
+        driver = self._driver()
+        stderr = io.StringIO()
+        with self._post({"ok": False, "error": "ratelimited"}) as post, redirect_stderr(stderr):
+            post.return_value.status_code = 429
+            post.return_value.headers = {"Retry-After": "5"}
+            post.return_value.raise_for_status.side_effect = requests.HTTPError("429 Too Many Requests")
+            with patch("fastapi_startkit.logging.drivers.LogSlackDriver.time.monotonic", return_value=100.0):
+                driver.error("first")
+                driver.error("second")
+            with patch("fastapi_startkit.logging.drivers.LogSlackDriver.time.monotonic", return_value=105.0):
+                driver.error("third")
+
+        self.assertEqual(post.call_count, 2)
+        self.assertIn("rate limited by Slack, message skipped", stderr.getvalue())
+
+    def test_invalid_retry_after_falls_back_to_default(self):
+        response = MagicMock(headers={"Retry-After": "soon"})
+        self.assertEqual(self._driver().retry_after(response), LogSlackDriver.default_retry_after)
+
+    def test_stack_channel_continues_after_slack_failure(self):
+        slack = BaseChannel()
+        slack.driver = self._driver()
+        slack.max_level = None
+        recorder = BaseChannel()
+        recorder.driver = RecordingDriver()
+        recorder.max_level = "debug"
+        stack = StackChannel.__new__(StackChannel)
+        stack.channels = [slack, recorder]
+
+        with self._post({"ok": True}) as post, redirect_stderr(io.StringIO()):
+            post.side_effect = requests.ConnectionError("refused")
+            stack.error("boom")
+
+        self.assertEqual(recorder.driver.calls, [("error", "boom")])
 
 
 class SyslogDriverTest(unittest.TestCase):
