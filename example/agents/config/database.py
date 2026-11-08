@@ -23,3 +23,7 @@ class DatabaseConfig:
             ),
         }
     )
+
+    migrations: dict[str, str] = field(
+        default_factory=lambda: {"table": "migrations", "directory": "databases/migrations"}
+    )

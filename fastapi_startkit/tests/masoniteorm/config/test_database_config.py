@@ -9,6 +9,7 @@ from fastapi_startkit.masoniteorm.connections.mysql_connection import MySQLConne
 from fastapi_startkit.masoniteorm.connections.postgres_connection import PostgresConnection
 from fastapi_startkit.masoniteorm.connections.sqlite_connection import SQliteConnection
 from fastapi_startkit.masoniteorm.providers.DatabaseProvider import DatabaseProvider
+from fastapi_startkit.support.config import ConfigurationError
 
 
 @pytest.mark.parametrize(
@@ -75,7 +76,7 @@ def test_connection_rejects_mismatched_driver():
 def test_provider_rejects_dictionary_connection_settings(tmp_path):
     app = Application(base_path=tmp_path)
     config = DatabaseConfig(default="sqlite", connections={"sqlite": {"driver": "sqlite"}})
-    with pytest.raises(TypeError, match="Database connection 'sqlite' requires a database config object"):
+    with pytest.raises(ConfigurationError, match="'database.connections.sqlite': must be a DBConfig instance"):
         DatabaseProvider(app, config).register()
 
 

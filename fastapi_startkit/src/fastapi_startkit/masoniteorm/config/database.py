@@ -15,11 +15,17 @@ class DatabaseSettings(Protocol):
     @property
     def connections(self) -> Mapping[str, DBConfig]: ...
 
+    @property
+    def migrations(self) -> Mapping[str, str]: ...
+
+
+DATABASE_SETTINGS_ATTRIBUTES = ("default", "connections", "migrations")
+
 
 def ensure_database_settings(owner: str, source: object) -> DatabaseSettings:
     if isinstance(source, DatabaseSettings):
         return source
-    missing = ", ".join(name for name in ("default", "connections") if not hasattr(source, name))
+    missing = ", ".join(name for name in DATABASE_SETTINGS_ATTRIBUTES if not hasattr(source, name))
     raise TypeError(f"{owner} requires database settings; missing attributes: {missing}")
 
 

@@ -8,6 +8,7 @@ from fastapi_startkit.masoniteorm import SQLiteConfig
 from fastapi_startkit.masoniteorm.connections.factory import ConnectionFactory
 from fastapi_startkit.masoniteorm.connections.manager import DatabaseManager
 from fastapi_startkit.masoniteorm.providers import DatabaseProvider
+from fastapi_startkit.support.config import ConfigurationError
 
 
 class TestDatabaseManagerConnectionLookup(unittest.TestCase):
@@ -79,7 +80,7 @@ class TestDatabaseProviderWiring(unittest.TestCase):
         self.assertIs(connection.config, connection_config)
 
     def test_provider_rejects_dictionary_settings(self):
-        with self.assertRaisesRegex(TypeError, "requires database settings; missing attributes: default, connections"):
+        with self.assertRaisesRegex(ConfigurationError, "'database.connections': is missing"):
             Application(
                 base_path=self.base_path,
                 providers=[(DatabaseProvider, {"default": "sqlite"})],
