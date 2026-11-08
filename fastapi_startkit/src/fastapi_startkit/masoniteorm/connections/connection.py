@@ -96,16 +96,14 @@ class Connection(ManagesTransactions):
         return getattr(result, "lastrowid", None)
 
     async def update(self, query: str, bindings: list[Any] | None = None) -> int:
-        result = await self.execute(query, bindings)
-        return result.rowcount  # type: ignore[return-value]
+        return await self.affecting_statement(query, bindings)
 
     async def affecting_statement(self, query: str, bindings: list[Any] | None = None) -> int:
         result = await self.execute(query, bindings)
         return result.rowcount  # type: ignore[return-value]
 
     async def delete(self, query: str, bindings: list[Any] | None = None) -> int:
-        result = await self.execute(query, bindings)
-        return result.rowcount  # type: ignore[return-value]
+        return await self.affecting_statement(query, bindings)
 
     async def select(self, query: str, bindings: list[Any] | None = None) -> list[dict[str, Any]]:
         result = await self.run(query, bindings)

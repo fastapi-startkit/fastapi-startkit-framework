@@ -110,6 +110,24 @@ class TestInsertOrIgnoreGrammar(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError):
             await connection.query().upsert(ROW, [])
 
+    async def test_rows_with_extra_columns_are_refused(self):
+        connection = RecordingConnection(PostgresGrammar)
+        with self.assertRaises(ValueError):
+            await connection.query().insert_or_ignore([{"slug": "chat"}, {"slug": "chien", "word": "chien"}])
+        self.assertEqual(connection.calls, [])
+
+    async def test_rows_with_missing_columns_are_refused(self):
+        connection = RecordingConnection(PostgresGrammar)
+        with self.assertRaises(ValueError):
+            await connection.query().upsert([ROW, {"slug": "chien", "language": "fr"}], ["slug", "language"])
+        self.assertEqual(connection.calls, [])
+
+    async def test_upsert_refuses_update_columns_that_are_not_inserted(self):
+        connection = RecordingConnection(PostgresGrammar)
+        with self.assertRaises(ValueError):
+            await connection.query().upsert(ROW, ["slug", "language"], ["definition"])
+        self.assertEqual(connection.calls, [])
+
     async def test_mssql_refuses_both(self):
         connection = RecordingConnection(MSSQLGrammar)
         with self.assertRaises(NotImplementedError):

@@ -16,8 +16,8 @@ An application that must keep one row per natural key under concurrency, such as
 
 Option 3.
 
-- `QueryBuilder.insert_or_ignore(values, unique_by=None)` and `QueryBuilder.upsert(values, unique_by, update=None)` take a dict or a list of dicts and return the affected row count through a new `Connection.affecting_statement`. Every value is a bound parameter. Rows are reordered to the first row's columns, so their bindings line up with the column list.
-- `unique_by` and `update` take a column name or a list of names. `upsert` updates every column outside `unique_by` when `update` is `None`, falls back to `insert_or_ignore` when nothing is left to update, and raises `ValueError` without a `unique_by` column. Empty values run nothing and return `0`.
+- `QueryBuilder.insert_or_ignore(values, unique_by=None)` and `QueryBuilder.upsert(values, unique_by, update=None)` take a dict or a list of dicts and return the affected row count through a new `Connection.affecting_statement`, which `Connection.update` and `Connection.delete` now delegate to. Every value is a bound parameter. Rows are reordered to the first row's columns, so their bindings line up with the column list. Every row must have the same column set as the first row; a row with an extra or a missing column raises `ValueError` instead of silently dropping values or failing with a bare `KeyError`.
+- `unique_by` and `update` take a column name or a list of names. `upsert` updates every column outside `unique_by` when `update` is `None`, falls back to `insert_or_ignore` when nothing is left to update, and raises `ValueError` without a `unique_by` column or when `update` names a column that is not inserted, since `EXCLUDED.col` and `VALUES(col)` would then overwrite it with its default. Empty values run nothing and return `0`.
 - `Model.insert_or_ignore` and `Model.upsert` proxy to a new query, like `Model.insert`.
 - Rendering:
   - Postgres and SQLite: `INSERT ... ON CONFLICT ("slug", "language") DO NOTHING`, or `ON CONFLICT DO NOTHING` without `unique_by`, and `ON CONFLICT (...) DO UPDATE SET "word" = EXCLUDED."word"`. SQLite needs 3.24 or later.
@@ -33,7 +33,7 @@ Option 3.
 
 ## Validation
 
-- `tests/masoniteorm/query/grammars/test_insert_or_ignore_grammar.py` snapshots the SQL and bindings on SQLite, MySQL and Postgres: with and without `unique_by`, several rows in another key order, `upsert` with default and named columns, the fallback when nothing is left to update, empty values and a missing `unique_by`. It also checks that MSSQL raises for both methods.
+- `tests/masoniteorm/query/grammars/test_insert_or_ignore_grammar.py` snapshots the SQL and bindings on SQLite, MySQL and Postgres: with and without `unique_by`, several rows in another key order, `upsert` with default and named columns, the fallback when nothing is left to update, empty values, a missing `unique_by`, rows with extra or missing columns, and `update` columns that are not inserted. It also checks that MSSQL raises for both methods.
 - `tests/masoniteorm/sqlite/builder/test_sqlite_insert_or_ignore.py`, `tests/masoniteorm/postgres/test_postgres_insert_or_ignore.py` and `tests/masoniteorm/mysql/test_mysql_insert_or_ignore.py` run against a unique `(slug, language)` index. They check that the first row is kept, that a batch inserts only its new rows, and that `upsert` inserts and then updates.
 - On Postgres, a second transaction's `insert_or_ignore` waits for an open transaction that inserted the same key, then returns `0` and leaves one row. A plain `insert` fails this test with a unique violation.
 - The full framework suite passes with coverage at or above the threshold.

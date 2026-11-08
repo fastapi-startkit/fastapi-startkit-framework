@@ -516,6 +516,9 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
             if update is None
             else self.column_list(update)
         )
+        unknown_columns = [column for column in update_columns if column not in rows[0]]
+        if unknown_columns:
+            raise ValueError(f"upsert() can only update inserted columns, got {unknown_columns}.")
         if not update_columns:
             return await self.insert_or_ignore(rows, unique_columns)
 
@@ -529,6 +532,9 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
             return []
 
         columns = list(rows[0])
+        for index, row in enumerate(rows[1:], start=1):
+            if row.keys() != rows[0].keys():
+                raise ValueError(f"Row {index} has columns {sorted(row)}, expected {sorted(columns)}.")
         return [{column: row[column] for column in columns} for row in rows]
 
     @staticmethod
