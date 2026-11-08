@@ -1,7 +1,8 @@
 from typing import TYPE_CHECKING
 
-from fastapi_startkit.masoniteorm.config.database import DatabaseSettings, ensure_database_settings
+from fastapi_startkit.masoniteorm.config.database import DatabaseSettings
 from fastapi_startkit.masoniteorm.connections.connection import Connection
+from fastapi_startkit.support.config import ensure_config
 
 if TYPE_CHECKING:
     from fastapi_startkit.masoniteorm.connections.factory import ConnectionFactory
@@ -10,7 +11,7 @@ if TYPE_CHECKING:
 class DatabaseManager:
     def __init__(self, factory: "ConnectionFactory", config: DatabaseSettings):
         self.factory = factory
-        self.config: DatabaseSettings = ensure_database_settings("DatabaseManager", config)
+        self.config: DatabaseSettings = ensure_config("DatabaseManager", config, DatabaseSettings)
         self.connections: dict[str, Connection] = {}
 
     def connection(self, name: str | None = None):

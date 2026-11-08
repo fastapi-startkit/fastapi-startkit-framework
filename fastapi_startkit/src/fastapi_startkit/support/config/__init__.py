@@ -1,4 +1,4 @@
 from .base import Config
-from .validation import ConfigurationError, ensure_config
+from .ensure import ensure_config
 
-__all__ = ["Config", "ConfigurationError", "ensure_config"]
+__all__ = ["Config", "ensure_config"]

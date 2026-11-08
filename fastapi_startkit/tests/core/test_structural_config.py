@@ -8,14 +8,14 @@ from typing import assert_type
 
 import pytest
 
-from fastapi_startkit.application import Application
+from fastapi_startkit.application import Application, AppSettings
 from fastapi_startkit.environment import env
 from fastapi_startkit.masoniteorm import DatabaseConfig, DBConfig, SQLiteConfig
 from fastapi_startkit.masoniteorm.config.database import DatabaseSettings
 from fastapi_startkit.masoniteorm.connections.factory import ConnectionFactory
 from fastapi_startkit.masoniteorm.connections.manager import DatabaseManager
 from fastapi_startkit.masoniteorm.providers.DatabaseProvider import DatabaseProvider
-from fastapi_startkit.support.config import ConfigurationError
+from fastapi_startkit.support.config import ensure_config
 
 
 @dataclass
@@ -106,13 +106,15 @@ def test_subclassed_database_config_keeps_its_behaviour(tmp_path: Path, monkeypa
 
 
 def test_wrong_shape_names_the_missing_attributes(tmp_path: Path):
-    with pytest.raises(ConfigurationError, match="'database.connections': is missing$"):
+    with pytest.raises(
+        TypeError, match="DatabaseProvider requires DatabaseSettings; missing attributes: connections, migrations$"
+    ):
         boot(tmp_path, OnlyDefault())
 
 
 def test_database_settings_requires_migrations(tmp_path: Path):
     assert not isinstance(WithoutMigrations(), DatabaseSettings)
-    with pytest.raises(ConfigurationError, match="'database.migrations': is missing$"):
+    with pytest.raises(TypeError, match="DatabaseProvider requires DatabaseSettings; missing attributes: migrations$"):
         boot(tmp_path, WithoutMigrations())
 
 
@@ -147,6 +149,37 @@ def test_framework_database_config_satisfies_database_settings():
 
     assert isinstance(settings, DatabaseSettings)
     assert settings.migrations == {"table": "migrations", "directory": "databases/migrations"}
+
+
+def test_ensure_config_returns_database_settings_typed_as_the_protocol():
+    settings = PlainDatabaseConfig()
+
+    ensured = ensure_config("Owner", settings, DatabaseSettings)
+
+    assert_type(ensured, DatabaseSettings)
+    assert ensured is settings
+    assert ensure_config("Owner", DatabaseConfig(), DatabaseSettings).migrations["directory"] == "databases/migrations"
+
+
+def test_ensure_config_names_owner_protocol_and_missing_database_attributes():
+    with pytest.raises(
+        TypeError, match="^Owner requires DatabaseSettings; missing attributes: connections, migrations$"
+    ):
+        ensure_config("Owner", OnlyDefault(), DatabaseSettings)
+
+
+def test_ensure_config_returns_app_settings_typed_as_the_protocol():
+    settings = PlainAppConfig()
+
+    ensured = ensure_config("Owner", settings, AppSettings)
+
+    assert_type(ensured, AppSettings)
+    assert ensured is settings
+
+
+def test_ensure_config_names_missing_app_attributes():
+    with pytest.raises(TypeError, match="^Owner requires AppSettings; missing attributes: name, env, debug, timezone$"):
+        ensure_config("Owner", object(), AppSettings)
 
 
 @pytest.mark.skipif(shutil.which("basedpyright") is None, reason="basedpyright is not installed")
