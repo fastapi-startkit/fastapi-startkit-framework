@@ -490,12 +490,12 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         values: dict[str, Any] | list[dict[str, Any]],
         unique_by: str | list[str] | None = None,
     ) -> int:
-        rows = self.uniform_rows(values)
+        rows = self._uniform_rows(values)
         if not rows:
             return 0
 
-        sql = self.grammar().compile_insert_or_ignore(self, rows, self.column_list(unique_by))
-        return await self.connection.affecting_statement(sql, self.clean_bindings(rows))
+        sql = self.grammar().compile_insert_or_ignore(self, rows, self._column_list(unique_by))
+        return await self.connection.update(sql, self.clean_bindings(rows))
 
     async def upsert(
         self,
@@ -503,18 +503,18 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         unique_by: str | list[str],
         update: str | list[str] | None = None,
     ) -> int:
-        unique_columns = self.column_list(unique_by)
+        unique_columns = self._column_list(unique_by)
         if not unique_columns:
             raise ValueError("upsert() needs at least one unique_by column.")
 
-        rows = self.uniform_rows(values)
+        rows = self._uniform_rows(values)
         if not rows:
             return 0
 
         update_columns = (
             [column for column in rows[0] if column not in unique_columns]
             if update is None
-            else self.column_list(update)
+            else self._column_list(update)
         )
         unknown_columns = [column for column in update_columns if column not in rows[0]]
         if unknown_columns:
@@ -523,10 +523,10 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
             return await self.insert_or_ignore(rows, unique_columns)
 
         sql = self.grammar().compile_upsert(self, rows, unique_columns, update_columns)
-        return await self.connection.affecting_statement(sql, self.clean_bindings(rows))
+        return await self.connection.update(sql, self.clean_bindings(rows))
 
     @staticmethod
-    def uniform_rows(values: dict[str, Any] | list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def _uniform_rows(values: dict[str, Any] | list[dict[str, Any]]) -> list[dict[str, Any]]:
         rows = [values] if isinstance(values, dict) else list(values)
         if not rows or not rows[0]:
             return []
@@ -538,7 +538,7 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         return [{column: row[column] for column in columns} for row in rows]
 
     @staticmethod
-    def column_list(columns: str | list[str] | None) -> list[str]:
+    def _column_list(columns: str | list[str] | None) -> list[str]:
         if columns is None:
             return []
         return [columns] if isinstance(columns, str) else list(columns)

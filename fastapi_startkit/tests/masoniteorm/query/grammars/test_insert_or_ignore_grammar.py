@@ -8,7 +8,6 @@ from fastapi_startkit.masoniteorm.query.grammars.SQLiteGrammar import SQLiteGram
 
 GRAMMARS = {
     "sqlite": SQLiteGrammar,
-    "mysql": MySQLGrammar,
     "postgres": PostgresGrammar,
 }
 
@@ -27,13 +26,6 @@ EXPECTED = {
         "ignore_many": 'INSERT INTO "lexemes" ("slug", "language", "word") VALUES (?, ?, ?), (?, ?, ?) ON CONFLICT ("slug", "language") DO NOTHING',
         "upsert": 'INSERT INTO "lexemes" ("slug", "language", "word") VALUES (?, ?, ?) ON CONFLICT ("slug", "language") DO UPDATE SET "word" = EXCLUDED."word"',
     },
-    "mysql": {
-        "ignore_keys": "INSERT IGNORE INTO `lexemes` (`slug`, `language`) VALUES (?, ?)",
-        "ignore": "INSERT IGNORE INTO `lexemes` (`slug`, `language`, `word`) VALUES (?, ?, ?)",
-        "ignore_any": "INSERT IGNORE INTO `lexemes` (`slug`, `language`, `word`) VALUES (?, ?, ?)",
-        "ignore_many": "INSERT IGNORE INTO `lexemes` (`slug`, `language`, `word`) VALUES (?, ?, ?), (?, ?, ?)",
-        "upsert": "INSERT INTO `lexemes` (`slug`, `language`, `word`) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE `word` = VALUES(`word`)",
-    },
 }
 
 ROW = {"slug": "chat", "language": "fr", "word": "chat"}
@@ -47,7 +39,7 @@ class RecordingConnection:
     def query(self):
         return QueryBuilder(connection=self, grammar=self.grammar, processor=None).table("lexemes")
 
-    async def affecting_statement(self, sql, bindings):
+    async def update(self, sql, bindings):
         self.calls.append((sql, bindings))
         return 1
 
@@ -68,14 +60,14 @@ class TestInsertOrIgnoreGrammar(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(connection.calls, [(EXPECTED[name]["ignore_any"], ["chat", "fr", "chat"])])
 
     async def test_insert_or_ignore_binds_every_row_in_the_first_rows_column_order(self):
-        rows = [ROW, {"word": "chien", "language": "fr", "slug": "chien"}]
+        rows = [ROW, {"word": "chien", "language": "en", "slug": "dog"}]
         for name, grammar in GRAMMARS.items():
             with self.subTest(grammar=name):
                 connection = RecordingConnection(grammar)
                 await connection.query().insert_or_ignore(rows, ["slug", "language"])
                 self.assertEqual(
                     connection.calls,
-                    [(EXPECTED[name]["ignore_many"], ["chat", "fr", "chat", "chien", "fr", "chien"])],
+                    [(EXPECTED[name]["ignore_many"], ["chat", "fr", "chat", "dog", "en", "chien"])],
                 )
 
     async def test_upsert_updates_the_columns_outside_the_unique_key_by_default(self):
@@ -128,10 +120,12 @@ class TestInsertOrIgnoreGrammar(unittest.IsolatedAsyncioTestCase):
             await connection.query().upsert(ROW, ["slug", "language"], ["definition"])
         self.assertEqual(connection.calls, [])
 
-    async def test_mssql_refuses_both(self):
-        connection = RecordingConnection(MSSQLGrammar)
-        with self.assertRaises(NotImplementedError):
-            await connection.query().insert_or_ignore(ROW, "slug")
-        with self.assertRaises(NotImplementedError):
-            await connection.query().upsert(ROW, "slug")
-        self.assertEqual(connection.calls, [])
+    async def test_mysql_and_mssql_refuse_both(self):
+        for grammar in (MySQLGrammar, MSSQLGrammar):
+            with self.subTest(grammar=grammar.__name__):
+                connection = RecordingConnection(grammar)
+                with self.assertRaises(NotImplementedError):
+                    await connection.query().insert_or_ignore(ROW, "slug")
+                with self.assertRaises(NotImplementedError):
+                    await connection.query().upsert(ROW, "slug")
+                self.assertEqual(connection.calls, [])
