@@ -85,6 +85,9 @@ class SQLiteGrammar(BaseGrammar):
     def where_not_exists_string(self):
         return "{keyword} NOT EXISTS {value}"
 
+    def json_path_string(self, column, keys):
+        return f"json_extract({column}, {self.json_path_literal(keys)})"
+
     def where_like_string(self):
         return "{keyword} {column} LIKE {value}"
 

@@ -94,6 +94,10 @@ class PostgresGrammar(BaseGrammar):
     def where_not_exists_string(self):
         return "{keyword} NOT EXISTS {value}"
 
+    def json_path_string(self, column, keys):
+        *parents, last = keys
+        return column + "".join(f"->'{key}'" for key in parents) + f"->>'{last}'"
+
     def where_like_string(self):
         return "{keyword} {column} ILIKE {value}"
 
