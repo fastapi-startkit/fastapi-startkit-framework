@@ -511,8 +511,14 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         bindings = list(grammar._bindings)
         return await self.connection.update(sql, bindings)
 
+    def _over_union(self) -> "QueryBuilder[TModel]":
+        return self.connection.query().set_model(self._model).without_global_scopes().from_sub(self, "union_table")
+
     async def paginate(self, per_page: int = 15, page: int = 1):
         from fastapi_startkit.masoniteorm.pagination import LengthAwarePaginator
+
+        if self._unions:
+            return await self._over_union().paginate(per_page, page)
 
         total = await self._pagination_total()
 
@@ -521,8 +527,6 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         return LengthAwarePaginator(results, per_page, page, int(total))
 
     async def _pagination_total(self) -> int:
-        if self._unions:
-            return await self.count() or 0
         count_builder = self.connection.query().set_model(self._model).table(self._table, self._alias)
         count_builder._from_sub = self._from_sub
         count_builder._wheres = list(self._wheres)
@@ -546,6 +550,9 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
     async def simple_paginate(self, per_page: int = 15, page: int = 1):
         from fastapi_startkit.masoniteorm.pagination import SimplePaginator
 
+        if self._unions:
+            return await self._over_union().simple_paginate(per_page, page)
+
         offset = (page - 1) * per_page
         # Fetch one extra record to detect if there is a next page
         results = await self.limit(per_page + 1).offset(offset).get()
@@ -559,6 +566,11 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         """
         if count <= 0:
             raise ValueError("chunk() size must be a positive integer.")
+
+        if self._unions:
+            async for results in self._over_union().chunk(count):
+                yield results
+            return
 
         page = 0
         while True:
@@ -577,6 +589,11 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
     ):
         if count <= 0:
             raise ValueError("chunk_by_id() size must be a positive integer.")
+
+        if self._unions:
+            async for results in self._over_union().chunk_by_id(count, column, alias, descending):
+                yield results
+            return
 
         column = column or self._model.__primary_key__
         alias = alias or column

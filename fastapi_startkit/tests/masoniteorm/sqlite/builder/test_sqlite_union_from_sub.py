@@ -143,3 +143,39 @@ class TestSqliteUnionFromSub(TestCase):
         self.assertEqual(await UnEvent.from_sub(listen_events(), "events").count(), 5)
         self.assertEqual(await UnPlay.union_all(UnPlay.query()).count(), 6)
         self.assertEqual(await UnPlay.union(UnPlay.query()).count(), 3)
+
+    async def test_paginate_pages_over_the_whole_union(self):
+        first = await listen_events().paginate(2, 1)
+        last = await listen_events().paginate(2, 3)
+        self.assertEqual(first.total, 5)
+        self.assertEqual([(row.user_id, row.day) for row in first.result], [(1, "2026-01-01"), (2, "2026-01-01")])
+        self.assertEqual(last.total, 5)
+        self.assertEqual([(row.user_id, row.day) for row in last.result], [(1, "2026-01-02")])
+
+    async def test_simple_paginate_pages_over_the_whole_union(self):
+        first = await listen_events().simple_paginate(2, 1)
+        last = await listen_events().simple_paginate(2, 3)
+        self.assertEqual([(row.user_id, row.day) for row in first.result], [(1, "2026-01-01"), (2, "2026-01-01")])
+        self.assertEqual(first.next_page, 2)
+        self.assertEqual([(row.user_id, row.day) for row in last.result], [(1, "2026-01-02")])
+        self.assertIsNone(last.next_page)
+
+    async def test_chunk_pages_over_the_whole_union(self):
+        batches = [[(row.user_id, row.day) for row in batch] async for batch in listen_events().chunk(2)]
+        self.assertEqual(
+            batches,
+            [
+                [(1, "2026-01-01"), (2, "2026-01-01")],
+                [(1, "2026-01-01"), (3, "2026-01-02")],
+                [(1, "2026-01-02")],
+            ],
+        )
+
+    async def test_chunk_by_id_pages_over_the_whole_union(self):
+        def reviews():
+            return UnReview.query().where("mode", "listen").union_all(UnReview.query().where("mode", "speak"))
+
+        ascending = [[row.id for row in batch] async for batch in reviews().chunk_by_id(2)]
+        descending = [[row.id for row in batch] async for batch in reviews().chunk_by_id_desc(2)]
+        self.assertEqual(ascending, [[1, 2], [3]])
+        self.assertEqual(descending, [[3, 2], [1]])

@@ -29,13 +29,14 @@ Option 3.
 
   SQLite rejects a parenthesised compound member and MSSQL needs a derived-table alias, which is how Laravel compiles them too. Each member keeps its own `order_by` and `limit`.
 - Bindings follow SQL order: outer columns, the `from_sub` subquery, the outer joins, wheres and having, then each union member in turn.
-- `count()` and the other aggregates on a builder with unions run over `from_sub(<the union>, "aggregate_table")`, so they count the union's rows, not the base query's. `paginate()` counts the same way, and a paginated `from_sub` keeps its subquery in the count.
+- `count()` and the other aggregates on a builder with unions run over `from_sub(<the union>, "aggregate_table")`, so they count the union's rows, not the base query's. A paginated `from_sub` keeps its subquery in the count.
+- `paginate()`, `simple_paginate()`, `chunk()`, `chunk_by_id()` and `chunk_by_id_desc()` on a builder with unions run on a fresh builder for the same model over `from_sub(<the union>, "union_table")`, with global scopes off because each member already applied its own. Their `limit`, `offset`, `where` and `order_by` then apply to the whole union, not to its first member.
 
-Out of scope: an `order_by` or `limit` over the whole union (wrap it in `from_sub` and order the outer query), `GROUPING SETS`, and `INTERSECT`/`EXCEPT`. `group_by` on the outer query prefixes the alias, so a computed column such as a local day is selected inside each member, where it becomes a real column of the subquery.
+Out of scope: a direct `order_by` or `limit` over the whole union outside the paging methods (wrap it in `from_sub` and order the outer query), `GROUPING SETS`, and `INTERSECT`/`EXCEPT`. `group_by` on the outer query prefixes the alias, so a computed column such as a local day is selected inside each member, where it becomes a real column of the subquery.
 
 ## Validation
 
 - `tests/masoniteorm/query/grammars/test_union_from_sub_grammar.py` checks `union`, `union_all`, `from_sub`, a `from_sub` over a union with bound fragments in the members and the outer query, callables, `to_sql()` and the `TypeError` on all four grammars, with bindings in SQL order.
-- `tests/masoniteorm/sqlite/builder/test_sqlite_union_from_sub.py` runs `union_all` and `union` rows, `count()` over a union, distinct users per day over `from_sub(union_all)`, bound fragments, `paginate()` over a `from_sub` and the `Model` proxies against SQLite.
+- `tests/masoniteorm/sqlite/builder/test_sqlite_union_from_sub.py` runs `union_all` and `union` rows, `count()` over a union, distinct users per day over `from_sub(union_all)`, bound fragments, `paginate()` over a `from_sub`, the `Model` proxies, and `paginate()`, `simple_paginate()`, `chunk()`, `chunk_by_id()` and `chunk_by_id_desc()` over a union against SQLite.
 - `tests/masoniteorm/postgres/test_postgres_union_from_sub.py` counts distinct users per local day across two tables with a bound `AT TIME ZONE` fragment in each member.
 - The full framework suite passes.
