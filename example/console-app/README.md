@@ -35,5 +35,5 @@ uv run python artisan hello "John Doe"
 
 ## Features
 
-- **Built-in Logging**: Easily log messages with different levels (info, emergency, etc.) using `Logger`.
+- **Built-in Logging**: Easily log messages with different levels (info, emergency, etc.) using `Log`.
 - **Framework Integration**: Uses the same `Application` container as FastAPI-based projects, allowing for easy sharing of services and logic.

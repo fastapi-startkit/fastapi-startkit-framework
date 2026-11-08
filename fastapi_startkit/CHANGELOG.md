@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Changed
+
+- `fastapi_startkit.logging.Logger` is renamed to `Log`. Use `from fastapi_startkit.logging import Log`; the behaviour is unchanged.
+
+### Deprecated
+
+- `Logger` in `fastapi_startkit.logging` and `fastapi_startkit.logging.logger`. Importing it emits a `DeprecationWarning` and returns `Log`, so existing code, subclasses and `isinstance` checks keep working. It will be removed in a future major release.
+
 ### Fixed
 
 - The Slack log driver posts straight to `chat.postMessage` instead of resolving the channel through the retired `channels.list`, which made every Slack log raise `KeyError: 'channels'`. `channel` accepts a name such as `#alerts` or a channel id.

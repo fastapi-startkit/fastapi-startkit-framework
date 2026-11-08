@@ -4,7 +4,7 @@ from fastapi_startkit.support import Provider
 from ..ChannelFactory import ChannelFactory
 from ..config.logging import LoggingConfig
 from ..factory import DriverFactory
-from ..logger import Logger
+from ..logger import Log
 from ..managers import LoggingManager
 
 
@@ -28,4 +28,4 @@ class LogProvider(Provider):
         channel = logger.channel(config.get("logging.default"))
 
         self.app.bind("logger", channel)
-        self.app.swap(Logger, channel)
+        self.app.swap(Log, channel)

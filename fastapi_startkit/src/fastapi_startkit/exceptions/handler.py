@@ -63,9 +63,9 @@ class ExceptionHandler:
     def report_exception(self, exception: Exception):
         context = self._build_context(exception)
         if self.app and self.app.has("logger"):
-            from fastapi_startkit.logging.logger import Logger
+            from fastapi_startkit.logging.logger import Log
 
-            Logger.error(context)
+            Log.error(context)
         else:
             print(context, file=sys.stderr)
 

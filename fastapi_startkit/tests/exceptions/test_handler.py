@@ -84,7 +84,7 @@ class TestReport:
 class TestReportException:
     def test_uses_logger_when_available(self):
         handler = ExceptionHandler(_app(has_logger=True))
-        with patch("fastapi_startkit.logging.logger.Logger.error") as error:
+        with patch("fastapi_startkit.logging.logger.Log.error") as error:
             handler.report_exception(ValueError("boom"))
         error.assert_called_once()
         assert "boom" in error.call_args.args[0]
@@ -143,7 +143,7 @@ class TestRenderAndHandle:
         handler = ExceptionHandler(_app(has_logger=True))
         handler.register_render(CustomError, lambda request, exc: f"rendered {exc}")
         with (
-            patch("fastapi_startkit.logging.logger.Logger.error", side_effect=slack.error),
+            patch("fastapi_startkit.logging.logger.Log.error", side_effect=slack.error),
             patch(
                 "fastapi_startkit.logging.drivers.LogSlackDriver.requests.post",
                 side_effect=requests.ConnectionError("refused"),

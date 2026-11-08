@@ -6,9 +6,9 @@ _STDLIB_LEVELS = {"notice": "INFO", "alert": "CRITICAL", "emergency": "CRITICAL"
 
 class LoggingHandler(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
-        from fastapi_startkit.logging.logger import Logger
+        from fastapi_startkit.logging.logger import Log
 
-        Logger.log(record.levelname, self.format(record))
+        Log.log(record.levelname, self.format(record))
 
     @staticmethod
     def install(level: str | None = None):

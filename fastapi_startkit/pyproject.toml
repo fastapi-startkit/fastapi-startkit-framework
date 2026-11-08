@@ -176,7 +176,10 @@ markers = [
     "benchmark: performance benchmark, excluded by default (run with -m benchmark)",
 ]
 addopts = "-m 'not benchmark'"
-filterwarnings = ['error:Application\(env=\.\.\.\) is deprecated:DeprecationWarning']
+filterwarnings = [
+    'error:Application\(env=\.\.\.\) is deprecated:DeprecationWarning',
+    'error:Logger is deprecated:DeprecationWarning',
+]
 
 [tool.coverage.run]
 source = ["src/fastapi_startkit"]

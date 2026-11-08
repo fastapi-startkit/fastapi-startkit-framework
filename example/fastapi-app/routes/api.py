@@ -1,16 +1,16 @@
 from fastapi import APIRouter
 
-from fastapi_startkit.logging import Logger
+from fastapi_startkit.logging import Log
 
 public = APIRouter()
 
 
 @public.get("/")
 async def index():
-    Logger.info("Welcome to FastAPI StartKit!")
-    Logger.info("Version: 1.0.0")
-    Logger.info("Docs: /docs")
-    Logger.log("debug", "Debugging the application!")
+    Log.info("Welcome to FastAPI StartKit!")
+    Log.info("Version: 1.0.0")
+    Log.info("Docs: /docs")
+    Log.log("debug", "Debugging the application!")
     return {
         "message": "Welcome to FastAPI StartKit!",
         "version": "1.0.0",
@@ -20,5 +20,5 @@ async def index():
 
 @public.get("/health")
 async def health():
-    Logger.info("Health check passed")
+    Log.info("Health check passed")
     return {"status": "healthy"}
