@@ -4,7 +4,8 @@ import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import assert_type
+from types import SimpleNamespace
+from typing import Protocol, assert_type, runtime_checkable
 
 import pytest
 
@@ -53,6 +54,25 @@ class SubclassedDatabaseConfig(DatabaseConfig):
 @dataclass
 class OnlyDefault:
     default: str = "sqlite"
+
+
+class PlainClassDatabaseSettings:
+    default = "sqlite"
+    connections = {"sqlite": SQLiteConfig(url="sqlite+aiosqlite:///:memory:")}
+    migrations = {"table": "migrations", "directory": "plain/migrations"}
+
+
+@runtime_checkable
+class Named(Protocol):
+    name: str
+
+    @property
+    def label(self) -> str: ...
+
+
+@runtime_checkable
+class Versioned(Named, Protocol):
+    version: int
 
 
 def boot(tmp_path: Path, settings: object) -> Application[PlainAppConfig]:
@@ -106,16 +126,41 @@ def test_subclassed_database_config_keeps_its_behaviour(tmp_path: Path, monkeypa
 
 
 def test_wrong_shape_names_the_missing_attributes(tmp_path: Path):
-    with pytest.raises(
-        TypeError, match="DatabaseProvider requires DatabaseSettings; missing attributes: connections, migrations$"
-    ):
+    with pytest.raises(TypeError, match="DatabaseProvider requires DatabaseSettings; missing attributes: connections$"):
         boot(tmp_path, OnlyDefault())
 
 
-def test_database_settings_requires_migrations(tmp_path: Path):
-    assert not isinstance(WithoutMigrations(), DatabaseSettings)
-    with pytest.raises(TypeError, match="DatabaseProvider requires DatabaseSettings; missing attributes: migrations$"):
-        boot(tmp_path, WithoutMigrations())
+def test_dataclass_config_without_migrations_boots_with_default_migrations(tmp_path: Path):
+    settings = WithoutMigrations()
+
+    app = boot(tmp_path, settings)
+
+    assert not isinstance(settings, DatabaseSettings)
+    assert app.make("db").config.connections is settings.connections
+    assert app.make("config").get("database.migrations") == {
+        "table": "migrations",
+        "directory": "databases/migrations",
+    }
+
+
+def test_plain_class_settings_boot(tmp_path: Path):
+    app = boot(tmp_path, PlainClassDatabaseSettings())
+
+    assert app.make("config").get("database.default") == "sqlite"
+    assert app.make("config").get("database.migrations.directory") == "plain/migrations"
+    assert app.make("config").get("database.connections.sqlite.url") == "sqlite+aiosqlite:///:memory:"
+    assert app.make("db").connection().config is PlainClassDatabaseSettings.connections["sqlite"]
+
+
+def test_simple_namespace_settings_boot(tmp_path: Path):
+    sqlite = SQLiteConfig(url="sqlite+aiosqlite:///:memory:")
+    settings = SimpleNamespace(default="sqlite", connections={"sqlite": sqlite})
+
+    app = boot(tmp_path, settings)
+
+    assert app.make("config").get("database.default") == "sqlite"
+    assert app.make("config").get("database.migrations.directory") == "databases/migrations"
+    assert app.make("db").connection().config is sqlite
 
 
 def test_subclassed_database_config_keeps_default_migrations(tmp_path: Path):
@@ -180,6 +225,16 @@ def test_ensure_config_returns_app_settings_typed_as_the_protocol():
 def test_ensure_config_names_missing_app_attributes():
     with pytest.raises(TypeError, match="^Owner requires AppSettings; missing attributes: name, env, debug, timezone$"):
         ensure_config("Owner", object(), AppSettings)
+
+
+def test_ensure_config_names_inherited_protocol_members():
+    with pytest.raises(TypeError, match="^Owner requires Versioned; missing attributes: name, label, version$"):
+        ensure_config("Owner", object(), Versioned)
+
+
+@pytest.mark.parametrize("protocol", [DatabaseSettings, AppSettings, Versioned])
+def test_runtime_checkable_protocols_expose_protocol_attrs(protocol: type):
+    assert isinstance(getattr(protocol, "__protocol_attrs__", None), set)
 
 
 @pytest.mark.skipif(shutil.which("basedpyright") is None, reason="basedpyright is not installed")
