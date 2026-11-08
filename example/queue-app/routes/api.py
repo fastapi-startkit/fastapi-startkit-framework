@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from fastapi_startkit.logging import Logger
+from fastapi_startkit.logging import Log
 from tasks.example_task import send_welcome_email, process_data
 
 public = APIRouter()
@@ -7,7 +7,7 @@ public = APIRouter()
 
 @public.get("/")
 async def index():
-    Logger.info("Welcome to FastAPI StartKit Queue Example!")
+    Log.info("Welcome to FastAPI StartKit Queue Example!")
     return {
         "message": "Welcome to FastAPI StartKit Queue Example!",
         "version": "1.0.0",
@@ -17,7 +17,7 @@ async def index():
 
 @public.get("/health")
 async def health():
-    Logger.info("Health check passed")
+    Log.info("Health check passed")
     return {"status": "healthy"}
 
 
@@ -25,7 +25,7 @@ async def health():
 async def dispatch_email(email: str, name: str):
     """Dispatch a welcome email job to the queue."""
     task = await send_welcome_email.kiq(email=email, name=name)
-    Logger.info(f"Dispatched send_welcome_email task: {task.task_id}")
+    Log.info(f"Dispatched send_welcome_email task: {task.task_id}")
     return {"task_id": task.task_id, "status": "queued"}
 
 
@@ -33,7 +33,7 @@ async def dispatch_email(email: str, name: str):
 async def dispatch_process(payload: dict):
     """Dispatch a data processing job to the queue."""
     task = await process_data.kiq(payload=payload)
-    Logger.info(f"Dispatched process_data task: {task.task_id}")
+    Log.info(f"Dispatched process_data task: {task.task_id}")
     return {"task_id": task.task_id, "status": "queued"}
 
 

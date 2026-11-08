@@ -23,7 +23,7 @@ def _decision(intent: str, contexts: list[str] | None = None, reply: str = "") -
 
 class TestJobSearchRouterAgent(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        # The AgentLogger middleware logs through the framework Logger, which needs
+        # The AgentLogger middleware logs through the framework Log, which needs
         # a booted container. These tests exercise classification, not logging, so
         # run the agent without middleware.
         patcher = mock.patch.object(JobSearchRouterAgent, "middleware", lambda self: [])

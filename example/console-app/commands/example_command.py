@@ -1,7 +1,7 @@
 from cleo.helpers import argument
 
 from fastapi_startkit.console import Command
-from fastapi_startkit.logging import Logger
+from fastapi_startkit.logging import Log
 
 
 class ExampleCommand(Command):
@@ -20,7 +20,7 @@ class ExampleCommand(Command):
             text = "Hello"
 
         # Example of showing loggings
-        Logger.info(text)
-        Logger.emergency("Hello, this is emergency")
+        Log.info(text)
+        Log.emergency("Hello, this is emergency")
 
         self.line(text)

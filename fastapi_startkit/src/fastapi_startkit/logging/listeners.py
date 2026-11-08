@@ -1,10 +1,10 @@
-from .logger import Logger
+from .logger import Log
 
 
 class LoggerExceptionListener:
     listens = ["*"]
 
-    def __init__(self, logger: Logger):
+    def __init__(self, logger: Log):
         self.logger = logger
 
     def handle(self, exception, file, line):

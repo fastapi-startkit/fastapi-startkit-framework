@@ -1,6 +1,7 @@
 import io
 import logging
 import unittest
+import warnings
 from contextlib import redirect_stderr, redirect_stdout
 from unittest.mock import MagicMock, patch
 
@@ -29,7 +30,7 @@ from fastapi_startkit.logging.factory import DriverFactory
 from fastapi_startkit.logging.file import make_directory
 from fastapi_startkit.logging.handler import LoggingHandler
 from fastapi_startkit.logging.listeners import LoggerExceptionListener
-from fastapi_startkit.logging.logger import Logger
+from fastapi_startkit.logging.logger import Log
 from fastapi_startkit.logging.managers import LoggingManager
 from fastapi_startkit.logging.providers.log_provider import LogProvider
 
@@ -69,7 +70,7 @@ def tearDownModule():
             root.removeHandler(handler)
     root.setLevel(_saved_state.get("level", logging.WARNING))
 
-    Logger.instance = None
+    Log.instance = None
     if _saved_state.get("app") is not None:
         Container.set_instance(_saved_state["app"])
 
@@ -589,41 +590,108 @@ class LoggerFacadeTest(unittest.TestCase):
             self._previous = None
         self.channel = MagicMock()
         self.app.bind("logger", self.channel)
-        Logger.instance = None
+        Log.instance = None
 
     def tearDown(self):
-        Logger.instance = None
+        Log.instance = None
         if self._had_logger:
             self.app.bind("logger", self._previous)
 
     def test_level_methods_delegate_to_resolved_channel(self):
-        Logger.info("hello")
+        Log.info("hello")
         self.channel.info.assert_called_once()
         (message,), _ = self.channel.info.call_args
         self.assertTrue(message.endswith("hello"))
         self.assertIn(" - ", message)
 
     def test_error_and_debug_delegate(self):
-        Logger.error("bad")
-        Logger.debug("trace")
+        Log.error("bad")
+        Log.debug("trace")
         self.channel.error.assert_called_once()
         self.channel.debug.assert_called_once()
 
     def test_log_dispatches_to_named_level(self):
-        with patch.object(Logger, "info") as info_mock:
-            Logger.log("INFO", "x")
+        with patch.object(Log, "info") as info_mock:
+            Log.log("INFO", "x")
             info_mock.assert_called_once_with("x")
 
     def test_log_falls_back_to_error_for_unknown_level(self):
-        with patch.object(Logger, "error") as error_mock:
-            Logger.log("bogus", "x")
+        with patch.object(Log, "error") as error_mock:
+            Log.log("bogus", "x")
             error_mock.assert_called_once_with("x")
 
     def test_logger_info_returns_caller_location(self):
-        info = Logger.logger_info()
+        info = Log.logger_info()
         self.assertIsInstance(info, str)
         self.assertIn(" - ", info)
         self.assertNotIn("logging/logger.py", info)
+
+
+class DeprecatedLoggerTest(unittest.TestCase):
+    def setUp(self):
+        self.app = get_app()
+        self.previous = self.app.make("logger")
+        self.channel = MagicMock()
+        self.app.bind("logger", self.channel)
+        Log.instance = None
+
+    def tearDown(self):
+        Log.instance = None
+        self.app.bind("logger", self.previous)
+
+    def test_package_import_warns_and_returns_log(self):
+        with self.assertWarnsRegex(DeprecationWarning, "Logger is deprecated; use Log instead"):
+            from fastapi_startkit.logging import Logger
+        self.assertIs(Logger, Log)
+
+    def test_module_import_warns_and_returns_log(self):
+        with self.assertWarnsRegex(DeprecationWarning, "use Log instead"):
+            from fastapi_startkit.logging.logger import Logger
+        self.assertIs(Logger, Log)
+
+    def test_warning_points_at_the_importer(self):
+        with self.assertWarns(DeprecationWarning) as caught:
+            from fastapi_startkit.logging import Logger  # noqa: F401
+        self.assertEqual(caught.filename, __file__)
+
+    def test_deprecated_logger_still_logs(self):
+        with self.assertWarns(DeprecationWarning):
+            from fastapi_startkit.logging import Logger
+        Logger.info("legacy")
+        self.channel.info.assert_called_once()
+        (message,), _ = self.channel.info.call_args
+        self.assertTrue(message.endswith("legacy"))
+
+    def test_deprecated_logger_is_compatible_with_log(self):
+        with self.assertWarns(DeprecationWarning):
+            from fastapi_startkit.logging import Logger
+
+        class AppLog(Logger):
+            pass
+
+        self.assertTrue(issubclass(AppLog, Log))
+        self.assertIsInstance(AppLog(), Log)
+        self.assertIsInstance(Log(), Logger)
+
+    def test_log_import_does_not_warn(self):
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            from fastapi_startkit.logging import Log as Imported
+        self.assertIs(Imported, Log)
+
+    def test_logger_is_not_exported_by_star_import(self):
+        import fastapi_startkit.logging as logging_package
+
+        self.assertEqual(logging_package.__all__, ["Log", "LogProvider"])
+
+    def test_unknown_attribute_raises(self):
+        import fastapi_startkit.logging as logging_package
+        import fastapi_startkit.logging.logger as logger_module
+
+        with self.assertRaises(AttributeError):
+            getattr(logging_package, "Missing")
+        with self.assertRaises(AttributeError):
+            getattr(logger_module, "Missing")
 
 
 class LoggingManagerTest(unittest.TestCase):
@@ -685,7 +753,7 @@ class LoggingHandlerTest(unittest.TestCase):
             args=(),
             exc_info=None,
         )
-        with patch("fastapi_startkit.logging.logger.Logger.log") as log_mock:
+        with patch("fastapi_startkit.logging.logger.Log.log") as log_mock:
             handler.emit(record)
             log_mock.assert_called_once()
             args, _ = log_mock.call_args
