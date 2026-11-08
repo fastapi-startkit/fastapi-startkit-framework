@@ -134,7 +134,7 @@ class MySQLPlatform(Platform):
                     "CREATE INDEX {name} ON {table}({column})".format(
                         name=index.name,
                         table=self.wrap_table(table.name),
-                        column=",".join(index.column),
+                        column=self.wrap_columns(index.column, ","),
                     )
                 )
 
@@ -259,11 +259,11 @@ class MySQLPlatform(Platform):
                 sql.append(
                     f"ALTER TABLE {self.wrap_table(table.name)} ADD "
                     + self.get_foreign_key_constraint_string().format(
-                        column=column,
+                        column=self.wrap_column(column),
                         constraint_name=foreign_key_constraint.constraint_name,
-                        table=table.name,
-                        foreign_table=foreign_key_constraint.foreign_table,
-                        foreign_column=foreign_key_constraint.foreign_column,
+                        table=self.wrap_table(table.name),
+                        foreign_table=self.wrap_table(foreign_key_constraint.foreign_table),
+                        foreign_column=self.wrap_column(foreign_key_constraint.foreign_column),
                         cascade=cascade,
                     )
                 )
@@ -279,7 +279,7 @@ class MySQLPlatform(Platform):
                     "CREATE INDEX {name} ON {table}({column})".format(
                         name=index.name,
                         table=self.wrap_table(table.name),
-                        column=",".join(index.column),
+                        column=self.wrap_columns(index.column, ","),
                     )
                 )
 
@@ -287,15 +287,15 @@ class MySQLPlatform(Platform):
             for name, constraint in table.added_constraints.items():
                 if constraint.constraint_type == "unique":
                     sql.append(
-                        f"ALTER TABLE {self.wrap_table(table.name)} ADD CONSTRAINT UNIQUE INDEX {constraint.name}({','.join(constraint._columns)})"
+                        f"ALTER TABLE {self.wrap_table(table.name)} ADD CONSTRAINT UNIQUE INDEX {constraint.name}({self.wrap_columns(constraint._columns, ',')})"
                     )
                 elif constraint.constraint_type == "fulltext":
                     sql.append(
-                        f"ALTER TABLE {self.wrap_table(table.name)} ADD FULLTEXT {constraint.name}({','.join(constraint._columns)})"
+                        f"ALTER TABLE {self.wrap_table(table.name)} ADD FULLTEXT {constraint.name}({self.wrap_columns(constraint._columns, ',')})"
                     )
                 elif constraint.constraint_type == "primary_key":
                     sql.append(
-                        f"ALTER TABLE {self.wrap_table(table.name)} ADD CONSTRAINT {constraint.name} PRIMARY KEY ({','.join(constraint._columns)})"
+                        f"ALTER TABLE {self.wrap_table(table.name)} ADD CONSTRAINT {constraint.name} PRIMARY KEY ({self.wrap_columns(constraint._columns, ',')})"
                     )
 
         if table.removed_indexes or table.removed_unique_indexes or table.dropped_primary_keys:
@@ -328,7 +328,7 @@ class MySQLPlatform(Platform):
         for name, constraint in constraints.items():
             sql.append(
                 getattr(self, f"get_{constraint.constraint_type}_constraint_string")().format(
-                    columns=", ".join(constraint._columns),
+                    columns=self.wrap_columns(constraint._columns),
                     name_columns="_".join(constraint._columns),
                     table=table.name,
                     constraint_name=constraint.name,

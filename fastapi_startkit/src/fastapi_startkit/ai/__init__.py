@@ -2,10 +2,11 @@ from .agent import Agent
 from .pipeline import Middleware
 from .audio import Audio, AudioResponse
 from .audio_factory import AudioFactory
-from .config.config import AnthropicConfig, ElevenLabsConfig, GoogleConfig, OpenAIConfig
+from .config.config import AnthropicConfig, BedrockConfig, ElevenLabsConfig, GoogleConfig, OpenAIConfig
 from .config.ai import AIConfig
 from .decorators import max_steps, max_tokens, model, provider, timeout, top_p
 from .document import Document
+from .embeddings import Embeddings, EmbeddingsFake, EmbeddingsPrompt, EmbeddingsResponse
 from .image import Image, ImageResponse
 from .image_factory import ImageFactory
 from .ai import Ai
@@ -29,7 +30,12 @@ __all__ = [
     "Audio",
     "AudioResponse",
     "AudioFactory",
+    "BedrockConfig",
     "Document",
+    "Embeddings",
+    "EmbeddingsFake",
+    "EmbeddingsPrompt",
+    "EmbeddingsResponse",
     "ElevenLabsConfig",
     "GoogleConfig",
     "Image",

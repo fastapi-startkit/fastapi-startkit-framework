@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, Self, dataclass_transform, overload
 
 import inflection
@@ -23,7 +24,7 @@ from fastapi_startkit.masoniteorm.observers import ObservesEvents
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
-    from fastapi_startkit.masoniteorm.models.builder import QueryBuilder, WhereGroup
+    from fastapi_startkit.masoniteorm.models.builder import QueryBuilder, Subquery, WhereGroup
 
 
 @dataclass_transform(field_specifiers=(Field, ModelField))
@@ -168,16 +169,28 @@ class Model(Attribute, Relationship, ObservesEvents):
         return cls.query().or_where_raw(expression, bindings)
 
     @classmethod
-    def where_in(cls, column: str, values: Iterable[Any]) -> "QueryBuilder[Self]":
+    def where_in(cls, column: str, values: Iterable[Any] | Subquery) -> "QueryBuilder[Self]":
         return cls.query().where_in(column, values)
 
     @classmethod
-    def where_not_in(cls, column: str, values: Iterable[Any]) -> "QueryBuilder[Self]":
+    def where_not_in(cls, column: str, values: Iterable[Any] | Subquery) -> "QueryBuilder[Self]":
         return cls.query().where_not_in(column, values)
 
     @classmethod
     def select(cls, *args: str | list[str]) -> "QueryBuilder[Self]":
         return cls.query().select(*args)
+
+    @classmethod
+    def select_raw(cls, expression: str, bindings: list[Any] | tuple[Any, ...] = ()) -> "QueryBuilder[Self]":
+        return cls.query().select_raw(expression, bindings)
+
+    @classmethod
+    def add_select_raw(cls, expression: str, bindings: list[Any] | tuple[Any, ...] = ()) -> "QueryBuilder[Self]":
+        return cls.query().add_select_raw(expression, bindings)
+
+    @classmethod
+    def add_select_exists(cls, alias: str, query: Subquery) -> "QueryBuilder[Self]":
+        return cls.query().add_select_exists(alias, query)
 
     @classmethod
     def limit(cls, limit: int) -> "QueryBuilder[Self]":
@@ -216,6 +229,10 @@ class Model(Attribute, Relationship, ObservesEvents):
         return cls.query().having(column, equality, value)
 
     @classmethod
+    def having_raw(cls, expression: str, bindings: list[Any] | tuple[Any, ...] = ()) -> "QueryBuilder[Self]":
+        return cls.query().having_raw(expression, bindings)
+
+    @classmethod
     def between(cls, column: str, low: Any, high: Any) -> "QueryBuilder[Self]":
         return cls.query().between(column, low, high)
 
@@ -226,6 +243,36 @@ class Model(Attribute, Relationship, ObservesEvents):
     @classmethod
     def distinct(cls) -> "QueryBuilder[Self]":
         return cls.query().distinct()
+
+    @classmethod
+    def select_vector_distance(
+        cls, column: str, vector: Sequence[float], as_: str | None = None
+    ) -> "QueryBuilder[Self]":
+        return cls.query().select_vector_distance(column, vector, as_)
+
+    @classmethod
+    def where_vector_distance_less_than(
+        cls, column: str, vector: Sequence[float], max_distance: float
+    ) -> "QueryBuilder[Self]":
+        return cls.query().where_vector_distance_less_than(column, vector, max_distance)
+
+    @classmethod
+    def order_by_vector_distance(cls, column: str, vector: Sequence[float]) -> "QueryBuilder[Self]":
+        return cls.query().order_by_vector_distance(column, vector)
+
+    @classmethod
+    def where_vector_similar_to(
+        cls, column: str, vector: Sequence[float], min_similarity: float = 0.6, order: bool = True
+    ) -> "QueryBuilder[Self]":
+        return cls.query().where_vector_similar_to(column, vector, min_similarity, order)
+
+    @classmethod
+    def lock_for_update(cls) -> "QueryBuilder[Self]":
+        return cls.query().lock_for_update()
+
+    @classmethod
+    def shared_lock(cls) -> "QueryBuilder[Self]":
+        return cls.query().shared_lock()
 
     @classmethod
     def join(cls, table: str, column1: str, equality: str, column2: str, clause: str = "join") -> "QueryBuilder[Self]":
@@ -248,12 +295,20 @@ class Model(Attribute, Relationship, ObservesEvents):
         return cls.query().when(condition, callback)
 
     @classmethod
-    def where_exists(cls, builder: "QueryBuilder[Any]") -> "QueryBuilder[Self]":
+    def where_exists(cls, builder: Subquery) -> "QueryBuilder[Self]":
         return cls.query().where_exists(builder)
 
     @classmethod
-    def or_where_exists(cls, builder: "QueryBuilder[Any]") -> "QueryBuilder[Self]":
+    def or_where_exists(cls, builder: Subquery) -> "QueryBuilder[Self]":
         return cls.query().or_where_exists(builder)
+
+    @classmethod
+    def where_not_exists(cls, builder: Subquery) -> "QueryBuilder[Self]":
+        return cls.query().where_not_exists(builder)
+
+    @classmethod
+    def or_where_not_exists(cls, builder: Subquery) -> "QueryBuilder[Self]":
+        return cls.query().or_where_not_exists(builder)
 
     @classmethod
     def where_has(cls, relation: str, callback: Callable[..., Any] | None = None) -> "QueryBuilder[Self]":
@@ -394,6 +449,23 @@ class Model(Attribute, Relationship, ObservesEvents):
     @classmethod
     async def insert(cls, values: dict[str, Any] | list[dict[str, Any]]) -> int | None:
         return await cls.query().insert(values)
+
+    @classmethod
+    async def insert_or_ignore(
+        cls,
+        values: dict[str, Any] | list[dict[str, Any]],
+        unique_by: str | list[str] | None = None,
+    ) -> int:
+        return await cls.query().insert_or_ignore(values, unique_by)
+
+    @classmethod
+    async def upsert(
+        cls,
+        values: dict[str, Any] | list[dict[str, Any]],
+        unique_by: str | list[str],
+        update: str | list[str] | None = None,
+    ) -> int:
+        return await cls.query().upsert(values, unique_by, update)
 
     async def update(self, attributes: dict[str, Any]) -> bool:
         if not self._exists:

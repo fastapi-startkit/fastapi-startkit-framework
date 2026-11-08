@@ -41,6 +41,10 @@ jobs:
                 working-directory: fastapi_startkit
                 run: uv sync --group dev --extra database --extra sqlite --extra fastapi --extra vite --extra postgres
 
+            -   name: Install Playwright Chromium
+                working-directory: fastapi_startkit
+                run: uv run playwright install --with-deps chromium
+
             -   name: Run tests (fastapi_startkit)
                 working-directory: fastapi_startkit
                 run: uv run pytest tests/ -v --cov --cov-report=xml

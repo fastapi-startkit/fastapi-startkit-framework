@@ -71,7 +71,7 @@ class TestSQLiteSchemaBuilder(TestCase):
         self.assertEqual(len(blueprint.table.added_columns), 2)
         self.assertEqual(
             await blueprint.to_sql(),
-            ['CREATE TABLE "users" ("name" VARCHAR(255) NOT NULL, "age" INTEGER NOT NULL, UNIQUE(name))'],
+            ['CREATE TABLE "users" ("name" VARCHAR(255) NOT NULL, "age" INTEGER NOT NULL, UNIQUE("name"))'],
         )
 
     async def test_can_have_float_type(self):
@@ -107,7 +107,7 @@ class TestSQLiteSchemaBuilder(TestCase):
                 '("name" VARCHAR(255) NOT NULL, '
                 '"age" INTEGER NOT NULL, '
                 '"profile_id" INTEGER NOT NULL, '
-                "UNIQUE(name), "
+                'UNIQUE("name"), '
                 'CONSTRAINT users_profile_id_foreign FOREIGN KEY ("profile_id") REFERENCES "profiles"("id"))'
             ],
         )
@@ -130,7 +130,7 @@ class TestSQLiteSchemaBuilder(TestCase):
                 '("name" VARCHAR(255) NOT NULL, '
                 '"age" INTEGER NOT NULL, '
                 '"profile_id" INTEGER NOT NULL, '
-                "UNIQUE(name), "
+                'UNIQUE("name"), '
                 'CONSTRAINT profile_foreign FOREIGN KEY ("profile_id") REFERENCES "profiles"("id"))'
             ],
         )
@@ -147,8 +147,8 @@ class TestSQLiteSchemaBuilder(TestCase):
             await blueprint.to_sql(),
             [
                 'CREATE TABLE "likes" ("record_id" INTEGER UNSIGNED NOT NULL, "record_type" VARCHAR NOT NULL)',
-                'CREATE INDEX likes_record_id_index ON "likes"(record_id)',
-                'CREATE INDEX likes_record_type_index ON "likes"(record_type)',
+                'CREATE INDEX likes_record_id_index ON "likes"("record_id")',
+                'CREATE INDEX likes_record_type_index ON "likes"("record_type")',
             ],
         )
 
@@ -177,7 +177,7 @@ class TestSQLiteSchemaBuilder(TestCase):
                 """"password" VARCHAR(255) NOT NULL, "option" VARCHAR(255) NOT NULL DEFAULT 'ADMIN', "admin" INTEGER NOT NULL DEFAULT 0, "remember_token" VARCHAR(255) NULL, """
                 '"verified_at" TIMESTAMP NULL, "created_at" DATETIME NULL DEFAULT CURRENT_TIMESTAMP, '
                 '"updated_at" DATETIME NULL DEFAULT CURRENT_TIMESTAMP, '
-                "UNIQUE(email), UNIQUE(email, name))"
+                'UNIQUE("email"), UNIQUE("email", "name"))'
             ],
         )
 
@@ -199,11 +199,11 @@ class TestSQLiteSchemaBuilder(TestCase):
         self.assertEqual(
             await blueprint.to_sql(),
             [
-                'CREATE INDEX users_name_index ON "users"(name)',
-                'CREATE INDEX active_idx ON "users"(active)',
-                'CREATE INDEX users_name_email_index ON "users"(name,email)',
-                'CREATE UNIQUE INDEX users_name_unique ON "users"(name)',
-                'CREATE UNIQUE INDEX users_name_email_unique ON "users"(name,email)',
+                'CREATE INDEX users_name_index ON "users"("name")',
+                'CREATE INDEX active_idx ON "users"("active")',
+                'CREATE INDEX users_name_email_index ON "users"("name","email")',
+                'CREATE UNIQUE INDEX users_name_unique ON "users"("name")',
+                'CREATE UNIQUE INDEX users_name_email_unique ON "users"("name","email")',
             ],
         )
 
@@ -223,8 +223,8 @@ class TestSQLiteSchemaBuilder(TestCase):
             [
                 'ALTER TABLE "users" ADD COLUMN "email" VARCHAR NOT NULL',
                 'ALTER TABLE "users" ADD COLUMN "active" VARCHAR NOT NULL',
-                'CREATE INDEX users_email_index ON "users"(email)',
-                'CREATE INDEX email_idx ON "users"(active)',
+                'CREATE INDEX users_email_index ON "users"("email")',
+                'CREATE INDEX email_idx ON "users"("active")',
             ],
         )
 
@@ -246,8 +246,8 @@ class TestSQLiteSchemaBuilder(TestCase):
                 '("name" VARCHAR(255) NOT NULL, '
                 '"age" INTEGER NOT NULL, '
                 '"profile_id" INTEGER NOT NULL, '
-                "UNIQUE(name), "
-                "CONSTRAINT users_name_age_primary PRIMARY KEY (name, age))"
+                'UNIQUE("name"), '
+                'CONSTRAINT users_name_age_primary PRIMARY KEY ("name", "age"))'
             ],
         )
 
@@ -268,7 +268,7 @@ class TestSQLiteSchemaBuilder(TestCase):
                 '("name" VARCHAR(255) NOT NULL, '
                 '"age" INTEGER NOT NULL, '
                 '"profile_id" INTEGER NOT NULL, '
-                "CONSTRAINT users_name_primary PRIMARY KEY (name))"
+                'CONSTRAINT users_name_primary PRIMARY KEY ("name"))'
             ],
         )
 

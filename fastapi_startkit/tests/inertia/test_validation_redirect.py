@@ -127,4 +127,4 @@ def test_json_validation_failure_without_inertia_still_returns_422():
     response = make_client({}).post("/users", json={"name": "Taylor"})
 
     assert response.status_code == 422
-    assert response.json() == {"errors": {"email": ["Field required"]}}
+    assert response.json() == {"message": "Field required", "errors": {"email": ["Field required"]}}

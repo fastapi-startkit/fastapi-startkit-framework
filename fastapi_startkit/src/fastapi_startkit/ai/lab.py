@@ -2,12 +2,23 @@ from enum import StrEnum
 
 from fastapi_startkit import Config
 
+CLIENT_OPTIONS: dict[str, dict[str, str]] = {
+    "bedrock": {
+        "region": "region_name",
+        "access_key_id": "aws_access_key_id",
+        "secret_access_key": "aws_secret_access_key",
+        "session_token": "aws_session_token",
+        "profile": "credentials_profile_name",
+    },
+}
+
 
 class ModelType(StrEnum):
     TEXT = "text"
     IMAGE = "image"
     AUDIO = "audio"
     TRANSCRIBE = "transcribe"
+    EMBEDDINGS = "embeddings"
 
     @property
     def key(self) -> str:
@@ -16,6 +27,7 @@ class ModelType(StrEnum):
             ModelType.IMAGE: "default_image",
             ModelType.AUDIO: "default_audio",
             ModelType.TRANSCRIBE: "default_transcribe",
+            ModelType.EMBEDDINGS: "default_embeddings",
         }[self]
 
 
@@ -24,6 +36,7 @@ class Lab(StrEnum):
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     ELEVENLABS = "elevenlabs"
+    BEDROCK = "bedrock"
 
     def get_api_key(self) -> str:
         return Config.get(f"ai.providers.{self.value}.key")
@@ -37,7 +50,16 @@ class Lab(StrEnum):
             "openai": "openai",
             "google": "google_genai",
             "elevenlabs": "elevenlabs",
+            "bedrock": "bedrock_converse",
         }[self.value]
+
+    def get_client_options(self) -> dict[str, str]:
+        options: dict[str, str] = {}
+        for setting, option in CLIENT_OPTIONS.get(self.value, {}).items():
+            value = Config.get(f"ai.providers.{self.value}.{setting}")
+            if value:
+                options[option] = value
+        return options
 
     @staticmethod
     def get_provider(provider: str | None = None, model_type: ModelType = ModelType.TEXT) -> "Lab":

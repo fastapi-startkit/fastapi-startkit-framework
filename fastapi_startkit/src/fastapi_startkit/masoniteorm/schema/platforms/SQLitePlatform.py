@@ -101,7 +101,9 @@ class SQLitePlatform(Platform):
 
         if table.added_indexes:
             for name, index in table.added_indexes.items():
-                sql.append(f"CREATE INDEX {index.name} ON {self.wrap_table(table.name)}({','.join(index.column)})")
+                sql.append(
+                    f"CREATE INDEX {index.name} ON {self.wrap_table(table.name)}({self.wrap_columns(index.column, ',')})"
+                )
 
         return sql
 
@@ -272,16 +274,18 @@ class SQLitePlatform(Platform):
 
         if diff.added_indexes:
             for name, index in diff.added_indexes.items():
-                sql.append(f"CREATE INDEX {index.name} ON {self.wrap_table(diff.name)}({','.join(index.column)})")
+                sql.append(
+                    f"CREATE INDEX {index.name} ON {self.wrap_table(diff.name)}({self.wrap_columns(index.column, ',')})"
+                )
         if diff.added_constraints:
             for name, constraint in diff.added_constraints.items():
                 if constraint.constraint_type == "unique":
                     sql.append(
-                        f"CREATE UNIQUE INDEX {constraint.name} ON {self.wrap_table(diff.name)}({','.join(constraint.columns if isinstance(constraint.columns, list) else [constraint.columns])})"
+                        f"CREATE UNIQUE INDEX {constraint.name} ON {self.wrap_table(diff.name)}({self.wrap_columns(constraint.columns if isinstance(constraint.columns, list) else [constraint.columns], ',')})"
                     )
                 elif constraint.constraint_type == "primary_key":
                     sql.append(
-                        f"ALTER TABLE {self.wrap_table(diff.name)} ADD CONSTRAINT {constraint.name} PRIMARY KEY ({','.join(constraint.columns)})"
+                        f"ALTER TABLE {self.wrap_table(diff.name)} ADD CONSTRAINT {constraint.name} PRIMARY KEY ({self.wrap_columns(constraint.columns, ',')})"
                     )
 
         return sql
@@ -325,7 +329,7 @@ class SQLitePlatform(Platform):
         for name, constraint in constraints.items():
             sql.append(
                 getattr(self, f"get_{constraint.constraint_type}_constraint_string")().format(
-                    columns=", ".join(constraint.columns),
+                    columns=self.wrap_columns(constraint.columns),
                     constraint_name=constraint.name,
                 )
             )

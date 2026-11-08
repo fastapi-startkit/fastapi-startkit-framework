@@ -1,3 +1,10 @@
+from collections.abc import Iterable, Mapping
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from fastapi_startkit.validation.message_bag import MessageBag
+
+
 class DriverNotFound(Exception):
     pass
 
@@ -215,7 +222,16 @@ class LoaderNotFound(Exception):
     pass
 
 
-class ValidationException(Exception):
-    def __init__(self, errors: dict):
-        super().__init__("The given data was invalid.")
-        self.errors = errors
+class ValidationException(HttpException):
+    def __init__(self, errors: "MessageBag | Mapping[str, Iterable[str]]"):
+        from fastapi_startkit.validation.message_bag import MessageBag
+
+        self.bag = errors if isinstance(errors, MessageBag) else MessageBag(errors)
+        self.errors = self.bag.messages
+        super().__init__(self.bag.summary())
+
+    def get_status(self) -> int:
+        return 422
+
+    def get_response(self) -> str:
+        return self.bag.summary()

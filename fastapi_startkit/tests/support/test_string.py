@@ -1,5 +1,9 @@
 """Unit tests for the Str / Stringable string helpers (task #1214)."""
 
+import pytest
+
+from fastapi_startkit.ai import AIConfig, Embeddings, EmbeddingsPrompt
+from fastapi_startkit.application import app
 from fastapi_startkit.support.string import Str, Stringable
 
 
@@ -61,3 +65,31 @@ class TestStringableFluent:
 
     def test_camel_case_returns_stringable(self):
         assert str(Str.of("make_model").camel_case()) == "makeModel"
+
+
+class TestStringableToEmbeddings:
+    @pytest.fixture(autouse=True)
+    def fake_embeddings(self):
+        config = AIConfig()
+        config.default_embeddings = "openai"
+        app().make("config").set("ai", config)
+        fake = Embeddings.fake([[[0.1, 0.2, 0.3]]])
+        yield fake
+        Embeddings.reset_fake()
+
+    async def test_returns_the_vector_for_the_text(self, fake_embeddings):
+        vector = await Str.of("Napa Valley has great wine.").to_embeddings()
+
+        assert vector == [0.1, 0.2, 0.3]
+        assert fake_embeddings.prompts == [
+            EmbeddingsPrompt(["Napa Valley has great wine."], None, "openai", "text-embedding-3-small")
+        ]
+
+    async def test_passes_provider_model_and_dimensions(self, fake_embeddings):
+        await Str.of("Laravel").to_embeddings(provider="google", model="gemini-embedding-001", dimensions=3)
+
+        Embeddings.assert_generated(
+            lambda prompt: (
+                prompt.provider == "google" and prompt.model == "gemini-embedding-001" and prompt.dimensions == 3
+            )
+        )

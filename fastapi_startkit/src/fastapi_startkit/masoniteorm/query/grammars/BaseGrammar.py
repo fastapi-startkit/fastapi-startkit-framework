@@ -25,6 +25,7 @@ class BaseGrammar:
     """
 
     table = "users"
+    supports_vectors = False
 
     if TYPE_CHECKING:
         # Dialect contract: every concrete grammar (MySQL, Postgres, SQLite, MSSQL)
@@ -59,7 +60,6 @@ class BaseGrammar:
         def limit_string(self, offset: Any = False) -> str: ...
         def offset_string(self) -> str: ...
         def having_string(self) -> str: ...
-        def having_equality_string(self) -> str: ...
         def first_where_string(self) -> str: ...
         def additional_where_string(self) -> str: ...
         def or_where_string(self) -> str: ...
@@ -139,43 +139,21 @@ class BaseGrammar:
         Returns:
             [type] -- [description]
         """
-        if not self.table:
-            self._sql = (
-                self.select_no_table()
-                .format(
-                    columns=self.process_columns(separator=", ", qmark=qmark),
-                    table=self.process_table(self.table),
-                    joins=self.process_joins(qmark=qmark),
-                    wheres=self.process_wheres(qmark=qmark),
-                    limit=self.process_limit(),
-                    offset=self.process_offset(),
-                    aggregates=self.process_aggregates(),
-                    order_by=self.process_order_by(qmark=qmark),
-                    group_by=self.process_group_by(),
-                    having=self.process_having(),
-                    lock=self.process_locks(),
-                )
-                .strip()
-            )
-        else:
-            self._sql = (
-                self.select_format()
-                .format(
-                    columns=self.process_columns(separator=", ", qmark=qmark),
-                    keyword="DISTINCT" if self._distinct else "",
-                    table=self.process_from_table(),
-                    joins=self.process_joins(qmark=qmark),
-                    wheres=self.process_wheres(qmark=qmark),
-                    limit=self.process_limit(),
-                    offset=self.process_offset(),
-                    aggregates=self.process_aggregates(),
-                    order_by=self.process_order_by(qmark=qmark),
-                    group_by=self.process_group_by(),
-                    having=self.process_having(),
-                    lock=self.process_locks(),
-                )
-                .strip()
-            )
+        select_format = self.select_format() if self.table else self.select_no_table()
+        self._sql = select_format.format(
+            columns=self.process_columns(separator=", ", qmark=qmark),
+            keyword="DISTINCT" if self._distinct else "",
+            table=self.process_from_table() if self.table else self.process_table(self.table),
+            joins=self.process_joins(qmark=qmark),
+            wheres=self.process_wheres(qmark=qmark),
+            group_by=self.process_group_by(),
+            having=self.process_having(qmark=qmark),
+            order_by=self.process_order_by(qmark=qmark),
+            limit=self.process_limit(),
+            offset=self.process_offset(),
+            aggregates=self.process_aggregates(),
+            lock=self.process_locks(),
+        ).strip()
 
         return self
 
@@ -246,6 +224,30 @@ class BaseGrammar:
         sequences: str | None = None,
     ) -> str:
         return self.compile_insert(query, values)
+
+    def compile_insert_or_ignore(
+        self,
+        query: QueryBuilder[Any],
+        values: list[dict[str, Any]],
+        unique_by: list[str],
+    ) -> str:
+        return f"{self.compile_insert(query, values)} ON CONFLICT {self.conflict_target(unique_by)}DO NOTHING"
+
+    def compile_upsert(
+        self,
+        query: QueryBuilder[Any],
+        values: list[dict[str, Any]],
+        unique_by: list[str],
+        update: list[str],
+    ) -> str:
+        assignments = ", ".join(
+            f"{self.columnize_bulk_columns([column])} = EXCLUDED.{self.columnize_bulk_columns([column])}"
+            for column in update
+        )
+        return f"{self.compile_insert(query, values)} ON CONFLICT {self.conflict_target(unique_by)}DO UPDATE SET {assignments}"
+
+    def conflict_target(self, unique_by: list[str]) -> str:
+        return f"({self.columnize_bulk_columns(unique_by)}) " if unique_by else ""
 
     def _compile_bulk_create(self, qmark=False):
         """Compiles an insert expression.
@@ -456,6 +458,8 @@ class BaseGrammar:
             order_crit = ""
             for order_bys in self._order_by:
                 if order_bys.raw:
+                    if len(order_crit):
+                        order_crit += ", "
                     order_crit += order_bys.column
                     if not isinstance(order_bys.bindings, (list, tuple)):
                         raise ValueError(f"Bindings must be tuple or list. Received {type(order_bys.bindings)}")
@@ -601,25 +605,23 @@ class BaseGrammar:
         Returns:
             self
         """
-        sql = ""
+        conditions = []
         for having in self._having:
-            column = having.column
-            equality = having.equality
-            value = having.value
-            raw = having.raw
+            if having.raw:
+                if having.bindings:
+                    self.add_binding(*having.bindings)
+                conditions.append(having.column)
+                continue
 
-            if not equality and not value:
-                sql_string = self.having_string()
+            column = self._table_column_string(having.column)
+            if not having.equality and not having.value:
+                conditions.append(column)
             else:
-                sql_string = self.having_equality_string()
+                conditions.append(f"{column} {having.equality} {self._compile_value(having.value)}")
 
-            sql += sql_string.format(
-                column=(self._table_column_string(column) if raw is False else column),
-                equality=equality,
-                value=self._compile_value(value),
-            )
-
-        return sql
+        if not conditions:
+            return ""
+        return self.having_string().format(column=" AND ".join(conditions))
 
     def process_wheres(self, query=None, qmark=False, strip_first_where=False):
         """Compiles the where expression.
@@ -801,6 +803,9 @@ class BaseGrammar:
 
         return sql
 
+    def select_exists_string(self) -> str:
+        return "EXISTS({query})"
+
     def get_true_column_string(self) -> str:
         return "{keyword} {column} = '1'"
 
@@ -888,6 +893,8 @@ class BaseGrammar:
             if isinstance(column, SelectExpression):
                 alias = column.alias
                 if column.raw:
+                    if column.bindings:
+                        self.add_binding(*column.bindings)
                     sql += column.column + ", "
                     continue
 
@@ -900,7 +907,13 @@ class BaseGrammar:
                         self.add_binding(*column.builder._bindings)
                 else:
                     builder_sql = column.builder.to_sql()
-                sql += f"({builder_sql}) " + self.subquery_alias_string().format(alias=column.alias) + ", "
+                subquery_format = self.select_exists_string() if column.exists else "({query})"
+                sql += (
+                    subquery_format.format(query=builder_sql)
+                    + " "
+                    + self.subquery_alias_string().format(alias=column.alias)
+                    + ", "
+                )
                 continue
 
             sql += self._table_column_string(column, alias=alias, separator=separator)

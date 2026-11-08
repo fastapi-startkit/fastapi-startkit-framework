@@ -30,7 +30,7 @@ class MSSQLGrammar(BaseGrammar):
         "delete": "{table}.[{column}]{separator}",
     }
 
-    locks = {"share": "WITH(ROWLOCK)", "update": "WITH(ROWLOCK)"}
+    locks = {"share": "WITH(ROWLOCK, HOLDLOCK)", "update": "WITH(ROWLOCK, UPDLOCK, HOLDLOCK)"}
 
     def select_no_table(self):
         return "SELECT {columns}"
@@ -40,6 +40,12 @@ class MSSQLGrammar(BaseGrammar):
 
     def update_format(self):
         return "UPDATE {table} SET {key_equals} {wheres}"
+
+    def compile_insert_or_ignore(self, query, values, unique_by):
+        raise NotImplementedError("insert_or_ignore() is not supported on SQL Server.")
+
+    def compile_upsert(self, query, values, unique_by, update):
+        raise NotImplementedError("upsert() is not supported on SQL Server.")
 
     def insert_format(self):
         return "INSERT INTO {table} ({columns}) VALUES ({values})"
@@ -65,6 +71,9 @@ class MSSQLGrammar(BaseGrammar):
     def where_not_exists_string(self):
         return "{keyword} NOT EXISTS {value}"
 
+    def select_exists_string(self):
+        return "CASE WHEN EXISTS({query}) THEN 1 ELSE 0 END"
+
     def where_like_string(self):
         return "{keyword} {column} LIKE {value}"
 
@@ -79,9 +88,6 @@ class MSSQLGrammar(BaseGrammar):
 
     def where_not_regexp_string(self):
         return self.where_not_like_string()
-
-    def having_equality_string(self):
-        return "HAVING {column} {equality} {value}"
 
     def aggregate_string_without_alias(self):
         return "{aggregate_function}({column})"

@@ -65,15 +65,13 @@ class TestMorphOneRelationship(TestCase):
         key = rel.get_record_key_lookup(self.article)
         self.assertEqual(key, "article_one")
 
-    async def test_get_record_key_lookup_raises_for_unknown(self):
+    async def test_get_record_key_lookup_defaults_to_class_name(self):
         rel = MorphOne(first_like, morph_key="likeable_type", morph_id="likeable_id")
 
-        class UnknownModel(Model):
+        class UnmappedModel(Model):
             __table__ = "articles"
 
-        unknown = UnknownModel()
-        with self.assertRaises(ValueError):
-            rel.get_record_key_lookup(unknown)
+        self.assertEqual(rel.get_record_key_lookup(UnmappedModel()), "UnmappedModel")
 
     async def test_apply_query_returns_single_like(self):
         await Like.create({"likeable_type": "article_one", "likeable_id": self.article.id})

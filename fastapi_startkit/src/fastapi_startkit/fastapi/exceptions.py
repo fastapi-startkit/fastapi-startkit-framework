@@ -66,7 +66,7 @@ class HTTPExceptionHandler:
 
 class ValidationExceptionHandler:
     """
-    Handles RequestValidationError with content negotiation.
+    Handles RequestValidationError and ValidationException with content negotiation.
 
     JSON requests (API clients) receive a 422 Unprocessable Entity response.
     Non-JSON requests (browser/Inertia) have errors flashed to the session
@@ -84,10 +84,16 @@ class ValidationExceptionHandler:
 
         wants_json = "application/json" in accept or content_type.startswith("application/json")
 
-        errors = {}
-        for err in exc.errors():
-            field = ".".join(str(x) for x in err["loc"][1:])
-            errors.setdefault(field, []).append(err["msg"])
+        from fastapi_startkit.exceptions import ValidationException
+        from fastapi_startkit.validation.form_request import PENDING_ERRORS
+        from fastapi_startkit.validation.message_bag import MessageBag
+
+        if isinstance(exc, ValidationException):
+            bag = exc.bag
+        else:
+            bag = MessageBag().merge(request.scope.get(PENDING_ERRORS, MessageBag()))
+            bag.merge(MessageBag.from_errors(exc.errors(), skip=1))
+        errors = bag.messages
 
         if request.headers.get(Header.INERTIA):
             return self.redirect_back_with_errors(request, errors)
@@ -95,7 +101,7 @@ class ValidationExceptionHandler:
         if wants_json:
             from fastapi.responses import JSONResponse
 
-            return JSONResponse(status_code=422, content={"errors": errors})
+            return JSONResponse(status_code=422, content=bag.to_dict())
 
         if "session" in request.scope:
             request.session["errors"] = errors

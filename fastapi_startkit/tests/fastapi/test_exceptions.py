@@ -15,7 +15,12 @@ from fastapi import HTTPException
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from fastapi_startkit.container import Container
-from fastapi_startkit.exceptions import AuthorizationException, MethodNotAllowedException, ThrottleRequestsException
+from fastapi_startkit.exceptions import (
+    AuthorizationException,
+    MethodNotAllowedException,
+    ThrottleRequestsException,
+    ValidationException,
+)
 from fastapi_startkit.masoniteorm.exceptions import ModelNotFoundException
 from fastapi_startkit.fastapi.exceptions import (
     HTTPExceptionHandler,
@@ -141,7 +146,10 @@ class TestValidationExceptionHandler:
         response = await ValidationExceptionHandler().render(request, exc)
 
         assert response.status_code == 422
-        assert json.loads(response.body) == {"errors": {"email": ["field required", "invalid email"]}}
+        assert json.loads(response.body) == {
+            "message": "field required (and 1 more error)",
+            "errors": {"email": ["field required", "invalid email"]},
+        }
 
     async def test_content_type_json_returns_422(self):
         exc = FakeValidationError([{"loc": ("body", "name"), "msg": "required"}])
@@ -150,7 +158,7 @@ class TestValidationExceptionHandler:
         response = await ValidationExceptionHandler().render(request, exc)
 
         assert response.status_code == 422
-        assert json.loads(response.body) == {"errors": {"name": ["required"]}}
+        assert json.loads(response.body) == {"message": "required", "errors": {"name": ["required"]}}
 
     async def test_non_json_flashes_errors_and_redirects(self):
         exc = FakeValidationError([{"loc": ("body", "name"), "msg": "required"}])
@@ -182,3 +190,12 @@ class TestValidationExceptionHandler:
         response = await ValidationExceptionHandler().render(request, exc)
 
         assert response.headers["location"] == "/"
+
+    async def test_validation_exception_flashes_its_bag_and_redirects(self):
+        exc = ValidationException({"email": ["The email has already been taken."]})
+        request = FakeRequest(headers={"accept": "text/html", "referer": "/register"}, scope={"session": {}})
+
+        response = await ValidationExceptionHandler().render(request, exc)
+
+        assert response.status_code == 303
+        assert request.session["errors"] == {"email": ["The email has already been taken."]}

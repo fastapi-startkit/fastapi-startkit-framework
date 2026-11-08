@@ -5,6 +5,7 @@ from fastapi_startkit.fastapi.commands import ServeCommand
 from fastapi_startkit.fastapi.config import FastAPIConfig
 from fastapi_startkit.fastapi.middleware import REQUEST_ID_HEADER, RequestLifecycleMiddleware
 from fastapi_startkit.support import Provider
+from fastapi_startkit.validation.openapi import document_query_input
 
 
 class FastAPIProvider(Provider):
@@ -19,6 +20,7 @@ class FastAPIProvider(Provider):
             title=config["title"],
             version="1.0.0",
         )
+        document_query_input(fastapi)
 
         self.app.use_fastapi(fastapi)
 
@@ -37,12 +39,13 @@ class FastAPIProvider(Provider):
         from fastapi.exceptions import RequestValidationError
         from starlette.exceptions import HTTPException
 
-        from fastapi_startkit.exceptions import HttpException
+        from fastapi_startkit.exceptions import HttpException, ValidationException
 
         exception_manager = self.app.exception_manager
         exception_manager.register_handler(Exception, HTTPExceptionHandler())
         exception_manager.register_handler(HTTPException, HTTPExceptionHandler())
         exception_manager.register_handler(RequestValidationError, ValidationExceptionHandler())
+        exception_manager.register_handler(ValidationException, ValidationExceptionHandler())
 
         async def handler(request, exc):
             response = await exception_manager.handle(exc, {"request": request})

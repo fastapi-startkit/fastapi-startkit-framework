@@ -36,6 +36,7 @@ class OpenAIConfig(Config):
         default_factory=lambda: {
             "default": "gpt-4o",
             "default_image": "dall-e-3",
+            "default_embeddings": "text-embedding-3-small",
         }
     )
 
@@ -51,6 +52,7 @@ class GoogleConfig(Config):
         default_factory=lambda: {
             "default": "gemini-2.5-flash-lite",
             "default_image": "imagen-3.0-generate-002",
+            "default_embeddings": "gemini-embedding-001",
         }
     )
 
@@ -66,5 +68,23 @@ class ElevenLabsConfig(Config):
         default_factory=lambda: {
             "default_audio": "eleven_multilingual_v2",
             "default_transcribe": "scribe_v1",
+        }
+    )
+
+
+@dataclass
+class BedrockConfig(Config):
+    driver: str = "bedrock"
+    key: str = env("AWS_BEARER_TOKEN_BEDROCK", "", cast=False)
+    region: str = field(default_factory=lambda: os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION") or "")
+    access_key_id: str = env("AWS_ACCESS_KEY_ID", "", cast=False)
+    secret_access_key: str = env("AWS_SECRET_ACCESS_KEY", "", cast=False)
+    session_token: str = env("AWS_SESSION_TOKEN", "", cast=False)
+    profile: str = env("AWS_PROFILE", "", cast=False)
+
+    models: dict[str, str] = field(
+        default_factory=lambda: {
+            "default": os.getenv("AWS_BEDROCK_MODEL") or "us.anthropic.claude-sonnet-4-6",
+            "default_embeddings": "amazon.titan-embed-text-v2:0",
         }
     )
