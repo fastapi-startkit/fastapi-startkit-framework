@@ -24,10 +24,10 @@ Option 3.
 
 - MySQL's `INSERT IGNORE` also downgrades other errors, such as truncation, to warnings, as in Laravel.
 - MySQL 8.0.20 deprecates `VALUES(col)` in `ON DUPLICATE KEY UPDATE` but still runs it; the row alias form can replace it later.
-- MySQL counts an updated row as 2 affected rows, so `upsert` counts are driver specific.
+- MySQL counts an updated row as 2 affected rows. SQLAlchemy's MySQL dialects connect with the `FOUND_ROWS` client flag, so a row the upsert matches but leaves unchanged counts as 1, not 0; without that flag it would count as 0. `upsert` counts are driver specific.
 
 ## Validation
 
-- `tests/masoniteorm/mysql/test_mysql_insert_or_ignore.py` runs against MySQL 8.0 from `docker-compose.yml` with a unique `(slug, language)` index. It checks that `insert_or_ignore` keeps the first row for a key and that `upsert` inserts and then updates the named columns.
+- `tests/masoniteorm/mysql/test_mysql_insert_or_ignore.py` runs against MySQL 8.0 from `docker-compose.yml` with a unique `(slug, language)` index. It checks that `insert_or_ignore` keeps the first row for a key, that `upsert` inserts and then updates only the named columns while a column outside `update` keeps its value, and that `upsert` counts 1 for an insert, 2 for a change and 1 for an unchanged row.
 - `tests/masoniteorm/query/grammars/test_insert_or_ignore_grammar.py` adds MySQL to its SQL and binding snapshots, and only MSSQL is still expected to raise.
 - The full framework suite passes with coverage at or above the threshold.

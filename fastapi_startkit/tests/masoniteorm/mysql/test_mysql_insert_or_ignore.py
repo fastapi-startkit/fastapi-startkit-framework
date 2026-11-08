@@ -13,6 +13,7 @@ class IoLexeme(Model):
     slug: str
     language: str
     word: str
+    note: str
 
 
 class TestMySQLInsertOrIgnore(TestCase):
@@ -25,6 +26,7 @@ class TestMySQLInsertOrIgnore(TestCase):
             table.string("slug")
             table.string("language")
             table.string("word")
+            table.string("note").nullable()
             table.unique(KEY)
 
     async def asyncTearDown(self):
@@ -44,3 +46,16 @@ class TestMySQLInsertOrIgnore(TestCase):
 
         rows = await IoLexeme.where("slug", "chat").get()
         self.assertEqual([row.word for row in rows], ["matou"])
+
+    async def test_upsert_leaves_columns_outside_update_untouched(self):
+        await IoLexeme.upsert({"slug": "chat", "language": "fr", "word": "chat", "note": "first"}, KEY)
+        await IoLexeme.upsert({"slug": "chat", "language": "fr", "word": "matou", "note": "second"}, KEY, ["word"])
+
+        rows = await IoLexeme.where("slug", "chat").get()
+        self.assertEqual([(row.word, row.note) for row in rows], [("matou", "first")])
+
+    async def test_upsert_counts_follow_found_rows(self):
+        row = {"slug": "chat", "language": "fr", "word": "chat"}
+        self.assertEqual(await IoLexeme.upsert(row, KEY), 1)
+        self.assertEqual(await IoLexeme.upsert({**row, "word": "matou"}, KEY), 2)
+        self.assertEqual(await IoLexeme.upsert({**row, "word": "matou"}, KEY), 1)
