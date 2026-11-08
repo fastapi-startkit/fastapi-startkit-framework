@@ -462,6 +462,23 @@ class Model(Attribute, Relationship, ObservesEvents):
     async def insert(cls, values: dict[str, Any] | list[dict[str, Any]]) -> int | None:
         return await cls.query().insert(values)
 
+    @classmethod
+    async def insert_or_ignore(
+        cls,
+        values: dict[str, Any] | list[dict[str, Any]],
+        unique_by: str | list[str] | None = None,
+    ) -> int:
+        return await cls.query().insert_or_ignore(values, unique_by)
+
+    @classmethod
+    async def upsert(
+        cls,
+        values: dict[str, Any] | list[dict[str, Any]],
+        unique_by: str | list[str],
+        update: str | list[str] | None = None,
+    ) -> int:
+        return await cls.query().upsert(values, unique_by, update)
+
     async def update(self, attributes: dict[str, Any]) -> bool:
         if not self._exists:
             return False
