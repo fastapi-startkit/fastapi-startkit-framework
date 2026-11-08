@@ -37,6 +37,6 @@ Out of scope: a direct `order_by` or `limit` over the whole union outside the pa
 ## Validation
 
 - `tests/masoniteorm/query/grammars/test_union_from_sub_grammar.py` checks `union`, `union_all`, `from_sub`, a `from_sub` over a union with bound fragments in the members and the outer query, callables, `to_sql()` and the `TypeError` on all four grammars, with bindings in SQL order.
-- `tests/masoniteorm/sqlite/builder/test_sqlite_union_from_sub.py` runs `union_all` and `union` rows, `count()` over a union, distinct users per day over `from_sub(union_all)`, bound fragments, `paginate()` over a `from_sub`, the `Model` proxies, and `paginate()`, `simple_paginate()`, `chunk()`, `chunk_by_id()` and `chunk_by_id_desc()` over a union against SQLite.
+- `tests/masoniteorm/sqlite/builder/test_sqlite_union_from_sub.py` runs `union_all` and `union` rows, `count()` over a union, distinct users per day over `from_sub(union_all)`, bound fragments, `paginate()` over a `from_sub`, the `Model` proxies, and `paginate()`, `simple_paginate()`, `chunk()`, `chunk_by_id()` and `chunk_by_id_desc()` over a union, and a member's global scope, or its `without_global_scopes()`, staying inside that member when the union is paged, against SQLite.
 - `tests/masoniteorm/postgres/test_postgres_union_from_sub.py` counts distinct users per local day across two tables with a bound `AT TIME ZONE` fragment in each member.
 - The full framework suite passes.

@@ -20,6 +20,18 @@ class UnPlay(Model):
     day: str
 
 
+class UnSecondDayPlay(Model):
+    __table__ = "un_plays"
+    __timestamps__ = None
+    id: int
+    user_id: int
+    day: str
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._global_scopes = {"select": {"second_day": lambda query: query.where("day", "2026-01-02")}}
+
+
 class UnEvent(Model):
     __table__ = "un_events"
     __timestamps__ = None
@@ -179,3 +191,24 @@ class TestSqliteUnionFromSub(TestCase):
         descending = [[row.id for row in batch] async for batch in reviews().chunk_by_id_desc(2)]
         self.assertEqual(ascending, [[1, 2], [3]])
         self.assertEqual(descending, [[3, 2], [1]])
+
+    async def test_paging_a_union_applies_each_member_scope_only_inside_that_member(self):
+        scoped = await UnSecondDayPlay.query().union_all(UnPlay.query()).paginate(10, 1)
+        unscoped = await UnSecondDayPlay.query().without_global_scopes().union_all(UnPlay.query()).paginate(10, 1)
+        self.assertEqual(scoped.total, 5)
+        self.assertEqual(
+            sorted((row.id, row.day) for row in scoped.result),
+            [(1, "2026-01-01"), (2, "2026-01-02"), (2, "2026-01-02"), (3, "2026-01-02"), (3, "2026-01-02")],
+        )
+        self.assertEqual(unscoped.total, 6)
+        self.assertEqual(
+            sorted((row.id, row.day) for row in unscoped.result),
+            [
+                (1, "2026-01-01"),
+                (1, "2026-01-01"),
+                (2, "2026-01-02"),
+                (2, "2026-01-02"),
+                (3, "2026-01-02"),
+                (3, "2026-01-02"),
+            ],
+        )
