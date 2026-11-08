@@ -41,6 +41,12 @@ class MSSQLGrammar(BaseGrammar):
     def update_format(self):
         return "UPDATE {table} SET {key_equals} {wheres}"
 
+    def compile_insert_or_ignore(self, query, values, unique_by):
+        raise NotImplementedError("insert_or_ignore() is not supported on SQL Server.")
+
+    def compile_upsert(self, query, values, unique_by, update):
+        raise NotImplementedError("upsert() is not supported on SQL Server.")
+
     def insert_format(self):
         return "INSERT INTO {table} ({columns}) VALUES ({values})"
 
