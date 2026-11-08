@@ -543,7 +543,7 @@ class TestMakeTyping:
     def test_application_make_inherits_typing(self, tmp_path):
         from fastapi_startkit.application import Application
 
-        app = Application(base_path=tmp_path, env="testing")
+        app = Application(base_path=tmp_path)
         app.bind("service_a", ServiceA)
 
         assert_type(app.make(ServiceA), ServiceA)

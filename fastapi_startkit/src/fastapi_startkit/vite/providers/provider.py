@@ -1,9 +1,11 @@
 import os
+from importlib.util import find_spec
 
 
 from fastapi_startkit.support import Provider
 from ..config.vite import ViteConfig
 
+from ..middleware import ViteMiddleware
 from ..vite import Vite
 
 
@@ -53,6 +55,7 @@ class ViteProvider(Provider):
         config = ViteConfig(**config)
 
         self.mount_static_file_if_require(config)
+        self.register_request_scope(vite)
         self.register_jinja_directives(vite)
 
         source = os.path.abspath(str(os.path.join(str(os.path.dirname(__file__)), "../config/vite.py")))
@@ -85,6 +88,10 @@ class ViteProvider(Provider):
                     )
                 except ImportError:
                     pass  # fastapi optional dependency not installed
+
+    def register_request_scope(self, vite: Vite):
+        if find_spec("fastapi") is not None:
+            self.app.fastapi.add_middleware(ViteMiddleware, vite=vite)
 
     def register_jinja_directives(self, vite: Vite):
         # Wire up Jinja2 globals when a template object is registered.

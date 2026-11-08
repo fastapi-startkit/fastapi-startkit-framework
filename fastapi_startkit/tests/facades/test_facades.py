@@ -21,7 +21,7 @@ def restore_container_instance():
 def app(tmp_path):
     from fastapi_startkit.application import Application
 
-    return Application(base_path=tmp_path, env="testing")
+    return Application(base_path=tmp_path)
 
 
 # ---------------------------------------------------------------------------
@@ -130,13 +130,13 @@ class TestConfigFacade:
         from fastapi_startkit.application import Application
         from fastapi_startkit.configuration.config import Config
 
-        app1 = Application(base_path=tmp_path / "app1", env="testing")
+        app1 = Application(base_path=tmp_path / "app1")
         Config.set("isolated", "from_app1")
         assert Config.get("isolated") == "from_app1"
 
         # Resetting singleton resets the config
         Container._instance = None
-        app2 = Application(base_path=tmp_path / "app2", env="testing")
+        app2 = Application(base_path=tmp_path / "app2")
         assert Config.get("isolated") is None
 
 

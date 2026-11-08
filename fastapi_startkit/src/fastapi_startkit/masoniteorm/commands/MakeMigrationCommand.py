@@ -56,6 +56,8 @@ class MakeMigrationCommand(Command):
 
         file_name = f"{now.strftime('%Y_%m_%d_%H%M%S')}_{name}.py"
 
+        os.makedirs(os.path.join(os.getcwd(), migration_directory), exist_ok=True)
+
         with open(os.path.join(os.getcwd(), migration_directory, file_name), "w") as fp:
             fp.write(output)
 

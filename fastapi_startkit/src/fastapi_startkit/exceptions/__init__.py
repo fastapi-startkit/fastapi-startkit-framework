@@ -1,6 +1,7 @@
 from .handler import ExceptionHandler
 from .exceptions import (
     AuthorizationException,
+    HttpException,
     InvalidRouteCompileException,
     RouteMiddlewareNotFound,
     ContainerError,
@@ -36,6 +37,7 @@ from .exceptions import (
 __all__ = [
     "ExceptionHandler",
     "AuthorizationException",
+    "HttpException",
     "InvalidRouteCompileException",
     "RouteMiddlewareNotFound",
     "ContainerError",

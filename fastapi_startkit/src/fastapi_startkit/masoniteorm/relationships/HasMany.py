@@ -1,4 +1,5 @@
 from .BaseRelationship import BaseRelationship, ManyResult, TModel
+from .HasOneOfMany import HasOneOfMany, OfManyAggregate
 from ..collection import Collection
 
 
@@ -19,11 +20,17 @@ class HasMany(BaseRelationship[TModel, ManyResult[TModel]]):
 
         return result
 
-    def set_keys(self, owner, attribute):
-        self.local_key = self.local_key or "id"
-        self.foreign_key = self.foreign_key or f"{attribute}_id"
+    def default_keys(self):
+        return {"local_key": self.owner_class.__primary_key__, "foreign_key": self.foreign_key_of(self.owner_class)}
 
-        return self
+    def latest_of_many(self, column: str = "created_at") -> HasOneOfMany[TModel]:
+        return self.of_many(column, "max")
+
+    def oldest_of_many(self, column: str = "created_at") -> HasOneOfMany[TModel]:
+        return self.of_many(column, "min")
+
+    def of_many(self, column: str | None = None, aggregate: OfManyAggregate = "max") -> HasOneOfMany[TModel]:
+        return HasOneOfMany(self, column, aggregate)
 
     def register_related(self, key, model, collection):
         model.add_relation({key: Collection(collection.get(getattr(model, self.local_key)) or [])})
@@ -40,7 +47,7 @@ class HasMany(BaseRelationship[TModel, ManyResult[TModel]]):
         return await related_record.update({self.foreign_key: local_key_value})
 
     def query_has(self, current_query_builder, method="where_exists"):
-        related_builder = self.get_builder()
+        related_builder = self.get_exists_builder(current_query_builder)
 
         getattr(current_query_builder, method)(
             related_builder.where_column(
@@ -52,7 +59,7 @@ class HasMany(BaseRelationship[TModel, ManyResult[TModel]]):
         return related_builder
 
     def query_where_exists(self, builder, callback, method="where_exists"):
-        query = self.get_builder()
+        query = self.get_exists_builder(builder)
         getattr(builder, method)(
             callback(
                 query.where_column(

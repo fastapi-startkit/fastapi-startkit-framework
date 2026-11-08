@@ -10,13 +10,12 @@ class BelongsTo(BaseRelationship[TModel, SingleResult[TModel]]):
     def __init__(self, fn: str | None = None, local_key=None, foreign_key=None):
         self.bind_model(fn)
 
-        self.local_key = local_key or "id"
+        self.local_key = local_key
         self.foreign_key = foreign_key
 
-    def set_keys(self, owner, attribute):
-        self.local_key = self.local_key or f"{attribute}_id"
-        self.foreign_key = self.foreign_key or "id"
-        return self
+    def default_keys(self):
+        related_key = self.related_model().__primary_key__
+        return {"local_key": f"{self.attribute}_{related_key}", "foreign_key": related_key}
 
     def apply_query(self, foreign, owner):
         """Apply the query and return a dictionary to be hydrated
@@ -31,7 +30,7 @@ class BelongsTo(BaseRelationship[TModel, SingleResult[TModel]]):
         return foreign.where(self.foreign_key, owner.__attributes__[self.local_key]).first()
 
     def query_has(self, current_query_builder, method="where_exists"):
-        related_builder = self.get_builder()
+        related_builder = self.get_exists_builder(current_query_builder)
 
         getattr(current_query_builder, method)(
             related_builder.where_column(
@@ -43,7 +42,7 @@ class BelongsTo(BaseRelationship[TModel, SingleResult[TModel]]):
         return related_builder
 
     def query_where_exists(self, builder, callback, method="where_exists"):
-        query = self.get_builder()
+        query = self.get_exists_builder(builder)
         getattr(builder, method)(
             callback(
                 query.where_column(

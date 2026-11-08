@@ -26,9 +26,10 @@ class QueryExpression:
 class HavingExpression:
     """A helper class to manage having expressions."""
 
-    def __init__(self, column, equality=None, value=None, raw=False):
+    def __init__(self, column, equality=None, value=None, raw=False, bindings=()):
         self.column = column
         self.raw = raw
+        self.bindings = bindings
 
         if equality and not value:
             value = equality
@@ -79,18 +80,20 @@ class SubSelectExpression:
 class SubGroupExpression:
     """A helper class to manage subgroup expressions."""
 
-    def __init__(self, builder, alias="group"):
+    def __init__(self, builder, alias="group", exists=False):
         self.builder = builder
         self.alias = alias
+        self.exists = exists
 
 
 class SelectExpression:
     """A helper class to manage select expressions."""
 
-    def __init__(self, column, raw=False):
+    def __init__(self, column, raw=False, bindings=()):
         self.column = column.strip()
         self.alias = None
         self.raw = raw
+        self.bindings = bindings
         if raw is False and " as " in self.column:
             self.column, self.alias = self.column.split(" as ")
             self.column = self.column.strip()

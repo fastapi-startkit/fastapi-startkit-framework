@@ -1,3 +1,4 @@
+from contextlib import AbstractContextManager
 from typing import Callable, Optional
 
 class Vite:
@@ -85,6 +86,8 @@ class Vite:
         """Reset per-request state (call after each response in long-running servers)."""
         ...
 
+    @staticmethod
+    def request_scope() -> AbstractContextManager[None]: ...
     @staticmethod
     def to_html() -> str:
         """Render pre-configured entry points as an HTML string."""

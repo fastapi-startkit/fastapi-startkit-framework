@@ -5,20 +5,53 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/fastapi-startkit.svg)](https://pypi.org/project/fastapi-startkit/)
 
 A modular, provider-driven framework for building Python applications with FastAPI. It bundles a
-service container, configuration system, an async-first ORM, facades, and a Cleo-powered console into
-a single cohesive foundation.
+service container, configuration system, facades, and a Cleo-powered console into a single cohesive
+foundation.
 
 ## Installation
 
+Create a new application with the installer. It requires [uv](https://docs.astral.sh/uv/):
+
 ```bash
-pip install fastapi-startkit
+uvx fastapi-startkit init my-app
+```
+
+The installer asks which services, database, and frontend to set up, generates the project, and runs
+`uv sync`. Then start the server:
+
+```bash
+cd my-app
+uv run python artisan serve
+```
+
+Pass `.` to create the application in the current empty directory, or skip the prompts with options:
+
+```bash
+uvx fastapi-startkit init . --no-interaction
+uvx fastapi-startkit init my-app --app=web --frontend=react
+```
+
+| Option | Values |
+|---|---|
+| `--app` | `web` (default), `worker`, or `both` |
+| `--database` | `none`, `sqlite` (default), `postgres`, or `mysql` |
+| `--frontend` | `none` (default), `react`, or `vue` |
+| `--dry-run` | Show the plan without creating files |
+| `--no-deps` | Generate files without installing Python dependencies |
+| `-n`, `--no-interaction` | Use the defaults and option values without prompting |
+
+Run `uvx fastapi-startkit init --help` for the full reference.
+
+### Adding to an existing project
+
+```bash
+uv add fastapi-startkit
 ```
 
 Optional extras enable additional capabilities:
 
 ```bash
 fastapi-startkit[fastapi]    # FastAPI + Starlette
-fastapi-startkit[database]   # SQLAlchemy async ORM
 fastapi-startkit[vite]       # Jinja2 for Vite integration
 fastapi-startkit[ai]         # LangChain agents
 ```
@@ -38,9 +71,8 @@ Python 3.12, 3.13, 3.14 and 3.15 are supported.
 - **Configuration** — dataclass-based config sourced from the environment with dotted-key access.
 - **Providers** — two-phase (`register` / `boot`) service registration.
 - **Routing** — a `Router` wrapper around FastAPI's `APIRouter` with a `resource()` CRUD shortcut.
-- **ORM** — async-first Masonite ORM fork on SQLAlchemy async, with relationships and migrations.
 - **Facades** — static-like access to container-resolved services (`Config`, `Auth`, ...).
-- **Console** — Cleo-based CLI (`artisan`) for migrations, seeders, and code generation.
+- **Console** — Cleo-based CLI (`artisan`) for serving the application and code generation.
 
 ## Documentation
 
@@ -65,4 +97,4 @@ Coverage is collected in CI and reported to
 
 ## License
 
-See the repository root for license details.
+Released under the [MIT License](https://github.com/fastapi-startkit/fastapi-startkit-framework/blob/main/LICENSE).

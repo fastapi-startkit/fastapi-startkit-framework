@@ -25,13 +25,16 @@ class TestBasePlatform:
 
     def test_constraintize_formats_each_constraint(self):
         class UniquePlatform(Platform):
+            def get_column_string(self):
+                return '"{column}"'
+
             def get_unique_constraint_string(self):
                 return "UNIQUE ({columns})"
 
         table = Table("users")
         table.add_constraint("users_email_unique", "unique", ["email", "name"])
 
-        assert UniquePlatform().constraintize(table.get_added_constraints(), table) == ["UNIQUE (email, name)"]
+        assert UniquePlatform().constraintize(table.get_added_constraints(), table) == ['UNIQUE ("email", "name")']
 
 
 class TestCurrentSchemaPythonTypes:

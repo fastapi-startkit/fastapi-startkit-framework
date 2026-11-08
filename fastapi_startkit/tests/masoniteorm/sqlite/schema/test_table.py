@@ -47,7 +47,7 @@ class TestTable(unittest.TestCase):
         table.add_constraint("name", "unique", ["name"])
         table.set_primary_key("id")
 
-        sql = 'CREATE TABLE "users" ("id" INTEGER NOT NULL, "name" VARCHAR NOT NULL, UNIQUE(name))'
+        sql = 'CREATE TABLE "users" ("id" INTEGER NOT NULL, "name" VARCHAR NOT NULL, UNIQUE("name"))'
         self.platform.constraintize(table.get_added_constraints())
         self.assertEqual(self.platform.compile_create_sql(table), [sql])
 
@@ -60,7 +60,7 @@ class TestTable(unittest.TestCase):
         table.add_constraint("email", "unique", ["email"])
         table.set_primary_key("id")
 
-        sql = 'CREATE TABLE "users" ("id" INTEGER NOT NULL, "email" VARCHAR NOT NULL, "name" VARCHAR NOT NULL, UNIQUE(name), UNIQUE(email))'
+        sql = 'CREATE TABLE "users" ("id" INTEGER NOT NULL, "email" VARCHAR NOT NULL, "name" VARCHAR NOT NULL, UNIQUE("name"), UNIQUE("email"))'
         self.platform.constraintize(table.get_added_constraints())
         self.assertEqual(self.platform.compile_create_sql(table), [sql])
 
@@ -72,7 +72,7 @@ class TestTable(unittest.TestCase):
         table.add_constraint("name", "unique", ["name", "email"])
         table.set_primary_key("id")
 
-        sql = 'CREATE TABLE "users" ("id" INTEGER NOT NULL, "email" VARCHAR NOT NULL, "name" VARCHAR NOT NULL, UNIQUE(name, email))'
+        sql = 'CREATE TABLE "users" ("id" INTEGER NOT NULL, "email" VARCHAR NOT NULL, "name" VARCHAR NOT NULL, UNIQUE("name", "email"))'
         self.platform.constraintize(table.get_added_constraints())
         self.assertEqual(self.platform.compile_create_sql(table), [sql])
 

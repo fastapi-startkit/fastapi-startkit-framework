@@ -39,10 +39,10 @@ class EventServiceProviderTest(unittest.IsolatedAsyncioTestCase):
         Container._instance = self._original_container_instance
 
     def _make_app(self):
-        return Application(base_path=self.base_path, env="testing", providers=[AppEventServiceProvider])
+        return Application(base_path=self.base_path, providers=[AppEventServiceProvider])
 
     def test_dispatcher_is_bound_by_default(self):
-        app = Application(base_path=self.base_path, env="testing")
+        app = Application(base_path=self.base_path)
         self.assertTrue(app.has("events"))
         self.assertIsInstance(app.make("events"), Dispatcher)
 

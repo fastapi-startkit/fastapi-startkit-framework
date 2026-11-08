@@ -37,7 +37,7 @@ class RequestLifecycleEventTest(unittest.TestCase):
         self._original_container_instance = Container._instance
         self.addCleanup(self._restore_container)
 
-        self.app = Application(base_path=Path(self._tmp_dir.name), env="testing", providers=[FastAPIProvider])
+        self.app = Application(base_path=Path(self._tmp_dir.name), providers=[FastAPIProvider])
         self.client = make_client(self.app)
 
     def _restore_container(self):

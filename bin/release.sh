@@ -9,6 +9,21 @@ echo "🚀 Starting release process with $BUMP_TYPE bump..."
 
 PACKAGE_DIR="fastapi_startkit"
 
+if [ -n "$RELEASE_GH_USER" ]; then
+    GH_TOKEN=$(gh auth token --user "$RELEASE_GH_USER")
+    export GH_TOKEN
+fi
+
+GH_PERMISSION=$(gh repo view --json viewerPermission --jq .viewerPermission)
+case "$GH_PERMISSION" in
+    ADMIN|MAINTAIN|WRITE) ;;
+    *)
+        echo "❌ GitHub account '$(gh api user --jq .login)' has $GH_PERMISSION access; releases need write access."
+        echo "   Re-run with RELEASE_GH_USER=<account> (see 'gh auth status') or GH_TOKEN set."
+        exit 1
+        ;;
+esac
+
 if [ -d "$PACKAGE_DIR" ]; then
     echo "📦 Releasing package: $PACKAGE_DIR"
 
@@ -33,6 +48,8 @@ if [ -d "$PACKAGE_DIR" ]; then
     git add pyproject.toml
     git commit -m "chore: release v$VERSION"
 
+    PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+
     echo "🏷️ Creating git tag..."
     git tag "v$VERSION"
 
@@ -41,8 +58,6 @@ if [ -d "$PACKAGE_DIR" ]; then
     git push origin "v$VERSION"
 
     echo "🚀 Creating GitHub release..."
-
-    PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
 
     if [ -n "$PREV_TAG" ]; then
         git log "$PREV_TAG..HEAD" --pretty=format:"- %s" > CHANGELOG.tmp

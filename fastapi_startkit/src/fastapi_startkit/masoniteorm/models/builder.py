@@ -1,6 +1,7 @@
 import inspect
-from collections.abc import Callable, Iterable
-from typing import TYPE_CHECKING, Any, Generic, Self, TypeVar, overload
+import json
+from collections.abc import Callable, Iterable, Sequence
+from typing import TYPE_CHECKING, Any, Generic, Literal, Self, TypeVar, overload
 
 from fastapi_startkit.masoniteorm.expressions.expressions import (
     JoinClause,
@@ -29,8 +30,9 @@ TModel = TypeVar("TModel", bound="Model")
 # returns it, which the parent renders as a parenthesised subgroup.
 type WhereGroup[M: "Model"] = Callable[["QueryBuilder[M]"], "QueryBuilder[M]"]
 
-# select_sub()/add_select() subquery source: a builder, or a callable that
-# receives a fresh builder and returns the subquery.
+# Subquery source for select_sub(), add_select(), add_select_exists(), where_in()
+# and the exists wheres: a builder, or a callable that receives a fresh builder
+# and returns the subquery.
 type Subquery = "QueryBuilder[Any] | Callable[[QueryBuilder[Any]], QueryBuilder[Any]]"
 type SelectEntry = "str | dict[str, str | Subquery]"
 
@@ -80,6 +82,9 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
 
         self._columns: list[Any] = []
         self._table = ""
+        self._alias: str | None = None
+        self._from_sub: "QueryBuilder[Any] | None" = None
+        self._unions: tuple[tuple[str, "QueryBuilder[Any]"], ...] = ()
         self._limit = False
         self._offset = False
         self._wheres = []
@@ -89,6 +94,7 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         self._group_by = ()
         self._having = ()
         self._distinct = False
+        self._lock: Literal["update", "share", False] = False
 
         self._sql = ""
         self._bindings = ()
@@ -111,18 +117,35 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         return self
 
     def get_table_name(self) -> str:
-        return self._table
+        return self._alias or self._table
 
-    def table(self, table: str) -> "Self":
+    def table(self, table: str, alias: str | None = None) -> "Self":
         self._table = table
+        self._alias = alias
         return self
 
-    def where_in(self, column: str, values: Iterable[Any]) -> "Self":
-        if hasattr(values, "_items"):
-            values = getattr(values, "_items")
-        values = list(values) if not isinstance(values, list) else values
-        self._wheres.append(QueryExpression(column, "IN", values))
+    def from_sub(self, subquery: "Subquery", alias: str) -> "Self":
+        self._from_sub = self._resolve_subquery(subquery, "from_sub")
+        self._alias = alias
         return self
+
+    def union(self, query: "Subquery") -> "Self":
+        self._unions += (("UNION", self._resolve_subquery(query, "union")),)
+        return self
+
+    def union_all(self, query: "Subquery") -> "Self":
+        self._unions += (("UNION ALL", self._resolve_subquery(query, "union_all")),)
+        return self
+
+    def where_in(self, column: str, values: "Iterable[Any] | Subquery") -> "Self":
+        self._wheres.append(QueryExpression(column, "IN", self._where_in_values(values, "where_in")))
+        return self
+
+    def _where_in_values(self, values: "Iterable[Any] | Subquery", method: str) -> "list[Any] | SubSelectExpression":
+        if isinstance(values, QueryBuilder) or callable(values):
+            return SubSelectExpression(self._resolve_subquery(values, method))
+        items: Iterable[Any] = getattr(values, "_items", values)
+        return items if isinstance(items, list) else list(items)
 
     def select(self, *args: "str | list[str]") -> "Self":
         for arg in args:
@@ -140,12 +163,22 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         ``subquery`` is a builder, or a callable that receives a fresh table-less
         builder and returns one.
         """
+        self._columns.append(SubGroupExpression(self._resolve_subquery(subquery, "select_sub"), alias))
+        return self
+
+    def add_select_exists(self, alias: str, query: "Subquery") -> "Self":
+        exists = SubGroupExpression(self._resolve_subquery(query, "add_select_exists"), alias, exists=True)
+        if not self._columns:
+            self.select(f"{self.get_table_name()}.*")
+        self._columns.append(exists)
+        return self
+
+    def _resolve_subquery(self, subquery: "Subquery", method: str) -> "QueryBuilder[Any]":
         if not isinstance(subquery, QueryBuilder) and callable(subquery):
             subquery = subquery(QueryBuilder(self.connection, self.grammar, self.processor))
         if not isinstance(subquery, QueryBuilder):
-            raise TypeError("select_sub() expects a QueryBuilder subquery or a callable returning one.")
-        self._columns.append(SubGroupExpression(subquery, alias))
-        return self
+            raise TypeError(f"{method}() expects a QueryBuilder subquery or a callable returning one.")
+        return subquery
 
     def add_select(self, *columns: "SelectEntry | list[SelectEntry]") -> "Self":
         """Append columns to the current selection without replacing it.
@@ -177,9 +210,24 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
                         "pass {alias: subquery} or use select_sub(subquery, alias)."
                     )
                 if not self._columns:
-                    self.select(f"{self._table}.*")
+                    self.select(f"{self.get_table_name()}.*")
                 self.select_sub(value, alias)
         return self
+
+    def select_raw(self, expression: str, bindings: "list[Any] | tuple[Any, ...]" = ()) -> "Self":
+        self._columns.append(SelectExpression(expression, raw=True, bindings=self._raw_bindings(bindings)))
+        return self
+
+    def add_select_raw(self, expression: str, bindings: "list[Any] | tuple[Any, ...]" = ()) -> "Self":
+        if not self._columns:
+            self.select(f"{self.get_table_name()}.*")
+        return self.select_raw(expression, bindings)
+
+    @staticmethod
+    def _raw_bindings(bindings: "list[Any] | tuple[Any, ...]") -> tuple[Any, ...]:
+        if not isinstance(bindings, (list, tuple)):
+            raise ValueError(f"Bindings must be tuple or list. Received {type(bindings)}")
+        return tuple(bindings)
 
     def _is_selected(self, column: str) -> bool:
         return any(
@@ -256,6 +304,9 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         return self.grammar(
             columns=self._columns,
             table=self._table,
+            alias=self._alias,
+            from_sub=self._from_sub,
+            unions=self._unions,
             limit=self._limit,
             offset=self._offset,
             wheres=self._wheres,
@@ -265,6 +316,7 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
             group_by=self._group_by,
             having=self._having,
             distinct=self._distinct,
+            lock=self._lock,
         )
 
     def to_qmark(self) -> str:
@@ -316,6 +368,10 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         self._having += (HavingExpression(column, equality, value),)
         return self
 
+    def having_raw(self, expression: str, bindings: "list[Any] | tuple[Any, ...]" = ()) -> "Self":
+        self._having += (HavingExpression(expression, raw=True, bindings=self._raw_bindings(bindings)),)
+        return self
+
     def where_null(self, column: str) -> "Self":
         self._wheres += (QueryExpression(column, "=", None, "NULL"),)
         return self
@@ -332,9 +388,8 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         self._wheres += (QueryExpression(column, "=", None, "NOT NULL", keyword="or"),)
         return self
 
-    def where_not_in(self, column: str, values: Iterable[Any]) -> "Self":
-        values = list(values) if not isinstance(values, list) else values
-        self._wheres.append(QueryExpression(column, "NOT IN", values))
+    def where_not_in(self, column: str, values: "Iterable[Any] | Subquery") -> "Self":
+        self._wheres.append(QueryExpression(column, "NOT IN", self._where_in_values(values, "where_not_in")))
         return self
 
     def between(self, column: str, low: Any, high: Any) -> "Self":
@@ -356,7 +411,17 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         self._distinct = True
         return self
 
+    def lock_for_update(self) -> "Self":
+        self._lock = "update"
+        return self
+
+    def shared_lock(self) -> "Self":
+        self._lock = "share"
+        return self
+
     async def aggregate(self, function: str, column: str):
+        if self._unions:
+            return await self.connection.query().from_sub(self, "aggregate_table").aggregate(function, column)
         self._aggregates += (AggregateExpression(function, column),)
         row = await self.connection.select_one(self.to_qmark(), list(self.get_bindings()))
         if row is None:
@@ -439,29 +504,112 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
 
         return await self.connection.insert_get_id(sql, bindings)
 
+    async def insert_or_ignore(
+        self,
+        values: dict[str, Any] | list[dict[str, Any]],
+        unique_by: str | list[str] | None = None,
+    ) -> int:
+        rows = self._uniform_rows(values)
+        if not rows:
+            return 0
+
+        sql = self.grammar().compile_insert_or_ignore(self, rows, self._column_list(unique_by))
+        return await self.connection.update(sql, self.clean_bindings(rows))
+
+    async def upsert(
+        self,
+        values: dict[str, Any] | list[dict[str, Any]],
+        unique_by: str | list[str],
+        update: str | list[str] | None = None,
+    ) -> int:
+        unique_columns = self._column_list(unique_by)
+        if not unique_columns:
+            raise ValueError("upsert() needs at least one unique_by column.")
+
+        rows = self._uniform_rows(values)
+        if not rows:
+            return 0
+
+        update_columns = (
+            [column for column in rows[0] if column not in unique_columns]
+            if update is None
+            else self._column_list(update)
+        )
+        unknown_columns = [column for column in update_columns if column not in rows[0]]
+        if unknown_columns:
+            raise ValueError(f"upsert() can only update inserted columns, got {unknown_columns}.")
+        if not update_columns:
+            return await self.insert_or_ignore(rows, unique_columns)
+
+        sql = self.grammar().compile_upsert(self, rows, unique_columns, update_columns)
+        return await self.connection.update(sql, self.clean_bindings(rows))
+
+    @staticmethod
+    def _uniform_rows(values: dict[str, Any] | list[dict[str, Any]]) -> list[dict[str, Any]]:
+        rows = [values] if isinstance(values, dict) else list(values)
+        if not rows or not rows[0]:
+            return []
+
+        columns = list(rows[0])
+        for index, row in enumerate(rows[1:], start=1):
+            if row.keys() != rows[0].keys():
+                raise ValueError(f"Row {index} has columns {sorted(row)}, expected {sorted(columns)}.")
+        return [{column: row[column] for column in columns} for row in rows]
+
+    @staticmethod
+    def _column_list(columns: str | list[str] | None) -> list[str]:
+        if columns is None:
+            return []
+        return [columns] if isinstance(columns, str) else list(columns)
+
     async def update(self, values: dict[str, Any]) -> int:
         updates = [UpdateQueryExpression(col, val) for col, val in values.items()]
-        grammar = self.grammar()
+        grammar = self.grammar(table=self._table)
         sql = grammar._compile_update(query=self, values=updates, qmark=True).to_sql()
         bindings = list(grammar._bindings)
         return await self.connection.update(sql, bindings)
 
+    def _over_union(self) -> "QueryBuilder[TModel]":
+        return self.connection.query().set_model(self._model).without_global_scopes().from_sub(self, "union_table")
+
     async def paginate(self, per_page: int = 15, page: int = 1):
         from fastapi_startkit.masoniteorm.pagination import LengthAwarePaginator
 
-        # Build a count query using a fresh builder with the same wheres/table/model
-        count_builder = self.connection.query().set_model(self._model)
-        count_builder._wheres = list(self._wheres)
-        count_builder._joins = self._joins
-        count_builder._global_scopes = self._global_scopes
-        total = await count_builder.count() or 0
+        if self._unions:
+            return await self._over_union().paginate(per_page, page)
+
+        total = await self._pagination_total()
 
         offset = (page - 1) * per_page
         results = await self.limit(per_page).offset(offset).get()
         return LengthAwarePaginator(results, per_page, page, int(total))
 
+    async def _pagination_total(self) -> int:
+        count_builder = self.connection.query().set_model(self._model).table(self._table, self._alias)
+        count_builder._from_sub = self._from_sub
+        count_builder._wheres = list(self._wheres)
+        count_builder._joins = self._joins
+        count_builder._global_scopes = self._global_scopes
+
+        if not self._group_by and not self._having:
+            return await count_builder.count() or 0
+
+        count_builder._columns = list(self._columns)
+        count_builder._group_by = self._group_by
+        count_builder._having = self._having
+        count_builder._distinct = self._distinct
+        grouped_sql = count_builder.to_qmark()
+        row = await self.connection.select_one(
+            f"SELECT COUNT(*) AS aggregate FROM ({grouped_sql}) AS aggregate_table",
+            list(count_builder.get_bindings()),
+        )
+        return row["aggregate"] if row else 0
+
     async def simple_paginate(self, per_page: int = 15, page: int = 1):
         from fastapi_startkit.masoniteorm.pagination import SimplePaginator
+
+        if self._unions:
+            return await self._over_union().simple_paginate(per_page, page)
 
         offset = (page - 1) * per_page
         # Fetch one extra record to detect if there is a next page
@@ -476,6 +624,11 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         """
         if count <= 0:
             raise ValueError("chunk() size must be a positive integer.")
+
+        if self._unions:
+            async for results in self._over_union().chunk(count):
+                yield results
+            return
 
         page = 0
         while True:
@@ -494,6 +647,11 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
     ):
         if count <= 0:
             raise ValueError("chunk_by_id() size must be a positive integer.")
+
+        if self._unions:
+            async for results in self._over_union().chunk_by_id(count, column, alias, descending):
+                yield results
+            return
 
         column = column or self._model.__primary_key__
         alias = alias or column
@@ -550,7 +708,7 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         # subgroup) prefixes its columns correctly instead of rendering a
         # table-less ."column". Callers that want a different table override it
         # with .table(...) as usual.
-        return self.connection.query().table(self._table)
+        return self.connection.query().table(self._table, self._alias)
 
     def invalid_operator(self, operator: Any) -> bool:
         """Determine whether an operator is not supported by the builder."""
@@ -611,6 +769,51 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
         self._wheres += (QueryExpression(expression, "=", None, raw=True, keyword="or", bindings=bindings),)
         return self
 
+    def select_vector_distance(self, column: str, vector: Sequence[float], as_: str | None = None) -> "Self":
+        alias = as_ or f"{column.split('.')[-1]}_distance"
+        return self.add_select_raw(
+            f"({self._vector_column(column)} <=> ?) AS {self._vector_identifier(alias)}", [self._vector_binding(vector)]
+        )
+
+    def where_vector_distance_less_than(self, column: str, vector: Sequence[float], max_distance: float) -> "Self":
+        return self.where_raw(
+            f"({self._vector_column(column)} <=> ?) <= ?", (self._vector_binding(vector), max_distance)
+        )
+
+    def or_where_vector_distance_less_than(self, column: str, vector: Sequence[float], max_distance: float) -> "Self":
+        return self.or_where_raw(
+            f"({self._vector_column(column)} <=> ?) <= ?", (self._vector_binding(vector), max_distance)
+        )
+
+    def order_by_vector_distance(self, column: str, vector: Sequence[float]) -> "Self":
+        expression = f"({self._vector_column(column)} <=> ?) ASC"
+        self._order_by += (OrderByExpression(expression, raw=True, bindings=(self._vector_binding(vector),)),)
+        return self
+
+    def where_vector_similar_to(
+        self, column: str, vector: Sequence[float], min_similarity: float = 0.6, order: bool = True
+    ) -> "Self":
+        self.where_vector_distance_less_than(column, vector, 1 - min_similarity)
+        return self.order_by_vector_distance(column, vector) if order else self
+
+    def _vector_column(self, column: str) -> str:
+        table = self._alias or self._table
+        qualified = column if "." in column or not table else f"{table}.{column}"
+        return ".".join(self._vector_identifier(part) for part in qualified.split("."))
+
+    def _vector_identifier(self, name: str) -> str:
+        if not self.grammar.supports_vectors:
+            raise ValueError(f"{self.grammar.__name__} does not support vector queries; use PostgreSQL with pgvector.")
+        return self.grammar.wrap_identifier(name)
+
+    @staticmethod
+    def _vector_binding(vector: Sequence[float]) -> str:
+        if isinstance(vector, str):
+            raise TypeError(
+                "Vector queries need a list of floats; embed text first with await Str.of(text).to_embeddings()."
+            )
+        return json.dumps([float(value) for value in vector])
+
     def join(self, table: str, column1: str, equality: str, column2: str, clause: str = "join") -> "Self":
         join_clause = JoinClause(table, clause=clause)
         join_clause.on(column1, equality, column2)
@@ -651,12 +854,21 @@ class QueryBuilder(EagerLoadMixin, SupportMixin, Generic[TModel]):
             callback(self)
         return self
 
-    def where_exists(self, builder: "QueryBuilder[Any]") -> "Self":
-        self._wheres += (QueryExpression(None, "EXISTS", SubSelectExpression(builder)),)
-        return self
+    def where_exists(self, builder: "Subquery") -> "Self":
+        return self._where_exists("EXISTS", builder, "where_exists")
 
-    def or_where_exists(self, builder: "QueryBuilder[Any]") -> "Self":
-        self._wheres += (QueryExpression(None, "EXISTS", SubSelectExpression(builder), keyword="or"),)
+    def or_where_exists(self, builder: "Subquery") -> "Self":
+        return self._where_exists("EXISTS", builder, "or_where_exists", keyword="or")
+
+    def where_not_exists(self, builder: "Subquery") -> "Self":
+        return self._where_exists("NOT EXISTS", builder, "where_not_exists")
+
+    def or_where_not_exists(self, builder: "Subquery") -> "Self":
+        return self._where_exists("NOT EXISTS", builder, "or_where_not_exists", keyword="or")
+
+    def _where_exists(self, equality: str, builder: "Subquery", method: str, keyword: str | None = None) -> "Self":
+        subquery = SubSelectExpression(self._resolve_subquery(builder, method))
+        self._wheres += (QueryExpression(None, equality, subquery, keyword=keyword),)
         return self
 
     def where_has(self, relation: str, callback: Callable[..., Any] | None = None) -> "Self":

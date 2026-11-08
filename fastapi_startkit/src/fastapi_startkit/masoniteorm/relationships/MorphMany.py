@@ -68,7 +68,7 @@ class MorphMany(BaseRelationship[TModel, ManyResult[TModel]]):
         Returns:
             Model|Collection
         """
-        self.polymorphic_builder = registry.Registry.resolve(self.fn).query()
+        self.polymorphic_builder = registry.Registry.resolve(self.fn).query().with_(eagers or [])
 
         if isinstance(relation, Collection):
             record_type = self.get_record_key_lookup(relation.first())
@@ -124,7 +124,4 @@ class MorphMany(BaseRelationship[TModel, ManyResult[TModel]]):
         return registry.Registry.get_morph_map()
 
     def get_record_key_lookup(self, relation):
-        record_type = registry.Registry.get_morph_name(relation.__class__)
-        if record_type == relation.__class__.__name__:
-            raise ValueError(f"Could not find the record type key for the {relation} class")
-        return record_type
+        return registry.Registry.get_morph_name(relation.__class__)

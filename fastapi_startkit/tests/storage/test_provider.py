@@ -8,7 +8,7 @@ from fastapi_startkit.storage.storage import StorageManager
 
 
 def make_app(tmp_path):
-    return Application(base_path=tmp_path, env="testing", providers=[StorageProvider])
+    return Application(base_path=tmp_path, providers=[StorageProvider])
 
 
 class TestRegister:

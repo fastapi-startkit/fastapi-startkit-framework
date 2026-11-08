@@ -1,3 +1,10 @@
+from collections.abc import Iterable, Mapping
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from fastapi_startkit.validation.message_bag import MessageBag
+
+
 class DriverNotFound(Exception):
     pass
 
@@ -70,9 +77,20 @@ class RouteException(Exception):
     pass
 
 
-class RouteNotFoundException(Exception):
+class HttpException(Exception):
     is_http_exception = True
 
+    def get_status(self) -> int:
+        raise NotImplementedError
+
+    def get_response(self) -> str:
+        raise NotImplementedError
+
+    def get_headers(self) -> dict[str, str] | None:
+        return None
+
+
+class RouteNotFoundException(HttpException):
     def __init__(self, message):
         super().__init__(message)
         self.message = message or "Route Not Found"
@@ -84,9 +102,7 @@ class RouteNotFoundException(Exception):
         return 404
 
 
-class MethodNotAllowedException(Exception):
-    is_http_exception = True
-
+class MethodNotAllowedException(HttpException):
     def __init__(self, allowed_methods, method):
         allowed_list = ", ".join(allowed_methods)
         message = f"{method} method not allowed for this route. Supported methods are: {allowed_list}."
@@ -144,9 +160,7 @@ class NotificationException(Exception):
     pass
 
 
-class AuthorizationException(Exception):
-    is_http_exception = True
-
+class AuthorizationException(HttpException):
     def __init__(self, message="", status=403):
         super().__init__(message)
         self.message = message or "Action not authorized"
@@ -159,8 +173,8 @@ class AuthorizationException(Exception):
         return self.status
 
 
-class ThrottleRequestsException(Exception):
-    def __init__(self, message="Too many attempts", status=429, headers={}):
+class ThrottleRequestsException(HttpException):
+    def __init__(self, message="Too many attempts", status=429, headers: dict[str, str] | None = None):
         super().__init__(message)
         self.message = message
         self.status = status
@@ -208,7 +222,16 @@ class LoaderNotFound(Exception):
     pass
 
 
-class ValidationException(Exception):
-    def __init__(self, errors: dict):
-        super().__init__("The given data was invalid.")
-        self.errors = errors
+class ValidationException(HttpException):
+    def __init__(self, errors: "MessageBag | Mapping[str, Iterable[str]]"):
+        from fastapi_startkit.validation.message_bag import MessageBag
+
+        self.bag = errors if isinstance(errors, MessageBag) else MessageBag(errors)
+        self.errors = self.bag.messages
+        super().__init__(self.bag.summary())
+
+    def get_status(self) -> int:
+        return 422
+
+    def get_response(self) -> str:
+        return self.bag.summary()

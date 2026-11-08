@@ -236,6 +236,25 @@ class TestAttributeResolvers:
         html = vite("resources/js/app.js")
         assert 'data-preload="1"' in html
 
+    def test_script_tag_attributes_accept_dict(self, public_path):
+        write_manifest(public_path)
+        vite = Vite(public_path).use_script_tag_attributes({"defer": True, "data-track": "reload"})
+        html = vite("resources/js/app.js")
+        assert '<script type="module" src="/build/assets/app-abc123.js" defer data-track="reload">' in html
+
+    def test_style_tag_attributes_accept_dict(self, public_path):
+        write_manifest(public_path)
+        vite = Vite(public_path).use_style_tag_attributes({"media": "print"})
+        html = vite("resources/js/app.js")
+        assert '<link rel="stylesheet" href="/build/assets/app-def456.css" media="print" />' in html
+
+    def test_preload_tag_attributes_accept_dict_and_false(self, public_path):
+        write_manifest(public_path)
+        assert 'data-preload="1"' in Vite(public_path).use_preload_tag_attributes({"data-preload": "1"})(
+            "resources/js/app.js"
+        )
+        assert "modulepreload" not in Vite(public_path).use_preload_tag_attributes(False)("resources/js/app.js")
+
     def test_nonce_applied_to_tags(self, public_path):
         write_manifest(public_path)
         vite = Vite(public_path)

@@ -12,7 +12,7 @@ from fastapi_startkit.vite.config.vite import ViteConfig
 def make_app(tmp_path, providers=None) -> Application:
     if providers is None:
         providers = [ViteProvider]
-    return Application(base_path=tmp_path, env="testing", providers=providers)
+    return Application(base_path=tmp_path, providers=providers)
 
 
 class _SentinelTemplatesProvider(Provider):

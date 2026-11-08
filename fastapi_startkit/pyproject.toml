@@ -1,8 +1,10 @@
 [project]
 name = "fastapi-startkit"
-version = "0.67.0"
+version = "0.74.0"
 description = "A modular, provider-driven framework for building async Python web applications with FastAPI — bundling a service container, configuration system, an async-first ORM, facades, and a Cleo-powered console."
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 keywords = [
     "fastapi",
     "framework",
@@ -52,6 +54,9 @@ dependencies = [
 [project.scripts]
 fastapi-startkit = "fastapi_startkit.installer.cli:main"
 
+[project.entry-points.pytest11]
+fastapi_startkit_playwright = "fastapi_startkit.pytest_plugin"
+
 [project.urls]
 Homepage = "https://fastapi-startkit.github.io"
 Documentation = "https://fastapi-startkit.github.io"
@@ -96,8 +101,17 @@ ai = [
     "langchain-core>=1.0.0",
     "langgraph>=1.0.0",
 ]
+bedrock = [
+    "fastapi-startkit[ai]",
+    "langchain-aws>=1.0.0",
+]
 redis = [
     "redis>=5.0.1",
+]
+playwright = [
+    "fastapi-startkit[fastapi]",
+    "playwright>=1.55.0",
+    "pytest-asyncio>=1.3.0",
 ]
 
 [dependency-groups]
@@ -124,6 +138,8 @@ dev = [
     "pytest-benchmark>=5.2.3",
     "redis>=5.0.1",
     "fakeredis[lua]>=2.26.0",
+    "playwright>=1.55.0",
+    "cryptography>=44.0.0",
 ]
 
 
@@ -160,6 +176,7 @@ markers = [
     "benchmark: performance benchmark, excluded by default (run with -m benchmark)",
 ]
 addopts = "-m 'not benchmark'"
+filterwarnings = ['error:Application\(env=\.\.\.\) is deprecated:DeprecationWarning']
 
 [tool.coverage.run]
 source = ["src/fastapi_startkit"]

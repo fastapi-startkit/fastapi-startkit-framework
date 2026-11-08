@@ -24,7 +24,7 @@ def restore_container_instance():
 def app(tmp_path):
     from fastapi_startkit.application import Application
 
-    return Application(base_path=tmp_path, env="testing")
+    return Application(base_path=tmp_path)
 
 
 @pytest.fixture

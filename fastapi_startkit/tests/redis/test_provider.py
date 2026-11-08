@@ -11,7 +11,7 @@ from .conftest import make_config
 
 
 def make_app(tmp_path, provider=RedisProvider):
-    return Application(base_path=tmp_path, env="testing", providers=[provider])
+    return Application(base_path=tmp_path, providers=[provider])
 
 
 def test_binds_manager_and_merges_config(tmp_path):
@@ -69,7 +69,7 @@ async def test_shutdown_disconnects_with_custom_lifespan(tmp_path):
         yield {"ready": True}
         events.append("shutdown")
 
-    app = Application(base_path=tmp_path, env="testing", providers=[])
+    app = Application(base_path=tmp_path, providers=[])
     app.fastapi.router.lifespan_context = lifespan
     provider = RedisProvider(app, config=make_config())
     provider.register()

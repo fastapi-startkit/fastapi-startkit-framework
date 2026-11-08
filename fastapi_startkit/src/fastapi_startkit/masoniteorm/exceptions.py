@@ -1,6 +1,7 @@
-class ModelNotFoundException(Exception):
-    is_http_exception = True
+from fastapi_startkit.exceptions import HttpException
 
+
+class ModelNotFoundException(HttpException):
     def __init__(self, message="Model Not Found"):
         super().__init__(message)
         self.message = message

@@ -74,6 +74,9 @@ class StorageManager:
     def get(self, *args, **kwargs):
         return self.disk().get(*args, **kwargs)
 
+    def get_bytes(self, *args, **kwargs):
+        return self.disk().get_bytes(*args, **kwargs)
+
     def exists(self, *args, **kwargs):
         return self.disk().exists(*args, **kwargs)
 
@@ -139,6 +142,10 @@ class Storage:
     @classmethod
     def get(cls, *args, **kwargs):
         return cls.init().get(*args, **kwargs)
+
+    @classmethod
+    def get_bytes(cls, *args, **kwargs):
+        return cls.init().get_bytes(*args, **kwargs)
 
     @classmethod
     def exists(cls, *args, **kwargs):

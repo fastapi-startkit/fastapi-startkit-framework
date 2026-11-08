@@ -6,7 +6,8 @@ from enum import Enum
 from inspect import get_annotations
 from dataclasses import dataclass, field
 from collections.abc import Callable
-from typing import Annotated, Any, get_args, get_origin, get_type_hints, Optional
+from types import NoneType, UnionType
+from typing import Annotated, Any, Union, get_args, get_origin, get_type_hints, Optional
 from typing import cast as typing_cast
 from pydantic.fields import FieldInfo
 from pydantic import BaseModel as PydanticModel
@@ -55,6 +56,9 @@ class JsonCast(BaseCast):
         return value
 
     def set(self, value):
+        if value is None:
+            return None
+
         if isinstance(value, str):
             # make sure the string is valid JSON
             json.loads(value)
@@ -194,11 +198,11 @@ class Caster:
 
     def __init__(self, model: type, casts: dict | None = None):
         self.model = model
-        self.casts = Caster.build_casts(model)
+        self.casts, self.nullable = Caster.build(model)
         self.casts.update(casts or {})
 
     @classmethod
-    def build_casts(cls, model):
+    def build(cls, model) -> tuple[dict[str, Any], set[str]]:
         model = model if isinstance(model, type) else model.__class__
         from fastapi_startkit.masoniteorm.relationships.BaseRelationship import (
             BaseRelationship,
@@ -230,6 +234,7 @@ class Caster:
                 descriptors[name] = attr
 
         casts = {}
+        nullable: set[str] = set()
         for field_name in all_field_names:
             descriptor = descriptors.get(field_name, None)
             typ = annotations.get(field_name)
@@ -250,14 +255,27 @@ class Caster:
                 if descriptor.field_info.default is not PydanticUndefined:
                     typ = type(descriptor.field_info.default)
 
+            typ, is_nullable = Caster.strip_none(typ)
+            metadata = []
             if get_origin(typ) is Annotated:
                 typ, *metadata = get_args(typ)
-                declared_cast = next((item for item in metadata if Caster.is_cast(item)), None)
-                if declared_cast is not None:
-                    casts[field_name] = declared_cast
-                    continue
+                typ, is_annotated_nullable = Caster.strip_none(typ)
+                is_nullable = is_nullable or is_annotated_nullable
+
+            if is_nullable:
+                nullable.add(field_name)
+
+            declared_cast = next((item for item in metadata if Caster.is_cast(item)), None)
+            if declared_cast is not None:
+                casts[field_name] = declared_cast
+                continue
 
             typ = typ or "str"
+            field_info = descriptor.field_info if isinstance(descriptor, FieldDescriptor) else None
+
+            if Caster.is_union(typ):
+                casts[field_name] = BaseCast(config=field_info)
+                continue
 
             # Nested Pydantic models are stored as JSON and hydrated back into
             # their declared type, e.g. ``address = Field[Address]()``.
@@ -265,19 +283,30 @@ class Caster:
                 casts[field_name] = ModelCast(model_class=typ)
                 continue
 
-            field_info = descriptor.field_info if isinstance(descriptor, FieldDescriptor) else None
-
             caster = Caster.normalize_type(typ)
             if isinstance(caster, str) and caster in Caster.cast_class_map:
                 casts[field_name] = cls.cast_class_map[caster](config=field_info)
             else:
                 casts[field_name] = caster
 
-        return casts
+        return casts, nullable
 
     @staticmethod
     def is_cast(item: Any) -> bool:
         return isinstance(item, BaseCast) or (isinstance(item, type) and issubclass(item, BaseCast))
+
+    @staticmethod
+    def is_union(typ: Any) -> bool:
+        return get_origin(typ) in (Union, UnionType)
+
+    @staticmethod
+    def strip_none(typ: Any) -> tuple[Any, bool]:
+        if not Caster.is_union(typ):
+            return typ, False
+
+        members = [arg for arg in get_args(typ) if arg is not NoneType]
+        is_nullable = len(members) < len(get_args(typ))
+        return (members[0] if len(members) == 1 else typ), is_nullable
 
     @staticmethod
     def normalize_type(t):
@@ -289,7 +318,7 @@ class Caster:
             return "float"
         if t is bool:
             return "bool"
-        if t is dict or t is list:
+        if t in (dict, list) or get_origin(t) in (dict, list):
             return "json"
         if t is pendulum.DateTime or t is datetime.datetime or t is datetime.date or t is Carbon:
             return "date"
@@ -323,6 +352,9 @@ class Caster:
 
         cast = self.casts[attribute]
 
+        if value is None and attribute in self.nullable:
+            return self._apply_default(cast) if isinstance(cast, BaseCast) else None
+
         if cast == "str":
             return str(value) if value is not None else None
 
@@ -347,6 +379,9 @@ class Caster:
             return value
 
         cast = self.casts[attribute]
+
+        if value is None and attribute in self.nullable:
+            return None
 
         if isinstance(cast, BaseCast):
             return cast.set(value)

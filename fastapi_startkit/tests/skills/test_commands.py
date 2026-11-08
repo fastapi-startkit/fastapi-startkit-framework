@@ -39,7 +39,6 @@ def app(tmp_path):
     """App with the real skill-declaring FastAPIProvider and a bound registry."""
     return Application(
         base_path=tmp_path,
-        env="testing",
         providers=[AISkillProvider, FastAPIProvider],
     )
 
@@ -47,7 +46,7 @@ def app(tmp_path):
 @pytest.fixture
 def empty_app(tmp_path):
     """App with no skill-declaring providers (registry still bound)."""
-    return Application(base_path=tmp_path, env="testing", providers=[AISkillProvider])
+    return Application(base_path=tmp_path, providers=[AISkillProvider])
 
 
 def run(app, argv: str = "") -> CommandTester:

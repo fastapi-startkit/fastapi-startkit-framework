@@ -16,7 +16,7 @@ services:
             timeout: 5s
             retries: 10
     db:
-        image: postgres:17
+        image: pgvector/pgvector:pg18
         environment:
             POSTGRES_DB: database_app_test
             POSTGRES_USER: app

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from .embeddings import Embeddings
 from .lab import Lab
 
 if TYPE_CHECKING:
@@ -45,6 +46,7 @@ class Ai:
     @classmethod
     def reset_fakes(cls) -> None:
         cls._fakes.clear()
+        Embeddings.reset_fake()
 
     def get_model_for(
         self,
@@ -70,6 +72,7 @@ class Ai:
         api_key = lab.get_api_key()
         if api_key:
             kwargs["api_key"] = api_key
+        kwargs.update(lab.get_client_options())
         if agent.max_tokens:
             kwargs["max_tokens"] = agent.max_tokens
         if agent.top_p != 1.0:

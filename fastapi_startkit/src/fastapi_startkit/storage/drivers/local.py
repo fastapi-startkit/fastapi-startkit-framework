@@ -5,7 +5,7 @@ from shutil import copyfile, move
 
 from ..filestream import FileStream
 from ..file import File
-from ..helper import get_extension
+from ..helper import decode_text, get_extension
 
 
 class LocalDriver:
@@ -55,11 +55,13 @@ class LocalDriver:
         return os.path.join(file_path, file_name)
 
     def get(self, file_path):
-        try:
-            with open(self.get_path(file_path), "r") as f:
-                content = f.read()
+        content = self.get_bytes(file_path)
+        return None if content is None else decode_text(content)
 
-            return content
+    def get_bytes(self, file_path):
+        try:
+            with open(self.get_path(file_path), "rb") as f:
+                return f.read()
         except FileNotFoundError:
             return None
 
@@ -75,7 +77,7 @@ class LocalDriver:
         return FileStream(content)
 
     def copy(self, from_file_path, to_file_path):
-        return copyfile(from_file_path, to_file_path)
+        return copyfile(self.get_path(from_file_path), self.get_path(to_file_path))
 
     def move(self, from_file_path, to_file_path):
         return move(self.get_path(from_file_path), self.get_path(to_file_path))

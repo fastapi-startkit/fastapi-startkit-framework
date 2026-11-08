@@ -123,7 +123,7 @@ def test_application_loads_environment_before_database_settings(tmp_path, monkey
     for key in ("DB_CONNECTION", "DB_DATABASE", "DB_ECHO"):
         monkeypatch.setenv(key, "")
     (tmp_path / ".env").write_text("DB_CONNECTION=sqlite\nDB_DATABASE=loaded.sqlite\nDB_ECHO=true\n")
-    application = Application(base_path=tmp_path, env="testing", providers=[(DatabaseProvider, DatabaseConfig)])
+    application = Application(base_path=tmp_path, providers=[(DatabaseProvider, DatabaseConfig)])
     config = application.make("db").config
     assert config.default == "sqlite"
     assert config.connections["sqlite"].database == "loaded.sqlite"

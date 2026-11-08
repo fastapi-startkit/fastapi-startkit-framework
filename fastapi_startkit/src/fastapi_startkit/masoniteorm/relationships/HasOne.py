@@ -8,14 +8,11 @@ class HasOne(BaseRelationship[TModel, SingleResult[TModel]]):
     def __init__(self, fn: str | None = None, foreign_key=None, local_key=None):
         self.bind_model(fn)
 
-        self.local_key = local_key or "id"
+        self.local_key = local_key
         self.foreign_key = foreign_key
 
-    def set_keys(self, owner, attribute):
-        self.local_key = self.local_key or "id"
-        self.foreign_key = self.foreign_key or f"{attribute}_id"
-
-        return self
+    def default_keys(self):
+        return {"local_key": self.owner_class.__primary_key__, "foreign_key": self.foreign_key_of(self.owner_class)}
 
     def apply_query(self, foreign, owner):
         return foreign.where(self.foreign_key, owner.__attributes__[self.local_key]).first()
@@ -41,7 +38,7 @@ class HasOne(BaseRelationship[TModel, SingleResult[TModel]]):
         return related_result
 
     def query_has(self, current_query_builder, method="where_exists"):
-        related_builder = self.get_builder()
+        related_builder = self.get_exists_builder(current_query_builder)
 
         getattr(current_query_builder, method)(
             related_builder.where_column(
@@ -58,7 +55,7 @@ class HasOne(BaseRelationship[TModel, SingleResult[TModel]]):
         model.add_relation({key: related or None})
 
     def query_where_exists(self, builder, callback, method="where_exists"):
-        query = self.get_builder()
+        query = self.get_exists_builder(builder)
         getattr(builder, method)(
             callback(
                 query.where_column(

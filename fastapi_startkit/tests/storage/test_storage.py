@@ -109,3 +109,15 @@ class TestStorage(unittest.TestCase):
 
             # Verify it uses a temporary directory
             self.assertIn("storage_fake_s3_", driver.options["root"])
+
+    def test_storage_copy_and_binary_get_through_facade(self):
+        with patch("fastapi_startkit.application.app") as mock_app_getter:
+            mock_app_getter.return_value = self.mock_app
+            self.mock_app.make.return_value = self.storage_manager
+
+            with Storage.fake("local"):
+                Storage.put("logo.png", b"\x89PNG\xff")
+                Storage.copy("logo.png", "copies/logo.png")
+
+                self.assertEqual(Storage.get("copies/logo.png"), b"\x89PNG\xff")
+                self.assertEqual(Storage.get_bytes("copies/logo.png"), b"\x89PNG\xff")

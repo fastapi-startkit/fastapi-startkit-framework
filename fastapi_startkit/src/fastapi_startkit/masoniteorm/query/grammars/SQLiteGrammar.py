@@ -37,6 +37,9 @@ class SQLiteGrammar(BaseGrammar):
 
     locks = {"share": "", "update": ""}
 
+    def union_member_string(self):
+        return "SELECT * FROM ({query})"
+
     def select_format(self):
         return "SELECT {keyword} {columns} FROM {table} {joins} {wheres} {group_by} {having} {order_by} {limit} {offset} {lock}"
 
@@ -176,9 +179,6 @@ class SQLiteGrammar(BaseGrammar):
 
     def having_string(self):
         return "HAVING {column}"
-
-    def having_equality_string(self):
-        return "HAVING {column} {equality} {value}"
 
     def where_null_string(self):
         return " {keyword} {column} IS NULL"
