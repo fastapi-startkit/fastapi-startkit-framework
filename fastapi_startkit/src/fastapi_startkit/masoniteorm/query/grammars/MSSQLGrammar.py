@@ -77,6 +77,9 @@ class MSSQLGrammar(BaseGrammar):
     def select_exists_string(self):
         return "CASE WHEN EXISTS({query}) THEN 1 ELSE 0 END"
 
+    def json_path_string(self, column, keys):
+        return f"json_value({column}, {self.json_path_literal(keys)})"
+
     def where_like_string(self):
         return "{keyword} {column} LIKE {value}"
 

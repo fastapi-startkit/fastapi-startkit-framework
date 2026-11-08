@@ -14,6 +14,8 @@ from ...expressions.expressions import (
     SubSelectExpression,
 )
 
+JSON_PATH_KEY = re.compile(r"\w+", re.ASCII)
+
 
 class BaseGrammar:
     """The keys in this dictionary is how the ORM will reference these aggregates
@@ -80,6 +82,7 @@ class BaseGrammar:
         def drop_table_string(self) -> str: ...
         def drop_table_if_exists_string(self) -> str: ...
         def rename_table_string(self) -> str: ...
+        def json_path_string(self, column: str, keys: list[str]) -> str: ...
 
     def __init__(
         self,
@@ -514,7 +517,7 @@ class BaseGrammar:
                     order_crit += ", "
                 column = order_bys.column
                 direction = order_bys.direction
-                if "." in column:
+                if "." in column or "->" in column:
                     column_string = self._table_column_string(column)
                 else:
                     column_string = self.column_string().format(column=column, separator="")
@@ -1018,6 +1021,9 @@ class BaseGrammar:
         Returns:
             self
         """
+        if column and "->" in column:
+            return self._json_path_column_string(column, alias, separator)
+
         table = None
         if column and "." in column:
             table, column = column.split(".")
@@ -1036,6 +1042,19 @@ class BaseGrammar:
             alias=alias_string,
             table=self.process_table(table or self.alias or self.table),
         )
+
+    def _json_path_column_string(self, column, alias, separator):
+        column, *keys = column.split("->")
+        unsafe_keys = [key for key in keys if not JSON_PATH_KEY.fullmatch(key)]
+        if unsafe_keys:
+            raise ValueError(f"JSON path keys may only contain letters, digits and underscores: {unsafe_keys}")
+
+        alias_string = " " + self.subquery_alias_string().format(alias=alias) if alias else ""
+        return self.json_path_string(self._table_column_string(column), keys) + alias_string + separator
+
+    @staticmethod
+    def json_path_literal(keys):
+        return "'$" + "".join(f'."{key}"' for key in keys) + "'"
 
     def _compile_value(self, value, separator=""):
         """Compiles a value using the value syntax.
