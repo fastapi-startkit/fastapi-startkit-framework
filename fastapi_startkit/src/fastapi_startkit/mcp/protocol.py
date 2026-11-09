@@ -2,6 +2,8 @@
 
 from typing import Any, TYPE_CHECKING
 
+from .exceptions import SERVER_ERROR, JsonRpcError
+
 if TYPE_CHECKING:
     from .server import Server
 
@@ -24,6 +26,8 @@ class Protocol:
 
     def __init__(self, server: "Server") -> None:
         self._server = server
+        self._exceptions = server.exception_handler()
+        self._exceptions.register()
 
     # ------------------------------------------------------------------
     # Public dispatch entry point
@@ -47,8 +51,11 @@ class Protocol:
         try:
             result = await handler(params or {})
             return {"jsonrpc": "2.0", "id": request_id, "result": result}
-        except Exception as exc:  # pragma: no cover
-            return self._error(request_id, -32000, str(exc))
+        except Exception as exc:
+            error = await self._exceptions.render(exc, {})
+            if not isinstance(error, JsonRpcError):
+                return self._error(request_id, SERVER_ERROR, str(exc))
+            return self._error(request_id, error.code, error.message, error.data)
 
     # ------------------------------------------------------------------
     # Handlers
@@ -82,7 +89,7 @@ class Protocol:
         for tool_cls in tools:
             tool = tool_cls()
             if tool.name == name:
-                response = await tool.handle(arguments)
+                response = await tool.call(arguments)
                 return {"content": response.to_content()}
         return self._error_result(-32602, f"Tool not found: {name}")
 
@@ -130,12 +137,11 @@ class Protocol:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _error(request_id: Any, code: int, message: str) -> dict[str, Any]:
-        return {
-            "jsonrpc": "2.0",
-            "id": request_id,
-            "error": {"code": code, "message": message},
-        }
+    def _error(request_id: Any, code: int, message: str, data: Any = None) -> dict[str, Any]:
+        error: dict[str, Any] = {"code": code, "message": message}
+        if data is not None:
+            error["data"] = data
+        return {"jsonrpc": "2.0", "id": request_id, "error": error}
 
     @staticmethod
     def _error_result(code: int, message: str) -> dict[str, Any]:

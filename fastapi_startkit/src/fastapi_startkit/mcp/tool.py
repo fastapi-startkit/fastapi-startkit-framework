@@ -5,6 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from fastapi_startkit.validation.form_request import FormRequest
+
 from .response import Response
 
 
@@ -19,6 +21,13 @@ class Tool(ABC):
     def output_schema(self) -> type[BaseModel] | None:
         """Return a Pydantic BaseModel subclass describing the output, or None."""
         return None
+
+    async def call(self, arguments: dict[str, Any]) -> Response:
+        schema = self.schema()
+        if isinstance(schema, type) and issubclass(schema, FormRequest):
+            validated = await schema.validate_input(arguments)
+            return await self.handle(validated.model_dump())
+        return await self.handle(arguments)
 
     @abstractmethod
     async def handle(self, arguments: dict[str, Any]) -> Response:

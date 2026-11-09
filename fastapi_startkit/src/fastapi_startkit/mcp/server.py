@@ -3,6 +3,9 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response as StarletteResponse
 
+from fastapi_startkit.exceptions.handler import ExceptionHandler
+
+from .exceptions import McpExceptionHandler
 from .protocol import Protocol
 from .request import JsonRpcRequest
 from .tool import Tool
@@ -31,6 +34,7 @@ class Server:
     name: str
     description: str | None = None
     instructions: str | None = None
+    exception_handler: type[ExceptionHandler] = McpExceptionHandler
 
     def tools(self) -> list[type[Tool]] | None:
         """Return a list of Tool classes to register, or None."""
