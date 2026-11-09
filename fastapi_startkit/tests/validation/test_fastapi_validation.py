@@ -15,7 +15,7 @@ from fastapi_startkit.container.container import Container
 from fastapi_startkit.fastapi import FastAPIProvider
 from fastapi_startkit.fastapi.testing import HttpTestCase
 from fastapi_startkit.validation import AsyncRule, Email, Field, FormRequest, Validated, Validator
-from fastapi_startkit.validation.form_request import alias_keys, is_sequence, typed_path_params
+from fastapi_startkit.validation.form_request import alias_keys, declares_upload, is_sequence, typed_path_params
 
 TAKEN = {"jane@example.com": 1}
 LOOKUPS: list[Any] = []
@@ -103,16 +103,15 @@ class Paging(FormRequest):
     page: int = PydanticField(1, validation_alias=AliasChoices("p", "page"))
 
 
-class FormRegistration(RegisterUser):
-    accepts_form_bodies = True
-
-
 class Attachment(FormRequest):
-    accepts_form_bodies = True
-
     title: Annotated[str, Field().required().min(3)]
     document: Annotated[UploadFile, Field().required().file().extensions(["srt"]).max(1)]
     tags: list[str] = []
+
+
+class Gallery(FormRequest):
+    photos: list[UploadFile] = []
+    cover: UploadFile | None = None
 
 
 class Tagged(FormRequest):
@@ -221,9 +220,12 @@ def make_application(base_path: Path) -> Application:
             "tags": data.tags,
         }
 
-    @app.fastapi.post("/form-register")
-    async def form_register(data: Validated[FormRegistration]):
-        return {"username": data.username}
+    @app.fastapi.post("/gallery")
+    async def gallery(data: Validated[Gallery]):
+        return {
+            "photos": [photo.filename for photo in data.photos],
+            "cover": data.cover.filename if data.cover else None,
+        }
 
     @app.fastapi.post("/attachments/kept")
     async def keep(data: Validated[Attachment]):
@@ -668,6 +670,21 @@ def test_is_sequence(annotation: Any, expected: bool):
     assert is_sequence(annotation) is expected
 
 
+@pytest.mark.parametrize(
+    ("annotation", "expected"),
+    [
+        (UploadFile, True),
+        (UploadFile | None, True),
+        (list[UploadFile], True),
+        (Annotated[UploadFile, Field().required()], True),
+        (str, False),
+        (list[str] | None, False),
+    ],
+)
+def test_declares_upload(annotation, expected):
+    assert declares_upload(annotation, UploadFile) is expected
+
+
 def test_alias_keys_keeps_single_key_aliases():
     alias = AliasChoices("p", AliasPath("page"), AliasPath("filter", "page"))
 
@@ -740,17 +757,26 @@ class FormBodyValidationTest(HttpTestCase):
         response.assert_status(422)
         self.assertEqual(response.json()["errors"], {"document": ["The document field is required."]})
 
-    async def test_urlencoded_fields_are_validated(self):
-        response = await self.post("/form-register", data=VALID)
+    async def test_optional_and_list_uploads_accept_multipart_without_setup(self):
+        response = await self.post(
+            "/gallery",
+            files=[("photos", ("a.png", b"a")), ("photos", ("b.png", b"b")), ("cover", ("c.png", b"c"))],
+        )
 
         response.assert_status(200)
-        self.assertEqual(response.json(), {"username": "john"})
+        self.assertEqual(response.json(), {"photos": ["a.png", "b.png"], "cover": "c.png"})
 
-    async def test_urlencoded_rule_failures_return_laravel_shape(self):
-        response = await self.post("/form-register", data={**VALID, "username": "jo"}, headers=JSON)
+    async def test_upload_request_refuses_urlencoded_bodies(self):
+        response = await self.post("/attachments", data={"title": "Episode"}, headers=JSON)
 
         response.assert_status(422)
-        self.assertEqual(response.json()["errors"], {"username": ["The username field must be at least 3 characters."]})
+        self.assertEqual(list(response.json()["errors"]), [""])
+
+    async def test_upload_request_still_accepts_json(self):
+        response = await self.post("/gallery", json={})
+
+        response.assert_status(200)
+        self.assertEqual(response.json(), {"photos": [], "cover": None})
 
     async def test_multipart_failures_redirect_browsers_back(self):
         response = await self.post(
@@ -763,13 +789,13 @@ class FormBodyValidationTest(HttpTestCase):
         response.assert_status(303)
         self.assertEqual(response.headers["location"], "http://test/episodes/1/edit")
 
-    async def test_cross_site_urlencoded_post_is_refused_without_opting_in(self):
+    async def test_cross_site_urlencoded_post_to_a_request_without_uploads_is_refused(self):
         response = await self.post("/register", data=VALID, headers={**JSON, "origin": "https://attacker.example"})
 
         response.assert_status(422)
         self.assertEqual(list(response.json()["errors"]), [""])
 
-    async def test_cross_site_multipart_post_is_refused_without_opting_in(self):
+    async def test_cross_site_multipart_post_to_a_request_without_uploads_is_refused(self):
         response = await self.post(
             "/transfer?to=attacker",
             data={"to": "attacker", "amount": "100"},
@@ -780,11 +806,11 @@ class FormBodyValidationTest(HttpTestCase):
         response.assert_status(422)
         self.assertEqual(list(response.json()["errors"]), [""])
 
-    async def test_opted_in_request_accepts_a_cross_site_form(self):
-        response = await self.post("/form-register", data=VALID, headers={"origin": "https://attacker.example"})
+    async def test_multipart_post_to_a_request_without_uploads_is_refused(self):
+        response = await self.post("/register", files={"name": (None, "John")}, headers=JSON)
 
-        response.assert_status(200)
-        self.assertEqual(response.json(), {"username": "john"})
+        response.assert_status(422)
+        self.assertEqual(list(response.json()["errors"]), [""])
 
     async def test_uploads_stay_open_in_the_endpoint_and_close_after_the_response(self):
         response = await self.post(

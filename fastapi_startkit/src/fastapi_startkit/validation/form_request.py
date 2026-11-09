@@ -40,7 +40,7 @@ PENDING_ERRORS = "fastapi_startkit.validation.errors"
 VALIDATED_KEY = "__validated_key__"
 QUERY_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "DELETE"})
 TEXT_TYPES = (str, bytes, bytearray)
-FORM_TYPES = ("multipart/form-data", "application/x-www-form-urlencoded")
+MULTIPART = "multipart/form-data"
 ABSENT: Any = object()
 
 
@@ -55,6 +55,12 @@ def is_sequence(annotation: Any) -> bool:
     if origin in (Union, UnionType):
         return any(is_sequence(argument) for argument in get_args(annotation))
     return isinstance(origin, type) and issubclass(origin, (Sequence, Set)) and not issubclass(origin, TEXT_TYPES)
+
+
+def declares_upload(annotation: Any, upload: type) -> bool:
+    if isinstance(annotation, type) and issubclass(annotation, upload):
+        return True
+    return any(declares_upload(argument, upload) for argument in get_args(annotation))
 
 
 def alias_keys(alias: str | AliasPath | AliasChoices | None) -> Iterator[str]:
@@ -93,7 +99,6 @@ class FormRequest(BaseModel):
                     yield name, metadata
 
     stop_on_first_failure: ClassVar[bool] = False
-    accepts_form_bodies: ClassVar[bool] = False
 
     @classmethod
     def authorize(cls, validator: Validator) -> bool | Awaitable[bool]:
@@ -292,9 +297,8 @@ def typed_path_params(request: Request) -> dict[str, Any] | None:
     return None if errors else {**request.path_params, **values}
 
 
-def is_form(request: Request) -> bool:
-    content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
-    return content_type in FORM_TYPES
+def is_multipart(request: Request) -> bool:
+    return request.headers.get("content-type", "").split(";", 1)[0].strip().lower() == MULTIPART
 
 
 def pending_errors(request: Request) -> MessageBag:
@@ -303,8 +307,10 @@ def pending_errors(request: Request) -> MessageBag:
 
 def validated_dependency(model: type[FormRequest]) -> Any:
     from fastapi import Body, Request
+    from starlette.datastructures import UploadFile
 
     key = underscore(model.__name__)
+    accepts_uploads = any(declares_upload(info.annotation, UploadFile) for info in model.model_fields.values())
 
     async def dependency(**parameters: Any) -> Any:
         request = parameters[REQUEST_PARAMETER]
@@ -312,7 +318,7 @@ def validated_dependency(model: type[FormRequest]) -> Any:
         if context is None:
             return None
         route = matched_route(request)
-        form = model.accepts_form_bodies and is_form(request)
+        form = accepts_uploads and is_multipart(request)
         embedded = route is not None and route.embedded and not form
         errors = pending_errors(request)
         raw = await request.body()
