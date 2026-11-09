@@ -103,7 +103,13 @@ class Paging(FormRequest):
     page: int = PydanticField(1, validation_alias=AliasChoices("p", "page"))
 
 
+class FormRegistration(RegisterUser):
+    accepts_form_bodies = True
+
+
 class Attachment(FormRequest):
+    accepts_form_bodies = True
+
     title: Annotated[str, Field().required().min(3)]
     document: Annotated[UploadFile, Field().required().file().extensions(["srt"]).max(1)]
     tags: list[str] = []
@@ -121,6 +127,7 @@ async def tenant(tenant_id: int) -> int:
 
 def make_application(base_path: Path) -> Application:
     app = Application(base_path=base_path, providers=[FastAPIProvider])
+    app.kept_uploads = []
     teams = APIRouter(prefix="/tenants/{tenant_id}/teams/{team_id}", dependencies=[Depends(tenant)])
 
     @teams.post("/members")
@@ -213,6 +220,15 @@ def make_application(base_path: Path) -> Application:
             "contents": (await data.document.read()).decode(),
             "tags": data.tags,
         }
+
+    @app.fastapi.post("/form-register")
+    async def form_register(data: Validated[FormRegistration]):
+        return {"username": data.username}
+
+    @app.fastapi.post("/attachments/kept")
+    async def keep(data: Validated[Attachment]):
+        app.kept_uploads.append(data.document)
+        return {"closed": data.document.file.closed}
 
     @app.fastapi.post("/plain")
     async def plain(data: RegisterUser):
@@ -725,13 +741,13 @@ class FormBodyValidationTest(HttpTestCase):
         self.assertEqual(response.json()["errors"], {"document": ["The document field is required."]})
 
     async def test_urlencoded_fields_are_validated(self):
-        response = await self.post("/register", data=VALID)
+        response = await self.post("/form-register", data=VALID)
 
         response.assert_status(200)
         self.assertEqual(response.json(), {"username": "john"})
 
     async def test_urlencoded_rule_failures_return_laravel_shape(self):
-        response = await self.post("/register", data={**VALID, "username": "jo"}, headers=JSON)
+        response = await self.post("/form-register", data={**VALID, "username": "jo"}, headers=JSON)
 
         response.assert_status(422)
         self.assertEqual(response.json()["errors"], {"username": ["The username field must be at least 3 characters."]})
@@ -746,6 +762,38 @@ class FormBodyValidationTest(HttpTestCase):
 
         response.assert_status(303)
         self.assertEqual(response.headers["location"], "http://test/episodes/1/edit")
+
+    async def test_cross_site_urlencoded_post_is_refused_without_opting_in(self):
+        response = await self.post("/register", data=VALID, headers={**JSON, "origin": "https://attacker.example"})
+
+        response.assert_status(422)
+        self.assertEqual(list(response.json()["errors"]), [""])
+
+    async def test_cross_site_multipart_post_is_refused_without_opting_in(self):
+        response = await self.post(
+            "/transfer?to=attacker",
+            data={"to": "attacker", "amount": "100"},
+            files={"note": ("note.txt", b"x")},
+            headers={**JSON, "origin": "https://attacker.example"},
+        )
+
+        response.assert_status(422)
+        self.assertEqual(list(response.json()["errors"]), [""])
+
+    async def test_opted_in_request_accepts_a_cross_site_form(self):
+        response = await self.post("/form-register", data=VALID, headers={"origin": "https://attacker.example"})
+
+        response.assert_status(200)
+        self.assertEqual(response.json(), {"username": "john"})
+
+    async def test_uploads_stay_open_in_the_endpoint_and_close_after_the_response(self):
+        response = await self.post(
+            "/attachments/kept", data={"title": "Episode"}, files={"document": ("episode.srt", b"x")}
+        )
+
+        response.assert_status(200)
+        self.assertEqual(response.json(), {"closed": False})
+        self.assertTrue(self.get_application().kept_uploads[-1].file.closed)
 
     async def test_openapi_documents_a_required_upload_as_binary(self):
         schema = (await self.get("/openapi.json")).json()

@@ -16,11 +16,21 @@ Declaring a required upload also broke `/openapi.json`. A required field is wrap
 - **Declare the body as `Form()` when the model has an upload field.** FastAPI then refuses JSON on the same route, so one request class could not serve both an API client and a form.
 - **Base64 file contents in a JSON field.** Works today, but every client encodes, payloads grow by a third, and the upload API is bent around a framework gap.
 - **A separate `ValidatedForm[...]`.** Two dependencies for one concept; the route author picks the content type the client sends.
-- **Read form bodies inside the existing dependency, keyed on the request's content type.** (chosen)
+- **Read form bodies for every `FormRequest`, keyed on the request's content type.** Breaks [ADR 053](053-validated-reads-query-and-body.md): a `Validated` `POST` could no longer rely on the CORS preflight a JSON body needs, so a cross-site `<form>` could submit to every existing write route.
+- **Read form bodies inside the existing dependency, keyed on the content type, only for a `FormRequest` that opts in.** (chosen)
 
 ## Decision
 
-The `Validated` dependency checks the request's `content-type`. For `multipart/form-data` and `application/x-www-form-urlencoded` it reads `await request.form()` and maps it through `query_input`, the same field-aware mapping query strings use: a field annotated as a sequence gets `getlist`, any other field gets its single value, and keys the model does not declare are dropped. An upload arrives as Starlette's `UploadFile`, which FastAPI's `UploadFile` annotation accepts. Form bodies are flat, so a route with several body parameters does not embed form errors under the model's name. JSON bodies, query methods and failure rendering are unchanged: a failure still raises `ValidationException`, which renders the 422 for JSON clients and redirects browsers back with session errors.
+A `FormRequest` opts in with a class attribute, beside `stop_on_first_failure`:
+
+```python
+class TranscriptRequest(FormRequest):
+    accepts_form_bodies = True
+```
+
+The default is `False`, so every existing request stays JSON-only and keeps ADR 053's guarantee: a form body reaches the model as raw bytes and fails with a 422 before `authorize` or the rules run. A route whose request opts in accepts a body that any cross-site `<form>` can send without a preflight, so the application must protect it with CSRF tokens or a `SameSite=Lax` or `Strict` session cookie.
+
+For an opted-in request, the `Validated` dependency checks the request's `content-type`. For `multipart/form-data` and `application/x-www-form-urlencoded` it reads `await request.form()` and maps it through `query_input`, the same field-aware mapping query strings use: a field annotated as a sequence gets `getlist`, any other field gets its single value, and keys the model does not declare are dropped. An upload arrives as Starlette's `UploadFile`, which FastAPI's `UploadFile` annotation accepts. The form is closed after the response through FastAPI's `fastapi_middleware_astack`, as FastAPI closes its own `Form()` and `File()` bodies, so an upload stays readable in the endpoint and its temporary file is released afterwards. Form bodies are flat, so a route with several body parameters does not embed form errors under the model's name. JSON bodies, query methods and failure rendering are unchanged: a failure still raises `ValidationException`, which renders the 422 for JSON clients and redirects browsers back with session errors.
 
 File rules follow Laravel:
 
@@ -33,7 +43,7 @@ The required-field JSON schema now renders the inner schema through `handler.gen
 
 ## Implementation
 
-- `validation/form_request.py`: `FORM_TYPES` and `is_form(request)`; the `Validated` dependency maps `await request.form()` through `query_input` for form bodies and turns off embedding for them. `query_input` accepts `FormData` as well as `QueryParams`.
+- `validation/form_request.py`: `accepts_form_bodies`, `FORM_TYPES` and `is_form(request)`; for an opted-in request the `Validated` dependency maps `await request.form()` through `query_input`, closes the form after the response, and turns off embedding for form bodies. `query_input` accepts `FormData` as well as `QueryParams`.
 - `validation/rules.py`: `is_upload`, `File`, `Extensions`, upload sizes in `size_of`, `file` messages on `Min`, `Max` and `Between`, and empty uploads in `is_empty`. Starlette is imported lazily, so validation still works without the `fastapi` extra.
 - `validation/field.py`: `file()` and `extensions()`, and the JSON schema fix.
 
@@ -41,6 +51,6 @@ Out of scope: content sniffing (`mimes`), image dimensions, and documenting a mu
 
 ## Validation
 
-- `tests/validation/test_fastapi_validation.py`: a multipart request with fields, a list field and a file reaches the endpoint; extension, size and required-file failures return 422 with field errors; a browser failure redirects back with 303; urlencoded success and failure; OpenAPI documents a required upload as binary.
+- `tests/validation/test_fastapi_validation.py`: a multipart request with fields, a list field and a file reaches the endpoint; extension, size and required-file failures return 422 with field errors; a browser failure redirects back with 303; urlencoded success and failure; a cross-site urlencoded or multipart `POST` to a request that has not opted in still fails with 422, and an opted-in request accepts it; uploads stay open in the endpoint and are closed after the response; OpenAPI documents a required upload as binary.
 - `tests/validation/test_rules.py`: `File`, `Extensions`, kilobyte sizes and empty uploads.
 - The full suite (Postgres and MySQL ignored), `uv run ruff check .` and `uv run pyrefly check` pass.

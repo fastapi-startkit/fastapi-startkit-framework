@@ -93,6 +93,7 @@ class FormRequest(BaseModel):
                     yield name, metadata
 
     stop_on_first_failure: ClassVar[bool] = False
+    accepts_form_bodies: ClassVar[bool] = False
 
     @classmethod
     def authorize(cls, validator: Validator) -> bool | Awaitable[bool]:
@@ -311,7 +312,7 @@ def validated_dependency(model: type[FormRequest]) -> Any:
         if context is None:
             return None
         route = matched_route(request)
-        form = is_form(request)
+        form = model.accepts_form_bodies and is_form(request)
         embedded = route is not None and route.embedded and not form
         errors = pending_errors(request)
         raw = await request.body()
@@ -321,7 +322,9 @@ def validated_dependency(model: type[FormRequest]) -> Any:
         else:
             body = parameters[key] if raw and not (embedded and parameters[key] is None) else ABSENT
             if raw and form:
-                body = model.query_input(await request.form())
+                form_data = await request.form()
+                request.scope["fastapi_middleware_astack"].push_async_callback(form_data.close)
+                body = model.query_input(form_data)
             try:
                 instance = await model.validate_input(model.request_input(request.query_params, body), context, request)
             except ValidationException as error:
