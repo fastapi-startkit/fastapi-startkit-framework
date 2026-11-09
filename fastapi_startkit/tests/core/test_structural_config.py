@@ -237,16 +237,16 @@ def test_runtime_checkable_protocols_expose_protocol_attrs(protocol: type):
     assert isinstance(getattr(protocol, "__protocol_attrs__", None), set)
 
 
-@pytest.mark.skipif(shutil.which("basedpyright") is None, reason="basedpyright is not installed")
-def test_basedpyright_accepts_plain_dataclasses(tmp_path: Path):
+@pytest.mark.skipif(shutil.which("pyrefly") is None, reason="pyrefly is not installed")
+def test_pyrefly_accepts_plain_dataclasses(tmp_path: Path):
     snippet = tmp_path / "snippet.py"
     snippet.write_text(Path(__file__).read_text())
-    (tmp_path / "pyrightconfig.json").write_text('{"typeCheckingMode": "standard"}')
+    (tmp_path / "pyrefly.toml").write_text('preset = "default"\n')
     result = subprocess.run(
-        ["basedpyright", "--pythonpath", sys.executable, str(snippet)],
+        ["pyrefly", "check", "--python-interpreter-path", sys.executable, str(snippet)],
         capture_output=True,
         text=True,
         cwd=tmp_path,
     )
 
-    assert result.returncode == 0, result.stdout
+    assert result.returncode == 0, result.stdout + result.stderr

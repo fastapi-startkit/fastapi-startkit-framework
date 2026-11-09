@@ -1,7 +1,7 @@
 # 021. Enable basedpyright deprecation and missing type argument checks
 
 - Date: 2026-10-18
-- Status: Accepted
+- Status: Superseded by [074](074-replace-basedpyright-with-pyrefly.md)
 
 ## Problem
 
