@@ -133,13 +133,13 @@ dev = [
     "faker>=40.13.0",
     "langchain>=1.0.0; python_version < '3.15'",
     "langchain-core>=1.0.0",
-    "basedpyright>=1.31.4",
     "pyright>=1.1.411",
     "pytest-benchmark>=5.2.3",
     "redis>=5.0.1",
     "fakeredis[lua]>=2.26.0",
     "playwright>=1.55.0",
     "cryptography>=44.0.0",
+    "pyrefly>=1.4.1",
 ]
 
 
@@ -153,9 +153,11 @@ fixable = ["F401"]
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 
-[tool.basedpyright]
-include = ["src/fastapi_startkit"]
-exclude = [
+[tool.pyrefly]
+preset = "strict"
+python-version = "3.12"
+project-includes = ["src/fastapi_startkit"]
+project-excludes = [
     "**/tests",
     "**/migrations",
     "**/*.backup",
@@ -163,11 +165,7 @@ exclude = [
     "**/__pycache__",
     "**/.venv",
 ]
-typeCheckingMode = "standard"
-pythonVersion = "3.12"
-deprecateTypingAliases = true
-reportDeprecated = "warning"
-reportMissingTypeArgument = "warning"
+baseline = "pyrefly-baseline.json"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

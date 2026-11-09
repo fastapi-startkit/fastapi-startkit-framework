@@ -1,7 +1,7 @@
 # 020. Modern typing syntax in the MCP package
 
 - Date: 2026-10-18
-- Status: Accepted
+- Status: Superseded by [074](074-replace-basedpyright-with-pyrefly.md)
 
 ## Problem
 
