@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Annotated, Any
 
 import pytest
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Body, Depends, UploadFile
 from pydantic import AliasChoices, AliasPath, ConfigDict
 from pydantic import Field as PydanticField
 from starlette.requests import Request as StarletteRequest
@@ -103,6 +103,12 @@ class Paging(FormRequest):
     page: int = PydanticField(1, validation_alias=AliasChoices("p", "page"))
 
 
+class Attachment(FormRequest):
+    title: Annotated[str, Field().required().min(3)]
+    document: Annotated[UploadFile, Field().required().file().extensions(["srt"]).max(1)]
+    tags: list[str] = []
+
+
 class Tagged(FormRequest):
     tags: Sequence[str] = ()
     ids: AbstractSet[int] | None = None
@@ -198,6 +204,15 @@ def make_application(base_path: Path) -> Application:
     @app.fastapi.get("/tagged")
     async def tagged(query: Validated[Tagged]):
         return {"tags": list(query.tags), "ids": sorted(query.ids or []), "q": query.q}
+
+    @app.fastapi.post("/attachments")
+    async def attach(data: Validated[Attachment]):
+        return {
+            "title": data.title,
+            "file_name": data.document.filename,
+            "contents": (await data.document.read()).decode(),
+            "tags": data.tags,
+        }
 
     @app.fastapi.post("/plain")
     async def plain(data: RegisterUser):
@@ -642,3 +657,98 @@ def test_alias_keys_keeps_single_key_aliases():
 
     assert list(alias_keys(alias)) == ["p", "page"]
     assert list(alias_keys(None)) == []
+
+
+class FormBodyValidationTest(HttpTestCase):
+    def get_application(self) -> Application:
+        if not hasattr(self, "_application"):
+            self._tmp_dir = tempfile.TemporaryDirectory()
+            self.addCleanup(self._tmp_dir.cleanup)
+            original_instance = Container._instance
+            self.addCleanup(lambda: setattr(Container, "_instance", original_instance))
+            self._application = make_application(Path(self._tmp_dir.name))
+        return self._application
+
+    async def test_multipart_fields_and_files_reach_the_endpoint(self):
+        response = await self.post(
+            "/attachments",
+            data={"title": "Episode 42", "tags": ["fr", "b1"]},
+            files={"document": ("episode.srt", b"1\n00:00:01,000 --> 00:00:02,000\nBonjour\n")},
+        )
+
+        response.assert_status(200)
+        self.assertEqual(
+            response.json(),
+            {
+                "title": "Episode 42",
+                "file_name": "episode.srt",
+                "contents": "1\n00:00:01,000 --> 00:00:02,000\nBonjour\n",
+                "tags": ["fr", "b1"],
+            },
+        )
+
+    async def test_multipart_rule_failures_return_laravel_shape(self):
+        response = await self.post(
+            "/attachments",
+            data={"title": "Ep"},
+            files={"document": ("episode.txt", b"x" * 2048)},
+            headers=JSON,
+        )
+
+        response.assert_status(422)
+        self.assertEqual(
+            response.json()["errors"],
+            {
+                "title": ["The title field must be at least 3 characters."],
+                "document": [
+                    "The document field must have one of the following extensions: srt.",
+                ],
+            },
+        )
+
+    async def test_multipart_upload_over_the_size_limit_fails(self):
+        response = await self.post(
+            "/attachments", data={"title": "Episode"}, files={"document": ("episode.srt", b"x" * 2048)}, headers=JSON
+        )
+
+        response.assert_status(422)
+        self.assertEqual(
+            response.json()["errors"], {"document": ["The document field must not be greater than 1 kilobytes."]}
+        )
+
+    async def test_multipart_without_the_file_is_required(self):
+        response = await self.post(
+            "/attachments", data={"title": "Episode"}, files={"other": ("a.srt", b"x")}, headers=JSON
+        )
+
+        response.assert_status(422)
+        self.assertEqual(response.json()["errors"], {"document": ["The document field is required."]})
+
+    async def test_urlencoded_fields_are_validated(self):
+        response = await self.post("/register", data=VALID)
+
+        response.assert_status(200)
+        self.assertEqual(response.json(), {"username": "john"})
+
+    async def test_urlencoded_rule_failures_return_laravel_shape(self):
+        response = await self.post("/register", data={**VALID, "username": "jo"}, headers=JSON)
+
+        response.assert_status(422)
+        self.assertEqual(response.json()["errors"], {"username": ["The username field must be at least 3 characters."]})
+
+    async def test_multipart_failures_redirect_browsers_back(self):
+        response = await self.post(
+            "/attachments",
+            data={"title": "Episode"},
+            files={"document": ("episode.txt", b"x")},
+            headers={"referer": "http://test/episodes/1/edit"},
+        )
+
+        response.assert_status(303)
+        self.assertEqual(response.headers["location"], "http://test/episodes/1/edit")
+
+    async def test_openapi_documents_a_required_upload_as_binary(self):
+        schema = (await self.get("/openapi.json")).json()
+
+        document = schema["components"]["schemas"]["Attachment"]["properties"]["document"]
+        self.assertEqual(document, {"type": "string", "format": "binary", "title": "Document"})

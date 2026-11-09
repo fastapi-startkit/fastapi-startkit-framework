@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from fastapi.dependencies.models import Dependant
     from fastapi.routing import APIRoute
     from pydantic.fields import FieldInfo
-    from starlette.datastructures import QueryParams
+    from starlette.datastructures import FormData, QueryParams
     from starlette.requests import Request
 
 REQUEST_PARAMETER = "__validated_request"
@@ -40,6 +40,7 @@ PENDING_ERRORS = "fastapi_startkit.validation.errors"
 VALIDATED_KEY = "__validated_key__"
 QUERY_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "DELETE"})
 TEXT_TYPES = (str, bytes, bytearray)
+FORM_TYPES = ("multipart/form-data", "application/x-www-form-urlencoded")
 ABSENT: Any = object()
 
 
@@ -153,7 +154,7 @@ class FormRequest(BaseModel):
         return fields
 
     @classmethod
-    def query_input(cls, params: QueryParams) -> dict[str, Any]:
+    def query_input(cls, params: QueryParams | FormData) -> dict[str, Any]:
         fields = cls.query_fields()
         return {
             key: params.getlist(key) if is_sequence(fields[key].annotation) else params[key]
@@ -290,6 +291,11 @@ def typed_path_params(request: Request) -> dict[str, Any] | None:
     return None if errors else {**request.path_params, **values}
 
 
+def is_form(request: Request) -> bool:
+    content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    return content_type in FORM_TYPES
+
+
 def pending_errors(request: Request) -> MessageBag:
     return request.scope.setdefault(PENDING_ERRORS, MessageBag())
 
@@ -305,7 +311,8 @@ def validated_dependency(model: type[FormRequest]) -> Any:
         if context is None:
             return None
         route = matched_route(request)
-        embedded = route is not None and route.embedded
+        form = is_form(request)
+        embedded = route is not None and route.embedded and not form
         errors = pending_errors(request)
         raw = await request.body()
         instance = None
@@ -313,6 +320,8 @@ def validated_dependency(model: type[FormRequest]) -> Any:
             errors.add(key if embedded else "", "Field required")
         else:
             body = parameters[key] if raw and not (embedded and parameters[key] is None) else ABSENT
+            if raw and form:
+                body = model.query_input(await request.form())
             try:
                 instance = await model.validate_input(model.request_input(request.query_params, body), context, request)
             except ValidationException as error:
