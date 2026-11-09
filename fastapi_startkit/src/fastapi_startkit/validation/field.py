@@ -16,6 +16,8 @@ from fastapi_startkit.validation.rules import (
     Confirmed,
     EmailRule,
     Exists,
+    Extensions,
+    File,
     Ignore,
     In,
     Integer,
@@ -98,6 +100,12 @@ class Field:
     def email(self, msg: Message | None = None) -> Self:
         return self.add(EmailRule(msg))
 
+    def file(self, msg: Message | None = None) -> Self:
+        return self.add(File(msg))
+
+    def extensions(self, extensions: Collection[str], msg: Message | None = None) -> Self:
+        return self.add(Extensions(extensions, msg))
+
     def url(self, msg: Message | None = None) -> Self:
         return self.add(Url(msg))
 
@@ -161,7 +169,7 @@ class Field:
         required = any(isinstance(rule, Required) for rule in self.rules)
         if not required or any(isinstance(rule, Nullable) for rule in self.rules):
             return None
-        return {"pydantic_js_functions": [lambda _, handler: handler(schema)]}
+        return {"pydantic_js_functions": [lambda _, handler: handler.generate_json_schema.generate_inner(schema)]}
 
     @staticmethod
     def require_form_request(value: Any) -> Any:

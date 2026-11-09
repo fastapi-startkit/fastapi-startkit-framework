@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from fastapi.dependencies.models import Dependant
     from fastapi.routing import APIRoute
     from pydantic.fields import FieldInfo
-    from starlette.datastructures import QueryParams
+    from starlette.datastructures import FormData, QueryParams
     from starlette.requests import Request
 
 REQUEST_PARAMETER = "__validated_request"
@@ -40,6 +40,7 @@ PENDING_ERRORS = "fastapi_startkit.validation.errors"
 VALIDATED_KEY = "__validated_key__"
 QUERY_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "DELETE"})
 TEXT_TYPES = (str, bytes, bytearray)
+MULTIPART = "multipart/form-data"
 ABSENT: Any = object()
 
 
@@ -54,6 +55,12 @@ def is_sequence(annotation: Any) -> bool:
     if origin in (Union, UnionType):
         return any(is_sequence(argument) for argument in get_args(annotation))
     return isinstance(origin, type) and issubclass(origin, (Sequence, Set)) and not issubclass(origin, TEXT_TYPES)
+
+
+def declares_upload(annotation: Any, upload: type) -> bool:
+    if isinstance(annotation, type) and issubclass(annotation, upload):
+        return True
+    return any(declares_upload(argument, upload) for argument in get_args(annotation))
 
 
 def alias_keys(alias: str | AliasPath | AliasChoices | None) -> Iterator[str]:
@@ -153,7 +160,7 @@ class FormRequest(BaseModel):
         return fields
 
     @classmethod
-    def query_input(cls, params: QueryParams) -> dict[str, Any]:
+    def query_input(cls, params: QueryParams | FormData) -> dict[str, Any]:
         fields = cls.query_fields()
         return {
             key: params.getlist(key) if is_sequence(fields[key].annotation) else params[key]
@@ -290,14 +297,20 @@ def typed_path_params(request: Request) -> dict[str, Any] | None:
     return None if errors else {**request.path_params, **values}
 
 
+def is_multipart(request: Request) -> bool:
+    return request.headers.get("content-type", "").split(";", 1)[0].strip().lower() == MULTIPART
+
+
 def pending_errors(request: Request) -> MessageBag:
     return request.scope.setdefault(PENDING_ERRORS, MessageBag())
 
 
 def validated_dependency(model: type[FormRequest]) -> Any:
     from fastapi import Body, Request
+    from starlette.datastructures import UploadFile
 
     key = underscore(model.__name__)
+    accepts_uploads = any(declares_upload(info.annotation, UploadFile) for info in model.model_fields.values())
 
     async def dependency(**parameters: Any) -> Any:
         request = parameters[REQUEST_PARAMETER]
@@ -305,7 +318,8 @@ def validated_dependency(model: type[FormRequest]) -> Any:
         if context is None:
             return None
         route = matched_route(request)
-        embedded = route is not None and route.embedded
+        form = accepts_uploads and is_multipart(request)
+        embedded = route is not None and route.embedded and not form
         errors = pending_errors(request)
         raw = await request.body()
         instance = None
@@ -313,6 +327,10 @@ def validated_dependency(model: type[FormRequest]) -> Any:
             errors.add(key if embedded else "", "Field required")
         else:
             body = parameters[key] if raw and not (embedded and parameters[key] is None) else ABSENT
+            if raw and form:
+                form_data = await request.form()
+                request.scope["fastapi_middleware_astack"].push_async_callback(form_data.close)
+                body = model.query_input(form_data)
             try:
                 instance = await model.validate_input(model.request_input(request.query_params, body), context, request)
             except ValidationException as error:

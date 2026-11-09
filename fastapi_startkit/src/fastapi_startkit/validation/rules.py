@@ -16,6 +16,7 @@ type Ignore = Any | Callable[[Mapping[str, Any]], Any]
 type Passes = Callable[[str, Any, Mapping[str, Any]], bool | Awaitable[bool]]
 
 PLACEHOLDER = re.compile(r":(\w+)")
+KILOBYTE = 1024
 
 
 async def resolve[T](value: T | Awaitable[T]) -> T:
@@ -24,9 +25,19 @@ async def resolve[T](value: T | Awaitable[T]) -> T:
     return value
 
 
+def is_upload(value: Any) -> bool:
+    try:
+        from starlette.datastructures import UploadFile
+    except ImportError:
+        return False
+    return isinstance(value, UploadFile)
+
+
 def is_empty(value: Any) -> bool:
     if value is None:
         return True
+    if is_upload(value):
+        return not value.filename
     if isinstance(value, str):
         return value.strip() == ""
     if isinstance(value, (list, tuple, set, dict)):
@@ -175,6 +186,8 @@ class Size(Rule):
     def default_message(self, value: Any) -> str:
         if self.numeric:
             return self.messages["numeric"]
+        if is_upload(value):
+            return self.messages["file"]
         if isinstance(value, str):
             return self.messages["string"]
         if isinstance(value, Collection):
@@ -189,6 +202,8 @@ class Size(Rule):
 
 
 def size_of(value: Any) -> int | float | Decimal | None:
+    if is_upload(value):
+        return None if value.size is None else value.size / KILOBYTE
     if isinstance(value, str):
         return len(value)
     if isinstance(value, (int, float, Decimal)) and not isinstance(value, bool):
@@ -203,6 +218,7 @@ class Min(Size):
         "string": "The :attribute field must be at least :min characters.",
         "numeric": "The :attribute field must be at least :min.",
         "array": "The :attribute field must have at least :min items.",
+        "file": "The :attribute field must be at least :min kilobytes.",
     }
 
     def __init__(self, minimum: int | float, message: Message | None = None) -> None:
@@ -214,6 +230,7 @@ class Max(Size):
         "string": "The :attribute field must not be greater than :max characters.",
         "numeric": "The :attribute field must not be greater than :max.",
         "array": "The :attribute field must not have more than :max items.",
+        "file": "The :attribute field must not be greater than :max kilobytes.",
     }
 
     def __init__(self, maximum: int | float, message: Message | None = None) -> None:
@@ -225,7 +242,32 @@ class Between(Size):
         "string": "The :attribute field must be between :min and :max characters.",
         "numeric": "The :attribute field must be between :min and :max.",
         "array": "The :attribute field must have between :min and :max items.",
+        "file": "The :attribute field must be between :min and :max kilobytes.",
     }
+
+
+class File(Rule):
+    message = "The :attribute field must be a file."
+
+    def passes(self, attribute: str, value: Any, data: Mapping[str, Any]) -> bool:
+        return is_upload(value)
+
+
+class Extensions(Rule):
+    message = "The :attribute field must have one of the following extensions: :values."
+
+    def __init__(self, extensions: Collection[str], message: Message | None = None) -> None:
+        super().__init__(message)
+        self.extensions = [extension.lower().lstrip(".") for extension in extensions]
+
+    def replacements(self) -> Mapping[str, Any]:
+        return {"values": ", ".join(self.extensions)}
+
+    def passes(self, attribute: str, value: Any, data: Mapping[str, Any]) -> bool:
+        if not is_upload(value):
+            return False
+        _, dot, extension = (value.filename or "").rpartition(".")
+        return bool(dot) and extension.lower() in self.extensions
 
 
 class EmailRule(Rule):

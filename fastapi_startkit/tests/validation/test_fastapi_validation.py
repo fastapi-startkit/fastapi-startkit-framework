@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Annotated, Any
 
 import pytest
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Body, Depends, UploadFile
 from pydantic import AliasChoices, AliasPath, ConfigDict
 from pydantic import Field as PydanticField
 from starlette.requests import Request as StarletteRequest
@@ -15,7 +15,7 @@ from fastapi_startkit.container.container import Container
 from fastapi_startkit.fastapi import FastAPIProvider
 from fastapi_startkit.fastapi.testing import HttpTestCase
 from fastapi_startkit.validation import AsyncRule, Email, Field, FormRequest, Validated, Validator
-from fastapi_startkit.validation.form_request import alias_keys, is_sequence, typed_path_params
+from fastapi_startkit.validation.form_request import alias_keys, declares_upload, is_sequence, typed_path_params
 
 TAKEN = {"jane@example.com": 1}
 LOOKUPS: list[Any] = []
@@ -103,6 +103,17 @@ class Paging(FormRequest):
     page: int = PydanticField(1, validation_alias=AliasChoices("p", "page"))
 
 
+class Attachment(FormRequest):
+    title: Annotated[str, Field().required().min(3)]
+    document: Annotated[UploadFile, Field().required().file().extensions(["srt"]).max(1)]
+    tags: list[str] = []
+
+
+class Gallery(FormRequest):
+    photos: list[UploadFile] = []
+    cover: UploadFile | None = None
+
+
 class Tagged(FormRequest):
     tags: Sequence[str] = ()
     ids: AbstractSet[int] | None = None
@@ -115,6 +126,7 @@ async def tenant(tenant_id: int) -> int:
 
 def make_application(base_path: Path) -> Application:
     app = Application(base_path=base_path, providers=[FastAPIProvider])
+    app.kept_uploads = []
     teams = APIRouter(prefix="/tenants/{tenant_id}/teams/{team_id}", dependencies=[Depends(tenant)])
 
     @teams.post("/members")
@@ -198,6 +210,27 @@ def make_application(base_path: Path) -> Application:
     @app.fastapi.get("/tagged")
     async def tagged(query: Validated[Tagged]):
         return {"tags": list(query.tags), "ids": sorted(query.ids or []), "q": query.q}
+
+    @app.fastapi.post("/attachments")
+    async def attach(data: Validated[Attachment]):
+        return {
+            "title": data.title,
+            "file_name": data.document.filename,
+            "contents": (await data.document.read()).decode(),
+            "tags": data.tags,
+        }
+
+    @app.fastapi.post("/gallery")
+    async def gallery(data: Validated[Gallery]):
+        return {
+            "photos": [photo.filename for photo in data.photos],
+            "cover": data.cover.filename if data.cover else None,
+        }
+
+    @app.fastapi.post("/attachments/kept")
+    async def keep(data: Validated[Attachment]):
+        app.kept_uploads.append(data.document)
+        return {"closed": data.document.file.closed}
 
     @app.fastapi.post("/plain")
     async def plain(data: RegisterUser):
@@ -637,8 +670,159 @@ def test_is_sequence(annotation: Any, expected: bool):
     assert is_sequence(annotation) is expected
 
 
+@pytest.mark.parametrize(
+    ("annotation", "expected"),
+    [
+        (UploadFile, True),
+        (UploadFile | None, True),
+        (list[UploadFile], True),
+        (Annotated[UploadFile, Field().required()], True),
+        (str, False),
+        (list[str] | None, False),
+    ],
+)
+def test_declares_upload(annotation, expected):
+    assert declares_upload(annotation, UploadFile) is expected
+
+
 def test_alias_keys_keeps_single_key_aliases():
     alias = AliasChoices("p", AliasPath("page"), AliasPath("filter", "page"))
 
     assert list(alias_keys(alias)) == ["p", "page"]
     assert list(alias_keys(None)) == []
+
+
+class FormBodyValidationTest(HttpTestCase):
+    def get_application(self) -> Application:
+        if not hasattr(self, "_application"):
+            self._tmp_dir = tempfile.TemporaryDirectory()
+            self.addCleanup(self._tmp_dir.cleanup)
+            original_instance = Container._instance
+            self.addCleanup(lambda: setattr(Container, "_instance", original_instance))
+            self._application = make_application(Path(self._tmp_dir.name))
+        return self._application
+
+    async def test_multipart_fields_and_files_reach_the_endpoint(self):
+        response = await self.post(
+            "/attachments",
+            data={"title": "Episode 42", "tags": ["fr", "b1"]},
+            files={"document": ("episode.srt", b"1\n00:00:01,000 --> 00:00:02,000\nBonjour\n")},
+        )
+
+        response.assert_status(200)
+        self.assertEqual(
+            response.json(),
+            {
+                "title": "Episode 42",
+                "file_name": "episode.srt",
+                "contents": "1\n00:00:01,000 --> 00:00:02,000\nBonjour\n",
+                "tags": ["fr", "b1"],
+            },
+        )
+
+    async def test_multipart_rule_failures_return_laravel_shape(self):
+        response = await self.post(
+            "/attachments",
+            data={"title": "Ep"},
+            files={"document": ("episode.txt", b"x" * 2048)},
+            headers=JSON,
+        )
+
+        response.assert_status(422)
+        self.assertEqual(
+            response.json()["errors"],
+            {
+                "title": ["The title field must be at least 3 characters."],
+                "document": [
+                    "The document field must have one of the following extensions: srt.",
+                ],
+            },
+        )
+
+    async def test_multipart_upload_over_the_size_limit_fails(self):
+        response = await self.post(
+            "/attachments", data={"title": "Episode"}, files={"document": ("episode.srt", b"x" * 2048)}, headers=JSON
+        )
+
+        response.assert_status(422)
+        self.assertEqual(
+            response.json()["errors"], {"document": ["The document field must not be greater than 1 kilobytes."]}
+        )
+
+    async def test_multipart_without_the_file_is_required(self):
+        response = await self.post(
+            "/attachments", data={"title": "Episode"}, files={"other": ("a.srt", b"x")}, headers=JSON
+        )
+
+        response.assert_status(422)
+        self.assertEqual(response.json()["errors"], {"document": ["The document field is required."]})
+
+    async def test_optional_and_list_uploads_accept_multipart_without_setup(self):
+        response = await self.post(
+            "/gallery",
+            files=[("photos", ("a.png", b"a")), ("photos", ("b.png", b"b")), ("cover", ("c.png", b"c"))],
+        )
+
+        response.assert_status(200)
+        self.assertEqual(response.json(), {"photos": ["a.png", "b.png"], "cover": "c.png"})
+
+    async def test_upload_request_refuses_urlencoded_bodies(self):
+        response = await self.post("/attachments", data={"title": "Episode"}, headers=JSON)
+
+        response.assert_status(422)
+        self.assertEqual(list(response.json()["errors"]), [""])
+
+    async def test_upload_request_still_accepts_json(self):
+        response = await self.post("/gallery", json={})
+
+        response.assert_status(200)
+        self.assertEqual(response.json(), {"photos": [], "cover": None})
+
+    async def test_multipart_failures_redirect_browsers_back(self):
+        response = await self.post(
+            "/attachments",
+            data={"title": "Episode"},
+            files={"document": ("episode.txt", b"x")},
+            headers={"referer": "http://test/episodes/1/edit"},
+        )
+
+        response.assert_status(303)
+        self.assertEqual(response.headers["location"], "http://test/episodes/1/edit")
+
+    async def test_cross_site_urlencoded_post_to_a_request_without_uploads_is_refused(self):
+        response = await self.post("/register", data=VALID, headers={**JSON, "origin": "https://attacker.example"})
+
+        response.assert_status(422)
+        self.assertEqual(list(response.json()["errors"]), [""])
+
+    async def test_cross_site_multipart_post_to_a_request_without_uploads_is_refused(self):
+        response = await self.post(
+            "/transfer?to=attacker",
+            data={"to": "attacker", "amount": "100"},
+            files={"note": ("note.txt", b"x")},
+            headers={**JSON, "origin": "https://attacker.example"},
+        )
+
+        response.assert_status(422)
+        self.assertEqual(list(response.json()["errors"]), [""])
+
+    async def test_multipart_post_to_a_request_without_uploads_is_refused(self):
+        response = await self.post("/register", files={"name": (None, "John")}, headers=JSON)
+
+        response.assert_status(422)
+        self.assertEqual(list(response.json()["errors"]), [""])
+
+    async def test_uploads_stay_open_in_the_endpoint_and_close_after_the_response(self):
+        response = await self.post(
+            "/attachments/kept", data={"title": "Episode"}, files={"document": ("episode.srt", b"x")}
+        )
+
+        response.assert_status(200)
+        self.assertEqual(response.json(), {"closed": False})
+        self.assertTrue(self.get_application().kept_uploads[-1].file.closed)
+
+    async def test_openapi_documents_a_required_upload_as_binary(self):
+        schema = (await self.get("/openapi.json")).json()
+
+        document = schema["components"]["schemas"]["Attachment"]["properties"]["document"]
+        self.assertEqual(document, {"type": "string", "format": "binary", "title": "Document"})

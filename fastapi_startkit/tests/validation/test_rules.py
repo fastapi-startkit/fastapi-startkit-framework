@@ -1,8 +1,10 @@
 import re
 from decimal import Decimal
+from io import BytesIO
 from typing import Any
 
 import pytest
+from starlette.datastructures import UploadFile
 
 from fastapi_startkit.validation import AsyncRule, BaseRule, Rule
 from fastapi_startkit.validation.rules import (
@@ -10,6 +12,8 @@ from fastapi_startkit.validation.rules import (
     Boolean,
     Confirmed,
     EmailRule,
+    Extensions,
+    File,
     In,
     Integer,
     Max,
@@ -165,3 +169,46 @@ def test_size_rules_compare_numeric_value_when_numeric():
     assert not rule.passes("amount", "25", {})
     assert not rule.passes("amount", "abc", {})
     assert rule.format_message("amount", "25", {}) == "The amount field must not be greater than 10."
+
+
+def upload(filename: str | None = "notes.srt", contents: bytes = b"hello", size: int | None = None) -> UploadFile:
+    return UploadFile(BytesIO(contents), size=len(contents) if size is None else size, filename=filename)
+
+
+def test_upload_without_a_file_name_is_empty():
+    assert is_empty(upload(filename=""))
+    assert not is_empty(upload())
+
+
+def test_file_accepts_only_uploads():
+    assert File().passes("transcript", upload(), {})
+    assert not File().passes("transcript", "notes.srt", {})
+    assert File().format_message("transcript", "x", {}) == "The transcript field must be a file."
+
+
+def test_extensions_match_the_file_name_case_insensitively():
+    rule = Extensions(["srt", ".vtt"])
+
+    assert rule.passes("transcript", upload("Episode.SRT"), {})
+    assert rule.passes("transcript", upload("episode.vtt"), {})
+    assert not rule.passes("transcript", upload("episode.txt"), {})
+    assert not rule.passes("transcript", upload("srt"), {})
+    assert not rule.passes("transcript", "episode.srt", {})
+    assert (
+        rule.format_message("transcript", upload("episode.txt"), {})
+        == "The transcript field must have one of the following extensions: srt, vtt."
+    )
+
+
+def test_size_rules_measure_uploads_in_kilobytes():
+    rule = Max(1)
+
+    assert rule.passes("transcript", upload(size=1024), {})
+    assert not rule.passes("transcript", upload(size=1025), {})
+    assert not rule.passes("transcript", UploadFile(BytesIO(b"hello"), filename="notes.srt"), {})
+    assert Min(2).passes("transcript", upload(size=2048), {})
+    assert Between(1, 2).passes("transcript", upload(size=1536), {})
+    assert (
+        rule.format_message("transcript", upload(size=1025), {})
+        == "The transcript field must not be greater than 1 kilobytes."
+    )
