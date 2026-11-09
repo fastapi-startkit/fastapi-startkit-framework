@@ -1,10 +1,13 @@
 """Abstract base class for MCP tools."""
 
 from abc import ABC, abstractmethod
+from collections.abc import Awaitable
+from inspect import isawaitable
 from typing import Any
 
 from pydantic import BaseModel
 
+from fastapi_startkit.exceptions import AuthorizationException
 from fastapi_startkit.validation.form_request import FormRequest
 
 from .response import Response
@@ -22,11 +25,19 @@ class Tool(ABC):
         """Return a Pydantic BaseModel subclass describing the output, or None."""
         return None
 
+    def authorize(self) -> bool | None | Awaitable[bool | None]:
+        return None
+
     async def call(self, arguments: dict[str, Any]) -> Response:
+        allowed = self.authorize()
+        if isawaitable(allowed):
+            allowed = await allowed
+        if allowed is False:
+            raise AuthorizationException("This action is unauthorized.")
         schema = self.schema()
         if isinstance(schema, type) and issubclass(schema, FormRequest):
             validated = await schema.validate_input(arguments)
-            return await self.handle(validated.model_dump())
+            return await self.handle(validated.model_dump(mode="json", exclude_unset=True))
         return await self.handle(arguments)
 
     @abstractmethod

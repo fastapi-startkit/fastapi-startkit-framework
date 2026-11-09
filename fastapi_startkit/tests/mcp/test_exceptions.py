@@ -1,5 +1,9 @@
 import json
+from datetime import date
+from enum import Enum
 from typing import Annotated, Any
+
+import pytest
 
 from pydantic import BaseModel
 
@@ -13,10 +17,17 @@ class Address(BaseModel):
     city: str
 
 
+class Plan(Enum):
+    FREE = "free"
+    PRO = "pro"
+
+
 class Signup(FormRequest):
     username: Annotated[str, Field().required().string().min(3)]
     age: Annotated[int, Field().required().integer().between(18, 120)]
     address: Address | None = None
+    plan: Plan = Plan.FREE
+    starts_on: date | None = None
 
     @classmethod
     def prepare_for_validation(cls, validator: Validator) -> None:
@@ -32,6 +43,45 @@ class SignupTool(Tool):
 
     async def handle(self, arguments: dict[str, Any]) -> Response:
         return Response.text(json.dumps(arguments))
+
+
+class Refused(PermissionError):
+    pass
+
+
+async def allow_async() -> bool:
+    return True
+
+
+async def deny_async() -> bool:
+    return False
+
+
+async def pass_async() -> None:
+    return None
+
+
+def refuse() -> bool:
+    raise Refused("Upgrade to call this tool.")
+
+
+DECISIONS = {
+    "true": lambda: True,
+    "false": lambda: False,
+    "none": lambda: None,
+    "raise": refuse,
+    "async_true": allow_async,
+    "async_false": deny_async,
+    "async_none": pass_async,
+}
+
+
+class GuardedSignupTool(SignupTool):
+    name = "guarded"
+    decision = "true"
+
+    def authorize(self):
+        return DECISIONS[self.decision]()
 
 
 class EpisodeMissing(LookupError):
@@ -77,7 +127,22 @@ class AppServer(Server):
     name = "app"
 
     def tools(self) -> list[type[Tool]]:
-        return [SignupTool, RaisingTool]
+        return [SignupTool, RaisingTool, GuardedSignupTool]
+
+
+class RefusedRenderer:
+    async def render(self, request: Any, exc: Refused) -> JsonRpcError:
+        return JsonRpcError(-32003, str(exc))
+
+
+class GuardedExceptionHandler(McpExceptionHandler):
+    def register(self) -> None:
+        super().register()
+        self.register_handler(Refused, RefusedRenderer())
+
+
+class GuardedServer(AppServer):
+    exception_handler = GuardedExceptionHandler
 
 
 class CustomServer(AppServer):
@@ -124,6 +189,21 @@ class TestCustomRenderers:
 
         assert result["error"]["data"] == {"title": ["The title field is required."]}
 
+    async def test_async_render_callables_are_awaited(self):
+        async def render(request: Any, exc: RuntimeError) -> JsonRpcError:
+            return JsonRpcError(-32002, f"Later: {exc}")
+
+        class AsyncCallableHandler(McpExceptionHandler):
+            def register(self) -> None:
+                self.register_render(RuntimeError, render)
+
+        class AsyncCallableServer(AppServer):
+            exception_handler = AsyncCallableHandler
+
+        result = await call("raising", {"kind": "runtime"}, AsyncCallableServer())
+
+        assert result["error"] == {"code": -32002, "message": "Later: Upstream is down"}
+
     async def test_render_callables_return_errors(self):
         result = await call("raising", {"kind": "runtime"}, CallableServer())
 
@@ -152,8 +232,51 @@ class TestFormRequestTools:
             "address": {"city": "Lyon"},
         }
 
+    async def test_handle_omits_arguments_the_caller_left_out(self):
+        result = await call("signup", {"username": "alice", "age": 30})
+
+        assert json.loads(result["result"]["content"][0]["text"]) == {"username": "alice", "age": 30}
+
+    async def test_handle_receives_json_values(self):
+        result = await call("signup", {"username": "alice", "age": 30, "plan": "pro", "starts_on": "2026-11-09"})
+
+        arguments = json.loads(result["result"]["content"][0]["text"])
+        assert arguments["plan"] == "pro"
+        assert arguments["starts_on"] == "2026-11-09"
+        assert "address" not in arguments
+
     async def test_nested_models_without_rules_are_validated(self):
         result = await call("signup", {"username": "alice", "age": 30, "address": {}})
 
         assert result["error"]["code"] == -32000
         assert result["error"]["data"] == {"address.city": ["Field required"]}
+
+
+class TestToolAuthorization:
+    @pytest.fixture(autouse=True)
+    def reset_decision(self):
+        yield
+        GuardedSignupTool.decision = "true"
+
+    @pytest.mark.parametrize("decision", ["true", "none", "async_true", "async_none"])
+    async def test_true_or_none_lets_the_call_through(self, decision: str):
+        GuardedSignupTool.decision = decision
+
+        result = await call("guarded", {"username": "alice", "age": 30})
+
+        assert json.loads(result["result"]["content"][0]["text"])["username"] == "alice"
+
+    @pytest.mark.parametrize("decision", ["false", "async_false"])
+    async def test_false_refuses_before_validation(self, decision: str):
+        GuardedSignupTool.decision = decision
+
+        result = await call("guarded", {"username": "al"})
+
+        assert result["error"] == {"code": -32000, "message": "This action is unauthorized."}
+
+    async def test_an_exception_refuses_before_validation_and_is_rendered(self):
+        GuardedSignupTool.decision = "raise"
+
+        result = await call("guarded", {"username": "al"}, GuardedServer())
+
+        assert result["error"] == {"code": -32003, "message": "Upgrade to call this tool."}

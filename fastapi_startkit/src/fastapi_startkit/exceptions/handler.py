@@ -1,4 +1,5 @@
 import sys
+from inspect import isawaitable
 import atexit
 from collections.abc import Callable
 from typing import Any
@@ -88,7 +89,8 @@ class ExceptionHandler:
 
         # Per-exception custom render callable: (request, exc) -> Response
         if exc_type in self._renders:
-            return self._renders[exc_type](request, exception)
+            rendered = self._renders[exc_type](request, exception)
+            return await rendered if isawaitable(rendered) else rendered
 
         # Per-exception handler may implement render()
         handler = self._resolve_handler(exception)

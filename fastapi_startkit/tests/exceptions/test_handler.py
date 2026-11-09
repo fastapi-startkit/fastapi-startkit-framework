@@ -116,6 +116,23 @@ class TestRenderAndHandle:
         result = await handler.render(exc, {"request": "req"})
         assert result == ("rendered", "req", exc)
 
+    async def test_render_awaits_async_callables(self):
+        async def render(request, exc):
+            return ("awaited", request, exc)
+
+        handler = ExceptionHandler()
+        handler.register_render(CustomError, render)
+        exc = CustomError("boom")
+        assert await handler.render(exc, {"request": "req"}) == ("awaited", "req", exc)
+
+    async def test_render_callables_match_the_exact_type(self):
+        class ChildError(CustomError):
+            pass
+
+        handler = ExceptionHandler()
+        handler.register_render(CustomError, lambda request, exc: "rendered")
+        assert await handler.render(ChildError("boom"), {}) is None
+
     async def test_render_uses_handler_render(self):
         handler = ExceptionHandler()
 
