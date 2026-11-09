@@ -1,7 +1,7 @@
 # 075. Validated reads form and multipart bodies
 
 - Date: 2026-11-09
-- Status: Accepted
+- Status: Accepted, amended by [076](076-harden-validated-multipart-bodies.md)
 
 ## Problem
 
@@ -29,13 +29,13 @@ class TranscriptRequest(FormRequest):
     transcript: Annotated[UploadFile, Field().required().file().extensions(["srt"])]
 ```
 
-When `Validated[...]` builds its dependency, it checks whether any field's annotation contains Starlette's `UploadFile`, including `UploadFile | None`, `list[UploadFile]` and `Annotated[UploadFile, ...]`. FastAPI's `UploadFile` is a subclass, so it counts too. There is no flag to set.
+When `Validated[...]` builds its dependency, it checks whether any field's annotation contains Starlette's `UploadFile`, including `UploadFile | None`, `list[UploadFile]` and `Annotated[UploadFile, ...]`. Mappings such as `dict[str, UploadFile]` do not count, because a flat form cannot fill them. Fields must be annotated with `fastapi.UploadFile`; pydantic cannot build a schema for `starlette.datastructures.UploadFile`. There is no flag to set.
 
 Such a request accepts `multipart/form-data` as well as JSON. It does not accept `application/x-www-form-urlencoded`, because that encoding cannot carry a file: a browser form with a file input must use multipart, so urlencoded support would add a cross-site entry point without enabling uploads.
 
-A `FormRequest` without an upload field stays JSON-only, and ADR 053's guarantee still holds for it: a form body, urlencoded or multipart, reaches the model as raw bytes and fails with a 422 before `authorize` or the rules run. A route whose request declares an upload accepts a multipart body that any cross-site `<form>` can send without a preflight. The application must protect that route with CSRF tokens or a `SameSite=Lax` or `Strict` session cookie. The exposure is limited to routes that take a file, which is unavoidable because browsers upload files only through multipart forms.
+A `FormRequest` without an upload field stays JSON-only, and ADR 053's guarantee still holds for it: a form body, urlencoded or multipart, reaches the model as raw bytes. `authorize` runs first and can answer 403; if it passes, the body fails with a 422 before `prepare_for_validation` or the rules run. A route whose request declares an upload accepts a multipart body that any cross-site `<form>` can send without a preflight. The application must protect that route with CSRF tokens or a `SameSite=Lax` or `Strict` session cookie. The exposure is limited to routes that take a file, which is unavoidable because browsers upload files only through multipart forms.
 
-For a request with an upload field, the `Validated` dependency checks the request's `content-type`. For `multipart/form-data` it reads `await request.form()` and maps it through `query_input`, the same field-aware mapping query strings use: a field annotated as a sequence gets `getlist`, any other field gets its single value, and keys the model does not declare are dropped. An upload arrives as Starlette's `UploadFile`, which FastAPI's `UploadFile` annotation accepts. The form is closed after the response through FastAPI's `fastapi_middleware_astack`, as FastAPI closes its own `Form()` and `File()` bodies, so an upload stays readable in the endpoint and its temporary file is released afterwards. Form bodies are flat, so a route with several body parameters does not embed form errors under the model's name. JSON bodies, query methods and failure rendering are unchanged: a failure still raises `ValidationException`, which renders the 422 for JSON clients and redirects browsers back with session errors.
+For a request with an upload field, the `Validated` dependency checks the request's `content-type`. For `multipart/form-data` it reads `await request.form()` and maps it through `query_input`, the same field-aware mapping query strings use: a field annotated as a sequence gets `getlist`, any other field gets its single value, and keys the model does not declare are dropped. An upload arrives as Starlette's `UploadFile`, which FastAPI's `UploadFile` annotation accepts. The form is closed after the response through FastAPI's `fastapi_middleware_astack`, as FastAPI closes its own `Form()` and `File()` bodies, so an upload stays readable in the endpoint and its temporary file is released afterwards. A multipart route must have exactly one body parameter: FastAPI cannot embed a form body under several parameter names, so a second `Validated[...]` or a `Body()` parameter makes it answer 422 `Field required` before the dependency runs (see [ADR 076](076-harden-validated-multipart-bodies.md)). An unparseable multipart body is a 400, empty file inputs are dropped, and the whole body is buffered in memory, as ADR 076 records. JSON bodies, query methods and failure rendering are unchanged: a failure still raises `ValidationException`, which renders the 422 for JSON clients and redirects browsers back with session errors.
 
 File rules follow Laravel:
 
@@ -48,7 +48,7 @@ The required-field JSON schema now renders the inner schema through `handler.gen
 
 ## Implementation
 
-- `validation/form_request.py`: `declares_upload(annotation, upload)`, `MULTIPART` and `is_multipart(request)`; for a request with an upload field the `Validated` dependency maps `await request.form()` through `query_input`, closes the form after the response, and turns off embedding for form bodies. `query_input` accepts `FormData` as well as `QueryParams`.
+- `validation/form_request.py`: `declares_upload(annotation, upload)`, `MULTIPART` and `is_multipart(request)`; for a request with an upload field the `Validated` dependency maps `await request.form()` through `query_input` and closes the form after the response. `query_input` accepts `FormData` as well as `QueryParams`.
 - `validation/rules.py`: `is_upload`, `File`, `Extensions`, upload sizes in `size_of`, `file` messages on `Min`, `Max` and `Between`, and empty uploads in `is_empty`. Starlette is imported lazily, so validation still works without the `fastapi` extra.
 - `validation/field.py`: `file()` and `extensions()`, and the JSON schema fix.
 

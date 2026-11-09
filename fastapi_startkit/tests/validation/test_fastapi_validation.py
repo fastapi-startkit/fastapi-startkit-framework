@@ -15,7 +15,13 @@ from fastapi_startkit.container.container import Container
 from fastapi_startkit.fastapi import FastAPIProvider
 from fastapi_startkit.fastapi.testing import HttpTestCase
 from fastapi_startkit.validation import AsyncRule, Email, Field, FormRequest, Validated, Validator
-from fastapi_startkit.validation.form_request import alias_keys, declares_upload, is_sequence, typed_path_params
+from fastapi_startkit.validation.form_request import (
+    alias_keys,
+    declares_upload,
+    is_multipart,
+    is_sequence,
+    typed_path_params,
+)
 
 TAKEN = {"jane@example.com": 1}
 LOOKUPS: list[Any] = []
@@ -231,6 +237,14 @@ def make_application(base_path: Path) -> Application:
     async def keep(data: Validated[Attachment]):
         app.kept_uploads.append(data.document)
         return {"closed": data.document.file.closed}
+
+    @app.fastapi.post("/attachments/noted")
+    async def attach_with_note(data: Validated[Attachment], note: Annotated[str, Body()]):
+        return {"title": data.title, "note": note}
+
+    @app.fastapi.post("/attachments/gallery")
+    async def attach_with_gallery(data: Validated[Attachment], gallery: Validated[Gallery]):
+        return {"title": data.title}
 
     @app.fastapi.post("/plain")
     async def plain(data: RegisterUser):
@@ -679,10 +693,40 @@ def test_is_sequence(annotation: Any, expected: bool):
         (Annotated[UploadFile, Field().required()], True),
         (str, False),
         (list[str] | None, False),
+        (tuple[UploadFile, ...], True),
+        (Sequence[UploadFile] | None, True),
+        (Annotated[list[UploadFile] | None, "meta"], True),
+        (dict[str, UploadFile], False),
+        (dict[str, UploadFile] | None, False),
     ],
 )
 def test_declares_upload(annotation, expected):
     assert declares_upload(annotation, UploadFile) is expected
+
+
+@pytest.mark.parametrize(
+    ("content_type", "expected"),
+    [
+        ("multipart/form-data; boundary=B", True),
+        ("multipart/form-data;boundary=B", True),
+        ("multipart/form-data", True),
+        ("Multipart/Form-Data; boundary=B", False),
+        ("application/x-www-form-urlencoded", False),
+        ("", False),
+    ],
+)
+def test_is_multipart_matches_starlette_form_parsing(content_type, expected):
+    request = StarletteRequest({"type": "http", "headers": [(b"content-type", content_type.encode())]})
+
+    assert is_multipart(request) is expected
+
+
+def multipart_body(boundary: str, *parts: tuple[str, str | None, bytes]) -> bytes:
+    chunks = []
+    for name, file_name, value in parts:
+        disposition = f'form-data; name="{name}"' + ("" if file_name is None else f'; filename="{file_name}"')
+        chunks.append(f"--{boundary}\r\ncontent-disposition: {disposition}\r\n\r\n".encode() + value + b"\r\n")
+    return b"".join(chunks) + f"--{boundary}--\r\n".encode()
 
 
 def test_alias_keys_keeps_single_key_aliases():
@@ -826,3 +870,64 @@ class FormBodyValidationTest(HttpTestCase):
 
         document = schema["components"]["schemas"]["Attachment"]["properties"]["document"]
         self.assertEqual(document, {"type": "string", "format": "binary", "title": "Document"})
+
+    async def test_malformed_multipart_body_is_a_bad_request(self):
+        response = await self.post(
+            "/attachments",
+            content=b"garbage",
+            headers={**JSON, "content-type": "multipart/form-data; boundary=B"},
+        )
+
+        response.assert_status(400)
+        self.assertEqual(response.json(), {"detail": "There was an error parsing the body"})
+
+    async def test_multipart_body_without_a_boundary_is_a_bad_request(self):
+        response = await self.post(
+            "/attachments", content=b"garbage", headers={**JSON, "content-type": "multipart/form-data"}
+        )
+
+        response.assert_status(400)
+        self.assertEqual(response.json(), {"detail": "Missing boundary in multipart."})
+
+    async def test_media_type_is_matched_case_sensitively_like_starlette(self):
+        body = multipart_body("B", ("title", None, b"Episode"), ("document", "episode.srt", b"x"))
+
+        response = await self.post(
+            "/attachments", content=body, headers={**JSON, "content-type": "Multipart/Form-Data; boundary=B"}
+        )
+
+        response.assert_status(422)
+        self.assertEqual(list(response.json()["errors"]), [""])
+
+    async def test_empty_browser_file_inputs_are_dropped(self):
+        body = multipart_body("B", ("photos", "", b""), ("cover", "", b""))
+
+        response = await self.post(
+            "/gallery", content=body, headers={"content-type": "multipart/form-data; boundary=B"}
+        )
+
+        response.assert_status(200)
+        self.assertEqual(response.json(), {"photos": [], "cover": None})
+
+    async def test_empty_browser_file_input_fails_a_required_upload(self):
+        body = multipart_body("B", ("title", None, b"Episode"), ("document", "", b""))
+
+        response = await self.post(
+            "/attachments", content=body, headers={**JSON, "content-type": "multipart/form-data; boundary=B"}
+        )
+
+        response.assert_status(422)
+        self.assertEqual(response.json()["errors"], {"document": ["The document field is required."]})
+
+    async def test_multipart_is_refused_on_routes_with_several_body_parameters(self):
+        cases = {"/attachments/noted": ["attachment", "note"], "/attachments/gallery": ["attachment", "gallery"]}
+        for url, keys in cases.items():
+            response = await self.post(
+                url,
+                data={"title": "Episode", "note": "hi"},
+                files={"document": ("episode.srt", b"x")},
+                headers=JSON,
+            )
+
+            response.assert_status(422)
+            self.assertEqual(response.json()["errors"], dict.fromkeys(keys, ["Field required"]))
