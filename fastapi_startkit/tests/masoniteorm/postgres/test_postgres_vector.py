@@ -7,7 +7,6 @@ from .test_case import TestCase
 class VecDocument(Model):
     __table__ = "vec_documents"
     __timestamps__ = None
-    __fillable__ = ["title", "embedding"]
     id: int
     title: str
     embedding: list[float]
