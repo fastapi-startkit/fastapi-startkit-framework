@@ -1,4 +1,4 @@
-# 076. Drop redundant `__fillable__` from typed test models
+# 077. Drop redundant `__fillable__` from typed test models
 
 - Date: 2026-11-09
 - Status: Accepted
