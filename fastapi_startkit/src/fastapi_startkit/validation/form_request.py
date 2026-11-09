@@ -40,7 +40,7 @@ PENDING_ERRORS = "fastapi_startkit.validation.errors"
 VALIDATED_KEY = "__validated_key__"
 QUERY_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "DELETE"})
 TEXT_TYPES = (str, bytes, bytearray)
-MULTIPART = "multipart/form-data"
+MULTIPART = b"multipart/form-data"
 ABSENT: Any = object()
 
 
@@ -60,7 +60,12 @@ def is_sequence(annotation: Any) -> bool:
 def declares_upload(annotation: Any, upload: type) -> bool:
     if isinstance(annotation, type) and issubclass(annotation, upload):
         return True
-    return any(declares_upload(argument, upload) for argument in get_args(annotation))
+    origin = get_origin(annotation)
+    if origin is Annotated:
+        return declares_upload(get_args(annotation)[0], upload)
+    if origin in (Union, UnionType) or is_sequence(annotation):
+        return any(declares_upload(argument, upload) for argument in get_args(annotation))
+    return False
 
 
 def alias_keys(alias: str | AliasPath | AliasChoices | None) -> Iterator[str]:
@@ -298,11 +303,33 @@ def typed_path_params(request: Request) -> dict[str, Any] | None:
 
 
 def is_multipart(request: Request) -> bool:
-    return request.headers.get("content-type", "").split(";", 1)[0].strip().lower() == MULTIPART
+    from python_multipart.multipart import parse_options_header
+
+    return parse_options_header(request.headers.get("content-type"))[0] == MULTIPART
 
 
 def pending_errors(request: Request) -> MessageBag:
     return request.scope.setdefault(PENDING_ERRORS, MessageBag())
+
+
+async def form_input(request: Request) -> FormData:
+    from starlette.datastructures import FormData, UploadFile
+    from starlette.exceptions import HTTPException
+
+    try:
+        form = await request.form()
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise HTTPException(status_code=400, detail="There was an error parsing the body") from error
+    request.scope["fastapi_middleware_astack"].push_async_callback(form.close)
+    return FormData(
+        [
+            (key, value)
+            for key, value in form.multi_items()
+            if not (isinstance(value, UploadFile) and not value.filename)
+        ]
+    )
 
 
 def validated_dependency(model: type[FormRequest]) -> Any:
@@ -319,7 +346,7 @@ def validated_dependency(model: type[FormRequest]) -> Any:
             return None
         route = matched_route(request)
         form = accepts_uploads and is_multipart(request)
-        embedded = route is not None and route.embedded and not form
+        embedded = route is not None and route.embedded
         errors = pending_errors(request)
         raw = await request.body()
         instance = None
@@ -328,9 +355,7 @@ def validated_dependency(model: type[FormRequest]) -> Any:
         else:
             body = parameters[key] if raw and not (embedded and parameters[key] is None) else ABSENT
             if raw and form:
-                form_data = await request.form()
-                request.scope["fastapi_middleware_astack"].push_async_callback(form_data.close)
-                body = model.query_input(form_data)
+                body = model.query_input(await form_input(request))
             try:
                 instance = await model.validate_input(model.request_input(request.query_params, body), context, request)
             except ValidationException as error:
