@@ -1,9 +1,17 @@
 """Tests for the Tool base class."""
 
+import json
+from datetime import date
+from enum import Enum
+from typing import Annotated, Any
+
+import pytest
 from pydantic import BaseModel
 
+from fastapi_startkit.exceptions import AuthorizationException
 from fastapi_startkit.mcp.tool import Tool
 from fastapi_startkit.mcp.response import Response
+from fastapi_startkit.validation import Field, FormRequest, Validator
 
 
 # ---------------------------------------------------------------------------
@@ -97,3 +105,105 @@ class TestToolHandle:
 
     async def test_no_schema_returns_none(self):
         assert EchoTool().schema() is None
+
+
+class Status(Enum):
+    DRAFT = "draft"
+    LIVE = "live"
+
+
+class Episode(FormRequest):
+    title: Annotated[str, Field().required().string().min(3)]
+    status: Status = Status.DRAFT
+    airs_on: date | None = None
+    playlist_id: Annotated[int | None, Field().nullable().integer()] = None
+
+    @classmethod
+    def prepare_for_validation(cls, validator: Validator) -> None:
+        validator.merge({"title": str(validator.data.get("title", "")).strip()})
+
+    def playlist_attributes(self) -> dict[str, Any]:
+        return {"playlist_id": self.playlist_id} if "playlist_id" in self.model_fields_set else {}
+
+
+class DumpedEpisodeTool(Tool):
+    name = "episodes_dumped"
+    description = "Echo the dumped episode."
+
+    def schema(self) -> type[Episode]:
+        return Episode
+
+    async def handle(self, arguments: dict[str, Any]) -> Response:
+        return Response.text(json.dumps(arguments))
+
+
+class EpisodeTool(DumpedEpisodeTool):
+    name = "episodes_typed"
+    received: Episode | None = None
+    allowed = True
+
+    def authorize(self) -> bool:
+        return self.allowed
+
+    async def handle_request(self, request: FormRequest) -> Response:
+        assert isinstance(request, Episode)
+        EpisodeTool.received = request
+        return Response.text(request.title)
+
+
+@pytest.fixture
+def episode_tool():
+    EpisodeTool.received = None
+    EpisodeTool.allowed = True
+    yield EpisodeTool()
+    EpisodeTool.received = None
+    EpisodeTool.allowed = True
+
+
+class TestToolHandleRequest:
+    async def test_handle_request_receives_the_validated_instance(self, episode_tool):
+        result = await episode_tool.call({"title": "  Bonjour  "})
+
+        assert type(EpisodeTool.received) is Episode
+        assert EpisodeTool.received.title == "Bonjour"
+        assert result.to_content()[0]["text"] == "Bonjour"
+
+    async def test_enums_and_dates_keep_their_types(self, episode_tool):
+        await episode_tool.call({"title": "Bonjour", "status": "live", "airs_on": "2026-11-10"})
+
+        assert EpisodeTool.received.status is Status.LIVE
+        assert EpisodeTool.received.airs_on == date(2026, 11, 10)
+
+    async def test_omitted_fields_are_not_in_the_fields_set(self, episode_tool):
+        await episode_tool.call({"title": "Bonjour"})
+
+        assert EpisodeTool.received.model_fields_set == {"title"}
+        assert EpisodeTool.received.playlist_attributes() == {}
+
+    async def test_a_field_sent_as_null_is_in_the_fields_set(self, episode_tool):
+        await episode_tool.call({"title": "Bonjour", "playlist_id": None})
+
+        assert "playlist_id" in EpisodeTool.received.model_fields_set
+        assert EpisodeTool.received.playlist_attributes() == {"playlist_id": None}
+
+    async def test_a_refused_tool_never_validates_or_handles(self, episode_tool):
+        EpisodeTool.allowed = False
+
+        with pytest.raises(AuthorizationException):
+            await episode_tool.call({})
+
+        assert EpisodeTool.received is None
+
+    async def test_tools_without_handle_request_still_receive_the_dump(self):
+        result = await DumpedEpisodeTool().call({"title": "Bonjour", "status": "live", "airs_on": "2026-11-10"})
+
+        assert json.loads(result.to_content()[0]["text"]) == {
+            "title": "Bonjour",
+            "status": "live",
+            "airs_on": "2026-11-10",
+        }
+
+    async def test_tools_without_a_form_request_receive_the_arguments(self):
+        result = await EchoTool().call({"message": "hello", "extra": 1})
+
+        assert result.to_content()[0]["text"] == "hello"

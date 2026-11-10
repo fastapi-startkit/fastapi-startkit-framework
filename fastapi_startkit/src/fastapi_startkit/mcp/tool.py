@@ -36,9 +36,11 @@ class Tool(ABC):
             raise AuthorizationException("This action is unauthorized.")
         schema = self.schema()
         if isinstance(schema, type) and issubclass(schema, FormRequest):
-            validated = await schema.validate_input(arguments)
-            return await self.handle(validated.model_dump(mode="json", exclude_unset=True))
+            return await self.handle_request(await schema.validate_input(arguments))
         return await self.handle(arguments)
+
+    async def handle_request(self, request: FormRequest) -> Response:
+        return await self.handle(request.model_dump(mode="json", exclude_unset=True))
 
     @abstractmethod
     async def handle(self, arguments: dict[str, Any]) -> Response:
