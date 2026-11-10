@@ -7,7 +7,6 @@ from .test_case import TestCase
 class PjArticle(Model):
     __table__ = "pj_articles"
     __timestamps__ = None
-    __fillable__ = ["title", "settings"]
     __casts__ = {"settings": "json"}
     id: int
     title: str
