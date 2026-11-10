@@ -22,7 +22,7 @@ The 9 takes were recorded in VS Code (GitHub Dark Default, Dank Mono) against `/
 | hot-reload | 11.5 | edited heading reloads in the browser |
 | install | 24.1 | installer finishes |
 
-The silent preview (all takes joined, 4:13) was approved by the user.
+A silent preview (all takes joined, 4:13) was sent to the user. Approval is pending.
 
 ## Narration
 
