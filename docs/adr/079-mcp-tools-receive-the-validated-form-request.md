@@ -33,7 +33,9 @@ To get them back, a tool has to rebuild the request with `Schema.model_validate(
 `tests/mcp/test_tool.py` covers, through `Tool.call`:
 
 - an overriding tool receiving the schema's instance;
-- enums and dates keeping their types;
+- enums arriving as members (`status is Status.PUBLISHED`), an omitted enum as its default member, and dates as `date`;
+- a value outside the enum refused with `-32000` and `data` naming the field, before `handle_request` runs;
+- `validate_input` itself returning the typed values, since `FormRequest.parse` builds the instance with `model_validate`;
 - `model_fields_set` excluding omitted fields and including a field sent as `null`;
 - prepared values reaching the instance;
 - a tool that does not override `handle_request` still receiving the `exclude_unset` JSON dict;

@@ -8,7 +8,9 @@ from typing import Annotated, Any
 import pytest
 from pydantic import BaseModel
 
-from fastapi_startkit.exceptions import AuthorizationException
+from fastapi_startkit.exceptions import AuthorizationException, ValidationException
+from fastapi_startkit.mcp.protocol import Protocol
+from fastapi_startkit.mcp.server import Server
 from fastapi_startkit.mcp.tool import Tool
 from fastapi_startkit.mcp.response import Response
 from fastapi_startkit.validation import Field, FormRequest, Validator
@@ -109,7 +111,7 @@ class TestToolHandle:
 
 class Status(Enum):
     DRAFT = "draft"
-    LIVE = "live"
+    PUBLISHED = "published"
 
 
 class Episode(FormRequest):
@@ -162,29 +164,63 @@ def episode_tool():
 
 class TestToolHandleRequest:
     async def test_handle_request_receives_the_validated_instance(self, episode_tool):
-        result = await episode_tool.call({"title": "  Bonjour  "})
+        result = await episode_tool.call({"title": "  Hello  ", "status": "published"})
 
-        assert type(EpisodeTool.received) is Episode
-        assert EpisodeTool.received.title == "Bonjour"
-        assert result.to_content()[0]["text"] == "Bonjour"
+        request = EpisodeTool.received
+        assert isinstance(request, Episode)
+        assert isinstance(request.status, Status)
+        assert request.status is Status.PUBLISHED
+        assert request.title == "Hello"
+        assert "playlist_id" not in request.model_fields_set
+        assert result.to_content()[0]["text"] == "Hello"
 
-    async def test_enums_and_dates_keep_their_types(self, episode_tool):
-        await episode_tool.call({"title": "Bonjour", "status": "live", "airs_on": "2026-11-10"})
+    async def test_an_omitted_enum_is_its_default_member(self, episode_tool):
+        await episode_tool.call({"title": "Hello"})
 
-        assert EpisodeTool.received.status is Status.LIVE
-        assert EpisodeTool.received.airs_on == date(2026, 11, 10)
-
-    async def test_omitted_fields_are_not_in_the_fields_set(self, episode_tool):
-        await episode_tool.call({"title": "Bonjour"})
-
+        assert EpisodeTool.received.status is Status.DRAFT
         assert EpisodeTool.received.model_fields_set == {"title"}
         assert EpisodeTool.received.playlist_attributes() == {}
 
+    async def test_a_value_outside_the_enum_is_a_validation_error(self, episode_tool):
+        with pytest.raises(ValidationException) as raised:
+            await episode_tool.call({"title": "Hello", "status": "bogus"})
+
+        assert list(raised.value.bag.messages) == ["status"]
+        assert EpisodeTool.received is None
+
+    async def test_a_value_outside_the_enum_answers_with_the_status_errors(self, episode_tool):
+        class EpisodeServer(Server):
+            name = "episodes"
+
+            def tools(self) -> list[type[Tool]]:
+                return [EpisodeTool]
+
+        arguments = {"title": "Hello", "status": "bogus"}
+        result = await Protocol(EpisodeServer()).dispatch(
+            "tools/call", {"name": "episodes_typed", "arguments": arguments}, 1
+        )
+
+        assert result["error"]["code"] == -32000
+        assert list(result["error"]["data"]) == ["status"]
+        assert EpisodeTool.received is None
+
+    async def test_a_date_is_a_date(self, episode_tool):
+        await episode_tool.call({"title": "Hello", "airs_on": "2026-11-10"})
+
+        assert EpisodeTool.received.airs_on == date(2026, 11, 10)
+        assert type(EpisodeTool.received.airs_on) is date
+
     async def test_a_field_sent_as_null_is_in_the_fields_set(self, episode_tool):
-        await episode_tool.call({"title": "Bonjour", "playlist_id": None})
+        await episode_tool.call({"title": "Hello", "playlist_id": None})
 
         assert "playlist_id" in EpisodeTool.received.model_fields_set
         assert EpisodeTool.received.playlist_attributes() == {"playlist_id": None}
+
+    async def test_validate_input_returns_typed_values(self):
+        request = await Episode.validate_input({"title": "Hello", "status": "published", "airs_on": "2026-11-10"})
+
+        assert request.status is Status.PUBLISHED
+        assert type(request.airs_on) is date
 
     async def test_a_refused_tool_never_validates_or_handles(self, episode_tool):
         EpisodeTool.allowed = False
@@ -195,11 +231,11 @@ class TestToolHandleRequest:
         assert EpisodeTool.received is None
 
     async def test_tools_without_handle_request_still_receive_the_dump(self):
-        result = await DumpedEpisodeTool().call({"title": "Bonjour", "status": "live", "airs_on": "2026-11-10"})
+        result = await DumpedEpisodeTool().call({"title": "Bonjour", "status": "published", "airs_on": "2026-11-10"})
 
         assert json.loads(result.to_content()[0]["text"]) == {
             "title": "Bonjour",
-            "status": "live",
+            "status": "published",
             "airs_on": "2026-11-10",
         }
 
