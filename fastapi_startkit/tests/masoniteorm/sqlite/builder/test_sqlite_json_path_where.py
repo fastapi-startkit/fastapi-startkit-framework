@@ -9,7 +9,6 @@ from ..test_case import TestCase
 class Article(Model):
     __table__ = "json_articles"
     __timestamps__ = None
-    __fillable__ = ["title", "settings"]
     id: int
     title: str
     settings: str
