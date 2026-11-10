@@ -1,3 +1,7 @@
+from unittest.mock import patch
+
+import pendulum
+
 from fastapi_startkit.masoniteorm.collection import Collection
 from ...fixtures.model import Product, Store
 from ..test_case import TestCase
@@ -98,6 +102,16 @@ class TestBelongsToManyRelationship(TestCase):
         await store.load("products")
         products = store.products
         self.assertEqual(len(products), 0)
+
+    async def test_detach_related_removes_pivot_record_attached_earlier(self):
+        attached_at = pendulum.datetime(2026, 1, 1, 12, 0, 0)
+        with patch("pendulum.now", return_value=attached_at):
+            await Store.products.attach_related(self.store, self.product1)
+        with patch("pendulum.now", return_value=attached_at.add(seconds=5)):
+            await Store.products.detach_related(self.store, self.product1)
+        store = await Store.where("id", self.store.id).first()
+        await store.load("products")
+        self.assertTrue(store.products.is_empty())
 
     async def test_default_pivot_table_name(self):
         self.assertEqual(Store.products._table, "product_store")

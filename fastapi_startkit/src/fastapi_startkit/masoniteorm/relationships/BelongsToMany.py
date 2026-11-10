@@ -460,12 +460,4 @@ class BelongsToMany(BaseRelationship[TModel, ManyResult[TModel]]):
             self.foreign_key: getattr(related_record, self.other_owner_key),
         }
 
-        if self.with_timestamps:
-            data.update(
-                {
-                    "created_at": pendulum.now().to_datetime_string(),
-                    "updated_at": pendulum.now().to_datetime_string(),
-                }
-            )
-
         return current_model.get_builder().connection.query().table(self._table).where(data).delete()

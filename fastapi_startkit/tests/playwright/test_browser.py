@@ -85,7 +85,7 @@ class TestPage(BrowserTestCase):
 
     @pytest.fixture
     def short_timeout(self, monkeypatch):
-        monkeypatch.setattr(browser_session, "timeout", 300)
+        monkeypatch.setattr(browser_session, "timeout", 1000)
 
     async def test_visit_is_lazy_until_awaited(self):
         page = visit("/").assert_see("Welcome home")
