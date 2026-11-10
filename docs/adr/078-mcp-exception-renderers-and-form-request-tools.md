@@ -1,4 +1,4 @@
-# 076. MCP exception renderers and FormRequest tools
+# 078. MCP exception renderers and FormRequest tools
 
 - Date: 2026-11-09
 - Status: Accepted
