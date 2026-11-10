@@ -45,8 +45,6 @@ Links:
 ⭐ GitHub: https://github.com/fastapi-startkit/fastapi-startkit-framework
 📦 PyPI: https://pypi.org/project/fastapi-startkit/
 
-Music: original track, synthesized for this video.
-
 #FastAPI #Python #WebDevelopment
 
 ## Tags

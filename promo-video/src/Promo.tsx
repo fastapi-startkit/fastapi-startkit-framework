@@ -1,5 +1,5 @@
 import React from "react";
-import { AbsoluteFill, Html5Audio, interpolate, Series, staticFile } from "remotion";
+import { AbsoluteFill, Series } from "remotion";
 import { Ambient, Footer } from "./components";
 import { AddDatabase, Agents, CallToAction, CreateProject, FastapiContext, Frontend, Hook, IndieHacker, Installer, Logging, ModelAndMigration, PainEnvironment, PainLogging, Providers, QueryIt, Routing, RunInBrowser, Testing } from "./scenes";
 import { FPS } from "./theme";
@@ -29,13 +29,9 @@ const INTRO_FRAMES = SCENES.slice(0, SCENES.findIndex(([Scene]) => Scene === Hoo
 
 export const TOTAL_FRAMES = SCENES.reduce((sum, [, seconds]) => sum + seconds * FPS, 0);
 
-const musicVolume = (frame: number) =>
-  interpolate(frame, [0, FPS, TOTAL_FRAMES - 2 * FPS, TOTAL_FRAMES], [0, 0.55, 0.55, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
-
 export const Promo: React.FC = () => (
   <AbsoluteFill>
     <Ambient />
-    <Html5Audio src={staticFile("music.mp3")} volume={musicVolume} />
     <Series>
       {SCENES.map(([Scene, seconds], index) => (
         <Series.Sequence

@@ -1,6 +1,6 @@
 # FastAPI Startkit — Promo Script
 
-Format: 1920x1080, 30fps, 155s, no voiceover. On-screen text, code cards, terminals and a browser window, over an original synthesized soundtrack (120 BPM, a half-time intro that builds to a drop at 0:36) (`music/generate.py` → `public/music.mp3`).
+Format: 1920x1080, 30fps, 155s, no voiceover. On-screen text, code cards, terminals and a browser window. There is no soundtrack.
 
 | # | Scene | Time | On screen |
 |---|---|---|---|
