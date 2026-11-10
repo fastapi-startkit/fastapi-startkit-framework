@@ -1,0 +1,1 @@
+FastAPI Startkit wires all of that together, so you can focus on your product. This is a whole app, right here. Let's see how it fits.

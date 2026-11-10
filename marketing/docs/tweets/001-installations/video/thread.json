@@ -1,0 +1,74 @@
+{
+  "url": "https://x.com/fastapistartkit/status/2118793752303305208",
+  "author": {
+    "name": "fastapi-startkit",
+    "handle": "fastapistartkit"
+  },
+  "tweets": [
+    {
+      "id": "2118793752303305208",
+      "url": "https://x.com/fastapistartkit/status/2118793752303305208",
+      "created_at": "Fri Nov 06 19:52:50 +0000 2026",
+      "text": "FastAPI is a joy for building APIs quickly. But it deliberately leaves the rest of your app up to you: environments, config, logging, database, CLI commands, storage, queues, cache, Redis…\n\nfastapi-startkit wires it all together, so you can focus on your product 🚀",
+      "images": [
+        "https://pbs.twimg.com/media/HWd3oswasAAaY52.jpg?name=orig"
+      ]
+    },
+    {
+      "id": "2118794083984707666",
+      "url": "https://x.com/fastapistartkit/status/2118794083984707666",
+      "created_at": "Fri Nov 06 19:54:09 +0000 2026",
+      "text": "Everything is a provider. Bind services in `register()`, then resolve them in `boot()` once every provider has registered 📦",
+      "images": [
+        "https://pbs.twimg.com/media/HWd3-mlbMAAAM0p.jpg?name=orig"
+      ]
+    },
+    {
+      "id": "2118794383940346301",
+      "url": "https://x.com/fastapistartkit/status/2118794383940346301",
+      "created_at": "Fri Nov 06 19:55:21 +0000 2026",
+      "text": "Logging uses channels instead of handlers. Stack daily files, the terminal and Slack, then pick one per environment with `LOG_CHANNEL`",
+      "images": [
+        "https://pbs.twimg.com/media/HWd4QQ3a4AAAAWY.jpg?name=orig"
+      ]
+    },
+    {
+      "id": "2118794695744893180",
+      "url": "https://x.com/fastapistartkit/status/2118794695744893180",
+      "created_at": "Fri Nov 06 19:56:35 +0000 2026",
+      "text": "Need a database? `artisan db:install` adds the provider for you. Models and migrations come from the CLI, and every query is async ⚡",
+      "images": [
+        "https://pbs.twimg.com/media/HWd4gXzaoAA8UtQ.jpg?name=orig",
+        "https://pbs.twimg.com/media/HWd4izpa4AA9i9z.jpg?name=orig"
+      ]
+    },
+    {
+      "id": "2118795010800030145",
+      "url": "https://x.com/fastapistartkit/status/2118795010800030145",
+      "created_at": "Fri Nov 06 19:57:50 +0000 2026",
+      "text": "Under pytest, `.env.testing` loads on its own. `RefreshDatabase` migrates once and rolls back after every test",
+      "images": [
+        "https://pbs.twimg.com/media/HWd41LfaMAAjpB3.jpg?name=orig"
+      ]
+    },
+    {
+      "id": "2118796493612315015",
+      "url": "https://x.com/fastapistartkit/status/2118796493612315015",
+      "created_at": "Fri Nov 06 20:03:44 +0000 2026",
+      "text": "Need a frontend? Add the Vite and Inertia providers and write React pages with hot reload. It's still FastAPI underneath",
+      "images": [
+        "https://pbs.twimg.com/media/HWd552DaQAAONDp.jpg?name=orig",
+        "https://pbs.twimg.com/media/HWd6HiPaMAAGnCu.jpg?name=orig"
+      ]
+    },
+    {
+      "id": "2118796845799620862",
+      "url": "https://x.com/fastapistartkit/status/2118796845799620862",
+      "created_at": "Fri Nov 06 20:05:08 +0000 2026",
+      "text": "Build your next FastAPI app faster 💫\n\nuvx fastapi-startkit@latest init\n\n📖 https://fastapi-startkit.github.io\n⭐ https://github.com/fastapi-startkit/fastapi-startkit-framework",
+      "images": [
+        "https://pbs.twimg.com/media/HWd6dJQb0AAC31_.jpg?name=orig"
+      ]
+    }
+  ]
+}

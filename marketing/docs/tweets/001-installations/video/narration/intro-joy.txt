@@ -1,0 +1,1 @@
+FastAPI is a joy for building APIs quickly. But it deliberately leaves the rest of your app up to you. Environments, config, logging, a database, CLI commands, storage, queues, cache, Redis.

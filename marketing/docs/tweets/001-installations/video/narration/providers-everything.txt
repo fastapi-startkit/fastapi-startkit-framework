@@ -1,0 +1,1 @@
+In Startkit, everything is a provider. Logging is one. FastAPI itself is one.

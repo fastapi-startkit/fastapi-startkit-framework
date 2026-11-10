@@ -1,0 +1,86 @@
+{
+  "thread": "https://x.com/fastapistartkit/status/2118793752303305208",
+  "title": "Build your next FastAPI app faster",
+  "takes": [
+    {
+      "name": "intro",
+      "tweet": 1,
+      "beats": [
+        {"cue": "joy", "offset": 0.2, "say": "FastAPI is a joy for building APIs quickly. But it deliberately leaves the rest of your app up to you. Environments, config, logging, a database, CLI commands, storage, queues, cache, Redis."},
+        {"cue": "wired", "offset": 0.2, "say": "FastAPI Startkit wires all of that together, so you can focus on your product. This is a whole app, right here. Let's see how it fits."}
+      ]
+    },
+    {
+      "name": "providers",
+      "tweet": 2,
+      "beats": [
+        {"cue": "everything", "offset": 0.2, "say": "In Startkit, everything is a provider. Logging is one. FastAPI itself is one."},
+        {"cue": "register", "offset": 0.3, "say": "Let's write our own. Register is where you bind services into the container. Here, a billing service."},
+        {"cue": "boot", "offset": 0.2, "say": "Boot runs once every provider has registered, so it's safe to resolve things here. We make billing, and connect it."},
+        {"cue": "add", "offset": 0.2, "say": "Add it to the list, and the app picks it up."}
+      ]
+    },
+    {
+      "name": "logging",
+      "tweet": 3,
+      "beats": [
+        {"cue": "channels", "offset": 0.2, "say": "Logging uses channels instead of handlers."},
+        {"cue": "stack", "offset": 0.3, "say": "A stack fans out to other channels. Daily files, the terminal, and Slack, but only for errors."},
+        {"cue": "env", "offset": 0.3, "say": "Then you pick one per environment with LOG CHANNEL. On my laptop, the terminal is plenty."}
+      ]
+    },
+    {
+      "name": "database",
+      "tweet": 4,
+      "beats": [
+        {"cue": "install", "offset": 0.2, "say": "Need a database? artisan D B install publishes the config, and adds the provider for you."},
+        {"cue": "extra", "offset": 0.2, "say": "Add the database extra, and that's the setup done."},
+        {"cue": "model", "offset": 0.3, "say": "Models and migrations come straight from the CLI."},
+        {"cue": "migrate", "offset": 0.3, "say": "Give posts a title and a body, then migrate."}
+      ]
+    },
+    {
+      "name": "posts",
+      "tweet": 4,
+      "beats": [
+        {"cue": "fields", "offset": 0.2, "say": "The model describes the same fields."},
+        {"cue": "async", "offset": 0.3, "say": "And every query is async. Await Post all, serialize it, and that's an endpoint."},
+        {"cue": "route", "offset": 0.2, "say": "One route, and we're live."}
+      ]
+    },
+    {
+      "name": "testing",
+      "tweet": 5,
+      "beats": [
+        {"cue": "env", "offset": 0.2, "say": "Under pytest, dot env dot testing loads on its own, so tests get their own database."},
+        {"cue": "refresh", "offset": 0.3, "say": "RefreshDatabase migrates once, and rolls back after every test. Create a post, get the list, and check it's OK."},
+        {"cue": "green", "offset": 0.3, "say": "Run pytest, and we're green."}
+      ]
+    },
+    {
+      "name": "frontend",
+      "tweet": 6,
+      "beats": [
+        {"cue": "providers", "offset": 0.2, "say": "Need a frontend? Add the Vite and Inertia providers."},
+        {"cue": "vite", "offset": 0.3, "say": "Vite runs with the FastAPI plugin, React, and Tailwind. Your pages are plain React components."}
+      ]
+    },
+    {
+      "name": "hot-reload",
+      "tweet": 6,
+      "beats": [
+        {"cue": "page", "offset": 0.3, "say": "Here's the page, served by FastAPI and rendered with Inertia."},
+        {"cue": "reload", "offset": 0.3, "say": "Change it, save, and it hot reloads. No refresh. And it's still FastAPI underneath."}
+      ]
+    },
+    {
+      "name": "install",
+      "tweet": 7,
+      "beats": [
+        {"cue": "faster", "offset": 0.2, "say": "So, build your next FastAPI app faster. One command. uvx fastapi-startkit at latest, init."},
+        {"cue": "choose", "offset": 0.3, "say": "Pick your services, a database, and a frontend."},
+        {"cue": "ready", "offset": 0.3, "say": "And it's ready. The docs and the GitHub repo are linked below. Happy building."}
+      ]
+    }
+  ]
+}

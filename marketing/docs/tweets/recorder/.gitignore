@@ -1,0 +1,5 @@
+.vscode-server/
+raw/
+cache/
+__pycache__/
+.zsh_history
