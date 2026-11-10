@@ -5,6 +5,7 @@ that can be mounted directly on any FastAPI application.
 """
 
 from .argument import Argument
+from .exceptions import JsonRpcError, McpExceptionHandler, ValidationExceptionRenderer
 from .prompt import Prompt
 from .request import JsonRpcRequest
 from .resource import Resource
@@ -15,11 +16,14 @@ from .providers.mcp_provider import McpProvider
 
 __all__ = [
     "Argument",
+    "JsonRpcError",
     "JsonRpcRequest",
+    "McpExceptionHandler",
     "McpProvider",
     "Prompt",
     "Resource",
     "Response",
     "Server",
     "Tool",
+    "ValidationExceptionRenderer",
 ]
