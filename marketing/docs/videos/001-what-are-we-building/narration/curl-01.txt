@@ -1,0 +1,1 @@
+Before we write a single line, let's poke at the finished app. Think of it as a very small Jira.

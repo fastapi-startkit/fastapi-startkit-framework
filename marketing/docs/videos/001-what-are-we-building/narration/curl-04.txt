@@ -1,0 +1,1 @@
+It starts in to do. And transitions tells us where it's allowed to go next. Right now, that's in progress, and nowhere else.

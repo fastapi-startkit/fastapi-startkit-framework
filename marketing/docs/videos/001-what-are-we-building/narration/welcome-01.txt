@@ -1,0 +1,1 @@
+Hi, and welcome. In this series, we're going to build an issue tracker with fastapi-startkit, all the way from an empty folder to the board you see here.

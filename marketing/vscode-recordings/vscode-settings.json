@@ -1,0 +1,80 @@
+{
+    "python.languageServer": "None",
+    "workbench.colorTheme": "Github",
+    "workbench.startupEditor": "none",
+    "workbench.activityBar.location": "hidden",
+    "workbench.statusBar.visible": false,
+    "workbench.layoutControl.enabled": false,
+    "workbench.editor.showTabs": "single",
+    "workbench.tips.enabled": false,
+    "workbench.secondarySideBar.defaultVisibility": "hidden",
+    "window.commandCenter": false,
+    "window.menuBarVisibility": "hidden",
+    "breadcrumbs.enabled": false,
+    "chat.disableAIFeatures": true,
+    "extensions.ignoreRecommendations": true,
+    "editor.fontSize": 22,
+    "editor.lineHeight": 38,
+    "editor.fontFamily": "'Dank Mono', Menlo, monospace",
+    "editor.minimap.enabled": false,
+    "editor.stickyScroll.enabled": false,
+    "editor.scrollBeyondLastLine": false,
+    "editor.glyphMargin": false,
+    "editor.folding": false,
+    "editor.renderLineHighlight": "none",
+    "editor.guides.indentation": false,
+    "editor.cursorBlinking": "smooth",
+    "editor.cursorSmoothCaretAnimation": "on",
+    "editor.autoIndent": "none",
+    "editor.autoClosingBrackets": "never",
+    "editor.autoClosingQuotes": "never",
+    "editor.quickSuggestions": {
+        "other": false,
+        "comments": false,
+        "strings": false
+    },
+    "editor.suggestOnTriggerCharacters": false,
+    "editor.wordBasedSuggestions": "off",
+    "editor.parameterHints.enabled": false,
+    "editor.hover.enabled": "off",
+    "editor.inlineSuggest.enabled": false,
+    "editor.scrollbar.vertical": "hidden",
+    "editor.scrollbar.horizontal": "hidden",
+    "editor.overviewRulerBorder": false,
+    "editor.hideCursorInOverviewRuler": true,
+    "files.autoSave": "onFocusChange",
+    "files.exclude": {
+        "**/__pycache__": true,
+        ".venv": true,
+        ".pytest_cache": true,
+        ".vscode": true,
+        "node_modules": true
+    },
+    "terminal.integrated.fontSize": 20,
+    "terminal.integrated.lineHeight": 1.2,
+    "terminal.integrated.fontFamily": "'Dank Mono', Menlo, monospace",
+    "terminal.integrated.shellIntegration.enabled": false,
+    "git.enabled": false,
+    "git.openRepositoryInParentFolders": "never",
+    "editor.occurrencesHighlight": "off",
+    "editor.selectionHighlight": false,
+    "editor.matchBrackets": "never",
+    "terminal.integrated.stickyScroll.enabled": false,
+    "terminal.integrated.tabs.enabled": false,
+    "editor.fontWeight": 500,
+    "editor.tokenColorCustomizations": {
+        "textMateRules": [
+            {
+                "scope": [
+                    "keyword",
+                    "keyword.control",
+                    "storage.type",
+                    "storage.modifier"
+                ],
+                "settings": {
+                    "fontStyle": "italic"
+                }
+            }
+        ]
+    }
+}

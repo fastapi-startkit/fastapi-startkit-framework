@@ -1,0 +1,1 @@
+And we'll build it test first. A failing test tells us what to write next. We make it pass, and then we take another small step.

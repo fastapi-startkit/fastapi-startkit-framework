@@ -1,0 +1,109 @@
+{
+  "number": 1,
+  "slug": "what-are-we-building",
+  "lesson": "https://fastapi-startkit.github.io/tutorials/issue-tracker/01-what-are-we-building",
+  "title": "What are we building?",
+  "tag": "lesson-13",
+  "takes": [
+    {
+      "name": "welcome",
+      "beats": [
+        {
+          "cue": "welcome",
+          "offset": 0.4,
+          "say": "Hi, and welcome. In this series, we're going to build an issue tracker with fastapi-startkit, all the way from an empty folder to the board you see here."
+        },
+        {
+          "cue": "domain",
+          "offset": 0.2,
+          "say": "Projects have issues. Every issue gets a key, like APP-1, and moves through a fixed set of statuses, from to do, all the way to done."
+        },
+        {
+          "cue": "stack",
+          "offset": 0.2,
+          "say": "The back end is FastAPI, with an async ORM. The front end is Vue, rendered with Inertia, so our controllers hand pages straight to Vue. No separate API client to write."
+        },
+        {
+          "cue": "tdd",
+          "offset": 0.2,
+          "say": "And we'll build it test first. A failing test tells us what to write next. We make it pass, and then we take another small step."
+        }
+      ]
+    },
+    {
+      "name": "curl",
+      "beats": [
+        {
+          "cue": "intro",
+          "offset": 0.3,
+          "say": "Before we write a single line, let's poke at the finished app. Think of it as a very small Jira."
+        },
+        {
+          "cue": "type-curl",
+          "offset": 0.3,
+          "say": "Let's create an issue. We post a title and a reporter to project one."
+        },
+        {
+          "cue": "response",
+          "offset": 0.4,
+          "say": "And back comes WEB-2. The key comes from the project, and the number counts up inside that project."
+        },
+        {
+          "cue": "transitions",
+          "offset": 0.2,
+          "say": "It starts in to do. And transitions tells us where it's allowed to go next. Right now, that's in progress, and nowhere else."
+        }
+      ]
+    },
+    {
+      "name": "board",
+      "beats": [
+        {
+          "cue": "board",
+          "offset": 0.4,
+          "say": "There's a board as well. One column per status, written in Vue and rendered with Inertia."
+        },
+        {
+          "cue": "type-title",
+          "offset": 0.2,
+          "say": "Let's add an issue from here."
+        },
+        {
+          "cue": "added",
+          "offset": 0.3,
+          "say": "No page reload, and it lands in to do, like every new issue."
+        },
+        {
+          "cue": "moved",
+          "offset": 0.3,
+          "say": "Now we move it along. Notice the buttons only offer the next steps. You can't jump from to do straight to done. The app simply refuses."
+        }
+      ]
+    },
+    {
+      "name": "ideas",
+      "beats": [
+        {
+          "cue": "providers",
+          "offset": 0.4,
+          "say": "Underneath, there are only three ideas. One. The application is built from providers. Logging, the database, FastAPI, Vite and Inertia, each one switched on right here."
+        },
+        {
+          "cue": "config",
+          "offset": 0.3,
+          "say": "Two. Configuration is a dataclass. Each field reads the environment with env, so you change behaviour in the dot env file, not in code."
+        },
+        {
+          "cue": "artisan",
+          "offset": 0.3,
+          "say": "And three. Artisan does the chores. It starts the server, makes files, and runs migrations and seeders."
+        },
+        {
+          "cue": "outro",
+          "offset": 0.3,
+          "say": "Users, projects, issues and comments. Four tables, and that's the whole app. In the next lesson, we'll create it from scratch."
+        }
+      ]
+    }
+  ]
+}

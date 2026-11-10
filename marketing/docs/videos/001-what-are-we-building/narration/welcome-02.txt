@@ -1,0 +1,1 @@
+Projects have issues. Every issue gets a key, like APP-1, and moves through a fixed set of statuses, from to do, all the way to done.

@@ -1,0 +1,1 @@
+The back end is FastAPI, with an async ORM. The front end is Vue, rendered with Inertia, so our controllers hand pages straight to Vue. No separate API client to write.

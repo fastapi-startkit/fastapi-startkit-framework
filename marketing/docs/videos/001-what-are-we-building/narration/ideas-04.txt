@@ -1,0 +1,1 @@
+Users, projects, issues and comments. Four tables, and that's the whole app. In the next lesson, we'll create it from scratch.

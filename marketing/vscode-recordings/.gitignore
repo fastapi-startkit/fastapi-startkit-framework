@@ -1,0 +1,6 @@
+.vscode-server/
+raw/
+tags/
+__pycache__/
+shell/.zsh_history
+.DS_Store

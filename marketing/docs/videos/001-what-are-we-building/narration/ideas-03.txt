@@ -1,0 +1,1 @@
+And three. Artisan does the chores. It starts the server, makes files, and runs migrations and seeders.

@@ -1,0 +1,1 @@
+Underneath, there are only three ideas. One. The application is built from providers. Logging, the database, FastAPI, Vite and Inertia, each one switched on right here.

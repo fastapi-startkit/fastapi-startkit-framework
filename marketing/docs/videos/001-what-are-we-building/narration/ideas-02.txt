@@ -1,0 +1,1 @@
+Two. Configuration is a dataclass. Each field reads the environment with env, so you change behaviour in the dot env file, not in code.

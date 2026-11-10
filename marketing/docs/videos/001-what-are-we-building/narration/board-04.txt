@@ -1,0 +1,1 @@
+Now we move it along. Notice the buttons only offer the next steps. You can't jump from to do straight to done. The app simply refuses.
