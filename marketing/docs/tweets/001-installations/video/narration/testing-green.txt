@@ -1,0 +1,1 @@
+Run pytest, and we're green.

@@ -3,27 +3,59 @@ from studio import APP_PORT, APP_URL, Studio, Take
 
 VITE_PORT = 5199
 
-BILLING = """class BillingService:
-    def connect(self) -> None:
-        self.connected = True
-"""
+PLAIN_FASTAPI = """import json
+import logging
+import os
+import sys
 
-PROVIDER_IMPORTS = """from fastapi_startkit.support import Provider
+from dotenv import load_dotenv
+from fastapi import FastAPI
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.services.billing import BillingService
+load_dotenv()
+load_dotenv(f".env.{os.getenv('APP_ENV', 'local')}", override=True)
+
+DEBUG = os.getenv("APP_DEBUG", "false").lower() in ("1", "true", "yes")
+DB_URL = os.getenv("DATABASE_URL") or f"sqlite+aiosqlite:///{os.getenv('DB_DATABASE', 'app.db')}"
+REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+CACHE_TTL = int(os.getenv("CACHE_TTL", "60"))
+SLACK_TOKEN = os.getenv("SLACK_TOKEN")
+
+logging.basicConfig(
+    level=logging.DEBUG if DEBUG else logging.INFO,
+    handlers=[logging.StreamHandler(sys.stdout), logging.FileHandler("app.log")],
+)
+log = logging.getLogger("app")
+
+engine = create_async_engine(DB_URL, echo=DEBUG)
+Session = async_sessionmaker(engine, expire_on_commit=False)
+
+app = FastAPI(debug=DEBUG)
 
 
-"""
+@app.on_event("startup")
+async def startup():
+    global redis
+    import redis.asyncio as aioredis
+    redis = aioredis.from_url(REDIS_URL)
+    log.info("connected to %s", DB_URL)
 
-PROVIDER_REGISTER = """class AppProvider(Provider):
-    def register(self) -> None:
-        self.app.bind("billing", BillingService)
 
-"""
+@app.on_event("shutdown")
+async def shutdown():
+    await redis.close()
+    await engine.dispose()
 
-PROVIDER_BOOT = """    def boot(self) -> None:
-        billing = self.app.make("billing")
-        billing.connect()
+
+@app.get("/posts")
+async def posts():
+    if cached := await redis.get("posts"):
+        return json.loads(cached)
+    async with Session() as session:
+        rows = (await session.execute(text("select * from posts"))).mappings().all()
+    await redis.set("posts", json.dumps([dict(row) for row in rows]), ex=CACHE_TTL)
+    return rows
 """
 
 LOGGING_HEAD = """from dataclasses import dataclass, field
@@ -146,16 +178,6 @@ def sync() -> None:
     workspace.sh("uv sync -q")
 
 
-def stage_providers() -> None:
-    workspace.write({
-        "app/services/__init__.py": "",
-        "app/services/billing.py": BILLING,
-        "providers/app_provider.py": PROVIDER_IMPORTS + PROVIDER_REGISTER + PROVIDER_BOOT,
-    })
-    insert_after_imports("bootstrap/application.py", "from providers.app_provider import AppProvider")
-    insert_after("bootstrap/application.py", "(FastapiProvider, FastAPIConfig),", "        AppProvider,")
-
-
 def stage_logging() -> None:
     workspace.write({"config/logging.py": LOGGING_HEAD + LOGGING_CHANNELS + LOGGING_TAIL})
     append_env("LOG_CHANNEL=terminal")
@@ -190,7 +212,7 @@ def stage_frontend() -> None:
     workspace.sh('uv add -q "fastapi-startkit[inertia,vite]"')
     workspace.sh("npm install --silent")
     insert_after_imports("bootstrap/application.py", FRONTEND_IMPORTS)
-    insert_after("bootstrap/application.py", "AppProvider,", FRONTEND_PROVIDERS.strip("\n"))
+    insert_after("bootstrap/application.py", "(FastapiProvider, FastAPIConfig),", FRONTEND_PROVIDERS.strip("\n"))
 
 
 def build(*stages) -> None:
@@ -200,13 +222,20 @@ def build(*stages) -> None:
 
 
 def prepare_intro() -> None:
-    build(stage_providers, stage_logging, stage_database, stage_posts, stage_testing, stage_frontend)
+    build()
+    workspace.write({"main.py": PLAIN_FASTAPI})
 
 
 def intro(studio: Studio) -> None:
-    studio.line(number("bootstrap/application.py", "providers=["), end=False)
-    studio.say("joy")
+    studio.cue("joy")
+    studio.wait(3.5)
+    for text in ("logging.basicConfig(", "@app.on_event(\"startup\")", "@app.get(\"/posts\")"):
+        studio.line(number("main.py", text) + 8, end=False)
+        studio.wait(3.0)
+    studio.hold("joy")
     studio.cue("wired")
+    studio.open("bootstrap/application.py")
+    studio.line(number("bootstrap/application.py", "providers=["), end=False)
     studio.terminal()
     studio.run("uv run python artisan", settle=1.5)
     studio.shot("artisan")
@@ -215,41 +244,24 @@ def intro(studio: Studio) -> None:
 
 def prepare_providers() -> None:
     build()
-    workspace.write({
-        "app/services/__init__.py": "",
-        "app/services/billing.py": BILLING,
-        "providers/app_provider.py": PROVIDER_IMPORTS,
-    })
 
 
 def providers(studio: Studio) -> None:
     path = "bootstrap/application.py"
+    studio.line(number(path, "providers=["), end=False)
+    studio.cue("everything")
+    studio.wait(2.5)
+    studio.line(number(path, "(LogProvider, LoggingConfig),"))
+    studio.wait(1.5)
     studio.line(number(path, "(FastapiProvider, FastAPIConfig),"))
-    studio.say("everything")
-    studio.open("providers/app_provider.py")
-    studio.bottom()
-    studio.cue("register")
-    studio.type(PROVIDER_REGISTER, 0.045)
-    studio.hold("register")
-    studio.cue("boot")
-    studio.type(PROVIDER_BOOT, 0.045)
-    studio.save()
-    studio.shot("provider")
-    studio.hold("boot")
-    studio.open(path)
-    studio.cue("add")
-    studio.line(last_import(path))
-    studio.type("\nfrom providers.app_provider import AppProvider", 0.04)
-    studio.save()
-    studio.line(number(path, "(FastapiProvider, FastAPIConfig),"))
-    studio.type("\n        AppProvider,", 0.05)
-    studio.save()
+    studio.hold("everything")
     studio.shot("bootstrap")
-    studio.hold("add", 0.8)
+    studio.cue("lifecycle")
+    studio.hold("lifecycle", 0.8)
 
 
 def prepare_logging() -> None:
-    build(stage_providers)
+    build()
     workspace.write({"config/logging.py": LOGGING_HEAD + LOGGING_TAIL})
 
 
@@ -271,7 +283,7 @@ def logging(studio: Studio) -> None:
 
 
 def prepare_database() -> None:
-    build(stage_providers, stage_logging)
+    build(stage_logging)
 
 
 def database(studio: Studio) -> None:
@@ -306,7 +318,7 @@ def database(studio: Studio) -> None:
 
 
 def prepare_posts() -> None:
-    build(stage_providers, stage_logging, stage_database)
+    build(stage_logging, stage_database)
     workspace.write({"app/http/controllers/posts_controller.py": CONTROLLER_IMPORTS})
     workspace.sh("""sqlite3 database.sqlite "insert into posts (title, body, created_at, updated_at) values ('Hello', 'From the startkit demo', datetime('now'), datetime('now'))" """)
 
@@ -346,7 +358,7 @@ def posts(studio: Studio) -> None:
 
 
 def prepare_testing() -> None:
-    build(stage_providers, stage_logging, stage_database, stage_posts)
+    build(stage_logging, stage_database, stage_posts)
     workspace.write({".env.testing": "", "tests/test_posts.py": TEST_IMPORTS})
 
 
@@ -371,7 +383,7 @@ def testing(studio: Studio) -> None:
 
 
 def prepare_frontend() -> None:
-    build(stage_providers, stage_logging, stage_database, stage_posts, stage_testing)
+    build(stage_logging, stage_database, stage_posts, stage_testing)
     workspace.adopt("react", FRONTEND_FILES)
     workspace.sh('uv add -q "fastapi-startkit[inertia,vite]"')
     workspace.sh("npm install --silent")
@@ -383,7 +395,7 @@ def frontend(studio: Studio) -> None:
     studio.cue("providers")
     studio.type(FRONTEND_IMPORTS, 0.035)
     studio.save()
-    studio.line(number(path, "AppProvider,"))
+    studio.line(number(path, "(FastapiProvider, FastAPIConfig),"))
     studio.type(FRONTEND_PROVIDERS, 0.045)
     studio.save()
     studio.shot("bootstrap")
@@ -397,7 +409,7 @@ def frontend(studio: Studio) -> None:
 
 
 def prepare_hot_reload() -> None:
-    build(stage_providers, stage_logging, stage_database, stage_posts, stage_testing, stage_frontend)
+    build(stage_logging, stage_database, stage_posts, stage_testing, stage_frontend)
     workspace.write({".env": workspace.read(".env").replace("127.0.0.1:8000", f"127.0.0.1:{APP_PORT}")})
 
 
@@ -437,7 +449,7 @@ def install(studio: Studio) -> None:
 
 
 TAKES = [
-    Take(name="intro", perform=intro, prepare=prepare_intro, open="bootstrap/application.py", panel=0.55),
+    Take(name="intro", perform=intro, prepare=prepare_intro, open="main.py", panel=0.62),
     Take(name="providers", perform=providers, prepare=prepare_providers, open="bootstrap/application.py", panel=0.86, verify=["uv run pytest -q"]),
     Take(name="logging", perform=logging, prepare=prepare_logging, open="config/logging.py", panel=0.86, verify=["uv run pytest -q"]),
     Take(name="database", perform=database, prepare=prepare_database, open="bootstrap/application.py", panel=0.4, verify=["uv run pytest -q"]),

@@ -48,6 +48,12 @@
         ".venv": true,
         ".pytest_cache": true
     },
+    "search.useIgnoreFiles": false,
+    "search.exclude": {
+        "**/node_modules": true,
+        ".venv": true,
+        "public/build": true
+    },
     "terminal.integrated.fontSize": 20,
     "terminal.integrated.lineHeight": 1.2,
     "terminal.integrated.fontFamily": "'Dank Mono', Menlo, monospace",

@@ -1,0 +1,1 @@
+Change it, save, and it hot reloads. No refresh. And it's still FastAPI underneath.

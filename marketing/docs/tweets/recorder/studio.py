@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from playwright.sync_api import Page, sync_playwright
+from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 import workspace
 
@@ -97,17 +98,27 @@ class Studio:
         time.sleep(0.6)
         self.press("Enter", 0.6)
 
+    def quick_open(self, query: str, settle: float) -> None:
+        widget = self.page.locator(".quick-input-widget")
+        for _ in range(5):
+            self.press("ControlOrMeta+p", 0.3)
+            widget.wait_for(state="visible", timeout=5000)
+            self.page.keyboard.type(query)
+            time.sleep(0.6)
+            self.press("Enter", 0.1)
+            try:
+                widget.wait_for(state="hidden", timeout=2000)
+                time.sleep(settle)
+                return
+            except PlaywrightTimeout:
+                self.press("Escape", 1.0)
+        raise RuntimeError(f"quick open found nothing for {query!r}")
+
     def open(self, name: str) -> None:
-        self.press("ControlOrMeta+p", 0.3)
-        self.page.keyboard.type(name)
-        time.sleep(0.6)
-        self.press("Enter", 0.7)
+        self.quick_open(name, 0.6)
 
     def line(self, number: int, end: bool = True) -> None:
-        self.press("ControlOrMeta+p", 0.3)
-        self.page.keyboard.type(f":{number}")
-        time.sleep(0.4)
-        self.press("Enter", 0.3)
+        self.quick_open(f":{number}", 0.2)
         if end:
             self.press("End", 0.3)
 

@@ -1,0 +1,1 @@
+Vite runs with the FastAPI plugin, React, and Tailwind. Your pages are plain React components.

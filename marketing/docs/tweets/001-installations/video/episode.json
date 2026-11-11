@@ -7,17 +7,15 @@
       "tweet": 1,
       "beats": [
         {"cue": "joy", "offset": 0.2, "say": "FastAPI is a joy for building APIs quickly. But it deliberately leaves the rest of your app up to you. Environments, config, logging, a database, CLI commands, storage, queues, cache, Redis."},
-        {"cue": "wired", "offset": 0.2, "say": "FastAPI Startkit wires all of that together, so you can focus on your product. This is a whole app, right here. Let's see how it fits."}
+        {"cue": "wired", "offset": 0.2, "say": "FastAPI Startkit wires all of that together, so you can focus on your product. Here's a fresh app. Let's see how it fits."}
       ]
     },
     {
       "name": "providers",
       "tweet": 2,
       "beats": [
-        {"cue": "everything", "offset": 0.2, "say": "In Startkit, everything is a provider. Logging is one. FastAPI itself is one."},
-        {"cue": "register", "offset": 0.3, "say": "Let's write our own. Register is where you bind services into the container. Here, a billing service."},
-        {"cue": "boot", "offset": 0.2, "say": "Boot runs once every provider has registered, so it's safe to resolve things here. We make billing, and connect it."},
-        {"cue": "add", "offset": 0.2, "say": "Add it to the list, and the app picks it up."}
+        {"cue": "everything", "offset": 0.2, "say": "FastAPI Startkit is all about providers. Logging is a provider. FastAPI itself is a provider. Every feature plugs in the same way."},
+        {"cue": "lifecycle", "offset": 0.2, "say": "Each one registers its services, then boots once everything is ready. Add a provider to this list, and your app picks it up."}
       ]
     },
     {

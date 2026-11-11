@@ -1,0 +1,1 @@
+Logging uses channels instead of handlers.

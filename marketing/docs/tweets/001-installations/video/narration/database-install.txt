@@ -1,0 +1,1 @@
+Need a database? artisan D B install publishes the config, and adds the provider for you.

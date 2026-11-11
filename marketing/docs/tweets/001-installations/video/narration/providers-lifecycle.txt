@@ -1,0 +1,1 @@
+Each one registers its services, then boots once everything is ready. Add a provider to this list, and your app picks it up.

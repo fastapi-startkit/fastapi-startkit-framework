@@ -1,1 +1,1 @@
-In Startkit, everything is a provider. Logging is one. FastAPI itself is one.
+FastAPI Startkit is all about providers. Logging is a provider. FastAPI itself is a provider. Every feature plugs in the same way.

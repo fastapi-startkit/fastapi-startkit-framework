@@ -1,0 +1,1 @@
+RefreshDatabase migrates once, and rolls back after every test. Create a post, get the list, and check it's OK.

@@ -136,14 +136,45 @@ def gain(file: Path) -> float:
     return LOUDNESS - mean
 
 
-def sync(folder: Path, take: dict) -> Path:
+def span(folder: Path, take: dict) -> tuple[Path, list[tuple[Path, float, float]], float, float, float]:
     clip = folder / "recordings" / f"{take['name']}.mp4"
     cues = json.loads((folder / "recordings" / f"{take['name']}.cues.json").read_text())
-    target = folder / "recordings" / f"{take['name']}.narrated.mp4"
     placed = place(folder, take, cues)
     seconds = duration(clip)
     hold = max(0.0, placed[-1][1] + placed[-1][2] + TAIL - seconds - LEAD)
-    total = LEAD + seconds + hold
+    return clip, placed, seconds, hold, LEAD + seconds + hold
+
+
+def timeline(folder: Path, episode: dict) -> None:
+    leveled = folder / "narration" / "leveled"
+    leveled.mkdir(exist_ok=True)
+    takes = []
+    for take in episode["takes"]:
+        clip, placed, seconds, hold, total = span(folder, take)
+        beats = []
+        for wav, at, _ in placed:
+            target = leveled / wav.name
+            subprocess.run(
+                ["ffmpeg", "-y", "-loglevel", "error", "-i", str(wav),
+                 "-af", f"aresample=48000,volume={gain(wav):.2f}dB,alimiter=limit={PEAK}:level=0", str(target)],
+                check=True,
+            )
+            beats.append({"audio": target.relative_to(folder).as_posix(), "at": round(at, 3)})
+        takes.append({
+            "name": take["name"],
+            "clip": clip.relative_to(folder).as_posix(),
+            "lead": LEAD,
+            "seconds": round(seconds, 3),
+            "hold": round(hold, 3),
+            "beats": beats,
+        })
+    (folder / "timeline.json").write_text(json.dumps({"fps": 30, "takes": takes}, indent=1) + "\n")
+    print(json.dumps({"timeline": round(sum(take["lead"] + take["seconds"] + take["hold"] for take in takes), 2)}))
+
+
+def sync(folder: Path, take: dict) -> Path:
+    target = folder / "recordings" / f"{take['name']}.narrated.mp4"
+    clip, placed, seconds, hold, total = span(folder, take)
     inputs = ["-i", str(clip)]
     filters = [f"[0:v]tpad=start_mode=clone:start_duration={LEAD}:stop_mode=clone:stop_duration={hold:.2f}[v]"]
     for index, (wav, at, _) in enumerate(placed, start=1):
@@ -186,6 +217,9 @@ def main(folder: Path, step: str) -> None:
     episode = json.loads((folder / "episode.json").read_text())
     voice_beats(folder, episode)
     if step == "voice":
+        return
+    if step == "timeline":
+        timeline(folder, episode)
         return
     parts = [sync(folder, take) for take in episode["takes"]]
     if step == "takes":

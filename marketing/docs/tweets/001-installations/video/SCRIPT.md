@@ -8,10 +8,10 @@ Script for the screencast of https://x.com/fastapistartkit/status/21187937523033
 >
 > fastapi-startkit wires it all together, so you can focus on your product 🚀
 
-**Take `intro`**
+**Take `intro`** opens on a hand-wired plain FastAPI `main.py`, then the fresh Startkit app.
 
 - `joy`: FastAPI is a joy for building APIs quickly. But it deliberately leaves the rest of your app up to you. Environments, config, logging, a database, CLI commands, storage, queues, cache, Redis.
-- `wired`: FastAPI Startkit wires all of that together, so you can focus on your product. This is a whole app, right here. Let's see how it fits.
+- `wired`: FastAPI Startkit wires all of that together, so you can focus on your product. Here's a fresh app. Let's see how it fits.
 
 ## Tweet 2
 
@@ -19,10 +19,8 @@ Script for the screencast of https://x.com/fastapistartkit/status/21187937523033
 
 **Take `providers`**
 
-- `everything`: In Startkit, everything is a provider. Logging is one. FastAPI itself is one.
-- `register`: Let's write our own. Register is where you bind services into the container. Here, a billing service.
-- `boot`: Boot runs once every provider has registered, so it's safe to resolve things here. We make billing, and connect it.
-- `add`: Add it to the list, and the app picks it up.
+- `everything`: FastAPI Startkit is all about providers. Logging is a provider. FastAPI itself is a provider. Every feature plugs in the same way.
+- `lifecycle`: Each one registers its services, then boots once everything is ready. Add a provider to this list, and your app picks it up.
 
 ## Tweet 3
 

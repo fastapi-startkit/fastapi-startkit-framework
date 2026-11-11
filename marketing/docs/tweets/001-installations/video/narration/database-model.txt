@@ -1,0 +1,1 @@
+Models and migrations come straight from the CLI.

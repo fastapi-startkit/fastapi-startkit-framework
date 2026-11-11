@@ -1,0 +1,1 @@
+Under pytest, dot env dot testing loads on its own, so tests get their own database.

@@ -1,0 +1,1 @@
+And every query is async. Await Post all, serialize it, and that's an endpoint.

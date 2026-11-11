@@ -1,0 +1,182 @@
+{
+ "fps": 30,
+ "takes": [
+  {
+   "name": "intro",
+   "clip": "recordings/intro.mp4",
+   "lead": 0.4,
+   "seconds": 25.667,
+   "hold": 0.643,
+   "beats": [
+    {
+     "audio": "narration/leveled/intro-joy.wav",
+     "at": 0.6
+    },
+    {
+     "audio": "narration/leveled/intro-wired.wav",
+     "at": 17.11
+    }
+   ]
+  },
+  {
+   "name": "providers",
+   "clip": "recordings/providers.mp4",
+   "lead": 0.4,
+   "seconds": 21.2,
+   "hold": 0.0,
+   "beats": [
+    {
+     "audio": "narration/leveled/providers-everything.wav",
+     "at": 1.93
+    },
+    {
+     "audio": "narration/leveled/providers-lifecycle.wav",
+     "at": 12.71
+    }
+   ]
+  },
+  {
+   "name": "logging",
+   "clip": "recordings/logging.mp4",
+   "lead": 0.4,
+   "seconds": 29.467,
+   "hold": 0.0,
+   "beats": [
+    {
+     "audio": "narration/leveled/logging-channels.wav",
+     "at": 0.6
+    },
+    {
+     "audio": "narration/leveled/logging-stack.wav",
+     "at": 6.46
+    },
+    {
+     "audio": "narration/leveled/logging-env.wav",
+     "at": 23.33
+    }
+   ]
+  },
+  {
+   "name": "database",
+   "clip": "recordings/database.mp4",
+   "lead": 0.4,
+   "seconds": 35.633,
+   "hold": 0.0,
+   "beats": [
+    {
+     "audio": "narration/leveled/database-install.wav",
+     "at": 1.35
+    },
+    {
+     "audio": "narration/leveled/database-extra.wav",
+     "at": 8.78
+    },
+    {
+     "audio": "narration/leveled/database-model.wav",
+     "at": 14.11
+    },
+    {
+     "audio": "narration/leveled/database-migrate.wav",
+     "at": 19.2
+    }
+   ]
+  },
+  {
+   "name": "posts",
+   "clip": "recordings/posts.mp4",
+   "lead": 0.4,
+   "seconds": 41.0,
+   "hold": 0.0,
+   "beats": [
+    {
+     "audio": "narration/leveled/posts-fields.wav",
+     "at": 2.74
+    },
+    {
+     "audio": "narration/leveled/posts-async.wav",
+     "at": 9.86
+    },
+    {
+     "audio": "narration/leveled/posts-route.wav",
+     "at": 19.85
+    }
+   ]
+  },
+  {
+   "name": "testing",
+   "clip": "recordings/testing.mp4",
+   "lead": 0.4,
+   "seconds": 34.833,
+   "hold": 0.0,
+   "beats": [
+    {
+     "audio": "narration/leveled/testing-env.wav",
+     "at": 2.32
+    },
+    {
+     "audio": "narration/leveled/testing-refresh.wav",
+     "at": 12.68
+    },
+    {
+     "audio": "narration/leveled/testing-green.wav",
+     "at": 30.45
+    }
+   ]
+  },
+  {
+   "name": "frontend",
+   "clip": "recordings/frontend.mp4",
+   "lead": 0.4,
+   "seconds": 25.867,
+   "hold": 0.0,
+   "beats": [
+    {
+     "audio": "narration/leveled/frontend-providers.wav",
+     "at": 2.23
+    },
+    {
+     "audio": "narration/leveled/frontend-vite.wav",
+     "at": 17.45
+    }
+   ]
+  },
+  {
+   "name": "hot-reload",
+   "clip": "recordings/hot-reload.mp4",
+   "lead": 0.4,
+   "seconds": 14.667,
+   "hold": 0.0,
+   "beats": [
+    {
+     "audio": "narration/leveled/hot-reload-page.wav",
+     "at": 0.7
+    },
+    {
+     "audio": "narration/leveled/hot-reload-reload.wav",
+     "at": 6.08
+    }
+   ]
+  },
+  {
+   "name": "install",
+   "clip": "recordings/install.mp4",
+   "lead": 0.4,
+   "seconds": 27.233,
+   "hold": 0.0,
+   "beats": [
+    {
+     "audio": "narration/leveled/install-faster.wav",
+     "at": 3.27
+    },
+    {
+     "audio": "narration/leveled/install-choose.wav",
+     "at": 12.4
+    },
+    {
+     "audio": "narration/leveled/install-ready.wav",
+     "at": 20.6
+    }
+   ]
+  }
+ ]
+}
