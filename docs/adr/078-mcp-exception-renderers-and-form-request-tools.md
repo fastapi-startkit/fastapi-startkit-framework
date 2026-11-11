@@ -1,7 +1,7 @@
 # 078. MCP exception renderers and FormRequest tools
 
 - Date: 2026-11-09
-- Status: Accepted
+- Status: Accepted; handling amended by [080](080-mcp-tools-receive-the-validated-form-request.md)
 
 ## Problem
 

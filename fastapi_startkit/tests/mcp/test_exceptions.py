@@ -41,8 +41,8 @@ class SignupTool(Tool):
     def schema(self) -> type[Signup]:
         return Signup
 
-    async def handle(self, arguments: dict[str, Any]) -> Response:
-        return Response.text(json.dumps(arguments))
+    async def handle(self, arguments: Signup) -> Response:
+        return Response.text(arguments.model_dump_json(exclude_unset=True))
 
 
 class Refused(PermissionError):
@@ -236,14 +236,6 @@ class TestFormRequestTools:
         result = await call("signup", {"username": "alice", "age": 30})
 
         assert json.loads(result["result"]["content"][0]["text"]) == {"username": "alice", "age": 30}
-
-    async def test_handle_receives_json_values(self):
-        result = await call("signup", {"username": "alice", "age": 30, "plan": "pro", "starts_on": "2026-11-09"})
-
-        arguments = json.loads(result["result"]["content"][0]["text"])
-        assert arguments["plan"] == "pro"
-        assert arguments["starts_on"] == "2026-11-09"
-        assert "address" not in arguments
 
     async def test_nested_models_without_rules_are_validated(self):
         result = await call("signup", {"username": "alice", "age": 30, "address": {}})

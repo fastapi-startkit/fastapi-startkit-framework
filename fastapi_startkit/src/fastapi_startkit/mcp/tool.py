@@ -36,12 +36,11 @@ class Tool(ABC):
             raise AuthorizationException("This action is unauthorized.")
         schema = self.schema()
         if isinstance(schema, type) and issubclass(schema, FormRequest):
-            validated = await schema.validate_input(arguments)
-            return await self.handle(validated.model_dump(mode="json", exclude_unset=True))
+            return await self.handle(await schema.validate_input(arguments))
         return await self.handle(arguments)
 
     @abstractmethod
-    async def handle(self, arguments: dict[str, Any]) -> Response:
+    async def handle(self, arguments: Any) -> Response:
         """Execute the tool with the given arguments and return a Response."""
         raise NotImplementedError
 
