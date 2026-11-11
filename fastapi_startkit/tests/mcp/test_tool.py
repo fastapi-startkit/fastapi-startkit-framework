@@ -1,6 +1,5 @@
 """Tests for the Tool base class."""
 
-import json
 from datetime import date
 from enum import Enum
 from typing import Annotated, Any
@@ -128,29 +127,21 @@ class Episode(FormRequest):
         return {"playlist_id": self.playlist_id} if "playlist_id" in self.model_fields_set else {}
 
 
-class DumpedEpisodeTool(Tool):
-    name = "episodes_dumped"
-    description = "Echo the dumped episode."
+class EpisodeTool(Tool):
+    name = "episodes"
+    description = "Store an episode."
+    received: Episode | None = None
+    allowed = True
 
     def schema(self) -> type[Episode]:
         return Episode
 
-    async def handle(self, arguments: dict[str, Any]) -> Response:
-        return Response.text(json.dumps(arguments))
-
-
-class EpisodeTool(DumpedEpisodeTool):
-    name = "episodes_typed"
-    received: Episode | None = None
-    allowed = True
-
     def authorize(self) -> bool:
         return self.allowed
 
-    async def handle_request(self, request: FormRequest) -> Response:
-        assert isinstance(request, Episode)
-        EpisodeTool.received = request
-        return Response.text(request.title)
+    async def handle(self, arguments: Episode) -> Response:
+        EpisodeTool.received = arguments
+        return Response.text(arguments.title)
 
 
 @pytest.fixture
@@ -162,8 +153,8 @@ def episode_tool():
     EpisodeTool.allowed = True
 
 
-class TestToolHandleRequest:
-    async def test_handle_request_receives_the_validated_instance(self, episode_tool):
+class TestFormRequestToolHandle:
+    async def test_handle_receives_the_validated_instance(self, episode_tool):
         result = await episode_tool.call({"title": "  Hello  ", "status": "published"})
 
         request = EpisodeTool.received
@@ -196,9 +187,7 @@ class TestToolHandleRequest:
                 return [EpisodeTool]
 
         arguments = {"title": "Hello", "status": "bogus"}
-        result = await Protocol(EpisodeServer()).dispatch(
-            "tools/call", {"name": "episodes_typed", "arguments": arguments}, 1
-        )
+        result = await Protocol(EpisodeServer()).dispatch("tools/call", {"name": "episodes", "arguments": arguments}, 1)
 
         assert result["error"]["code"] == -32000
         assert list(result["error"]["data"]) == ["status"]
@@ -229,15 +218,6 @@ class TestToolHandleRequest:
             await episode_tool.call({})
 
         assert EpisodeTool.received is None
-
-    async def test_tools_without_handle_request_still_receive_the_dump(self):
-        result = await DumpedEpisodeTool().call({"title": "Bonjour", "status": "published", "airs_on": "2026-11-10"})
-
-        assert json.loads(result.to_content()[0]["text"]) == {
-            "title": "Bonjour",
-            "status": "published",
-            "airs_on": "2026-11-10",
-        }
 
     async def test_tools_without_a_form_request_receive_the_arguments(self):
         result = await EchoTool().call({"message": "hello", "extra": 1})
