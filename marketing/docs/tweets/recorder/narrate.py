@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parent
 VOICE = json.loads((ROOT / "voice.json").read_text())
 GEMINI = f"https://generativelanguage.googleapis.com/v1beta/models/{VOICE['model']}:generateContent"
 OPENROUTER = "https://openrouter.ai/api/v1/audio/speech"
-DOTENV = ROOT.parents[2] / ".env"
+MARKETING_ENV = ROOT.parents[2] / ".env"
 GAP = 0.15
 LEAD = 0.4
 TAIL = 1.0
@@ -31,7 +31,7 @@ PEAK = 0.84
 def secret(key: str) -> str | None:
     if os.environ.get(key):
         return os.environ[key]
-    for line in DOTENV.read_text().splitlines() if DOTENV.exists() else []:
+    for line in MARKETING_ENV.read_text().splitlines() if MARKETING_ENV.exists() else []:
         name, _, value = line.partition("=")
         if name.strip() == key and value.strip():
             return value.strip().strip("\"'")
@@ -102,17 +102,22 @@ def duration(file: Path) -> float:
 def voice_beats(folder: Path, episode: dict) -> None:
     narration = folder / "narration"
     narration.mkdir(exist_ok=True)
-    client, synthesize = speaker()
-    with client:
-        for take in episode["takes"]:
-            for beat in take["beats"]:
-                wav = narration / f"{take['name']}-{beat['cue']}.wav"
-                sidecar = wav.with_suffix(".txt")
-                if not (wav.exists() and sidecar.exists() and sidecar.read_text() == beat["say"]):
-                    print(f"voicing {wav.name}", flush=True)
-                    wav.write_bytes(synthesize(client, beat["say"]))
-                    sidecar.write_text(beat["say"])
-                wav.with_suffix(".json").write_text(json.dumps({"seconds": round(duration(wav), 3)}) + "\n")
+    beats = [(narration / f"{take['name']}-{beat['cue']}.wav", beat["say"]) for take in episode["takes"] for beat in take["beats"]]
+    stale = [(wav, say) for wav, say in beats if not voiced(wav, say)]
+    if stale:
+        client, synthesize = speaker()
+        with client:
+            for wav, say in stale:
+                print(f"voicing {wav.name}", flush=True)
+                wav.write_bytes(synthesize(client, say))
+                wav.with_suffix(".txt").write_text(say)
+    for wav, _ in beats:
+        wav.with_suffix(".json").write_text(json.dumps({"seconds": round(duration(wav), 3)}) + "\n")
+
+
+def voiced(wav: Path, say: str) -> bool:
+    sidecar = wav.with_suffix(".txt")
+    return wav.exists() and sidecar.exists() and sidecar.read_text() == say
 
 
 def place(folder: Path, take: dict, cues: dict[str, float]) -> list[tuple[Path, float, float]]:

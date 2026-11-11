@@ -144,7 +144,9 @@ class Studio:
 
     def until(self, check: Callable[[], bool], seconds: float = 120) -> None:
         deadline = time.time() + seconds
-        while time.time() < deadline and not check():
+        while not check():
+            if time.time() > deadline:
+                raise TimeoutError(f"{self.take.name}: condition not met within {seconds:.0f}s")
             time.sleep(0.1)
         time.sleep(0.3)
 
@@ -175,15 +177,16 @@ def wait_for_http(url: str, seconds: float = 240) -> None:
 
 
 def spawn(command: list[str] | str, log: Path, env: dict[str, str] | None = None) -> subprocess.Popen:
-    return subprocess.Popen(
-        command,
-        shell=isinstance(command, str),
-        stdout=log.open("w"),
-        stderr=subprocess.STDOUT,
-        cwd=workspace.WORKSPACE,
-        env=env or workspace.clean_env(),
-        start_new_session=True,
-    )
+    with log.open("w") as output:
+        return subprocess.Popen(
+            command,
+            shell=isinstance(command, str),
+            stdout=output,
+            stderr=subprocess.STDOUT,
+            cwd=workspace.WORKSPACE,
+            env=env or workspace.clean_env(),
+            start_new_session=True,
+        )
 
 
 def start_vscode(port: int) -> subprocess.Popen:

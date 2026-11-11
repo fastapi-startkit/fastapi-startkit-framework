@@ -2,6 +2,9 @@
   "name": "fastapi-startkit-tweet-videos",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=20.11"
+  },
   "scripts": {
     "preview": "node preview.mjs",
     "render": "node render.mjs"

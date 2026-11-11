@@ -6,7 +6,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 WORKSPACE = Path("/tmp/startkit-demo")
-CACHE = ROOT / "cache"
+STARTKIT = "fastapi-startkit==0.75.2"
+CACHE = ROOT / "cache" / STARTKIT
 KEEP = {".venv", "node_modules"}
 TEMPLATES = {
     "web": ["--app", "web", "--database", "none", "--frontend", "none"],
@@ -28,7 +29,7 @@ def template(name: str) -> Path:
         return target
     target.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(
-        ["uvx", "fastapi-startkit@latest", "init", WORKSPACE.name, *TEMPLATES[name], "-n", "--no-deps"],
+        ["uvx", STARTKIT, "init", WORKSPACE.name, *TEMPLATES[name], "-n", "--no-deps"],
         cwd=target.parent, check=True, env=clean_env(),
     )
     return target
