@@ -1,0 +1,91 @@
+# 081. AI classification with Boolean, Choice and Score questions
+
+- Date: 2026-11-12
+- Status: Accepted
+
+## Problem
+
+Applications keep asking a model the same kind of question about a piece of text: is this urgent, which team owns it, how angry is the customer. Today each one writes an `Agent` with a hand-made pydantic schema, a prompt that lists the options, and code that checks the answer is one of them. Laravel ships this as `Laravel\Ai\Classification` with `Boolean`, `Choice` and `Score` questions. The `ai` package has no equivalent.
+
+Google also offers a dedicated endpoint for this job, the [Decisions API](https://aistudio.google.com/docs/decisions-api) (`POST https://generativelanguage.googleapis.com/v1beta/decisions`, model `gemini-decision-1`). It takes the shared `input` and a map of questions typed `noul` (yes/no), `choice` or `score`, and answers each with calibrated probabilities and a `confidence` instead of generated text. It bills input tokens only. The user requires Google classification to go through it.
+
+## Alternatives
+
+- **One builder, a provider-specific path.** (chosen) `Classification` compiles the questions once. When the resolved provider is `google`, it sends them to the Decisions API; every other provider gets a structured-output agent. Both paths return the same result.
+- **Structured output for every provider, Google included.** One code path, but it ignores the user's requirement and loses Google's calibrated probabilities and cheaper billing.
+- **Decisions API only.** Ties classification to one vendor; OpenAI, Anthropic and Bedrock users get nothing.
+- **The `google-genai` SDK's `client.decisions.create`.** Needs `google-genai` 3.2 or later and `v1beta` client options, an extra the `ai` extra does not install. The endpoint is one JSON POST, so `httpx` (already installed through LangChain) is enough and easy to fake.
+- **A `ClassificationFake` that replaces the whole classifier.** Tests would skip payload building and answer parsing, the parts most likely to break. Faking only the transport (the Decisions HTTP call, or the chat model through the existing `Agent.fake`) keeps them under test.
+
+## Decision
+
+### API
+
+```python
+from fastapi_startkit.ai import Classification
+from fastapi_startkit.ai.classification import Boolean, Choice, Score
+
+result = await Classification.of(support_request).questions({
+    "urgent": Boolean("Does this request need an immediate response?", {
+        "true": "Explicitly time-sensitive",
+        "false": "No urgency expressed",
+    }),
+    "department": Choice("Which team should handle this request?", {
+        "billing": "Payments, invoices, and refunds",
+        "technical": "Bugs, outages, and integrations",
+    }),
+    "frustration": Score("How frustrated is the customer?", ["Calm", "Frustrated", "Very angry"]),
+}).classify()
+
+result["urgent"]          # True
+result.department         # "technical"
+result["frustration"]     # 2, the level index
+result.answer("frustration").label        # "Very angry"
+result.answer("urgent").confidence        # 0.97 on Google, None on structured output
+```
+
+`classify(provider=None, model=None)` resolves the provider with `Lab.get_provider`, so it follows `AI_PROVIDER` like an agent does.
+
+### Questions
+
+| Question | Arguments | Answer value | Decisions API | Structured-output field |
+|---|---|---|---|---|
+| `Boolean` | instructions, optional `{"true": ..., "false": ...}` | `bool` | `noul` with `true_description`/`false_description` criteria | `StrictBool` |
+| `Choice` | instructions, `{key: description}` or a list of keys (2 to 255) | the chosen key | `choice`, criteria = the option map | `Literal[*keys]` |
+| `Score` | instructions, ordered levels, lowest first (2 to 255) | `int` level index | `score`, criteria = the levels | `Literal[0..n-1]` |
+
+Each answer is an `Answer(value, label, confidence, probabilities, raw)`. `label` is the description of the chosen value (`"true"`/`"false"` when a `Boolean` has none). `raw` is the provider's answer object, which keeps the Decisions API's weighted `score`.
+
+Question keys must match `[A-Za-z0-9_-]{1,64}`, the Decisions API's rule, so the same questions work on every provider. The structured-output schema names its fields `q0`, `q1`, ... and gives each the key as its alias, so keys such as `first-contact` or `model_name` are valid. An empty question map, a non-`Question` value, an empty input, an unknown `Boolean` description key, fewer than two choices or levels and empty levels raise `ValueError` when the question or classification is built.
+
+### Google: Decisions API
+
+`Decisions(api_key, timeout).create(payload)` posts the payload with the `x-goog-api-key` header. The payload is `{"model", "input", "questions"}`. The model defaults to the Google provider's `models.default_decisions` (`gemini-decision-1`, new `ModelType.DECISIONS`). A non-2xx response raises `ClassificationError` with the status and the API's `error.code` and `error.message`, which covers the safety-filter 400s.
+
+Answers are mapped back as follows:
+
+- `noul` becomes `noul >= 0.5`, with probabilities `{True: noul, False: 1 - noul}`.
+- `choice` must be one of the option keys.
+- `score` is the probability-weighted level index. It must lie within `[0, n - 1]` and is rounded half up to a level. Probability keys are turned into level indices.
+
+An answer with the wrong `type`, a missing answer, or a value outside these ranges raises `ClassificationError`. Usage becomes `{"input": total_input_tokens, "output": total_output_tokens}`, the same shape `ai.state.usage` returns.
+
+### Other providers: structured output
+
+`ClassificationAgent` is a plain `Agent` whose `schema()` is the pydantic model built from the questions. Each field's description holds the question, its options and their descriptions. `classify` sets the agent's `provider` and `model` and prompts it with the input. It reads `ai.state.structured(...)`, so it uses the same `with_structured_output` path and fakes as every agent. The result carries the turn's `state` and `ai.state.usage(state)`. A pydantic `ValidationError` from the turn, a missing structured response, or a value that fails the question's own check (`Boolean` is not a `bool`, an unknown choice, a score outside the scale) raises `ClassificationError`.
+
+### Testing
+
+- `Decisions.fake(responses)` takes a list of response bodies or a callable over the payload, and records each payload on `.requests`. `Decisions.reset_fake()` removes it, and `Ai.reset_fakes()` also calls it.
+- The structured-output path is faked with the existing `ClassificationAgent.fake([...])`.
+
+## Validation
+
+`fastapi_startkit/tests/ai/test_classification.py`:
+
+- Unit tests for each question's Decisions question, schema annotation and description, and its parsing from Decisions and structured answers, including invalid values.
+- `classify()` on `google` through `Decisions.fake`: the exact payload, the default and overridden model, typed values, labels, confidence, probabilities and usage.
+- `classify()` on `openai` through `ClassificationAgent.fake`: the typed result, the provider and model, `state`, and the schema the agent exposes.
+- Error cases: an unknown choice, an out-of-range score, a non-bool, a missing answer and a wrong answer type raise `ClassificationError`; an empty question map, a bad key and a `Boolean` without descriptions are covered.
+- `Decisions.create` over an `httpx.MockTransport`: URL, header, body, and a 400 safety error.
+- `uv run pytest tests/ -v` with coverage above the threshold, and `uv run pyrefly check` with no new errors.

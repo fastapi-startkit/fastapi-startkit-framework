@@ -45,8 +45,11 @@ class Ai:
 
     @classmethod
     def reset_fakes(cls) -> None:
+        from .classification.decisions import Decisions  # noqa: PLC0415
+
         cls._fakes.clear()
         Embeddings.reset_fake()
+        Decisions.reset_fake()
 
     def get_model_for(
         self,

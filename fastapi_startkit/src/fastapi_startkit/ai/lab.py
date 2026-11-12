@@ -19,6 +19,7 @@ class ModelType(StrEnum):
     AUDIO = "audio"
     TRANSCRIBE = "transcribe"
     EMBEDDINGS = "embeddings"
+    DECISIONS = "decisions"
 
     @property
     def key(self) -> str:
@@ -28,6 +29,7 @@ class ModelType(StrEnum):
             ModelType.AUDIO: "default_audio",
             ModelType.TRANSCRIBE: "default_transcribe",
             ModelType.EMBEDDINGS: "default_embeddings",
+            ModelType.DECISIONS: "default_decisions",
         }[self]
 
 
