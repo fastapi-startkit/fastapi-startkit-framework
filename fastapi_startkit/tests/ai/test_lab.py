@@ -42,6 +42,12 @@ class TestLab(unittest.TestCase):
     def test_get_provider_embeddings_uses_default_embeddings(self):
         self.assertIs(Lab.get_provider(model_type=ModelType.EMBEDDINGS), Lab.OPENAI)
 
+    def test_decisions_model_type_reads_default_decisions(self):
+        self.assertEqual(ModelType.DECISIONS.key, "default_decisions")
+
+    def test_get_provider_decisions_uses_default_decisions(self):
+        self.assertIs(Lab.get_provider(model_type=ModelType.DECISIONS), Lab.GOOGLE)
+
     def test_get_provider_uses_config_default(self):
         self.assertEqual(Lab.get_provider().value, "google")
 

@@ -101,7 +101,7 @@ class Classification:
             raise ValueError("Classification needs a non-empty input.")
         if not self._questions:
             raise ValueError("Classification needs at least one question.")
-        lab = Lab.get_provider(provider)
+        lab = Lab.get_provider(provider, ModelType.DECISIONS)
         if lab is Lab.GOOGLE:
             return await self._decide(lab, model)
         return await self._structured(lab, model)

@@ -44,7 +44,7 @@ result.answer("frustration").label        # "Very angry"
 result.answer("urgent").confidence        # 0.97 on Google, None on structured output
 ```
 
-`classify(provider=None, model=None)` resolves the provider with `Lab.get_provider`, so it follows `AI_PROVIDER` like an agent does.
+`classify(provider=None, model=None)` resolves the provider with `Lab.get_provider(provider, ModelType.DECISIONS)`, which reads the root-level `AIConfig.default_decisions` (env `AI_DEFAULT_DECISIONS_PROVIDER`, default `google`). This matches `default_image`, `default_audio`, `default_transcribe` and `default_embeddings`: each feature picks its provider independently of `AI_PROVIDER`, so an app can chat through Anthropic and still classify through the Decisions API. Falling back to `AI_PROVIDER` when the variable is unset was rejected: `env()` returns a lazy field, so one setting cannot default to another, and no other `default_*` setting does that. The default is `google` because the Decisions API is the native classifier. An app without a Google key sets `AI_DEFAULT_DECISIONS_PROVIDER` to its chat provider.
 
 ### Questions
 
@@ -60,7 +60,7 @@ Question keys must match `[A-Za-z0-9_-]{1,64}`, the Decisions API's rule, so the
 
 ### Google: Decisions API
 
-`Decisions(api_key, timeout).create(payload)` posts the payload with the `x-goog-api-key` header. The payload is `{"model", "input", "questions"}`. The model defaults to the Google provider's `models.default_decisions` (`gemini-decision-1`, new `ModelType.DECISIONS`). A non-2xx response raises `ClassificationError` with the status and the API's `error.code` and `error.message` (or the raw body when it has no `error` object), which covers the safety-filter 400s. A transport failure (`httpx.HTTPError`, such as a refused connection or a timeout) and a 2xx body that is not a JSON object also raise `ClassificationError`, with the original exception as the cause.
+`Decisions(api_key, timeout).create(payload)` posts the payload with the `x-goog-api-key` header. The payload is `{"model", "input", "questions"}`. The model defaults to the Google provider's `models.default_decisions` (`gemini-decision-1`, new `ModelType.DECISIONS`, whose key `default_decisions` names both the root-level provider setting and the per-provider model). A non-2xx response raises `ClassificationError` with the status and the API's `error.code` and `error.message` (or the raw body when it has no `error` object), which covers the safety-filter 400s. A transport failure (`httpx.HTTPError`, such as a refused connection or a timeout) and a 2xx body that is not a JSON object also raise `ClassificationError`, with the original exception as the cause.
 
 Answers are mapped back as follows:
 
@@ -85,6 +85,7 @@ An answer with the wrong `type`, a missing answer, or a value outside these rang
 
 - Unit tests for each question's Decisions question, schema annotation and description, and its parsing from Decisions and structured answers, including invalid values.
 - `classify()` on `google` through `Decisions.fake`: the exact payload, the default and overridden model, typed values, labels, confidence, probabilities and usage.
+- Provider resolution: `AIConfig.default_decisions` defaults to `google` and reads `AI_DEFAULT_DECISIONS_PROVIDER`. `classify()` without a provider follows it and ignores `AI_PROVIDER`, and an explicit `provider` wins.
 - `classify()` on `openai` through `ClassificationAgent.fake`: the typed result, the provider and model, `state`, and the schema the agent exposes.
 - Error cases: an unknown choice, an out-of-range score, a non-bool, a missing answer and a wrong answer type raise `ClassificationError`; an empty question map, a bad key, a reserved key, invalid option keys and a `Boolean` without descriptions are covered.
 - `Score`: the argmax level beats the rounded mean in a bimodal case, ties pick the lower level, the mean is rounded when there are no probabilities, label-keyed probabilities are mapped, and unknown levels raise.

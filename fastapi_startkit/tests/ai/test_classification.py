@@ -504,6 +504,38 @@ class TestDecisionsTransport:
             await Decisions("g-test", transport=transport).create({"questions": {}})
 
 
+class TestProviderResolution:
+    async def test_defaults_to_the_decisions_provider_not_the_chat_provider(self, ai_config):
+        ai_config.default = "anthropic"
+        app().make("config").set("ai", ai_config)
+        fake = Decisions.fake([decisions_body()])
+
+        result = await Classification.of(INPUT).questions(support_questions()).classify()
+
+        assert result.provider == "google"
+        assert len(fake.requests) == 1
+
+    async def test_follows_the_configured_decisions_provider(self, ai_config):
+        ai_config.default_decisions = "openai"
+        app().make("config").set("ai", ai_config)
+        fake = Decisions.fake([])
+
+        with ClassificationAgent.fake(['{"urgent": true}']):
+            result = await Classification.of(INPUT).questions({"urgent": Boolean("Urgent?")}).classify()
+
+        assert (result.provider, result.model) == ("openai", "gpt-4o")
+        assert fake.requests == []
+
+    async def test_an_explicit_provider_wins(self, ai_config):
+        ai_config.default_decisions = "openai"
+        app().make("config").set("ai", ai_config)
+        Decisions.fake([decisions_body()])
+
+        result = await Classification.of(INPUT).questions(support_questions()).classify(provider="google")
+
+        assert result.provider == "google"
+
+
 class TestStructuredOutput:
     async def test_other_providers_classify_through_a_structured_output_agent(self):
         reply = json.dumps({"urgent": True, "department": "billing", "frustration": 1})
