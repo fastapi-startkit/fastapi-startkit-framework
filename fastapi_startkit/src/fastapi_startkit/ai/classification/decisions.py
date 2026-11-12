@@ -38,6 +38,12 @@ class Decisions:
     async def create(self, payload: Payload) -> Payload:
         if Decisions._faked is not None:
             return Decisions._faked.respond(payload)
+        if not self.api_key:
+            raise ClassificationError(
+                "Classification uses the Google Decisions API, but no Google API key is set. "
+                "Set GEMINI_API_KEY (or GOOGLE_API_KEY), or set AI_DEFAULT_DECISIONS_PROVIDER "
+                "to another provider such as openai."
+            )
         return await self._post(payload)
 
     async def _post(self, payload: Payload) -> Payload:

@@ -536,6 +536,37 @@ class TestProviderResolution:
         assert result.provider == "google"
 
 
+class TestMissingGoogleKey:
+    @pytest.fixture(autouse=True)
+    def without_google_key(self, ai_config):
+        ai_config.providers["google"].key = ""
+        app().make("config").set("ai", ai_config)
+
+    async def test_fails_fast_naming_both_settings_without_sending_a_request(self):
+        with patch.object(Decisions, "_post") as post:
+            with pytest.raises(ClassificationError) as raised:
+                await Classification.of(INPUT).questions(support_questions()).classify()
+
+        post.assert_not_called()
+        assert "GEMINI_API_KEY" in str(raised.value)
+        assert "AI_DEFAULT_DECISIONS_PROVIDER" in str(raised.value)
+
+    async def test_an_explicit_provider_skips_the_google_key(self):
+        with ClassificationAgent.fake(['{"urgent": true}']):
+            result = (
+                await Classification.of(INPUT).questions({"urgent": Boolean("Urgent?")}).classify(provider="openai")
+            )
+
+        assert result["urgent"] is True
+
+    async def test_the_decisions_fake_needs_no_key(self):
+        Decisions.fake([decisions_body()])
+
+        result = await Classification.of(INPUT).questions(support_questions()).classify()
+
+        assert result.provider == "google"
+
+
 class TestStructuredOutput:
     async def test_other_providers_classify_through_a_structured_output_agent(self):
         reply = json.dumps({"urgent": True, "department": "billing", "frustration": 1})
