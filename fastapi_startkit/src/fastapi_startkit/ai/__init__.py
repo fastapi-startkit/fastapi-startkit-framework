@@ -2,6 +2,7 @@ from .agent import Agent
 from .pipeline import Middleware
 from .audio import Audio, AudioResponse
 from .audio_factory import AudioFactory
+from .classification import Classification
 from .config.config import AnthropicConfig, BedrockConfig, ElevenLabsConfig, GoogleConfig, OpenAIConfig
 from .config.ai import AIConfig
 from .decorators import max_steps, max_tokens, model, provider, timeout, top_p
@@ -30,6 +31,7 @@ __all__ = [
     "Audio",
     "AudioResponse",
     "AudioFactory",
+    "Classification",
     "BedrockConfig",
     "Document",
     "Embeddings",

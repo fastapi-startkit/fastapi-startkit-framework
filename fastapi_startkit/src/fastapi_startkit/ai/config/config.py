@@ -53,6 +53,7 @@ class GoogleConfig(Config):
             "default": "gemini-2.5-flash-lite",
             "default_image": "imagen-3.0-generate-002",
             "default_embeddings": "gemini-embedding-001",
+            "default_decisions": "gemini-decision-1",
         }
     )
 
