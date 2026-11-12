@@ -1,8 +1,10 @@
 import json
+from unittest.mock import patch
 from typing import Literal, get_args
 
 import httpx
 import pytest
+from langchain_core.messages import AIMessage
 from pydantic import StrictBool
 
 from fastapi_startkit.ai import Ai, AIConfig, Classification, state
@@ -17,6 +19,7 @@ from fastapi_startkit.ai.classification import (
     Score,
 )
 from fastapi_startkit.ai.classification.decisions import DECISIONS_URL
+from fastapi_startkit.ai.runner import Runner
 from fastapi_startkit.application import app
 
 pytest.importorskip("langchain_core")
@@ -167,6 +170,14 @@ class TestChoice:
         with pytest.raises(ClassificationError, match="expects one of"):
             Choice("Which team?", ["billing", "technical"]).from_decision("team", {"type": "choice", "choice": "sales"})
 
+    @pytest.mark.parametrize("key", ["", " billing", "billing ", "bill\ning", "x" * 129, "é" * 257, 1])
+    def test_rejects_option_keys_the_decisions_api_does_not_accept(self, key):
+        with pytest.raises(ValueError, match="Choice option key"):
+            Choice("Which team?", [key, "technical"])
+
+    def test_accepts_option_keys_up_to_the_limit(self):
+        assert list(Choice("Which team?", ["x" * 128, "Customer Success"]).options) == ["x" * 128, "Customer Success"]
+
     @pytest.mark.parametrize("options", [["billing"], [], ["", "technical"]])
     def test_rejects_too_few_or_empty_options(self, options):
         with pytest.raises(ValueError, match="Choice"):
@@ -185,16 +196,59 @@ class TestScore:
         assert get_args(question.annotation()) == (0, 1, 2)
         assert "0: Calm\n1: Frustrated\n2: Very angry" in question.describe()
 
-    def test_rounds_the_weighted_score_to_a_level(self):
+    def test_picks_the_most_probable_level_not_the_weighted_mean(self):
         question = Score("How frustrated?", ["Calm", "Frustrated", "Very angry"])
 
         answer = question.from_decision(
-            "frustration", {"type": "score", "score": 0.5, "probabilities": {"0": 0.5, "1": 0.5}, "confidence": 0.5}
+            "frustration",
+            {"type": "score", "score": 1.1, "probabilities": {"0": 0.45, "1": 0.0, "2": 0.55}, "confidence": 0.55},
         )
 
-        assert (answer.value, answer.label) == (1, "Frustrated")
-        assert answer.probabilities == {0: 0.5, 1: 0.5}
-        assert answer.raw["score"] == 0.5
+        assert (answer.value, answer.label) == (2, "Very angry")
+        assert answer.probabilities == {0: 0.45, 1: 0.0, 2: 0.55}
+        assert answer.raw["score"] == 1.1
+
+    def test_a_tie_picks_the_lower_level(self):
+        question = Score("How frustrated?", ["Calm", "Frustrated", "Very angry"])
+
+        answer = question.from_decision(
+            "frustration", {"type": "score", "score": 1.0, "probabilities": {"2": 0.5, "0": 0.5}}
+        )
+
+        assert answer.value == 0
+
+    def test_rounds_the_weighted_score_without_probabilities(self):
+        question = Score("How frustrated?", ["Calm", "Frustrated", "Very angry"])
+
+        answer = question.from_decision("frustration", {"type": "score", "score": 1.5})
+
+        assert (answer.value, answer.probabilities) == (2, None)
+
+    def test_maps_label_keyed_probabilities_to_levels(self):
+        question = Score("How frustrated?", ["Calm", "Frustrated", "Very angry"])
+
+        answer = question.from_decision(
+            "frustration",
+            {"type": "score", "score": 0.8, "probabilities": {"Calm": 0.3, "Frustrated": 0.6, "Very angry": 0.1}},
+        )
+
+        assert answer.value == 1
+        assert answer.probabilities == {0: 0.3, 1: 0.6, 2: 0.1}
+
+    @pytest.mark.parametrize(
+        ("probabilities", "match"),
+        [
+            ({"Furious": 1.0}, "unknown level 'Furious'"),
+            ({"3": 1.0}, "unknown level '3'"),
+            ({"0": "high"}, "expects a number"),
+            ([0.2, 0.8], "as a map"),
+        ],
+    )
+    def test_rejects_invalid_score_probabilities(self, probabilities, match):
+        question = Score("How frustrated?", ["Calm", "Frustrated", "Very angry"])
+
+        with pytest.raises(ClassificationError, match=match):
+            question.from_decision("frustration", {"type": "score", "score": 1.0, "probabilities": probabilities})
 
     def test_reads_a_structured_index(self):
         answer = Score("How frustrated?", ["Calm", "Very angry"]).from_structured("frustration", 1)
@@ -231,6 +285,27 @@ class TestQuestions:
     def test_rejects_more_than_a_thousand_questions(self):
         with pytest.raises(ValueError, match="at most 1000 questions"):
             Classification.of(INPUT).questions({f"q{index}": Boolean("Urgent?") for index in range(1001)})
+
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "model",
+            "provider",
+            "usage",
+            "state",
+            "answers",
+            "answer",
+            "to_dict",
+            "get",
+            "keys",
+            "items",
+            "values",
+            "__init__",
+        ],
+    )
+    def test_rejects_keys_reserved_by_the_result(self, key):
+        with pytest.raises(ValueError, match=f"{key!r} is reserved"):
+            Classification.of(INPUT).questions({key: Boolean("Urgent?")})
 
     def test_rejects_values_that_are_not_questions(self):
         with pytest.raises(ValueError, match="must be a Boolean, Choice or Score"):
@@ -394,6 +469,34 @@ class TestDecisionsTransport:
         with pytest.raises(ClassificationError, match="failed with 400: safety: Blocked by safety filters"):
             await Decisions("g-test", transport=transport).create({"questions": {}})
 
+    @pytest.mark.parametrize("error", [httpx.ConnectError("connection refused"), httpx.ReadTimeout("timed out")])
+    async def test_wraps_transport_errors(self, error):
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise error
+
+        with pytest.raises(ClassificationError, match=f"request failed: {type(error).__name__}") as raised:
+            await Decisions("g-test", transport=httpx.MockTransport(handler)).create({"questions": {}})
+
+        assert raised.value.__cause__ is error
+
+    async def test_rejects_a_successful_response_that_is_not_json(self):
+        transport = httpx.MockTransport(lambda request: httpx.Response(200, text="<html>proxy</html>"))
+
+        with pytest.raises(ClassificationError, match="not JSON: '<html>proxy</html>'"):
+            await Decisions("g-test", transport=transport).create({"questions": {}})
+
+    async def test_rejects_a_json_body_that_is_not_an_object(self):
+        transport = httpx.MockTransport(lambda request: httpx.Response(200, json=["answers"]))
+
+        with pytest.raises(ClassificationError, match="returned list, expected a JSON object"):
+            await Decisions("g-test", transport=transport).create({"questions": {}})
+
+    async def test_raises_on_an_error_body_without_an_error_object(self):
+        transport = httpx.MockTransport(lambda request: httpx.Response(500, json=["oops"]))
+
+        with pytest.raises(ClassificationError, match=r'failed with 500: \["oops"\]'):
+            await Decisions("g-test", transport=transport).create({"questions": {}})
+
     async def test_raises_on_a_non_json_error(self):
         transport = httpx.MockTransport(lambda request: httpx.Response(503, text="unavailable"))
 
@@ -460,3 +563,56 @@ class TestStructuredOutput:
 
     def test_agent_without_questions_has_no_schema(self):
         assert ClassificationAgent().schema() is None
+
+
+class StructuredModel:
+    def __init__(self, raw):
+        self.raw = raw
+
+    async def ainvoke(self, messages):
+        return {"raw": self.raw, "parsed": None, "parsing_error": ValueError("parse failed")}
+
+
+class TestStructuredOutputParsingFailure:
+    def build_with(self, raw):
+        return patch.object(Runner, "_build_model", lambda runner, *args, **kwargs: StructuredModel(raw))
+
+    async def test_a_rejected_tool_call_names_the_failing_field(self):
+        raw = AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "Classification",
+                    "args": {"urgent": True, "department": "legal", "frustration": 1},
+                    "id": "call-1",
+                }
+            ],
+        )
+
+        with self.build_with(raw):
+            with pytest.raises(ClassificationError, match=r"invalid classification(.|\n)*department") as raised:
+                await Classification.of(INPUT).questions(support_questions()).classify(provider="openai")
+
+        assert "frustration" not in str(raised.value)
+
+    async def test_rejected_json_content_names_the_failing_field(self):
+        raw = AIMessage(content='{"urgent": true, "department": "billing", "frustration": 9}')
+
+        with self.build_with(raw):
+            with pytest.raises(ClassificationError, match=r"invalid classification(.|\n)*frustration"):
+                await Classification.of(INPUT).questions(support_questions()).classify(provider="openai")
+
+    async def test_an_empty_reply_has_no_classification(self):
+        with self.build_with(AIMessage(content="")):
+            with pytest.raises(ClassificationError, match="returned no classification"):
+                await Classification.of(INPUT).questions(support_questions()).classify(provider="openai")
+
+    async def test_a_reply_that_validates_still_reports_no_classification(self):
+        raw = AIMessage(
+            content="",
+            tool_calls=[{"name": "Classification", "args": {"urgent": True}, "id": "call-1"}],
+        )
+
+        with self.build_with(raw):
+            with pytest.raises(ClassificationError, match="returned no classification"):
+                await Classification.of(INPUT).questions({"urgent": Boolean("Urgent?")}).classify(provider="openai")

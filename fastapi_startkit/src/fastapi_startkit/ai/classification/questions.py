@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import unicodedata
 from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -9,6 +10,8 @@ from typing import Any, Literal
 from pydantic import StrictBool
 
 MAX_OPTIONS = 255
+MAX_OPTION_KEY_CHARS = 128
+MAX_OPTION_KEY_BYTES = 512
 
 
 class ClassificationError(ValueError):
@@ -110,8 +113,8 @@ class Choice(Question):
         choices = dict(options) if isinstance(options, Mapping) else dict.fromkeys(options, "")
         if not 2 <= len(choices) <= MAX_OPTIONS:
             raise ValueError(f"Choice needs 2 to {MAX_OPTIONS} options, got {len(choices)}.")
-        if not all(isinstance(key, str) and key for key in choices):
-            raise ValueError("Choice option keys must be non-empty strings.")
+        for key in choices:
+            _check_option_key(key)
         self.options = choices
 
     def criteria(self) -> dict[str, str]:
@@ -167,13 +170,31 @@ class Score(Question):
 
     def parse_decision(self, name: str, answer: Mapping[str, Any]) -> Answer:
         score = _number(name, answer.get("score"), 0, len(self.levels) - 1)
-        probabilities = answer.get("probabilities")
+        probabilities = self._probabilities(name, answer.get("probabilities"))
+        index = max(sorted(probabilities), key=probabilities.__getitem__) if probabilities else math.floor(score + 0.5)
         return self._answer(
-            math.floor(score + 0.5),
+            index,
             confidence=answer.get("confidence"),
-            probabilities={int(level): p for level, p in probabilities.items()} if probabilities else None,
+            probabilities=probabilities or None,
             raw=dict(answer),
         )
+
+    def _probabilities(self, name: str, probabilities: Any) -> dict[int, float]:
+        if not probabilities:
+            return {}
+        if not isinstance(probabilities, Mapping):
+            raise ClassificationError(f"Question {name!r} expects score probabilities as a map, got {probabilities!r}.")
+        return {
+            self._level(name, level): _number(name, probability, 0.0, 1.0)
+            for level, probability in probabilities.items()
+        }
+
+    def _level(self, name: str, level: Any) -> int:
+        if isinstance(level, str) and level.isdigit() and int(level) < len(self.levels):
+            return int(level)
+        if level in self.levels:
+            return self.levels.index(level)
+        raise ClassificationError(f"Question {name!r} returned a probability for unknown level {level!r}.")
 
     def from_structured(self, name: str, value: Any) -> Answer:
         if type(value) is not int or not 0 <= value < len(self.levels):
@@ -190,3 +211,17 @@ def _number(name: str, value: Any, low: float, high: float) -> float:
     if isinstance(value, bool) or not isinstance(value, int | float) or not low <= value <= high:
         raise ClassificationError(f"Question {name!r} expects a number from {low} to {high}, got {value!r}.")
     return float(value)
+
+
+def _check_option_key(key: Any) -> None:
+    if (
+        not isinstance(key, str)
+        or not 1 <= len(key) <= MAX_OPTION_KEY_CHARS
+        or len(key.encode()) > MAX_OPTION_KEY_BYTES
+        or key != key.strip()
+        or any(unicodedata.category(char) == "Cc" for char in key)
+    ):
+        raise ValueError(
+            f"Choice option key {key!r} must be 1 to {MAX_OPTION_KEY_CHARS} characters "
+            "with no leading or trailing whitespace and no control characters."
+        )

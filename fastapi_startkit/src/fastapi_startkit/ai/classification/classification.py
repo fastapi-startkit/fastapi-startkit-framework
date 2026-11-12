@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterator, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from typing import Any, override
 
 from pydantic import BaseModel, Field, ValidationError, create_model
@@ -47,6 +47,9 @@ class ClassificationResult(Mapping[str, Any]):
         return {name: answer.value for name, answer in self.answers.items()}
 
 
+RESERVED_KEYS = frozenset(dir(ClassificationResult)) | {field.name for field in fields(ClassificationResult)}
+
+
 class ClassificationAgent(Agent):
     def __init__(self, questions: Mapping[str, Question] | None = None) -> None:
         self.questions = dict(questions or {})
@@ -86,6 +89,8 @@ class Classification:
         for name, question in questions.items():
             if not isinstance(name, str) or not QUESTION_KEY.fullmatch(name):
                 raise ValueError(f"Question key {name!r} must match [A-Za-z0-9_-] and be 1 to 64 characters.")
+            if name in RESERVED_KEYS:
+                raise ValueError(f"Question key {name!r} is reserved by ClassificationResult; choose another key.")
             if not isinstance(question, Question):
                 raise ValueError(f"Question {name!r} must be a Boolean, Choice or Score, got {question!r}.")
         self._questions = dict(questions)
@@ -135,7 +140,7 @@ class Classification:
             raise ClassificationError(f"The model returned an invalid classification: {exc}") from exc
         parsed = agent_state.structured(turn)
         if parsed is None:
-            raise ClassificationError("The model returned no classification.")
+            raise _unparsed(agent, turn)
         values = parsed.model_dump(by_alias=True) if isinstance(parsed, BaseModel) else dict(parsed)
         return ClassificationResult(
             answers={
@@ -146,3 +151,17 @@ class Classification:
             usage=agent_state.usage(turn),
             state=turn,
         )
+
+
+def _unparsed(agent: ClassificationAgent, turn: dict[str, Any]) -> ClassificationError:
+    schema = agent.schema()
+    replies = [message for message in agent_state.messages(turn) if message.type == "ai"]
+    reply = replies[-1] if replies else None
+    calls = getattr(reply, "tool_calls", None) or []
+    if schema is None or not calls:
+        return ClassificationError("The model returned no classification.")
+    try:
+        schema.model_validate(calls[-1].get("args") or {})
+    except ValidationError as exc:
+        return ClassificationError(f"The model returned an invalid classification: {exc}")
+    return ClassificationError("The model returned no classification.")

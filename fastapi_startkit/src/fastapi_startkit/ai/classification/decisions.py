@@ -43,11 +43,22 @@ class Decisions:
     async def _post(self, payload: Payload) -> Payload:
         import httpx  # noqa: PLC0415
 
-        async with httpx.AsyncClient(timeout=self.timeout, transport=self.transport) as client:
-            response = await client.post(DECISIONS_URL, json=payload, headers={"x-goog-api-key": self.api_key})
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout, transport=self.transport) as client:
+                response = await client.post(DECISIONS_URL, json=payload, headers={"x-goog-api-key": self.api_key})
+        except httpx.HTTPError as exc:
+            raise ClassificationError(f"Decisions API request failed: {type(exc).__name__}: {exc}") from exc
         if response.is_error:
             raise ClassificationError(f"Decisions API request failed with {response.status_code}: {_error(response)}")
-        return response.json()
+        try:
+            body = response.json()
+        except ValueError as exc:
+            raise ClassificationError(
+                f"Decisions API returned a response that is not JSON: {response.text[:200]!r}"
+            ) from exc
+        if not isinstance(body, dict):
+            raise ClassificationError(f"Decisions API returned {type(body).__name__}, expected a JSON object.")
+        return body
 
     @classmethod
     def fake(cls, responses: list[Payload] | DecisionsResponder) -> DecisionsFake:
@@ -61,7 +72,10 @@ class Decisions:
 
 def _error(response: Any) -> str:
     try:
-        error = response.json().get("error") or {}
+        body = response.json()
     except ValueError:
+        return response.text
+    error = body.get("error") if isinstance(body, dict) else None
+    if not isinstance(error, dict):
         return response.text
     return f"{error.get('code', 'error')}: {error.get('message', '')}".rstrip(": ")
