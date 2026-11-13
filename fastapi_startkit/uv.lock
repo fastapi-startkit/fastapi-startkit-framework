@@ -892,7 +892,7 @@ wheels = [
 
 [[package]]
 name = "fastapi-startkit"
-version = "0.75.0"
+version = "0.75.2"
 source = { editable = "." }
 dependencies = [
     { name = "cleo" },
@@ -946,6 +946,11 @@ postgres = [
 redis = [
     { name = "redis" },
 ]
+socialite = [
+    { name = "fastapi", extra = ["standard"] },
+    { name = "httpx" },
+    { name = "itsdangerous" },
+]
 sqlite = [
     { name = "aiosqlite" },
 ]
@@ -993,6 +998,7 @@ requires-dist = [
     { name = "fastapi", extras = ["standard"], marker = "extra == 'fastapi'", specifier = ">=0.124.4" },
     { name = "fastapi-startkit", extras = ["ai"], marker = "extra == 'bedrock'" },
     { name = "fastapi-startkit", extras = ["fastapi"], marker = "extra == 'playwright'" },
+    { name = "fastapi-startkit", extras = ["fastapi"], marker = "extra == 'socialite'" },
     { name = "httpx", marker = "extra == 'fastapi'", specifier = ">=0.28.1" },
     { name = "inflection", specifier = ">=0.5.1" },
     { name = "itsdangerous", marker = "extra == 'fastapi'", specifier = ">=2.2.0" },
@@ -1012,7 +1018,7 @@ requires-dist = [
     { name = "sqlalchemy", extras = ["asyncio"], marker = "extra == 'database'", specifier = ">=2.0.38" },
     { name = "typing-extensions", specifier = ">=4.12.0" },
 ]
-provides-extras = ["fastapi", "database", "sqlite", "postgres", "mysql", "vite", "inertia", "ai", "bedrock", "redis", "playwright"]
+provides-extras = ["fastapi", "database", "sqlite", "postgres", "mysql", "vite", "inertia", "ai", "bedrock", "redis", "playwright", "socialite"]
 
 [package.metadata.requires-dev]
 dev = [

@@ -16,6 +16,7 @@ from .Queue import Queue
 from .Cache import Cache
 from .RateLimiter import RateLimiter
 from .Redis import Redis
+from .Socialite import Socialite
 
 __all__ = [
     "Facade",
@@ -36,4 +37,5 @@ __all__ = [
     "Cache",
     "RateLimiter",
     "Redis",
+    "Socialite",
 ]
