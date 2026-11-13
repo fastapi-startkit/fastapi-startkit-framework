@@ -1,5 +1,7 @@
 from typing import Any
 
+BROADCAST_EVENT = "Illuminate\\Notifications\\Events\\BroadcastNotificationCreated"
+
 
 class Notification:
     id: str | None = None
@@ -10,3 +12,9 @@ class Notification:
 
     def to_array(self, notifiable: Any) -> dict[str, Any]:
         return {}
+
+    def broadcast_as(self) -> str:
+        return BROADCAST_EVENT
+
+    def broadcast_type(self) -> str:
+        return type(self).__name__

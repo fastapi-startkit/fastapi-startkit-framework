@@ -3,7 +3,8 @@ from typing import Any
 
 from fastapi_startkit.support import Provider
 
-from .channels import DatabaseChannel, MailChannel
+from .channels import BroadcastChannel, DatabaseChannel, MailChannel
+from .commands import MakeNotificationCommand
 from .config import NotificationConfig
 from .manager import ChannelManager
 
@@ -19,6 +20,7 @@ class NotificationProvider(Provider):
         manager = ChannelManager(config)
         manager.extend("mail", lambda: MailChannel(lambda: self.require("mail", "MailProvider")))
         manager.extend("database", lambda: DatabaseChannel(lambda: self.connection(config), config["table"]))
+        manager.extend("broadcast", lambda: BroadcastChannel(lambda: self.require("broadcasting", "ReverbProvider")))
         self.app.bind("notification", manager)
 
     def connection(self, config: dict[str, Any]) -> Any:
@@ -30,6 +32,7 @@ class NotificationProvider(Provider):
         return self.app.make(key)
 
     def boot(self) -> None:
+        self.commands([MakeNotificationCommand])
         directory = Path(__file__).resolve().parent
         self.publishes(
             {
