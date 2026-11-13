@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from unittest import IsolatedAsyncioTestCase, TestCase, mock
 
+from cleo.testers.command_tester import CommandTester
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import StaticPool
 
@@ -20,12 +21,16 @@ from fastapi_startkit.masoniteorm.connections.sqlite_connection import SQliteCon
 from fastapi_startkit.masoniteorm.models import Model
 from fastapi_startkit.masoniteorm.schema import Schema
 from fastapi_startkit.notifications import (
+    BroadcastChannel,
     ChannelManager,
     MailMessage,
     Notifiable,
     Notification,
     NotificationProvider,
 )
+
+from fastapi_startkit.notifications.commands import MakeNotificationCommand
+from fastapi_startkit.notifications.notification import BROADCAST_EVENT
 
 MIGRATION = (
     Path(__file__).resolve().parents[2]
@@ -278,3 +283,187 @@ class TestProviderRequirements(IsolatedAsyncioTestCase):
 
         self.assertEqual(notification.via(None), [])
         self.assertEqual(notification.to_array(None), {})
+
+
+class FakeBroadcasting:
+    def __init__(self):
+        self.emitted = []
+
+    async def emit(self, channel, event, payload):
+        self.emitted.append((channel, event, payload))
+
+
+class NamedChannel:
+    def __init__(self, name):
+        self.name = name
+
+
+class OrderShipped(Notification):
+    def __init__(self, channels=("broadcast",)):
+        self.channels = list(channels)
+
+    def via(self, notifiable):
+        return self.channels
+
+    def to_mail(self, notifiable):
+        return MailMessage().subject("Shipped").line("Your order shipped.")
+
+    def to_broadcast(self, notifiable):
+        return {"order": 3}
+
+    def to_array(self, notifiable):
+        return {"order": 3, "source": "array"}
+
+
+class TestBroadcastChannel(NotificationTestCase):
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        self.broadcasting = FakeBroadcasting()
+        self.app.bind("broadcasting", self.broadcasting)
+
+    async def test_broadcasts_to_the_notifiables_private_channel(self):
+        await self.user.notify(OrderShipped())
+
+        [(channel, event, payload)] = self.broadcasting.emitted
+        self.assertEqual(channel, "private-NotifiedUser.7")
+        self.assertEqual(event, BROADCAST_EVENT)
+        self.assertEqual(payload["order"], 3)
+        self.assertEqual(payload["type"], "OrderShipped")
+        self.assertEqual(len(payload["id"]), 32)
+
+    async def test_falls_back_to_to_array_and_honours_broadcast_as(self):
+        class Plain(InvoicePaid):
+            def broadcast_as(self):
+                return "invoice.paid"
+
+        await self.user.notify(Plain(4, ["broadcast"]))
+
+        [(_, event, payload)] = self.broadcasting.emitted
+        self.assertEqual(event, "invoice.paid")
+        self.assertEqual(payload["amount"], 4)
+
+    async def test_custom_routes(self):
+        class Routed(NotifiedUser):
+            def route_notification_for_broadcast(self, notification):
+                return ["team.1", NamedChannel("presence-room.2")]
+
+        await Routed({"id": 1}).notify(OrderShipped())
+
+        self.assertEqual([item[0] for item in self.broadcasting.emitted], ["private-team.1", "presence-room.2"])
+
+    async def test_anonymous_route_and_missing_route(self):
+        await NotificationFacade.route("broadcast", "orders.9").notify(OrderShipped())
+        await NotificationFacade.route("mail", "a@example.com").notify(OrderShipped())
+
+        self.assertEqual([item[0] for item in self.broadcasting.emitted], ["private-orders.9"])
+
+    async def test_plain_notifiable_without_route_raises(self):
+        class Plain:
+            def route_notification_for(self, channel, notification):
+                return self
+
+        with self.assertRaisesRegex(NotificationException, "requires a Notifiable model or a broadcast route"):
+            await BroadcastChannel(lambda: self.broadcasting).send(Plain(), OrderShipped())
+
+    async def test_multiple_channels_in_via_reach_all(self):
+        await NotificationFacade.send_now(self.user, OrderShipped(["mail", "database", "broadcast"]))
+
+        [message] = self.sent()
+        self.assertEqual(message["Subject"], "Shipped")
+        [row] = await self.rows()
+        self.assertEqual(json.loads(row["data"]), {"order": 3, "source": "array"})
+        [(_, _, payload)] = self.broadcasting.emitted
+        self.assertEqual(payload["id"], row["id"])
+
+
+class TestBroadcastRequirement(IsolatedAsyncioTestCase):
+    async def test_missing_reverb_provider_raises(self):
+        Application(base_path=Path(tempfile.mkdtemp()), providers=[NotificationProvider])
+
+        with self.assertRaisesRegex(RuntimeError, "require ReverbProvider"):
+            await NotifiedUser({"id": 1}).notify(OrderShipped())
+
+
+class TestReadState(NotificationTestCase):
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        self.other = NotifiedUser({"id": 8, "name": "Bob"})
+        await NotificationFacade.send([self.user, self.other], InvoicePaid(1, ["database"]))
+        await self.user.notify(InvoicePaid(2, ["database"]))
+        await self.user.notify(InvoicePaid(3, ["database"]))
+
+    async def amounts(self, rows):
+        return sorted(json.loads(row["data"])["amount"] for row in rows)
+
+    async def test_new_notifications_are_unread(self):
+        self.assertEqual(await self.amounts(await self.user.unread_notifications()), [1, 2, 3])
+        self.assertEqual(await self.user.read_notifications(), [])
+
+    async def test_mark_selected_as_read(self):
+        first = (await self.user.notifications())[0]
+
+        self.assertEqual(await self.user.mark_notifications_as_read(first["id"]), 1)
+
+        [read] = await self.user.read_notifications()
+        self.assertEqual(read["id"], first["id"])
+        self.assertIsNotNone(read["read_at"])
+        self.assertEqual(len(await self.user.unread_notifications()), 2)
+
+    async def test_mark_all_as_read_keeps_first_read_at_and_scopes_to_notifiable(self):
+        first = (await self.user.notifications())[0]
+        await self.database.sqlite.statement(
+            "UPDATE notifications SET read_at = ? WHERE id = ?", ["2020-01-01 00:00:00", first["id"]]
+        )
+
+        self.assertEqual(await self.user.mark_notifications_as_read(), 2)
+
+        self.assertEqual(await self.user.unread_notifications(), [])
+        read = {row["id"]: row["read_at"] for row in await self.user.read_notifications()}
+        self.assertEqual(str(read[first["id"]])[:10], "2020-01-01")
+        self.assertEqual(len(await self.other.unread_notifications()), 1)
+
+    async def test_mark_as_unread(self):
+        await self.user.mark_notifications_as_read()
+        first = (await self.user.notifications())[0]
+
+        self.assertEqual(await self.user.mark_notifications_as_unread(first["id"]), 1)
+        self.assertEqual([row["id"] for row in await self.user.unread_notifications()], [first["id"]])
+        self.assertEqual(await self.user.mark_notifications_as_unread(), 3)
+        self.assertEqual(len(await self.user.unread_notifications()), 3)
+
+
+class TestMakeNotificationCommand(TestCase):
+    def setUp(self):
+        self.directory = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        cwd = os.getcwd()
+        os.chdir(self.directory)
+        self.addCleanup(os.chdir, cwd)
+
+    def test_registered_by_provider(self):
+        app = Application(base_path=self.directory, providers=[NotificationProvider])
+        self.assertIn(MakeNotificationCommand, app.commands)
+
+    def test_creates_an_importable_notification(self):
+        tester = CommandTester(MakeNotificationCommand())
+
+        self.assertEqual(tester.execute("invoice_paid"), 0)
+        self.assertIn("Notification created:", tester.io.fetch_output())
+
+        target = self.directory / "app/notifications/invoice_paid.py"
+        content = target.read_text()
+        self.assertIn("class InvoicePaid(Notification):", content)
+        self.assertNotIn("#", content)
+        spec = importlib.util.spec_from_file_location("invoice_paid", target)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        notification = module.InvoicePaid()
+        self.assertEqual(notification.via(None), ["mail"])
+        self.assertEqual(notification.to_mail(None).to("a@example.com").to_message()["Subject"], "InvoicePaid")
+
+    def test_custom_directory_and_no_overwrite(self):
+        tester = CommandTester(MakeNotificationCommand())
+        tester.execute("OrderShipped -d src/notes")
+
+        self.assertTrue((self.directory / "src/notes/order_shipped.py").exists())
+        self.assertEqual(tester.execute("OrderShipped -d src/notes"), 1)
+        self.assertIn("already exists", tester.io.fetch_output())

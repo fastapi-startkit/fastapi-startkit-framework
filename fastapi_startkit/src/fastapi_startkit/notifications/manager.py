@@ -35,5 +35,8 @@ class ChannelManager:
             for name in notification.via(notifiable):
                 await self.channel(name).send(notifiable, notification)
 
+    async def send_now(self, notifiables: Any, notification: Notification) -> None:
+        await self.send(notifiables, notification)
+
     def route(self, channel: str, route: Any) -> AnonymousNotifiable:
         return AnonymousNotifiable().route(channel, route)

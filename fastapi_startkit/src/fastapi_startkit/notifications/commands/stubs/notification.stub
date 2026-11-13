@@ -1,0 +1,14 @@
+from typing import Any
+
+from fastapi_startkit.notifications import MailMessage, Notification
+
+
+class __CLASS__(Notification):
+    def via(self, notifiable: Any) -> list[str]:
+        return ["mail"]
+
+    def to_mail(self, notifiable: Any) -> MailMessage:
+        return MailMessage().subject("__CLASS__").line("The introduction to the notification.")
+
+    def to_array(self, notifiable: Any) -> dict[str, Any]:
+        return {}

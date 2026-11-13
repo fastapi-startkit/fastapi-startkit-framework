@@ -45,14 +45,30 @@ class DatabaseChannel:
     def query(self) -> Any:
         return self.connection().query().table(self.table)
 
-    async def notifications_for(self, notifiable: Any) -> list[dict[str, Any]]:
+    def query_for(self, notifiable: Any, ids: tuple[str, ...] | None = None) -> Any:
         builder = (
             self.query()
             .where("notifiable_type", notifiable.notifiable_type())
             .where("notifiable_id", notifiable.notifiable_key())
-            .order_by("created_at", "desc")
         )
+        return builder.where_in("id", list(ids)) if ids else builder
+
+    async def notifications_for(self, notifiable: Any, read: bool | None = None) -> list[dict[str, Any]]:
+        builder = self.query_for(notifiable).order_by("created_at", "desc")
+        if read is True:
+            builder.where_not_null("read_at")
+        elif read is False:
+            builder.where_null("read_at")
         return list(await builder.connection.select(builder.to_qmark(), list(builder.get_bindings())))
+
+    async def mark_as_read(self, notifiable: Any, ids: tuple[str, ...] | None = None) -> int:
+        now = pendulum.now("UTC").to_datetime_string()
+        builder = self.query_for(notifiable, ids).where_null("read_at")
+        return await builder.update({"read_at": now, "updated_at": now})
+
+    async def mark_as_unread(self, notifiable: Any, ids: tuple[str, ...] | None = None) -> int:
+        now = pendulum.now("UTC").to_datetime_string()
+        return await self.query_for(notifiable, ids).update({"read_at": None, "updated_at": now})
 
     async def send(self, notifiable: Any, notification: Notification) -> dict[str, Any]:
         if not hasattr(notifiable, "notifiable_type"):
@@ -71,3 +87,30 @@ class DatabaseChannel:
         }
         await self.query().insert(record)
         return record
+
+
+class BroadcastChannel:
+    def __init__(self, broadcasting: Callable[[], Any]):
+        self.broadcasting = broadcasting
+
+    async def send(self, notifiable: Any, notification: Notification) -> dict[str, Any] | None:
+        names = self.channel_names(notifiable, notification)
+        if not names:
+            return None
+        method = getattr(notification, "to_broadcast", None) or notification.to_array
+        payload = {**method(notifiable), "id": notification.id, "type": notification.broadcast_type()}
+        manager = self.broadcasting()
+        for name in names:
+            await manager.emit(name, notification.broadcast_as(), payload)
+        return payload
+
+    def channel_names(self, notifiable: Any, notification: Notification) -> list[str]:
+        route = notifiable.route_notification_for("broadcast", notification)
+        if route is notifiable:
+            if not hasattr(notifiable, "receives_broadcast_notifications_on"):
+                raise NotificationException("The broadcast channel requires a Notifiable model or a broadcast route.")
+            route = notifiable.receives_broadcast_notifications_on()
+        if not route:
+            return []
+        routes = route if isinstance(route, (list, tuple)) else [route]
+        return [f"private-{item}" if isinstance(item, str) else item.name for item in routes]
