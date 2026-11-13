@@ -49,10 +49,16 @@ class Notifiable(RoutesNotifications):
         return await database_channel().notifications_for(self, read=True)
 
     async def mark_notifications_as_read(self, *ids: str) -> int:
-        return await database_channel().mark_as_read(self, ids or None)
+        return await database_channel().mark_as_read(self, ids)
 
     async def mark_notifications_as_unread(self, *ids: str) -> int:
-        return await database_channel().mark_as_unread(self, ids or None)
+        return await database_channel().mark_as_unread(self, ids)
+
+    async def mark_all_notifications_as_read(self) -> int:
+        return await database_channel().mark_as_read(self)
+
+    async def mark_all_notifications_as_unread(self) -> int:
+        return await database_channel().mark_as_unread(self)
 
 
 class AnonymousNotifiable(RoutesNotifications):

@@ -1,5 +1,5 @@
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import Any, Protocol
 
 import pendulum
@@ -45,13 +45,13 @@ class DatabaseChannel:
     def query(self) -> Any:
         return self.connection().query().table(self.table)
 
-    def query_for(self, notifiable: Any, ids: tuple[str, ...] | None = None) -> Any:
+    def query_for(self, notifiable: Any, ids: list[str] | None = None) -> Any:
         builder = (
             self.query()
             .where("notifiable_type", notifiable.notifiable_type())
             .where("notifiable_id", notifiable.notifiable_key())
         )
-        return builder.where_in("id", list(ids)) if ids else builder
+        return builder if ids is None else builder.where_in("id", ids)
 
     async def notifications_for(self, notifiable: Any, read: bool | None = None) -> list[dict[str, Any]]:
         builder = self.query_for(notifiable).order_by("created_at", "desc")
@@ -61,14 +61,24 @@ class DatabaseChannel:
             builder.where_null("read_at")
         return list(await builder.connection.select(builder.to_qmark(), list(builder.get_bindings())))
 
-    async def mark_as_read(self, notifiable: Any, ids: tuple[str, ...] | None = None) -> int:
+    async def mark_as_read(self, notifiable: Any, ids: Iterable[str] | None = None) -> int:
         now = pendulum.now("UTC").to_datetime_string()
-        builder = self.query_for(notifiable, ids).where_null("read_at")
-        return await builder.update({"read_at": now, "updated_at": now})
+        return await self.update_for(notifiable, ids, {"read_at": now, "updated_at": now}, unread_only=True)
 
-    async def mark_as_unread(self, notifiable: Any, ids: tuple[str, ...] | None = None) -> int:
+    async def mark_as_unread(self, notifiable: Any, ids: Iterable[str] | None = None) -> int:
         now = pendulum.now("UTC").to_datetime_string()
-        return await self.query_for(notifiable, ids).update({"read_at": None, "updated_at": now})
+        return await self.update_for(notifiable, ids, {"read_at": None, "updated_at": now})
+
+    async def update_for(
+        self, notifiable: Any, ids: Iterable[str] | None, values: dict[str, Any], unread_only: bool = False
+    ) -> int:
+        selected = None if ids is None else list(ids)
+        if selected == []:
+            return 0
+        builder = self.query_for(notifiable, selected)
+        if unread_only:
+            builder.where_null("read_at")
+        return await builder.update(values)
 
     async def send(self, notifiable: Any, notification: Notification) -> dict[str, Any]:
         if not hasattr(notifiable, "notifiable_type"):

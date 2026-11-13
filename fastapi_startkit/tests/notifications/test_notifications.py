@@ -415,7 +415,7 @@ class TestReadState(NotificationTestCase):
             "UPDATE notifications SET read_at = ? WHERE id = ?", ["2020-01-01 00:00:00", first["id"]]
         )
 
-        self.assertEqual(await self.user.mark_notifications_as_read(), 2)
+        self.assertEqual(await self.user.mark_all_notifications_as_read(), 2)
 
         self.assertEqual(await self.user.unread_notifications(), [])
         read = {row["id"]: row["read_at"] for row in await self.user.read_notifications()}
@@ -423,13 +423,31 @@ class TestReadState(NotificationTestCase):
         self.assertEqual(len(await self.other.unread_notifications()), 1)
 
     async def test_mark_as_unread(self):
-        await self.user.mark_notifications_as_read()
+        await self.user.mark_all_notifications_as_read()
         first = (await self.user.notifications())[0]
 
         self.assertEqual(await self.user.mark_notifications_as_unread(first["id"]), 1)
         self.assertEqual([row["id"] for row in await self.user.unread_notifications()], [first["id"]])
-        self.assertEqual(await self.user.mark_notifications_as_unread(), 3)
+        self.assertEqual(await self.user.mark_all_notifications_as_unread(), 3)
         self.assertEqual(len(await self.user.unread_notifications()), 3)
+
+    async def test_empty_selection_updates_nothing(self):
+        self.assertEqual(await self.user.mark_notifications_as_read(*[]), 0)
+        self.assertEqual(len(await self.user.unread_notifications()), 3)
+
+        await self.user.mark_all_notifications_as_read()
+        self.assertEqual(await self.user.mark_notifications_as_unread(*[]), 0)
+        self.assertEqual(await self.user.unread_notifications(), [])
+
+    async def test_channel_accepts_iterables_and_treats_only_none_as_all(self):
+        channel = NotificationFacade.channel("database")
+        first = (await self.user.notifications())[0]
+
+        self.assertEqual(await channel.mark_as_read(self.user, []), 0)
+        self.assertEqual(await channel.mark_as_read(self.user, iter([first["id"]])), 1)
+        self.assertEqual(await channel.mark_as_read(self.user, None), 2)
+        self.assertEqual(await channel.mark_as_unread(self.user, ()), 0)
+        self.assertEqual(len(await self.user.read_notifications()), 3)
 
 
 class TestMakeNotificationCommand(TestCase):
