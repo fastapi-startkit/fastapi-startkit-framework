@@ -113,6 +113,9 @@ playwright = [
     "playwright>=1.55.0",
     "pytest-asyncio>=1.3.0",
 ]
+socialite = [
+    "fastapi-startkit[fastapi]",
+]
 
 [dependency-groups]
 dev = [
