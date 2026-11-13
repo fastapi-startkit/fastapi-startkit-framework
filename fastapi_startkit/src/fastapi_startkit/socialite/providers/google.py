@@ -15,13 +15,11 @@ class GoogleProvider(Provider):
         return "https://www.googleapis.com/oauth2/v4/token"
 
     async def get_user_by_token(self, token: str) -> dict[str, Any]:
-        async with self.http_client() as client:
-            response = await client.get(
-                "https://www.googleapis.com/oauth2/v3/userinfo",
-                headers={"Accept": "application/json", "Authorization": f"Bearer {token}"},
-            )
-            response.raise_for_status()
-            return response.json()
+        return await self.request_json(
+            "GET",
+            "https://www.googleapis.com/oauth2/v3/userinfo",
+            headers={"Accept": "application/json", "Authorization": f"Bearer {token}"},
+        )
 
     def map_user_to_object(self, user: dict[str, Any]) -> SocialiteUser:
         return SocialiteUser(

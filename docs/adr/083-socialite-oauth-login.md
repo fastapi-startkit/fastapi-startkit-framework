@@ -42,7 +42,18 @@ async def callback(request: Request):
 
 ### State
 
-`redirect()` stores a random `state` in `request.session` (Starlette `SessionMiddleware`) and `user()` pops it and compares it with the `state` query parameter using `secrets.compare_digest`. A missing or different value raises `InvalidStateException`. A stateful `redirect()` without a session raises `SocialiteException` up front, because the callback could never pass. `stateless()` skips both, for APIs and SPAs that keep the state themselves.
+`redirect()` stores a random `state` in `request.session` (Starlette `SessionMiddleware`) and `user()` pops it and compares it with the `state` query parameter using `secrets.compare_digest` on UTF-8 bytes, so a non-ASCII `state` is rejected as invalid instead of raising `TypeError`. A missing or different value raises `InvalidStateException`. A stateful `redirect()` without a session raises `SocialiteException` up front, because the callback could never pass. `stateless()` skips both, for APIs and SPAs that keep the state themselves.
+
+### Errors
+
+Every failure raises a `SocialiteException` subclass, so an app needs one handler:
+
+- `InvalidStateException`: missing or different `state`.
+- `AuthorizationDeniedException(error, error_description)`: the callback carries `?error=` (for example `access_denied` when the user declines consent) or no `code`. It is raised before any token request, so an empty code is never posted.
+- `ProviderRequestException(message, status_code)`: the token exchange or profile request failed with an HTTP status, a transport error or a non-JSON body. The original `httpx` or `ValueError` is kept as `__cause__`. Providers send their requests through `Provider.request_json()`, which does the wrapping.
+- `DriverMissingConfigurationException` and `SocialiteException` for configuration and unknown drivers.
+
+The consent URL omits `scope` when no scopes are set.
 
 ### Configuration
 
@@ -56,6 +67,8 @@ Consent URL `https://accounts.google.com/o/oauth2/auth`, token URL `https://www.
 
 New package `fastapi_startkit.socialite` (`manager.py`, `providers/abstract.py`, `providers/google.py`, `user.py`, `exceptions.py`, `config/`, `provider.py`), the `Socialite` facade and `.pyi` stub, and a `socialite` extra that installs `fastapi-startkit[fastapi]` (Starlette, `httpx`, `itsdangerous` for sessions). The manager's `transport` attribute is passed to every built-in provider's `httpx.AsyncClient`, so tests set an `httpx.MockTransport`.
 
+User documentation lives in the docs site (`fastapi-startkit.github.io`, `docs/socialite.md`).
+
 Out of scope: other drivers, OAuth 1.0, PKCE, refreshing tokens and OpenID `id_token` verification.
 
 ## Validation
@@ -63,7 +76,8 @@ Out of scope: other drivers, OAuth 1.0, PKCE, refreshing tokens and OpenID `id_t
 - Unit tests map a raw Google profile to `SocialiteUser`.
 - The redirect URL contains `client_id`, `redirect_uri`, the scopes, extra `with_()` parameters and the `state` saved in the session.
 - The callback flow runs against `httpx.MockTransport` for the token and profile endpoints, including `approved_scopes` and `user_from_token`.
-- Missing or wrong `state` raises `InvalidStateException`; `stateless()` skips it.
+- Missing, wrong or non-ASCII `state` raises `InvalidStateException`; `stateless()` skips it.
+- `?error=access_denied` and a missing `code` raise `AuthorizationDeniedException` without calling the token endpoint; token and profile failures (status, transport, non-JSON) raise `ProviderRequestException` with the `httpx` error as `__cause__`; no scopes means no `scope` parameter.
 - Unknown drivers, missing configuration and stateful redirects without a session raise clear errors; `extend()` and `build_provider()` register a custom driver.
 - A FastAPI app with `SessionMiddleware` runs redirect and callback end to end.
 - `uv run pytest --ignore=tests/masoniteorm/postgres --cov` stays above the 80% threshold.

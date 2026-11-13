@@ -7,7 +7,12 @@ import httpx
 from starlette.requests import Request
 from starlette.responses import RedirectResponse
 
-from ..exceptions import InvalidStateException, SocialiteException
+from ..exceptions import (
+    AuthorizationDeniedException,
+    InvalidStateException,
+    ProviderRequestException,
+    SocialiteException,
+)
 from ..user import SocialiteUser
 
 
@@ -80,12 +85,10 @@ class Provider(ABC):
         return f"{self.get_auth_url()}?{urlencode(self.get_code_fields(state))}"
 
     def get_code_fields(self, state: str | None = None) -> dict[str, str]:
-        fields = {
-            "client_id": self.client_id,
-            "redirect_uri": self.redirect_uri,
-            "scope": self.scope_separator.join(self._scopes),
-            "response_type": "code",
-        }
+        fields = {"client_id": self.client_id, "redirect_uri": self.redirect_uri}
+        if self._scopes:
+            fields["scope"] = self.scope_separator.join(self._scopes)
+        fields["response_type"] = "code"
         if state is not None:
             fields["state"] = state
         return {**fields, **self._parameters}
@@ -94,7 +97,7 @@ class Provider(ABC):
         if not self._stateless:
             self._validate_state(request)
 
-        response = await self.get_access_token_response(request.query_params.get("code", ""))
+        response = await self.get_access_token_response(self._authorization_code(request))
         user = await self.user_from_token(response["access_token"])
         user.refresh_token = response.get("refresh_token")
         user.expires_in = response.get("expires_in")
@@ -107,14 +110,25 @@ class Provider(ABC):
         return user
 
     async def get_access_token_response(self, code: str) -> dict[str, Any]:
-        async with self.http_client() as client:
-            response = await client.post(
-                self.get_token_url(),
-                data=self.get_token_fields(code),
-                headers={"Accept": "application/json"},
-            )
-            response.raise_for_status()
-            return response.json()
+        return await self.request_json(
+            "POST", self.get_token_url(), data=self.get_token_fields(code), headers={"Accept": "application/json"}
+        )
+
+    async def request_json(self, method: str, url: str, **options: Any) -> dict[str, Any]:
+        try:
+            async with self.http_client() as client:
+                response = await client.request(method, url, **options)
+                response.raise_for_status()
+                return response.json()
+        except httpx.HTTPStatusError as error:
+            raise ProviderRequestException(
+                f"OAuth request to {url} failed with status {error.response.status_code}.",
+                error.response.status_code,
+            ) from error
+        except httpx.HTTPError as error:
+            raise ProviderRequestException(f"OAuth request to {url} failed: {error}") from error
+        except ValueError as error:
+            raise ProviderRequestException(f"OAuth response from {url} is not valid JSON.") from error
 
     def get_token_fields(self, code: str) -> dict[str, str]:
         return {
@@ -134,10 +148,19 @@ class Provider(ABC):
     def http_client(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(transport=self.transport)
 
+    def _authorization_code(self, request: Request) -> str:
+        error = request.query_params.get("error")
+        if error:
+            raise AuthorizationDeniedException(error, request.query_params.get("error_description"))
+        code = request.query_params.get("code")
+        if not code:
+            raise AuthorizationDeniedException("missing_code", "The callback has no authorization code.")
+        return code
+
     def _validate_state(self, request: Request) -> None:
         expected = self._session(request).pop(self.state_session_key, None)
         given = request.query_params.get("state")
-        if not expected or not given or not secrets.compare_digest(str(expected), given):
+        if not expected or not given or not secrets.compare_digest(str(expected).encode(), given.encode()):
             raise InvalidStateException("The OAuth state is missing or does not match.")
 
     def _session(self, request: Request | None) -> dict[str, Any]:

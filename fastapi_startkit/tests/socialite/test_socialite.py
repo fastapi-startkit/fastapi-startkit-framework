@@ -14,11 +14,13 @@ from fastapi_startkit.application import Application
 from fastapi_startkit.configuration import config
 from fastapi_startkit.facades import Socialite
 from fastapi_startkit.socialite import (
+    AuthorizationDeniedException,
     DriverMissingConfigurationException,
     GoogleProvider,
     GoogleServiceConfig,
     InvalidStateException,
     Provider,
+    ProviderRequestException,
     SocialiteException,
     SocialiteManager,
     SocialiteProvider,
@@ -204,6 +206,12 @@ class TestGoogleProvider(IsolatedAsyncioTestCase):
 
         self.assertNotIn("state", session)
 
+    async def test_non_ascii_state_raises_invalid_state(self):
+        with self.assertRaises(InvalidStateException):
+            await self.manager.driver("google").user(make_request({"code": "c", "state": "é"}, {"state": "abc"}))
+
+        self.assertEqual(self.api.requests, [])
+
     async def test_stateless_skips_state_check(self):
         user = await self.manager.driver("google").stateless().user(make_request({"code": "c"}))
 
@@ -226,9 +234,80 @@ class TestGoogleProvider(IsolatedAsyncioTestCase):
         self.assertEqual(user.approved_scopes, [])
         self.assertEqual(self.api.requests[0].headers["Authorization"], "Bearer access-token")
 
-    async def test_rejected_token_raises_http_error(self):
-        with self.assertRaises(httpx.HTTPStatusError):
+    async def test_rejected_userinfo_raises_provider_request_exception(self):
+        with self.assertRaises(ProviderRequestException) as raised:
             await self.manager.driver("google").user_from_token("expired")
+
+        self.assertEqual(raised.exception.status_code, 401)
+        self.assertIsInstance(raised.exception.__cause__, httpx.HTTPStatusError)
+        self.assertIn("/oauth2/v3/userinfo", str(raised.exception))
+
+    async def test_rejected_token_exchange_raises_provider_request_exception(self):
+        manager = SocialiteManager(
+            {"google": GOOGLE},
+            transport=httpx.MockTransport(lambda request: httpx.Response(400, json={"error": "invalid_grant"})),
+        )
+
+        with self.assertRaises(ProviderRequestException) as raised:
+            await manager.driver("google").stateless().user(make_request({"code": "used"}))
+
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertIsInstance(raised.exception.__cause__, httpx.HTTPStatusError)
+
+    async def test_transport_failure_raises_provider_request_exception(self):
+        def fail(request: httpx.Request) -> httpx.Response:
+            raise httpx.ConnectError("connection refused", request=request)
+
+        manager = SocialiteManager({"google": GOOGLE}, transport=httpx.MockTransport(fail))
+
+        with self.assertRaises(ProviderRequestException) as raised:
+            await manager.driver("google").user_from_token("token")
+
+        self.assertIsNone(raised.exception.status_code)
+        self.assertIsInstance(raised.exception.__cause__, httpx.ConnectError)
+
+    async def test_non_json_response_raises_provider_request_exception(self):
+        manager = SocialiteManager(
+            {"google": GOOGLE}, transport=httpx.MockTransport(lambda request: httpx.Response(200, text="<html>"))
+        )
+
+        with self.assertRaisesRegex(ProviderRequestException, "not valid JSON"):
+            await manager.driver("google").user_from_token("token")
+
+    async def test_denied_consent_raises_without_token_request(self):
+        session = {"state": "abc"}
+        request = make_request(
+            {"error": "access_denied", "error_description": "The user denied access", "state": "abc"}, session
+        )
+
+        with self.assertRaises(AuthorizationDeniedException) as raised:
+            await self.manager.driver("google").user(request)
+
+        self.assertIsInstance(raised.exception, SocialiteException)
+        self.assertEqual(raised.exception.error, "access_denied")
+        self.assertEqual(raised.exception.error_description, "The user denied access")
+        self.assertIn("access_denied", str(raised.exception))
+        self.assertEqual(self.api.requests, [])
+
+    async def test_denied_consent_without_description(self):
+        with self.assertRaises(AuthorizationDeniedException) as raised:
+            await self.manager.driver("google").stateless().user(make_request({"error": "access_denied"}))
+
+        self.assertIsNone(raised.exception.error_description)
+        self.assertEqual(str(raised.exception), "OAuth authorization failed: access_denied")
+
+    async def test_missing_code_raises_without_token_request(self):
+        with self.assertRaises(AuthorizationDeniedException) as raised:
+            await self.manager.driver("google").stateless().user(make_request())
+
+        self.assertEqual(raised.exception.error, "missing_code")
+        self.assertEqual(self.api.requests, [])
+
+    def test_scope_is_omitted_without_scopes(self):
+        query = query_of(self.manager.driver("google").set_scopes().stateless().redirect().headers["location"])
+
+        self.assertNotIn("scope", query)
+        self.assertEqual(query["response_type"], "code")
 
 
 class GitLabProvider(Provider):
