@@ -1,3 +1,4 @@
+import importlib
 import os
 import tempfile
 from dataclasses import dataclass, field
@@ -11,6 +12,7 @@ from fastapi import FastAPI, Request
 from starlette.middleware.sessions import SessionMiddleware
 
 from fastapi_startkit.application import Application
+from fastapi_startkit import facades
 from fastapi_startkit.configuration import config
 from fastapi_startkit.facades import Socialite
 from fastapi_startkit.socialite import (
@@ -406,6 +408,17 @@ class TestSocialiteProvider(IsolatedAsyncioTestCase):
         self.assertIsNone(config("services.google.client_id"))
         with self.assertRaisesRegex(DriverMissingConfigurationException, "GOOGLE_CLIENT_ID"):
             Socialite.driver("google")
+
+    def test_facade_resolves_the_bound_manager(self):
+        app = self.make_app((SocialiteProvider, FakeServicesConfig))
+        facade_module = importlib.reload(importlib.import_module("fastapi_startkit.facades.Socialite"))
+
+        self.assertIs(facades.Socialite, Socialite)
+        self.assertIn("Socialite", facades.__all__)
+        self.assertEqual(facade_module.Socialite.key, "socialite")
+        self.assertIsInstance(facade_module.Socialite.driver("google"), GoogleProvider)
+        self.assertIsInstance(Socialite.driver("google"), GoogleProvider)
+        self.assertEqual(Socialite.extend, app.make("socialite").extend)
 
     def test_publishes_services_config(self):
         app = self.make_app()
