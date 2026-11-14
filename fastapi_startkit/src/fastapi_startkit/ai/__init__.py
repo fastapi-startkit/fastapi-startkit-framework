@@ -14,6 +14,7 @@ from .ai import Ai
 from .judge import JudgeAgent
 from .providers.ai_provider import AIProvider
 from . import state
+from .streaming import AgentUserInteractionProtocol, StreamableAgentResponse, StreamProtocol, VercelDataProtocol
 from .testing import AgentFake, AgentRecordFake, AssertToolCall
 
 __all__ = [
@@ -21,6 +22,10 @@ __all__ = [
     "Ai",
     "Middleware",
     "AgentFake",
+    "AgentUserInteractionProtocol",
+    "StreamableAgentResponse",
+    "StreamProtocol",
+    "VercelDataProtocol",
     "state",
     "AIConfig",
     "AIProvider",
