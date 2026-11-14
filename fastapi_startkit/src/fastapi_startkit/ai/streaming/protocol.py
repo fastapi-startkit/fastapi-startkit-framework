@@ -27,7 +27,7 @@ class StreamProtocol(ABC):
             if isinstance(payload, str)
             else json.dumps(payload, default=str, ensure_ascii=False, separators=(",", ":"))
         )
-        return f"data: {data}\n\n"
+        return "".join(f"data: {line}\n" for line in data.split("\n")) + "\n"
 
     def response(self, stream: StreamableAgentResponse) -> StreamingResponse:
         from starlette.responses import StreamingResponse

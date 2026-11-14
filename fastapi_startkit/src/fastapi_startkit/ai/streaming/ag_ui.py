@@ -35,6 +35,7 @@ class _Run:
     thread_id: str
     run_id: str
     step: int = 0
+    message_id: str | None = None
 
 
 class AgentUserInteractionProtocol(StreamProtocol):
@@ -61,8 +62,10 @@ class AgentUserInteractionProtocol(StreamProtocol):
                 yield {"type": "RUN_STARTED", "threadId": run.thread_id, "runId": run.run_id}
             case StepStarted():
                 run.step += 1
+                run.message_id = None
                 yield {"type": "STEP_STARTED", "stepName": f"step-{run.step}"}
             case TextStarted(message_id):
+                run.message_id = message_id
                 yield {"type": "TEXT_MESSAGE_START", "messageId": message_id, "role": "assistant"}
             case TextDelta(message_id, delta):
                 yield {"type": "TEXT_MESSAGE_CONTENT", "messageId": message_id, "delta": delta}
@@ -77,7 +80,8 @@ class AgentUserInteractionProtocol(StreamProtocol):
                 yield {"type": "REASONING_MESSAGE_END", "messageId": message_id}
                 yield {"type": "REASONING_END", "messageId": message_id}
             case ToolInputStarted(call_id, name):
-                yield {"type": "TOOL_CALL_START", "toolCallId": call_id, "toolCallName": name}
+                start = {"type": "TOOL_CALL_START", "toolCallId": call_id, "toolCallName": name}
+                yield start if run.message_id is None else {**start, "parentMessageId": run.message_id}
             case ToolInputDelta(call_id, delta):
                 yield {"type": "TOOL_CALL_ARGS", "toolCallId": call_id, "delta": delta}
             case ToolInputAvailable(call_id):

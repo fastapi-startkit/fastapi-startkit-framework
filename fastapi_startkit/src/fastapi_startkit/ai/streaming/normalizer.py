@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-from collections import deque
 from collections.abc import AsyncGenerator, Iterator
 from contextlib import aclosing
 from dataclasses import dataclass
@@ -32,10 +31,10 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class _ToolDraft:
-    key: Any
-    id: str
-    name: str
+    id: str | None = None
+    name: str = ""
     args: str = ""
+    started: bool = False
 
 
 def _decode_json(value: Any, fallback: Any) -> Any:
@@ -75,10 +74,11 @@ def _content_parts(chunk: Any) -> list[tuple[str, str]]:
 class EventNormalizer:
     def __init__(self, message_id: str) -> None:
         self.message_id = message_id
-        self._open: TextStarted | ReasoningStarted | _ToolDraft | None = None
+        self._open: TextStarted | ReasoningStarted | None = None
         self._step_open = False
-        self._streamed_calls = 0
-        self._pending_outputs: deque[ToolInputAvailable] = deque()
+        self._drafts: dict[Any, _ToolDraft] = {}
+        self._pending_outputs: list[ToolInputAvailable] = []
+        self._aliases: dict[str, str] = {}
         self._ids = 0
 
     async def normalize(self, source: AsyncGenerator[dict[str, Any], None]) -> AsyncGenerator[StreamEvent, None]:
@@ -90,6 +90,8 @@ class EventNormalizer:
                         yield normalized
         except Exception as error:
             logger.exception("Agent stream failed")
+            for normalized in self._close_part():
+                yield normalized
             yield StreamFailed(error)
             return
         for normalized in self._close_step():
@@ -109,17 +111,18 @@ class EventNormalizer:
         elif kind == "on_chat_model_stream":
             yield from self._chunk(data.get("chunk"))
         elif kind == "on_chat_model_end":
-            yield from self._finish_tool_calls(data.get("output"))
+            yield from self._close_part()
+            yield from self._finish_tool_calls(getattr(data.get("output"), "tool_calls", None) or [])
         elif kind == "on_tool_end":
             yield from self._tool_output(data.get("output"))
 
     def _open_step(self) -> Iterator[StreamEvent]:
         self._step_open = True
-        self._streamed_calls = 0
         yield StepStarted()
 
     def _close_step(self) -> Iterator[StreamEvent]:
         yield from self._close_part()
+        yield from self._finish_tool_calls([])
         if self._step_open:
             self._step_open = False
             yield StepFinished()
@@ -130,13 +133,6 @@ class EventNormalizer:
             yield TextEnded(part.id)
         elif isinstance(part, ReasoningStarted):
             yield ReasoningEnded(part.id)
-        elif isinstance(part, _ToolDraft):
-            yield self._tool_input_available(part.id, part.name, _decode_json(part.args or "{}", {}))
-
-    def _tool_input_available(self, call_id: str, name: str, arguments: Any) -> ToolInputAvailable:
-        available = ToolInputAvailable(call_id, name, arguments)
-        self._pending_outputs.append(available)
-        return available
 
     def _chunk(self, chunk: Any) -> Iterator[StreamEvent]:
         if not self._step_open:
@@ -154,35 +150,78 @@ class EventNormalizer:
             yield self._open
         yield delta(self._open.id, text)
 
-    def _tool_chunk(self, call: dict[str, Any]) -> Iterator[StreamEvent]:
-        key = call.get("index") if call.get("index") is not None else call.get("id")
-        draft = self._open if isinstance(self._open, _ToolDraft) else None
-        if draft is None or (key is not None and key != draft.key):
-            yield from self._close_part()
-            draft = _ToolDraft(key, call.get("id") or self._new_id("call"), call.get("name") or "")
-            self._open = draft
-            self._streamed_calls += 1
-            yield ToolInputStarted(draft.id, draft.name)
-        if arguments := call.get("args"):
-            draft.args += arguments
-            yield ToolInputDelta(draft.id, arguments)
+    def _draft_key(self, call: dict[str, Any]) -> Any:
+        for key in (call.get("index"), call.get("id")):
+            if key is not None:
+                return key
+        return next(reversed(self._drafts), 0)
 
-    def _finish_tool_calls(self, output: Any) -> Iterator[StreamEvent]:
-        yield from self._close_part()
-        for call in (getattr(output, "tool_calls", None) or [])[self._streamed_calls :]:
-            call_id = call.get("id") or self._new_id("call")
+    def _tool_chunk(self, call: dict[str, Any]) -> Iterator[StreamEvent]:
+        key = self._draft_key(call)
+        draft = self._drafts.get(key)
+        if draft is None:
+            yield from self._close_part()
+            draft = self._drafts[key] = _ToolDraft()
+        draft.id = draft.id or call.get("id")
+        draft.name = draft.name or call.get("name") or ""
+        arguments = call.get("args") or ""
+        draft.args += arguments
+        if draft.started:
+            if arguments:
+                yield ToolInputDelta(draft.id or "", arguments)
+        elif draft.name:
+            yield from self._start_draft(draft)
+
+    def _start_draft(self, draft: _ToolDraft) -> Iterator[StreamEvent]:
+        draft.id = draft.id or self._new_id("call")
+        draft.started = True
+        yield ToolInputStarted(draft.id, draft.name)
+        if draft.args:
+            yield ToolInputDelta(draft.id, draft.args)
+
+    def _match_draft(self, call: dict[str, Any], drafts: list[_ToolDraft], parsed_ids: set[Any]) -> _ToolDraft | None:
+        by_id = next((draft for draft in drafts if draft.id and draft.id == call.get("id")), None)
+        return by_id or next((draft for draft in drafts if draft.id not in parsed_ids), None)
+
+    def _finish_tool_calls(self, calls: list[dict[str, Any]]) -> Iterator[StreamEvent]:
+        drafts = list(self._drafts.values())
+        self._drafts = {}
+        parsed_ids = {call.get("id") for call in calls if call.get("id")}
+        for call in calls:
+            draft = self._match_draft(call, drafts, parsed_ids) or _ToolDraft(id=call.get("id"))
+            if draft in drafts:
+                drafts.remove(draft)
             arguments = call.get("args") or {}
-            yield ToolInputStarted(call_id, call["name"])
-            yield ToolInputDelta(call_id, json.dumps(arguments, default=str))
-            yield self._tool_input_available(call_id, call["name"], arguments)
+            draft.name = call["name"]
+            if not draft.started:
+                draft.id = draft.id or call.get("id")
+                draft.args = draft.args or json.dumps(arguments, default=str)
+                yield from self._start_draft(draft)
+            if call.get("id") and call["id"] != draft.id:
+                self._aliases[call["id"]] = draft.id or ""
+            yield self._tool_input_available(draft.id or "", draft.name, arguments)
+        for draft in drafts:
+            if draft.started:
+                yield self._tool_input_available(draft.id or "", draft.name, _decode_json(draft.args or "{}", {}))
+
+    def _tool_input_available(self, call_id: str, name: str, arguments: Any) -> ToolInputAvailable:
+        available = ToolInputAvailable(call_id, name, arguments)
+        self._pending_outputs.append(available)
+        return available
 
     def _tool_output(self, output: Any) -> Iterator[StreamEvent]:
         yield from self._close_part()
         content = getattr(output, "content", output)
-        if self._pending_outputs:
-            call = self._pending_outputs.popleft()
+        tool_call_id = getattr(output, "tool_call_id", None)
+        if tool_call_id:
+            target = self._aliases.get(tool_call_id, tool_call_id)
+            call = next((pending for pending in self._pending_outputs if pending.id == target), None)
+        else:
+            call = self._pending_outputs[0] if self._pending_outputs else None
+        if call is not None:
+            self._pending_outputs.remove(call)
             call_id, name = call.id, call.name
         else:
-            call_id = getattr(output, "tool_call_id", None) or self._new_id("call")
+            call_id = tool_call_id or self._new_id("call")
             name = getattr(output, "name", None) or ""
         yield ToolOutputAvailable(call_id, name, _decode_json(content, content))

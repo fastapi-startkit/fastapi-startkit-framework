@@ -24,12 +24,19 @@ class StreamableAgentResponse:
         self._source = source
         self.invocation_id = str(uuid.uuid4())
         self.conversation_id = conversation_id
+        self._consumed = False
+
+    def _take_source(self) -> AsyncGenerator[dict[str, Any], None]:
+        if self._consumed:
+            raise RuntimeError("An agent stream can only be consumed once; call agent.stream() again.")
+        self._consumed = True
+        return self._source()
 
     def __aiter__(self) -> AsyncIterator[dict[str, Any]]:
-        return aiter(self._source())
+        return aiter(self._take_source())
 
     def events(self) -> AsyncGenerator[StreamEvent, None]:
-        return EventNormalizer(self.invocation_id).normalize(self._source())
+        return EventNormalizer(self.invocation_id).normalize(self._take_source())
 
     def using_protocol(self, protocol: StreamProtocol) -> StreamingResponse:
         return protocol.response(self)

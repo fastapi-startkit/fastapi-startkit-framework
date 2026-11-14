@@ -182,6 +182,153 @@ class TestNormalizer:
             ToolInputAvailable("inv-call-2", "b", {}),
         ]
 
+    async def test_interleaved_tool_chunks_are_tracked_per_index(self):
+        stream = scripted(
+            event("on_chat_model_start"),
+            chunk(tool_call_chunks=[{"name": "search", "args": '{"q":', "id": "c1", "index": 0}]),
+            chunk(tool_call_chunks=[{"name": "weather", "args": '{"city":', "id": "c2", "index": 1}]),
+            chunk(tool_call_chunks=[{"name": None, "args": '"py"}', "id": None, "index": 0}]),
+            chunk(tool_call_chunks=[{"name": None, "args": '"Oslo"}', "id": None, "index": 1}]),
+            event(
+                "on_chat_model_end",
+                output=AIMessage(
+                    content="",
+                    tool_calls=[
+                        ToolCall(name="search", args={"q": "py"}, id="c1"),
+                        ToolCall(name="weather", args={"city": "Oslo"}, id="c2"),
+                    ],
+                ),
+            ),
+        )
+
+        events = [e async for e in stream.events()]
+
+        assert events[2:10] == [
+            ToolInputStarted("c1", "search"),
+            ToolInputDelta("c1", '{"q":'),
+            ToolInputStarted("c2", "weather"),
+            ToolInputDelta("c2", '{"city":'),
+            ToolInputDelta("c1", '"py"}'),
+            ToolInputDelta("c2", '"Oslo"}'),
+            ToolInputAvailable("c1", "search", {"q": "py"}),
+            ToolInputAvailable("c2", "weather", {"city": "Oslo"}),
+        ]
+
+    async def test_tool_input_comes_from_the_parsed_calls(self):
+        stream = scripted(
+            chunk(tool_call_chunks=[{"name": "search", "args": "{'q': py", "id": "c1", "index": 0}]),
+            event(
+                "on_chat_model_end",
+                output=AIMessage(content="", tool_calls=[ToolCall(name="search", args={"q": "py"}, id="c1")]),
+            ),
+        )
+
+        events = [e async for e in stream.events()]
+
+        assert ToolInputAvailable("c1", "search", {"q": "py"}) in events
+
+    async def test_tool_start_waits_for_a_name(self):
+        stream = scripted(
+            chunk(tool_call_chunks=[{"name": None, "args": '{"q":', "id": None, "index": 0}]),
+            chunk(tool_call_chunks=[{"name": "search", "args": '"py"}', "id": "c1", "index": 0}]),
+        )
+
+        events = [e async for e in stream.events()]
+
+        assert events[2:5] == [
+            ToolInputStarted("c1", "search"),
+            ToolInputDelta("c1", '{"q":"py"}'),
+            ToolInputAvailable("c1", "search", {"q": "py"}),
+        ]
+
+    async def test_nameless_call_takes_its_name_from_the_parsed_call(self):
+        stream = scripted(
+            chunk(tool_call_chunks=[{"name": None, "args": "{}", "id": None, "index": 0}]),
+            event(
+                "on_chat_model_end",
+                output=AIMessage(content="", tool_calls=[ToolCall(name="search", args={}, id="c1")]),
+            ),
+            event("on_tool_end", output=ToolMessage(content="ok", tool_call_id="c1", name="search")),
+        )
+
+        events = [e async for e in stream.events()]
+
+        assert events[2:6] == [
+            ToolInputStarted("c1", "search"),
+            ToolInputDelta("c1", "{}"),
+            ToolInputAvailable("c1", "search", {}),
+            ToolOutputAvailable("c1", "search", "ok"),
+        ]
+
+    async def test_tool_outputs_are_matched_by_call_id(self):
+        stream = scripted(
+            event(
+                "on_chat_model_end",
+                output=AIMessage(
+                    content="",
+                    tool_calls=[ToolCall(name="a", args={}, id="c1"), ToolCall(name="b", args={}, id="c2")],
+                ),
+            ),
+            event("on_tool_end", output=ToolMessage(content="second", tool_call_id="c2")),
+            event("on_tool_end", output=ToolMessage(content="first", tool_call_id="c1")),
+        )
+
+        events = [e async for e in stream.events()]
+
+        assert [e for e in events if isinstance(e, ToolOutputAvailable)] == [
+            ToolOutputAvailable("c2", "b", "second"),
+            ToolOutputAvailable("c1", "a", "first"),
+        ]
+
+    async def test_tool_outputs_without_an_id_fall_back_to_call_order(self):
+        stream = scripted(
+            event(
+                "on_chat_model_end",
+                output=AIMessage(
+                    content="",
+                    tool_calls=[ToolCall(name="a", args={}, id="c1"), ToolCall(name="b", args={}, id="c2")],
+                ),
+            ),
+            event("on_tool_end", output="first"),
+            event("on_tool_end", output="second"),
+        )
+
+        events = [e async for e in stream.events()]
+
+        assert [e for e in events if isinstance(e, ToolOutputAvailable)] == [
+            ToolOutputAvailable("c1", "a", "first"),
+            ToolOutputAvailable("c2", "b", "second"),
+        ]
+
+    async def test_generated_call_ids_are_aliased_for_outputs(self):
+        stream = scripted(
+            chunk(tool_call_chunks=[{"name": "a", "args": "{}", "id": None, "index": 0}]),
+            event(
+                "on_chat_model_end",
+                output=AIMessage(content="", tool_calls=[ToolCall(name="a", args={}, id="late")]),
+            ),
+            event("on_tool_end", output=ToolMessage(content="ok", tool_call_id="late")),
+        )
+
+        events = [e async for e in stream.events()]
+
+        assert ToolOutputAvailable("inv-call-1", "a", "ok") in events
+
+    async def test_open_part_is_closed_before_a_failure(self):
+        error = RuntimeError("boom")
+        events = [e async for e in scripted(chunk("Hi"), error=error).events()]
+
+        assert events[-2:] == [TextEnded("inv-text-1"), StreamFailed(error)]
+
+    async def test_stream_can_only_be_consumed_once(self):
+        stream = scripted(*TEXT_STREAM)
+        [e async for e in stream.events()]
+
+        with pytest.raises(RuntimeError):
+            stream.events()
+        with pytest.raises(RuntimeError):
+            aiter(stream)
+
     async def test_error_becomes_a_failure_event(self):
         error = RuntimeError("boom")
         events = [e async for e in scripted(chunk("Hi"), error=error).events()]
@@ -232,7 +379,11 @@ class TestVercelDataProtocol:
     async def test_error_stream(self):
         parts = await encoded(VercelDataProtocol(), scripted(chunk("Hi"), error=RuntimeError("secret")))
 
-        assert parts[-2:] == [{"type": "error", "errorText": "An error occurred."}, "[DONE]"]
+        assert parts[-3:] == [
+            {"type": "text-end", "id": "inv-text-1"},
+            {"type": "error", "errorText": "An error occurred."},
+            "[DONE]",
+        ]
 
     async def test_error_text_can_be_overridden(self):
         class Verbose(VercelDataProtocol):
@@ -283,7 +434,12 @@ class TestAgentUserInteractionProtocol:
 
         assert parts[4:11] == [
             {"type": "TEXT_MESSAGE_END", "messageId": "inv-text-1"},
-            {"type": "TOOL_CALL_START", "toolCallId": "call_1", "toolCallName": "search"},
+            {
+                "type": "TOOL_CALL_START",
+                "toolCallId": "call_1",
+                "toolCallName": "search",
+                "parentMessageId": "inv-text-1",
+            },
             {"type": "TOOL_CALL_ARGS", "toolCallId": "call_1", "delta": '{"q":'},
             {"type": "TOOL_CALL_ARGS", "toolCallId": "call_1", "delta": '"py"}'},
             {"type": "TOOL_CALL_END", "toolCallId": "call_1"},
@@ -318,8 +474,24 @@ class TestAgentUserInteractionProtocol:
     async def test_error_stream(self):
         parts = await encoded(AgentUserInteractionProtocol(), scripted(chunk("Hi"), error=RuntimeError("secret")))
 
-        assert parts[-1] == {"type": "RUN_ERROR", "message": "An error occurred."}
+        assert parts[-2:] == [
+            {"type": "TEXT_MESSAGE_END", "messageId": "inv-text-1"},
+            {"type": "RUN_ERROR", "message": "An error occurred."},
+        ]
         assert all(part["type"] != "RUN_FINISHED" for part in parts)
+
+    async def test_tool_call_without_text_has_no_parent_message(self):
+        stream = scripted(
+            event("on_chat_model_start"),
+            chunk("Hi"),
+            event("on_chat_model_start"),
+            chunk(tool_call_chunks=[{"name": "search", "args": "{}", "id": "c1", "index": 0}]),
+        )
+
+        parts = await encoded(AgentUserInteractionProtocol(), stream)
+
+        start = next(part for part in parts if part["type"] == "TOOL_CALL_START")
+        assert start == {"type": "TOOL_CALL_START", "toolCallId": "c1", "toolCallName": "search"}
 
 
 class LineProtocol(StreamProtocol):
@@ -343,6 +515,7 @@ class TestCustomProtocol:
     def test_sse_encodes_payloads(self):
         assert StreamProtocol.sse({"a": "é"}) == 'data: {"a":"é"}\n\n'
         assert StreamProtocol.sse("[DONE]") == "data: [DONE]\n\n"
+        assert StreamProtocol.sse("a\nb") == "data: a\ndata: b\n\n"
 
 
 class TestDisconnect:
