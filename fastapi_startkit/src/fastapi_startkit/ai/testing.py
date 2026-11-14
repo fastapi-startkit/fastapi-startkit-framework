@@ -7,12 +7,13 @@ import json
 import operator
 import sys
 import time
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncGenerator, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from . import recording
 from . import state as agent_state
+from .streaming import StreamableAgentResponse
 
 if TYPE_CHECKING:
     from langchain_core.messages import ToolCall
@@ -159,9 +160,17 @@ class AgentFake:
         self._remember(message, self._last_response)
         return self._last_response
 
-    async def stream(
+    def stream(
         self, message: str, *, model: str | None = None, provider_options: dict[str, Any] | None = None
-    ) -> AsyncIterator[dict[str, Any]]:
+    ) -> StreamableAgentResponse:
+        return StreamableAgentResponse(
+            lambda: self._stream(message, model=model, provider_options=provider_options),
+            conversation_id=self._subject().conversation_id,
+        )
+
+    async def _stream(
+        self, message: str, *, model: str | None = None, provider_options: dict[str, Any] | None = None
+    ) -> AsyncGenerator[dict[str, Any], None]:
         chunks: list[str] = []
         # Drive the runner directly so we can read the structured response it
         # captures while streaming (content + tool_calls), not just joined text.
@@ -508,9 +517,9 @@ class AgentRecordFake(AgentFake):
         self._remember_turn(message, state)
         return state
 
-    async def stream(
+    async def _stream(
         self, message: str, *, model: str | None = None, provider_options: dict[str, Any] | None = None
-    ) -> AsyncIterator[dict[str, Any]]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         cassette, store = self._load()
         key = self._key(message, None)
         if key in store:

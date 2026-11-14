@@ -3,7 +3,7 @@ from __future__ import annotations
 import inspect
 import time
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from typing import TYPE_CHECKING, Any
 
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, ToolCall
@@ -186,7 +186,7 @@ class BaseRunner(ABC):
         *,
         model: str | None = None,
         provider_options: dict[str, Any] | None = None,
-    ) -> AsyncIterator[dict[str, Any]]: ...
+    ) -> AsyncGenerator[dict[str, Any], None]: ...
 
 
 class Runner(BaseRunner):
@@ -239,7 +239,7 @@ class Runner(BaseRunner):
         *,
         model: str | None = None,
         provider_options: dict[str, Any] | None = None,
-    ) -> AsyncIterator[dict[str, Any]]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         self._reset_capture()
         messages = await self._build_messages(message)
         chat_model = self._build_model(model, provider_options)
