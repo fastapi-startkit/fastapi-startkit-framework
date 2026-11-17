@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, ClassVar, NamedTuple
 
-from .lab import Lab, ModelType
+from .lab import ConfiguredProvider, Lab, ModelType
 
 Vectors = list[list[float]]
 EmbeddingsResponder = Callable[["EmbeddingsPrompt"], Vectors]
@@ -17,14 +17,19 @@ DEFAULT_FAKE_DIMENSIONS = 1536
 
 class EmbeddingsProvider(NamedTuple):
     key: str
-    dimensions_option: Callable[[int], dict[str, Any]]
+    dimensions_option: Callable[[int], dict[str, Any]] | None
     accepts_api_key: bool
+    options: dict[str, Any] = {}
 
 
 EMBEDDINGS_PROVIDERS: dict[Lab, EmbeddingsProvider] = {
     Lab.OPENAI: EmbeddingsProvider("openai", lambda size: {"dimensions": size}, True),
     Lab.GOOGLE: EmbeddingsProvider("google_genai", lambda size: {"output_dimensionality": size}, True),
     Lab.BEDROCK: EmbeddingsProvider("bedrock", lambda size: {"model_kwargs": {"dimensions": size}}, False),
+    Lab.OPENAI_COMPATIBLE: EmbeddingsProvider(
+        "openai", lambda size: {"dimensions": size}, True, {"check_embedding_ctx_length": False}
+    ),
+    Lab.OLLAMA: EmbeddingsProvider("ollama", None, False),
 }
 
 
@@ -88,33 +93,35 @@ class Embeddings:
         return self
 
     async def generate(self, provider: str | None = None, model: str | None = None) -> EmbeddingsResponse:
-        lab = Lab.get_provider(provider, ModelType.EMBEDDINGS)
+        lab = ConfiguredProvider.resolve(provider, ModelType.EMBEDDINGS)
         prompt = EmbeddingsPrompt(
             inputs=self._inputs,
             dimensions=self._dimensions,
-            provider=lab.value,
+            provider=lab.name,
             model=lab.get_model(model, ModelType.EMBEDDINGS),
         )
         fake = Embeddings._faked
         embeddings = fake.respond(prompt) if fake is not None else await self._embed(lab, prompt)
         return EmbeddingsResponse(embeddings=embeddings, provider=prompt.provider, model=prompt.model)
 
-    async def _embed(self, lab: Lab, prompt: EmbeddingsPrompt) -> Vectors:
+    async def _embed(self, lab: ConfiguredProvider, prompt: EmbeddingsPrompt) -> Vectors:
         from langchain.embeddings import init_embeddings  # noqa: PLC0415  # pyright: ignore[reportMissingImports]
 
         return await init_embeddings(prompt.model, **self._options(lab, prompt)).aembed_documents(prompt.inputs)
 
     @staticmethod
-    def _options(lab: Lab, prompt: EmbeddingsPrompt) -> dict[str, Any]:
-        if lab not in EMBEDDINGS_PROVIDERS:
+    def _options(lab: ConfiguredProvider, prompt: EmbeddingsPrompt) -> dict[str, Any]:
+        if lab.driver not in EMBEDDINGS_PROVIDERS:
             supported = ", ".join(sorted(EMBEDDINGS_PROVIDERS))
-            raise ValueError(f"Provider {lab.value!r} does not support embeddings. Use one of: {supported}.")
-        settings = EMBEDDINGS_PROVIDERS[lab]
-        options: dict[str, Any] = {"provider": settings.key, **lab.get_client_options()}
+            raise ValueError(f"Provider {lab.name!r} does not support embeddings. Use one of: {supported}.")
+        settings = EMBEDDINGS_PROVIDERS[lab.driver]
+        options: dict[str, Any] = {"provider": settings.key, **settings.options, **lab.get_client_options()}
         api_key = lab.get_api_key()
         if settings.accepts_api_key and api_key:
             options["api_key"] = api_key
         if prompt.dimensions:
+            if settings.dimensions_option is None:
+                raise ValueError(f"Provider {lab.name!r} does not support custom embedding dimensions.")
             options.update(settings.dimensions_option(prompt.dimensions))
         return options
 

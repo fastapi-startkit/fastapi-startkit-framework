@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, ValidationError, create_model
 
 from .. import state as agent_state
 from ..agent import Agent
-from ..lab import Lab, ModelType
+from ..lab import ConfiguredProvider, Lab, ModelType
 from .decisions import DECISIONS_MODEL, Decisions
 from .questions import Answer, ClassificationError, Question
 
@@ -101,12 +101,12 @@ class Classification:
             raise ValueError("Classification needs a non-empty input.")
         if not self._questions:
             raise ValueError("Classification needs at least one question.")
-        lab = Lab.get_provider(provider)
-        if lab is Lab.GOOGLE:
+        lab = ConfiguredProvider.resolve(provider)
+        if lab.driver is Lab.GOOGLE:
             return await self._decide(lab, model)
         return await self._structured(lab, model)
 
-    async def _decide(self, lab: Lab, model: str | None) -> ClassificationResult:
+    async def _decide(self, lab: ConfiguredProvider, model: str | None) -> ClassificationResult:
         model = lab.get_model(model, ModelType.DECISIONS) or DECISIONS_MODEL
         body = await Decisions(lab.get_api_key()).create(
             {
@@ -130,7 +130,7 @@ class Classification:
             usage={"input": usage.get("total_input_tokens", 0), "output": usage.get("total_output_tokens", 0)},
         )
 
-    async def _structured(self, lab: Lab, model: str | None) -> ClassificationResult:
+    async def _structured(self, lab: ConfiguredProvider, model: str | None) -> ClassificationResult:
         agent = ClassificationAgent(self._questions)
         agent.provider = lab.value
         agent.model = model

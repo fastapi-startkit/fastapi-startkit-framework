@@ -3,7 +3,14 @@ from dataclasses import dataclass, field
 
 from fastapi_startkit.environment import env
 
-from fastapi_startkit.ai import AnthropicConfig, BedrockConfig, ElevenLabsConfig, GoogleConfig, OpenAIConfig
+from fastapi_startkit.ai import (
+    AnthropicConfig,
+    BedrockConfig,
+    ElevenLabsConfig,
+    GoogleConfig,
+    OllamaConfig,
+    OpenAIConfig,
+)
 
 
 @dataclass
@@ -23,5 +30,6 @@ class AIConfig(Config):
             "anthropic": AnthropicConfig(),
             "elevenlabs": ElevenLabsConfig(),
             "bedrock": BedrockConfig(),
+            "ollama": OllamaConfig(),
         }
     )
