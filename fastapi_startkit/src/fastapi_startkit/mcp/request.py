@@ -1,4 +1,4 @@
-"""JSON-RPC 2.0 request model."""
+"""MCP JSON-RPC 2.0 request model."""
 
 from typing import Annotated, Any, override
 
@@ -7,7 +7,7 @@ from fastapi_startkit.validation import Field, FormRequest, Validator
 NOTIFICATION_PREFIX = "notifications/"
 
 
-class JsonRpcRequest(FormRequest):
+class MCPRequest(FormRequest):
     """Represents a JSON-RPC 2.0 request or notification."""
 
     jsonrpc: str = "2.0"

@@ -6,15 +6,14 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response as StarletteResponse
 from fastapi_startkit.exceptions import ValidationException
 from fastapi_startkit.exceptions.handler import ExceptionHandler
+from fastapi_startkit.fastapi.routers.router import Router
 
 from .exceptions import INVALID_REQUEST, PARSE_ERROR, McpExceptionHandler
 from .protocol import Protocol
-from .request import JsonRpcRequest
+from .request import MCPRequest
 from .tool import Tool
 from .prompt import Prompt
 from .resource import Resource
-
-NON_POST_METHODS = ["GET", "HEAD", "PUT", "PATCH", "DELETE", "OPTIONS"]
 
 
 class Server:
@@ -54,27 +53,29 @@ class Server:
 
     def router(self, prefix: str = "/mcp") -> APIRouter:
         protocol = Protocol(self)
-        api_router = APIRouter(prefix=prefix)
+        router = Router(prefix=prefix)
 
-        @api_router.post("")
         async def handle_post(request: Request) -> StarletteResponse:
             try:
                 body = await request.json()
             except ValueError:
                 return rejected(PARSE_ERROR, "Parse error: the body is not valid JSON.")
             try:
-                rpc = await JsonRpcRequest.validate_input(body)
+                rpc = await MCPRequest.validate_input(body)
             except ValidationException as error:
                 return rejected(INVALID_REQUEST, error.bag.summary(), error.bag.messages)
             if rpc.is_notification:
                 return StarletteResponse(status_code=202)
             return JSONResponse(content=await protocol.dispatch(rpc.method, rpc.params, rpc.id))
 
-        @api_router.api_route("", methods=NON_POST_METHODS)
-        async def handle_other_methods() -> StarletteResponse:
+        async def method_not_allowed() -> StarletteResponse:
             return StarletteResponse(status_code=405, headers={"Allow": "POST"})
 
-        return api_router
+        router.post("", handle_post)
+        for register in (router.get, router.head, router.put, router.patch, router.delete, router.options):
+            register("", method_not_allowed)
+
+        return router.router
 
 
 def rejected(code: int, message: str, data: Any = None) -> JSONResponse:
