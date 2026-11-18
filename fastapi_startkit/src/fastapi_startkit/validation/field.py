@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from collections.abc import Collection, Mapping
 from contextvars import ContextVar
+from enum import Enum
 from typing import TYPE_CHECKING, Any, Self
 
 from pydantic import GetCoreSchemaHandler
@@ -12,9 +13,11 @@ from fastapi_startkit.validation.rules import (
     BaseRule,
     Between,
     Boolean,
+    Cases,
     Closure,
     Confirmed,
     EmailRule,
+    EnumRule,
     Exists,
     Extensions,
     File,
@@ -117,6 +120,15 @@ class Field:
 
     def not_in(self, values: Collection[Any], msg: Message | None = None) -> Self:
         return self.add(NotIn(values, msg))
+
+    def enum(
+        self,
+        enum: type[Enum],
+        only: Cases | None = None,
+        except_: Cases | None = None,
+        msg: Message | None = None,
+    ) -> Self:
+        return self.add(EnumRule(enum, only, except_, msg))
 
     def same_as(self, other: str, msg: Message | None = None) -> Self:
         return self.add(SameAs(other, msg))
