@@ -1,0 +1,2 @@
+class LimiterNotDefinedException(ValueError):
+    pass

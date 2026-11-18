@@ -37,7 +37,10 @@ class HTTPExceptionHandler:
         from starlette.exceptions import HTTPException
 
         from fastapi_startkit.container import Container
-        from fastapi_startkit.exceptions import HttpException
+        from fastapi_startkit.exceptions import HttpException, HttpResponseException
+
+        if isinstance(exc, HttpResponseException):
+            return exc.response
 
         if isinstance(exc, HTTPException):
             return await http_exception_handler(request, exc)
