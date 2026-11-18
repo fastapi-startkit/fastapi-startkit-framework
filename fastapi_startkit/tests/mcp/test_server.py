@@ -1,6 +1,7 @@
 """Tests for the Server class and its FastAPI router."""
 
-from fastapi import FastAPI
+import pytest
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.testclient import TestClient
 from fastapi.routing import APIRouter
 
@@ -190,13 +191,90 @@ class TestGetReturns405:
 class TestNotifications:
     def test_notification_returns_202(self):
         client = make_client()
-        resp = client.post("/mcp", json=notification("tools/list"))
+        resp = client.post("/mcp", json=notification("notifications/initialized"))
         assert resp.status_code == 202
 
     def test_notification_body_is_empty(self):
         client = make_client()
-        resp = client.post("/mcp", json=notification("initialize"))
+        resp = client.post("/mcp", json=notification("notifications/cancelled"))
         assert resp.content == b""
+
+
+class TestRejectedRequests:
+    def test_malformed_json_is_a_parse_error(self):
+        client = make_client()
+        resp = client.post("/mcp", content=b"{not json", headers={"Content-Type": "application/json"})
+        assert resp.status_code == 400
+        assert resp.json() == {
+            "jsonrpc": "2.0",
+            "id": None,
+            "error": {"code": -32700, "message": "Parse error: the body is not valid JSON."},
+        }
+
+    def test_a_batch_is_an_invalid_request(self):
+        client = make_client()
+        resp = client.post("/mcp", json=[rpc("tools/list")])
+        assert resp.status_code == 400
+        assert resp.json()["error"]["code"] == -32600
+
+    def test_a_request_without_a_method_is_invalid(self):
+        client = make_client()
+        resp = client.post("/mcp", json={"jsonrpc": "2.0", "id": 1})
+        assert resp.status_code == 400
+        assert resp.json()["error"]["code"] == -32600
+        assert resp.json()["error"]["data"] == {"method": ["The method field is required."]}
+
+    def test_a_request_without_an_id_is_rejected_without_running(self):
+        calls = []
+
+        class RecordingTool(Tool):
+            name = "record"
+            description = "Records each call."
+
+            async def handle(self, arguments: dict) -> Response:
+                calls.append(arguments)
+                return Response.empty()
+
+        class RecordingServer(Server):
+            name = "recording"
+
+            def tools(self):
+                return [RecordingTool]
+
+        app = FastAPI()
+        app.include_router(RecordingServer().router("/mcp"))
+        body = {"jsonrpc": "2.0", "method": "tools/call", "params": {"name": "record", "arguments": {}}}
+
+        resp = TestClient(app).post("/mcp", json=body)
+
+        assert resp.status_code == 400
+        assert resp.json()["error"] == {
+            "code": -32600,
+            "message": "The id field is required for tools/call.",
+            "data": {"id": ["The id field is required for tools/call."]},
+        }
+        assert calls == []
+
+
+class TestOtherVerbs:
+    @pytest.mark.parametrize("verb", ["GET", "HEAD", "PUT", "PATCH", "DELETE", "OPTIONS"])
+    def test_other_verbs_return_405_allowing_post(self, verb):
+        resp = make_client().request(verb, "/mcp")
+        assert resp.status_code == 405
+        assert resp.headers["allow"] == "POST"
+
+    @pytest.mark.parametrize("verb", ["GET", "HEAD", "PUT", "PATCH", "DELETE", "OPTIONS"])
+    def test_other_verbs_run_the_app_dependencies_first(self, verb):
+        def require_token(authorization: str | None = Header(default=None)) -> None:
+            if authorization != "Bearer secret":
+                raise HTTPException(status_code=401)
+
+        app = FastAPI()
+        app.include_router(TestServer().router("/mcp"), dependencies=[Depends(require_token)])
+        client = TestClient(app)
+
+        assert client.request(verb, "/mcp").status_code == 401
+        assert client.request(verb, "/mcp", headers={"Authorization": "Bearer secret"}).status_code == 405
 
 
 # ---------------------------------------------------------------------------
