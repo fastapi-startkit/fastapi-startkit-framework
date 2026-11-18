@@ -1,4 +1,4 @@
-# 086. Enum validation rule
+# 087. Enum validation rule
 
 Date: 2026-11-18
 
