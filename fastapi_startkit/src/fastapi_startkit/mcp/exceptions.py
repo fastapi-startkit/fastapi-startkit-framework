@@ -4,6 +4,8 @@ from typing import Any, override
 from fastapi_startkit.exceptions import ValidationException
 from fastapi_startkit.exceptions.handler import ExceptionHandler
 
+PARSE_ERROR = -32700
+INVALID_REQUEST = -32600
 SERVER_ERROR = -32000
 
 

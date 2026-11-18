@@ -1,13 +1,16 @@
 """MCP Server base class."""
 
+from typing import Any
+
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response as StarletteResponse
-
+from fastapi_startkit.exceptions import ValidationException
 from fastapi_startkit.exceptions.handler import ExceptionHandler
+from fastapi_startkit.fastapi.routers.router import Router
 
-from .exceptions import McpExceptionHandler
+from .exceptions import INVALID_REQUEST, PARSE_ERROR, McpExceptionHandler
 from .protocol import Protocol
-from .request import JsonRpcRequest
+from .request import MCPRequest
 from .tool import Tool
 from .prompt import Prompt
 from .resource import Resource
@@ -49,33 +52,34 @@ class Server:
         return None
 
     def router(self, prefix: str = "/mcp") -> APIRouter:
-        """Build and return a FastAPI APIRouter for this server.
-
-        The router exposes:
-        - ``POST {prefix}`` — JSON-RPC 2.0 endpoint
-        - ``GET {prefix}``  — returns 405 with ``Allow: POST``
-        """
         protocol = Protocol(self)
-        api_router = APIRouter(prefix=prefix)
+        router = Router(prefix=prefix)
 
-        @api_router.post("")
         async def handle_post(request: Request) -> StarletteResponse:
-            body = await request.json()
-            rpc = JsonRpcRequest(**body)
-
+            try:
+                body = await request.json()
+            except ValueError:
+                return rejected(PARSE_ERROR, "Parse error: the body is not valid JSON.")
+            try:
+                rpc = await MCPRequest.validate_input(body)
+            except ValidationException as error:
+                return rejected(INVALID_REQUEST, error.bag.summary(), error.bag.messages)
             if rpc.is_notification:
-                # Fire-and-forget: dispatch but return 202 immediately
-                await protocol.dispatch(rpc.method, rpc.params, rpc.id)
                 return StarletteResponse(status_code=202)
+            return JSONResponse(content=await protocol.dispatch(rpc.method, rpc.params, rpc.id))
 
-            result = await protocol.dispatch(rpc.method, rpc.params, rpc.id)
-            return JSONResponse(content=result)
+        async def method_not_allowed() -> StarletteResponse:
+            return StarletteResponse(status_code=405, headers={"Allow": "POST"})
 
-        @api_router.get("")
-        async def handle_get() -> StarletteResponse:
-            return StarletteResponse(
-                status_code=405,
-                headers={"Allow": "POST"},
-            )
+        router.post("", handle_post)
+        for register in (router.get, router.head, router.put, router.patch, router.delete, router.options):
+            register("", method_not_allowed)
 
-        return api_router
+        return router.router
+
+
+def rejected(code: int, message: str, data: Any = None) -> JSONResponse:
+    error: dict[str, Any] = {"code": code, "message": message}
+    if data is not None:
+        error["data"] = data
+    return JSONResponse({"jsonrpc": "2.0", "id": None, "error": error}, status_code=400)
