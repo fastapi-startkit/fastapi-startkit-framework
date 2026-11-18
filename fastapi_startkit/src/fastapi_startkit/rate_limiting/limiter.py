@@ -1,9 +1,10 @@
 import inspect
 import time
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from typing import Any, Self
 
-from fastapi_startkit.cache import Repository
+from fastapi_startkit.cache import Lock, Repository
 
 from .exceptions import LimiterNotDefinedException
 
@@ -11,6 +12,9 @@ LimiterCallback = Callable[[Any], Any]
 
 
 class RateLimiter:
+    lock_seconds: float = 10
+    lock_sleep: float = 0.01
+
     def __init__(self, cache: Callable[[], Repository]):
         self.resolve_cache = cache
         self.repository: Repository | None = None
@@ -32,14 +36,15 @@ class RateLimiter:
         return self.limiters[name]
 
     async def attempt(self, key: str, max_attempts: int, callback: Callable[[], Any], decay_seconds: int = 60) -> Any:
-        if await self.too_many_attempts(key, max_attempts):
-            return False
+        async with self.locked(key):
+            if await self.too_many_attempts(key, max_attempts):
+                return False
+            await self.record(key, decay_seconds)
 
         result = callback()
         if inspect.isawaitable(result):
             result = await result
-        await self.hit(key, decay_seconds)
-        return True if result is None else result
+        return result or True
 
     async def too_many_attempts(self, key: str, max_attempts: int) -> bool:
         return await self.attempts(key) >= max_attempts
@@ -48,6 +53,24 @@ class RateLimiter:
         return await self.increment(key, decay_seconds)
 
     async def increment(self, key: str, decay_seconds: int = 60, amount: int = 1) -> int:
+        async with self.locked(key):
+            return await self.record(key, decay_seconds, amount)
+
+    @asynccontextmanager
+    async def locked(self, *keys: str) -> AsyncIterator[None]:
+        acquired: list[Lock] = []
+        try:
+            for key in sorted(set(keys)):
+                lock = self.cache.lock(self.lock_key(key), self.lock_seconds)
+                lock.sleep = self.lock_sleep
+                await lock.block(self.lock_seconds)
+                acquired.append(lock)
+            yield
+        finally:
+            for lock in reversed(acquired):
+                await lock.release()
+
+    async def record(self, key: str, decay_seconds: int = 60, amount: int = 1) -> int:
         now = self.now()
         available_at = await self.available_at(key)
         if available_at is None:
@@ -90,6 +113,10 @@ class RateLimiter:
         if available_at is None or available_at <= self.now():
             return None
         return available_at
+
+    @staticmethod
+    def lock_key(key: str) -> str:
+        return f"{key}:lock"
 
     @staticmethod
     def timer_key(key: str) -> str:

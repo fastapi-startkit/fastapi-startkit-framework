@@ -121,6 +121,11 @@ class TestRateLimiter:
         assert await limiter.attempt("key", 2, lambda: calls.append(1)) is False
         assert calls == [1]
 
+    async def test_attempt_treats_falsy_callback_results_as_success(self, limiter):
+        assert await limiter.attempt("key", 2, lambda: False) is True
+        assert await limiter.attempt("key", 2, lambda: 0) is True
+        assert await limiter.attempt("key", 2, lambda: False) is False
+
     async def test_attempt_awaits_async_callbacks(self, limiter):
         async def send():
             return "async"
