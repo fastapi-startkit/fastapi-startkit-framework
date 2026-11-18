@@ -28,9 +28,9 @@ class Order(FormRequest):
 
 - A value passes when it is a member of the enum, or equals a member's backing value **with the same type** (`type(value) is type(member.value)`), mirroring PHP's strict `tryFrom`: `"1"` does not match an `IntEnum`, `1` does not match a `StrEnum`, and `True` does not match a value of `1`. Members of a different enum fail.
 - Values reaching rules are the pydantic-coerced field values, so an `int` field fed `"1"` from a query string is checked as `1`.
-- `only(cases)` and `except_(cases)` accept a single case or an iterable of cases (members or backing values, normalised through the enum so an unknown case raises `ValueError` at declaration). Each call replaces the previous list, as in Laravel. When both are set the allowed cases are the intersection: in `only` and not in `except_`. Laravel ignores `except` once `only` is set; the intersection is the less surprising behaviour and is a deliberate deviation.
+- `only(cases)` and `except_(cases)` accept a single case or an iterable of cases (members or backing values, matched with the same strict typing as input so an unknown or mistyped case such as `True` for an `IntEnum` raises `ValueError` at declaration). Each call replaces the previous list, as in Laravel. When both are set the allowed cases are the intersection: in `only` and not in `except_`. Laravel ignores `except` once `only` is set; the intersection is the less surprising behaviour and is a deliberate deviation.
 - `when(condition, callback, default=None)` registers a conditional restriction. `condition` is a bool or a callable receiving the validated data and is evaluated at validation time; `callback` (or `default` when the condition is false) receives a copy of the rule, so declaring rules at class level never leaks restrictions between requests.
-- The default message is Laravel's `The selected :attribute is invalid.`; `:values` (the allowed backing values) is available to custom messages.
+- The default message is Laravel's `The selected :attribute is invalid.`; `:values` (the backing values allowed after `when()` is resolved for the current data) is available to custom messages.
 - Empty values (`None`, `""`) are skipped like every non-implicit rule; combine with `required()` to reject them.
 
 ## Validation

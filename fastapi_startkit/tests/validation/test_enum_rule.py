@@ -100,9 +100,12 @@ def test_only_and_except_intersect():
     assert not passes(rule, "archived")
 
 
-def test_unknown_restriction_case_raises():
+@pytest.mark.parametrize(
+    ("enum", "case"), [(Status, "deleted"), (Priority, True), (Priority, "1"), (Status, Other.DRAFT)]
+)
+def test_unknown_or_mistyped_restriction_case_raises(enum, case):
     with pytest.raises(ValueError):
-        EnumRule(Status).only(["deleted"])
+        EnumRule(enum).only([case])
 
 
 def test_when_applies_callback_for_true_condition():
@@ -139,6 +142,15 @@ def test_default_message_and_values_placeholder():
     assert rule.format_message("status", "x", {}) == "The selected status is invalid."
     rule.custom_message = "The :attribute must be one of: :values."
     assert rule.format_message("status", "x", {}) == "The status must be one of: draft, published."
+
+
+def test_values_placeholder_follows_when_restrictions():
+    rule = EnumRule(Status, message="Pick :values.").when(
+        lambda data: data.get("role") == "guest", lambda rule: rule.only(Status.DRAFT)
+    )
+
+    assert rule.format_message("status", "published", {"role": "guest"}) == "Pick draft."
+    assert rule.format_message("status", "x", {"role": "editor"}) == "Pick draft, published, archived."
 
 
 async def test_field_enum_checks_values_and_skips_empty_values():
