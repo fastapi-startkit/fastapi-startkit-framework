@@ -44,7 +44,7 @@ class ModelType(StrEnum):
         }[self]
 
 
-class Provider(StrEnum):
+class Lab(StrEnum):
     GOOGLE = "google"
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
@@ -54,10 +54,10 @@ class Provider(StrEnum):
     OLLAMA = "ollama"
 
     def get_api_key(self) -> str:
-        return ConfiguredProvider(self.value, self).get_api_key()
+        return LabConfig(self.value, self).get_api_key()
 
     def get_model(self, model: str | None = None, model_type: ModelType = ModelType.TEXT) -> str:
-        return ConfiguredProvider(self.value, self).get_model(model, model_type)
+        return LabConfig(self.value, self).get_model(model, model_type)
 
     def get_provider_key(self) -> str:
         return {
@@ -71,11 +71,11 @@ class Provider(StrEnum):
         }[self.value]
 
     def get_client_options(self) -> dict[str, str]:
-        return ConfiguredProvider(self.value, self).get_client_options()
+        return LabConfig(self.value, self).get_client_options()
 
     @staticmethod
-    def get_provider(provider: str | None = None, model_type: ModelType = ModelType.TEXT) -> Provider:
-        return ConfiguredProvider.resolve(provider, model_type).driver
+    def get_provider(provider: str | None = None, model_type: ModelType = ModelType.TEXT) -> Lab:
+        return LabConfig.resolve(provider, model_type).driver
 
     @staticmethod
     def get_model_url(
@@ -83,22 +83,22 @@ class Provider(StrEnum):
         model: str | None = None,
         model_type: ModelType = ModelType.TEXT,
     ) -> str:
-        return ConfiguredProvider.resolve(provider, model_type).get_model_url(model, model_type)
+        return LabConfig.resolve(provider, model_type).get_model_url(model, model_type)
 
 
 @dataclass(frozen=True)
-class ConfiguredProvider:
+class LabConfig:
     name: str
-    driver: Provider
+    driver: Lab
 
     @classmethod
-    def resolve(cls, provider: str | None = None, model_type: ModelType = ModelType.TEXT) -> ConfiguredProvider:
+    def resolve(cls, provider: str | None = None, model_type: ModelType = ModelType.TEXT) -> LabConfig:
         name = provider or Config.get(f"ai.{model_type.key}")
         driver = Config.get(f"ai.providers.{name}.driver") or name
-        if driver not in Provider:
-            drivers = ", ".join(member.value for member in Provider)
+        if driver not in Lab:
+            drivers = ", ".join(lab.value for lab in Lab)
             raise ValueError(f"AI provider {name!r} uses unknown driver {driver!r}. Use one of: {drivers}.")
-        return cls(name, Provider(driver))
+        return cls(name, Lab(driver))
 
     @property
     def value(self) -> str:
@@ -109,7 +109,7 @@ class ConfiguredProvider:
 
     def get_api_key(self) -> str:
         key = self.setting("key")
-        if not key and self.driver is Provider.OPENAI_COMPATIBLE:
+        if not key and self.driver is Lab.OPENAI_COMPATIBLE:
             return KEYLESS_API_KEY
         return key
 

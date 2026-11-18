@@ -10,16 +10,16 @@ Every provider config under `ai.providers` has a `driver` field, but nothing rea
 
 1. Keep name-based resolution and add `ollama` and `local` enum members. It stays closed: a second OpenAI-compatible server would need another enum member.
 2. A registry where applications register driver classes. Flexible, but it adds a new extension point before anyone needs one and duplicates what `init_chat_model` already does.
-3. Separate the configured provider (its name) from its driver (a `Provider` member). The name selects the config entry, the config's `driver` selects the LangChain integration.
+3. Separate the configured provider (its name) from its driver (a `Lab` member). The name selects the config entry, the config's `driver` selects the LangChain integration.
 
 ## Decision
 
 Option 3.
 
-- `ConfiguredProvider(name, driver)` in `ai/lab.py` is built by `ConfiguredProvider.resolve(provider=None, model_type=TEXT)`: the name falls back to `ai.default*`, the driver is `ai.providers.{name}.driver`, falling back to the name so built-in providers keep working without a config entry. A driver outside `Provider` raises `ValueError("AI provider 'x' uses unknown driver 'y'. Use one of: ...")`.
+- `LabConfig(name, driver)` in `ai/lab.py` is built by `LabConfig.resolve(provider=None, model_type=TEXT)`: the name falls back to `ai.default*`, the driver is `ai.providers.{name}.driver`, falling back to the name so built-in providers keep working without a config entry. A driver outside `Lab` raises `ValueError("AI provider 'x' uses unknown driver 'y'. Use one of: ...")`.
 - Settings (`key`, `url`, `models.*`, client options) are read by provider name; the LangChain provider key and option mappings come from the driver.
-- The `Lab` enum is renamed `Provider`, so a driver reads as the provider it selects. `Provider` gains `openai-compatible` (LangChain `openai`) and `ollama` (LangChain `ollama`). Its instance methods delegate to `ConfiguredProvider(self.value, self)`, `Provider.get_provider` returns the resolved driver and `Provider.get_model_url` resolves by name, so existing callers and tests are unchanged.
-- `Ai.build`, `Embeddings` and `Classification` resolve a `ConfiguredProvider`. Results report the provider name. Classification uses the Decisions API when the driver is `google`.
+- `Lab` gains `openai-compatible` (LangChain `openai`) and `ollama` (LangChain `ollama`). Its instance methods delegate to `LabConfig(self.value, self)`, `Lab.get_provider` returns the resolved driver and `Lab.get_model_url` resolves by name, so existing callers and tests are unchanged.
+- `Ai.build`, `Embeddings` and `Classification` resolve a `LabConfig`. Results report the provider name. Classification uses the Decisions API when the driver is `google`.
 - `url` is passed as `base_url` for `openai-compatible` and `ollama` (chat and embeddings) and for `openai` chat. OpenAI embeddings keep their current arguments.
 - `openai-compatible` sends `key` as `api_key`, or the placeholder `not-needed` when empty, because `ChatOpenAI` refuses to start without a key and local servers ignore it. Its embeddings use `OpenAIEmbeddings` with `check_embedding_ctx_length=False`, since non-OpenAI servers expect text, not tiktoken ids.
 - `ollama` uses the native `ChatOllama`/`OllamaEmbeddings` from `langchain-ollama`, not an alias of `openai-compatible` at `{url}/v1`. The native client supports Ollama's tool calling, structured output and model options, and does not need a key. Users who prefer the OpenAI endpoint can configure `openai-compatible` with `url=http://localhost:11434/v1`. Ollama embeddings reject `dimensions()` with a clear error.

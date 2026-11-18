@@ -13,7 +13,7 @@ from fastapi_startkit.ai import (
     OpenAICompatibleConfig,
 )
 from fastapi_startkit.ai.classification.questions import Boolean
-from fastapi_startkit.ai.lab import ConfiguredProvider, Provider
+from fastapi_startkit.ai.lab import LabConfig, Lab
 from fastapi_startkit.application import app
 
 
@@ -69,32 +69,32 @@ def build(name: str):
 
 
 def test_custom_provider_name_resolves_through_its_driver():
-    provider = ConfiguredProvider.resolve("local")
+    provider = LabConfig.resolve("local")
 
-    assert (provider.name, provider.driver) == ("local", Provider.OPENAI_COMPATIBLE)
-    assert Provider.get_provider("box") is Provider.OLLAMA
-    assert Provider.get_model_url("local") == "openai:qwen2.5"
+    assert (provider.name, provider.driver) == ("local", Lab.OPENAI_COMPATIBLE)
+    assert Lab.get_provider("box") is Lab.OLLAMA
+    assert Lab.get_model_url("local") == "openai:qwen2.5"
 
 
 def test_default_provider_can_be_a_custom_name():
     app().make("config").set("ai.default", "local")
 
-    assert ConfiguredProvider.resolve() == ConfiguredProvider("local", Provider.OPENAI_COMPATIBLE)
+    assert LabConfig.resolve() == LabConfig("local", Lab.OPENAI_COMPATIBLE)
 
 
 def test_built_in_names_still_resolve():
-    assert ConfiguredProvider.resolve("anthropic") == ConfiguredProvider("anthropic", Provider.ANTHROPIC)
-    assert ConfiguredProvider.resolve("ollama").driver is Provider.OLLAMA
+    assert LabConfig.resolve("anthropic") == LabConfig("anthropic", Lab.ANTHROPIC)
+    assert LabConfig.resolve("ollama").driver is Lab.OLLAMA
 
 
 def test_unknown_driver_names_the_provider_and_driver():
     with pytest.raises(ValueError, match="AI provider 'broken' uses unknown driver 'mistery'"):
-        ConfiguredProvider.resolve("broken")
+        LabConfig.resolve("broken")
 
 
 def test_unconfigured_provider_raises_clear_error():
     with pytest.raises(ValueError, match="AI provider 'nope' uses unknown driver 'nope'"):
-        ConfiguredProvider.resolve("nope")
+        LabConfig.resolve("nope")
 
 
 def test_openai_compatible_passes_url_and_key(init_chat_model):
