@@ -55,6 +55,24 @@ class TestRateLimiterProvider(IsolatedAsyncioTestCase):
 
         self.assertIs(app.make("rate_limiter").cache, app.make("cache").store("limits"))
 
+    def test_configured_store_requires_cache_provider(self):
+        app = self.make_app((RateLimiterProvider, LimitsStoreConfig))
+
+        with self.assertRaisesRegex(RuntimeError, r"The \[limits\] rate limiter store requires CacheProvider"):
+            app.make("rate_limiter").cache
+
+    def test_store_is_read_from_the_environment(self):
+        os.environ["RATE_LIMITER_STORE"] = "limits"
+        app = self.make_app((CacheProvider, ArrayCacheConfig), RateLimiterProvider)
+
+        self.assertIs(app.make("rate_limiter").cache, app.make("cache").store("limits"))
+
+    def test_publishes_the_config_file(self):
+        app = self.make_app(RateLimiterProvider)
+
+        targets = app.published_resources["rate_limiter"].values()
+        self.assertIn("config/rate_limiter.py", targets)
+
     async def test_facade_proxies_to_the_bound_limiter(self):
         self.make_app(RateLimiterProvider)
 

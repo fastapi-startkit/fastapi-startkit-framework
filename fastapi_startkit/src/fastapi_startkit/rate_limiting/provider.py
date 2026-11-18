@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import override
 
 from fastapi_startkit.cache import ArrayStore, Repository
@@ -16,6 +17,14 @@ class RateLimiterProvider(Provider):
         self.app.bind("rate_limiter", RateLimiter(self.cache))
 
     def cache(self) -> Repository:
-        if not self.app.has("cache"):
-            return Repository(ArrayStore())
-        return self.app.make("cache").store(self.app.make("config").get(f"{self.provider_key}.store"))
+        store = self.app.make("config").get(f"{self.provider_key}.store")
+        if self.app.has("cache"):
+            return self.app.make("cache").store(store)
+        if store is not None:
+            raise RuntimeError(f"The [{store}] rate limiter store requires CacheProvider to be registered.")
+        return Repository(ArrayStore())
+
+    @override
+    def boot(self) -> None:
+        directory = Path(__file__).resolve().parent
+        self.publishes({directory / "config" / "__init__.py": "config/rate_limiter.py"})
