@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import inspect
 import re
-from collections.abc import Awaitable, Callable, Collection, Mapping
+from collections.abc import Awaitable, Callable, Collection, Iterable, Mapping
+from copy import copy
+from enum import Enum
 from decimal import Decimal, InvalidOperation
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, Self
 from urllib.parse import urlparse
 
 if TYPE_CHECKING:
@@ -14,6 +16,8 @@ if TYPE_CHECKING:
 type Message = str | Callable[[str, Any, Mapping[str, Any]], str]
 type Ignore = Any | Callable[[Mapping[str, Any]], Any]
 type Passes = Callable[[str, Any, Mapping[str, Any]], bool | Awaitable[bool]]
+type Condition = bool | Callable[[Mapping[str, Any]], Any]
+type Cases = Any | Iterable[Any]
 
 PLACEHOLDER = re.compile(r":(\w+)")
 KILOBYTE = 1024
@@ -319,6 +323,79 @@ class In(Rule):
 class NotIn(In):
     def passes(self, attribute: str, value: Any, data: Mapping[str, Any]) -> bool:
         return not self.contains(value)
+
+
+class EnumRule(Rule):
+    message = "The selected :attribute is invalid."
+
+    def __init__(
+        self,
+        enum: type[Enum],
+        only: Cases | None = None,
+        except_: Cases | None = None,
+        message: Message | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.enum = enum
+        self.allowed: list[Enum] | None = None
+        self.excluded: list[Enum] = []
+        self.conditions: list[tuple[Condition, Callable[[EnumRule], Any], Callable[[EnumRule], Any] | None]] = []
+        if only is not None:
+            self.only(only)
+        if except_ is not None:
+            self.except_(except_)
+
+    def cases(self, cases: Cases) -> list[Enum]:
+        items = [cases] if isinstance(cases, (Enum, str, bytes)) or not isinstance(cases, Iterable) else cases
+        return [self.enum(case) for case in items]
+
+    def only(self, cases: Cases) -> Self:
+        self.allowed = self.cases(cases)
+        return self
+
+    def except_(self, cases: Cases) -> Self:
+        self.excluded = self.cases(cases)
+        return self
+
+    def when(
+        self,
+        condition: Condition,
+        callback: Callable[[EnumRule], Any],
+        default: Callable[[EnumRule], Any] | None = None,
+    ) -> Self:
+        self.conditions.append((condition, callback, default))
+        return self
+
+    def resolved(self, data: Mapping[str, Any]) -> EnumRule:
+        rule = copy(self)
+        rule.conditions = []
+        for condition, callback, default in self.conditions:
+            branch = callback if (condition(data) if callable(condition) else condition) else default
+            if branch is not None:
+                branch(rule)
+        return rule
+
+    def permitted(self) -> list[Enum]:
+        return [
+            member
+            for member in self.enum
+            if (self.allowed is None or member in self.allowed) and member not in self.excluded
+        ]
+
+    def member(self, value: Any) -> Enum | None:
+        if isinstance(value, self.enum):
+            return value
+        return next(
+            (member for member in self.enum if type(member.value) is type(value) and member.value == value),
+            None,
+        )
+
+    def replacements(self) -> Mapping[str, Any]:
+        return {"values": ", ".join(str(member.value) for member in self.permitted())}
+
+    def passes(self, attribute: str, value: Any, data: Mapping[str, Any]) -> bool:
+        member = self.member(value)
+        return member is not None and member in self.resolved(data).permitted()
 
 
 class SameAs(Rule):
