@@ -2,7 +2,7 @@ from fastapi_startkit.configuration import Config
 from typing import Any, Protocol, runtime_checkable
 from dataclasses import dataclass
 
-from sqlalchemy import StaticPool
+from sqlalchemy import StaticPool, make_url
 
 from fastapi_startkit.environment import env
 
@@ -34,7 +34,15 @@ class SQLiteConfig(Config):
         return self.url or f"sqlite+aiosqlite:///{self.database}"
 
     def engine_options(self) -> dict[str, object]:
-        return {"connect_args": {"check_same_thread": False}, "poolclass": StaticPool}
+        options: dict[str, object] = {"connect_args": {"check_same_thread": False}}
+        if self.in_memory():
+            options["poolclass"] = StaticPool
+        return options
+
+    def in_memory(self) -> bool:
+        url = make_url(self.build_url())
+        database = url.database or ""
+        return database in ("", ":memory:") or database.startswith("file::memory:") or url.query.get("mode") == "memory"
 
 
 @dataclass

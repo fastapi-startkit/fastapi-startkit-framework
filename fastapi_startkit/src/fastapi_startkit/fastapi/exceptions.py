@@ -11,6 +11,10 @@ class HTTPExceptionHandler:
 
     def report(self, exc) -> None:
         from fastapi_startkit.container import Container
+        from fastapi_startkit.exceptions import HttpResponseException
+
+        if isinstance(exc, HttpResponseException):
+            return
 
         status = self.http_status(exc)
         if status is not None and status < 500:
@@ -37,7 +41,10 @@ class HTTPExceptionHandler:
         from starlette.exceptions import HTTPException
 
         from fastapi_startkit.container import Container
-        from fastapi_startkit.exceptions import HttpException
+        from fastapi_startkit.exceptions import HttpException, HttpResponseException
+
+        if isinstance(exc, HttpResponseException):
+            return exc.response
 
         if isinstance(exc, HTTPException):
             return await http_exception_handler(request, exc)

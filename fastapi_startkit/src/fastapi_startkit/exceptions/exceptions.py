@@ -2,6 +2,8 @@ from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from starlette.responses import Response
+
     from fastapi_startkit.validation.message_bag import MessageBag
 
 
@@ -171,6 +173,18 @@ class AuthorizationException(HttpException):
 
     def get_status(self):
         return self.status
+
+
+class HttpResponseException(HttpException):
+    def __init__(self, response: "Response"):
+        super().__init__(f"HTTP response {response.status_code}")
+        self.response = response
+
+    def get_status(self) -> int:
+        return self.response.status_code
+
+    def get_response(self) -> str:
+        return str(self)
 
 
 class ThrottleRequestsException(HttpException):

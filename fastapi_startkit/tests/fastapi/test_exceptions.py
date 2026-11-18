@@ -17,6 +17,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi_startkit.container import Container
 from fastapi_startkit.exceptions import (
     AuthorizationException,
+    HttpResponseException,
     MethodNotAllowedException,
     ThrottleRequestsException,
     ValidationException,
@@ -117,6 +118,16 @@ class TestHTTPExceptionHandlerReport:
 
         with patch.object(Container, "instance", return_value=SimpleNamespace(exception_manager=manager)):
             HTTPExceptionHandler().report(exc)
+
+        manager.report_exception.assert_not_called()
+
+    def test_response_exceptions_are_not_reported(self):
+        from starlette.responses import Response
+
+        manager = MagicMock()
+
+        with patch.object(Container, "instance", return_value=SimpleNamespace(exception_manager=manager)):
+            HTTPExceptionHandler().report(HttpResponseException(Response(status_code=503)))
 
         manager.report_exception.assert_not_called()
 

@@ -32,6 +32,7 @@ from .exceptions import (
     AmbiguousError,
     MethodNotAllowedException,
     ThrottleRequestsException,
+    HttpResponseException,
 )
 
 __all__ = [
@@ -68,4 +69,5 @@ __all__ = [
     "AmbiguousError",
     "MethodNotAllowedException",
     "ThrottleRequestsException",
+    "HttpResponseException",
 ]
