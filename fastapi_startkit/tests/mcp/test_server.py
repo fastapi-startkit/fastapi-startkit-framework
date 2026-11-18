@@ -222,6 +222,7 @@ class TestRejectedRequests:
         resp = client.post("/mcp", json={"jsonrpc": "2.0", "id": 1})
         assert resp.status_code == 400
         assert resp.json()["error"]["code"] == -32600
+        assert resp.json()["error"]["data"] == {"method": ["The method field is required."]}
 
     def test_a_request_without_an_id_is_rejected_without_running(self):
         calls = []
@@ -247,7 +248,11 @@ class TestRejectedRequests:
         resp = TestClient(app).post("/mcp", json=body)
 
         assert resp.status_code == 400
-        assert resp.json()["error"] == {"code": -32600, "message": "Invalid request: tools/call needs an id."}
+        assert resp.json()["error"] == {
+            "code": -32600,
+            "message": "The id field is required for tools/call.",
+            "data": {"id": ["The id field is required for tools/call."]},
+        }
         assert calls == []
 
 

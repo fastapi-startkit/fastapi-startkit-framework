@@ -1,9 +1,10 @@
 """MCP Server base class."""
 
+from typing import Any
+
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response as StarletteResponse
-from pydantic import ValidationError
-
+from fastapi_startkit.exceptions import ValidationException
 from fastapi_startkit.exceptions.handler import ExceptionHandler
 
 from .exceptions import INVALID_REQUEST, PARSE_ERROR, McpExceptionHandler
@@ -13,7 +14,6 @@ from .tool import Tool
 from .prompt import Prompt
 from .resource import Resource
 
-NOTIFICATION_PREFIX = "notifications/"
 NON_POST_METHODS = ["GET", "HEAD", "PUT", "PATCH", "DELETE", "OPTIONS"]
 
 
@@ -62,18 +62,12 @@ class Server:
                 body = await request.json()
             except ValueError:
                 return rejected(PARSE_ERROR, "Parse error: the body is not valid JSON.")
-            if not isinstance(body, dict):
-                return rejected(
-                    INVALID_REQUEST, "Invalid request: send one JSON-RPC request object; batches are not supported."
-                )
             try:
-                rpc = JsonRpcRequest.model_validate(body)
-            except ValidationError:
-                return rejected(INVALID_REQUEST, "Invalid request: expected a JSON-RPC 2.0 request object.")
+                rpc = await JsonRpcRequest.validate_input(body)
+            except ValidationException as error:
+                return rejected(INVALID_REQUEST, error.bag.summary(), error.bag.messages)
             if rpc.is_notification:
-                if rpc.method.startswith(NOTIFICATION_PREFIX):
-                    return StarletteResponse(status_code=202)
-                return rejected(INVALID_REQUEST, f"Invalid request: {rpc.method} needs an id.")
+                return StarletteResponse(status_code=202)
             return JSONResponse(content=await protocol.dispatch(rpc.method, rpc.params, rpc.id))
 
         @api_router.api_route("", methods=NON_POST_METHODS)
@@ -83,8 +77,8 @@ class Server:
         return api_router
 
 
-def rejected(code: int, message: str) -> JSONResponse:
-    return JSONResponse(
-        {"jsonrpc": "2.0", "id": None, "error": {"code": code, "message": message}},
-        status_code=400,
-    )
+def rejected(code: int, message: str, data: Any = None) -> JSONResponse:
+    error: dict[str, Any] = {"code": code, "message": message}
+    if data is not None:
+        error["data"] = data
+    return JSONResponse({"jsonrpc": "2.0", "id": None, "error": error}, status_code=400)

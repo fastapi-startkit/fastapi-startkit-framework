@@ -28,8 +28,10 @@ Apps that exposed MCP to real clients copied the router to fix these cases, so t
 | Body is not one JSON object (batch, scalar) | 400, `-32600` Invalid request |
 | Object is not a JSON-RPC request (no `method`) | 400, `-32600` Invalid request |
 | No `id`, method under `notifications/` | 202, empty body, not dispatched |
-| No `id`, any other method | 400, `-32600` `<method> needs an id.`, not dispatched |
+| No `id`, any other method | 400, `-32600` `The id field is required for <method>.`, not dispatched |
 | `GET`, `HEAD`, `PUT`, `PATCH`, `DELETE`, `OPTIONS` | 405, `Allow: POST`, after the app's router dependencies |
+
+`JsonRpcRequest` is a `FormRequest`: `method` is `required().string()`, and its `after` hook requires `id` unless the method starts with `notifications/`. The router runs `JsonRpcRequest.validate_input(body)` and renders a `ValidationException` as `-32600` with `bag.summary()` as the message and `bag.messages` as `data`, as `ValidationExceptionRenderer` does for tool input. `Validated[JsonRpcRequest]` is not used: it fails with the HTTP 422 envelope and FastAPI's own JSON decoding error, not a JSON-RPC error. Only JSON decoding stays a direct check, because it happens before there is input to validate.
 
 Errors use `"id": null`, as JSON-RPC requires when the id cannot be read. `PARSE_ERROR` and `INVALID_REQUEST` join `SERVER_ERROR` in `fastapi_startkit.mcp.exceptions`.
 
