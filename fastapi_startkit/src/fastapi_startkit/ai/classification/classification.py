@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, ValidationError, create_model
 
 from .. import state as agent_state
 from ..agent import Agent
-from ..lab import ConfiguredProvider, Lab, ModelType
+from ..lab import ConfiguredProvider, Provider, ModelType
 from .decisions import DECISIONS_MODEL, Decisions
 from .questions import Answer, ClassificationError, Question
 
@@ -102,7 +102,7 @@ class Classification:
         if not self._questions:
             raise ValueError("Classification needs at least one question.")
         lab = ConfiguredProvider.resolve(provider)
-        if lab.driver is Lab.GOOGLE:
+        if lab.driver is Provider.GOOGLE:
             return await self._decide(lab, model)
         return await self._structured(lab, model)
 

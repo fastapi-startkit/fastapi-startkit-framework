@@ -13,7 +13,7 @@ from fastapi_startkit.ai import (
     OpenAICompatibleConfig,
 )
 from fastapi_startkit.ai.classification.questions import Boolean
-from fastapi_startkit.ai.lab import ConfiguredProvider, Lab
+from fastapi_startkit.ai.lab import ConfiguredProvider, Provider
 from fastapi_startkit.application import app
 
 
@@ -71,20 +71,20 @@ def build(name: str):
 def test_custom_provider_name_resolves_through_its_driver():
     provider = ConfiguredProvider.resolve("local")
 
-    assert (provider.name, provider.driver) == ("local", Lab.OPENAI_COMPATIBLE)
-    assert Lab.get_provider("box") is Lab.OLLAMA
-    assert Lab.get_model_url("local") == "openai:qwen2.5"
+    assert (provider.name, provider.driver) == ("local", Provider.OPENAI_COMPATIBLE)
+    assert Provider.get_provider("box") is Provider.OLLAMA
+    assert Provider.get_model_url("local") == "openai:qwen2.5"
 
 
 def test_default_provider_can_be_a_custom_name():
     app().make("config").set("ai.default", "local")
 
-    assert ConfiguredProvider.resolve() == ConfiguredProvider("local", Lab.OPENAI_COMPATIBLE)
+    assert ConfiguredProvider.resolve() == ConfiguredProvider("local", Provider.OPENAI_COMPATIBLE)
 
 
 def test_built_in_names_still_resolve():
-    assert ConfiguredProvider.resolve("anthropic") == ConfiguredProvider("anthropic", Lab.ANTHROPIC)
-    assert ConfiguredProvider.resolve("ollama").driver is Lab.OLLAMA
+    assert ConfiguredProvider.resolve("anthropic") == ConfiguredProvider("anthropic", Provider.ANTHROPIC)
+    assert ConfiguredProvider.resolve("ollama").driver is Provider.OLLAMA
 
 
 def test_unknown_driver_names_the_provider_and_driver():

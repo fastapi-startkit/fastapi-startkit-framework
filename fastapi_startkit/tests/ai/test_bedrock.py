@@ -3,7 +3,7 @@ import unittest
 from unittest import mock
 
 from fastapi_startkit.ai import AIConfig, BedrockConfig
-from fastapi_startkit.ai.lab import Lab
+from fastapi_startkit.ai.lab import Provider
 from fastapi_startkit.application import app
 
 AWS_ENV = (
@@ -92,9 +92,9 @@ class TestBedrockLab(BedrockTestCase):
         self.use_env()
         self.use_config()
 
-        self.assertIs(Lab.get_provider("bedrock"), Lab.BEDROCK)
-        self.assertEqual(Lab.BEDROCK.get_provider_key(), "bedrock_converse")
-        self.assertEqual(Lab.get_model_url("bedrock"), "bedrock_converse:us.anthropic.claude-sonnet-4-6")
+        self.assertIs(Provider.get_provider("bedrock"), Provider.BEDROCK)
+        self.assertEqual(Provider.BEDROCK.get_provider_key(), "bedrock_converse")
+        self.assertEqual(Provider.get_model_url("bedrock"), "bedrock_converse:us.anthropic.claude-sonnet-4-6")
 
     def test_client_options_map_credentials(self):
         self.use_config(
@@ -108,7 +108,7 @@ class TestBedrockLab(BedrockTestCase):
         )
 
         self.assertEqual(
-            Lab.BEDROCK.get_client_options(),
+            Provider.BEDROCK.get_client_options(),
             {
                 "region_name": "us-east-1",
                 "aws_access_key_id": "AKIATEST",
@@ -122,11 +122,11 @@ class TestBedrockLab(BedrockTestCase):
         self.use_env()
         self.use_config()
 
-        self.assertEqual(Lab.BEDROCK.get_client_options(), {})
-        self.assertFalse(Lab.BEDROCK.get_api_key())
+        self.assertEqual(Provider.BEDROCK.get_client_options(), {})
+        self.assertFalse(Provider.BEDROCK.get_api_key())
 
     def test_other_providers_have_no_client_options(self):
         self.use_config()
 
-        for lab in (Lab.GOOGLE, Lab.OPENAI, Lab.ANTHROPIC, Lab.ELEVENLABS):
+        for lab in (Provider.GOOGLE, Provider.OPENAI, Provider.ANTHROPIC, Provider.ELEVENLABS):
             self.assertEqual(lab.get_client_options(), {})

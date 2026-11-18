@@ -1,9 +1,9 @@
-"""Lab resolves the active provider, model, and LangChain model URL from config."""
+"""Provider resolves the active provider, model, and LangChain model URL from config."""
 
 import unittest
 
 from fastapi_startkit.ai import AIConfig
-from fastapi_startkit.ai.lab import Lab, ModelType
+from fastapi_startkit.ai.lab import Provider, ModelType
 from fastapi_startkit.application import app
 
 
@@ -14,40 +14,40 @@ class TestLab(unittest.TestCase):
         container.make("config").set("ai", AIConfig())
 
     def test_provider_key_maps_google_to_genai(self):
-        self.assertEqual(Lab.GOOGLE.get_provider_key(), "google_genai")
-        self.assertEqual(Lab.OPENAI.get_provider_key(), "openai")
-        self.assertEqual(Lab.ANTHROPIC.get_provider_key(), "anthropic")
-        self.assertEqual(Lab.ELEVENLABS.get_provider_key(), "elevenlabs")
+        self.assertEqual(Provider.GOOGLE.get_provider_key(), "google_genai")
+        self.assertEqual(Provider.OPENAI.get_provider_key(), "openai")
+        self.assertEqual(Provider.ANTHROPIC.get_provider_key(), "anthropic")
+        self.assertEqual(Provider.ELEVENLABS.get_provider_key(), "elevenlabs")
 
     def test_get_model_returns_explicit_override(self):
-        self.assertEqual(Lab.GOOGLE.get_model("custom-model"), "custom-model")
+        self.assertEqual(Provider.GOOGLE.get_model("custom-model"), "custom-model")
 
     def test_get_model_text_default(self):
-        self.assertEqual(Lab.GOOGLE.get_model(), "gemini-2.5-flash-lite")
-        self.assertEqual(Lab.ANTHROPIC.get_model(), "claude-sonnet-4-6")
-        self.assertEqual(Lab.OPENAI.get_model(), "gpt-4o")
+        self.assertEqual(Provider.GOOGLE.get_model(), "gemini-2.5-flash-lite")
+        self.assertEqual(Provider.ANTHROPIC.get_model(), "claude-sonnet-4-6")
+        self.assertEqual(Provider.OPENAI.get_model(), "gpt-4o")
 
     def test_get_model_image_default(self):
-        self.assertEqual(Lab.OPENAI.get_model(model_type=ModelType.IMAGE), "dall-e-3")
-        self.assertEqual(Lab.GOOGLE.get_model(model_type=ModelType.IMAGE), "imagen-3.0-generate-002")
+        self.assertEqual(Provider.OPENAI.get_model(model_type=ModelType.IMAGE), "dall-e-3")
+        self.assertEqual(Provider.GOOGLE.get_model(model_type=ModelType.IMAGE), "imagen-3.0-generate-002")
 
     def test_embeddings_model_type_reads_default_embeddings(self):
         self.assertEqual(ModelType.EMBEDDINGS.key, "default_embeddings")
 
     def test_get_model_embeddings_default(self):
-        self.assertEqual(Lab.OPENAI.get_model(model_type=ModelType.EMBEDDINGS), "text-embedding-3-small")
-        self.assertEqual(Lab.GOOGLE.get_model(model_type=ModelType.EMBEDDINGS), "gemini-embedding-001")
-        self.assertEqual(Lab.BEDROCK.get_model(model_type=ModelType.EMBEDDINGS), "amazon.titan-embed-text-v2:0")
+        self.assertEqual(Provider.OPENAI.get_model(model_type=ModelType.EMBEDDINGS), "text-embedding-3-small")
+        self.assertEqual(Provider.GOOGLE.get_model(model_type=ModelType.EMBEDDINGS), "gemini-embedding-001")
+        self.assertEqual(Provider.BEDROCK.get_model(model_type=ModelType.EMBEDDINGS), "amazon.titan-embed-text-v2:0")
 
     def test_get_provider_embeddings_uses_default_embeddings(self):
-        self.assertIs(Lab.get_provider(model_type=ModelType.EMBEDDINGS), Lab.OPENAI)
+        self.assertIs(Provider.get_provider(model_type=ModelType.EMBEDDINGS), Provider.OPENAI)
 
     def test_get_provider_uses_config_default(self):
-        self.assertEqual(Lab.get_provider().value, "google")
+        self.assertEqual(Provider.get_provider().value, "google")
 
     def test_get_provider_explicit_wins(self):
-        self.assertIs(Lab.get_provider("anthropic"), Lab.ANTHROPIC)
+        self.assertIs(Provider.get_provider("anthropic"), Provider.ANTHROPIC)
 
     def test_get_model_url_text(self):
-        self.assertEqual(Lab.get_model_url(), "google_genai:gemini-2.5-flash-lite")
-        self.assertEqual(Lab.get_model_url("anthropic"), "anthropic:claude-sonnet-4-6")
+        self.assertEqual(Provider.get_model_url(), "google_genai:gemini-2.5-flash-lite")
+        self.assertEqual(Provider.get_model_url("anthropic"), "anthropic:claude-sonnet-4-6")

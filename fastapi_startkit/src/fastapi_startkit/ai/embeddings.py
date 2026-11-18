@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, ClassVar, NamedTuple
 
-from .lab import ConfiguredProvider, Lab, ModelType
+from .lab import ConfiguredProvider, Provider, ModelType
 
 Vectors = list[list[float]]
 EmbeddingsResponder = Callable[["EmbeddingsPrompt"], Vectors]
@@ -22,14 +22,26 @@ class EmbeddingsProvider(NamedTuple):
     options: dict[str, Any] = {}
 
 
-EMBEDDINGS_PROVIDERS: dict[Lab, EmbeddingsProvider] = {
-    Lab.OPENAI: EmbeddingsProvider("openai", lambda size: {"dimensions": size}, True),
-    Lab.GOOGLE: EmbeddingsProvider("google_genai", lambda size: {"output_dimensionality": size}, True),
-    Lab.BEDROCK: EmbeddingsProvider("bedrock", lambda size: {"model_kwargs": {"dimensions": size}}, False),
-    Lab.OPENAI_COMPATIBLE: EmbeddingsProvider(
-        "openai", lambda size: {"dimensions": size}, True, {"check_embedding_ctx_length": False}
+def openai_dimensions(size: int) -> dict[str, Any]:
+    return {"dimensions": size}
+
+
+def google_dimensions(size: int) -> dict[str, Any]:
+    return {"output_dimensionality": size}
+
+
+def bedrock_dimensions(size: int) -> dict[str, Any]:
+    return {"model_kwargs": {"dimensions": size}}
+
+
+EMBEDDINGS_PROVIDERS: dict[Provider, EmbeddingsProvider] = {
+    Provider.OPENAI: EmbeddingsProvider("openai", openai_dimensions, True),
+    Provider.GOOGLE: EmbeddingsProvider("google_genai", google_dimensions, True),
+    Provider.BEDROCK: EmbeddingsProvider("bedrock", bedrock_dimensions, False),
+    Provider.OPENAI_COMPATIBLE: EmbeddingsProvider(
+        "openai", openai_dimensions, True, {"check_embedding_ctx_length": False}
     ),
-    Lab.OLLAMA: EmbeddingsProvider("ollama", None, False),
+    Provider.OLLAMA: EmbeddingsProvider("ollama", None, False),
 }
 
 
