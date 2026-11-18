@@ -4,8 +4,8 @@ import inspect
 import re
 from collections.abc import Awaitable, Callable, Collection, Iterable, Mapping
 from copy import copy
-from enum import Enum
 from decimal import Decimal, InvalidOperation
+from enum import Enum
 from typing import TYPE_CHECKING, Any, ClassVar, Self
 from urllib.parse import urlparse
 
@@ -347,7 +347,13 @@ class EnumRule(Rule):
 
     def cases(self, cases: Cases) -> list[Enum]:
         items = [cases] if isinstance(cases, (Enum, str, bytes)) or not isinstance(cases, Iterable) else cases
-        return [self.enum(case) for case in items]
+        return [self.normalise(case) for case in items]
+
+    def normalise(self, case: Any) -> Enum:
+        member = self.member(case)
+        if member is None:
+            raise ValueError(f"{case!r} is not a valid {self.enum.__name__}")
+        return member
 
     def only(self, cases: Cases) -> Self:
         self.allowed = self.cases(cases)
@@ -392,6 +398,9 @@ class EnumRule(Rule):
 
     def replacements(self) -> Mapping[str, Any]:
         return {"values": ", ".join(str(member.value) for member in self.permitted())}
+
+    def format_message(self, attribute: str, value: Any, data: Mapping[str, Any]) -> str:
+        return super(EnumRule, self.resolved(data)).format_message(attribute, value, data)
 
     def passes(self, attribute: str, value: Any, data: Mapping[str, Any]) -> bool:
         member = self.member(value)
