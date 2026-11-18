@@ -1,4 +1,4 @@
-# 085. Laravel-style rate limiting
+# 086. Laravel-style rate limiting
 
 - Date: 2026-11-18
 - Status: Accepted
