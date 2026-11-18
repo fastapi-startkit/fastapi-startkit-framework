@@ -36,6 +36,7 @@ class StoreContract:
         self.clock = self.enterContext(mock.patch("time.time", return_value=1_000_000.0))
         store = await self.make_store()
         self.limiter = RateLimiter(lambda: Repository(store, "limiter"))
+        self.other_worker = RateLimiter(lambda: Repository(store, "limiter"))
 
     def bind_application(self):
         original_instance = Container._instance
@@ -49,12 +50,26 @@ class StoreContract:
         self.assertEqual(sorted(results), list(range(1, 11)))
         self.assertEqual(await self.limiter.attempts("login"), 10)
 
+    async def test_concurrent_hits_from_separate_limiters_are_all_counted(self):
+        workers = [self.limiter, self.other_worker] * 10
+
+        await asyncio.gather(*(worker.hit("login") for worker in workers))
+
+        self.assertEqual(await self.limiter.attempts("login"), 20)
+
+    async def test_concurrent_attempts_from_separate_limiters_admit_exactly_max_attempts(self):
+        workers = [self.limiter, self.other_worker] * 10
+
+        results = await asyncio.gather(*(worker.attempt("login", 5, lambda: True) for worker in workers))
+
+        self.assertEqual(results.count(True), 5)
+
     async def test_concurrent_attempts_admit_exactly_max_attempts(self):
         results = await asyncio.gather(*(self.limiter.attempt("login", 5, lambda: True) for _ in range(20)))
 
         self.assertEqual(results.count(True), 5)
 
-    async def test_concurrent_throttle_burst_admits_exactly_max_attempts(self):
+    def throttled_request(self):
         self.bind_application()
         self.limiter.for_("login", lambda request: [Limit.per_minute(5).by("ip"), Limit.per_hour(50).by("ip")])
         dependency = throttle("login")
@@ -66,10 +81,22 @@ class StoreContract:
                 return False
             return True
 
+        return request
+
+    async def test_concurrent_throttle_bursts_admit_max_attempts_per_window(self):
+        request = self.throttled_request()
+
         for _ in range(3):
             results = await asyncio.gather(*(request() for _ in range(20)))
             self.assertEqual(results.count(True), 5)
             self.clock.return_value += 60
+
+    async def test_concurrent_throttle_bursts_in_one_window_admit_max_attempts_in_total(self):
+        request = self.throttled_request()
+
+        bursts = await asyncio.gather(*(asyncio.gather(*(request() for _ in range(20))) for _ in range(3)))
+
+        self.assertEqual(sum(results.count(True) for results in bursts), 5)
 
     async def test_limits_and_resets_after_the_decay_window(self):
         for _ in range(3):
@@ -106,10 +133,10 @@ class TestFileStore(StoreContract, IsolatedAsyncioTestCase):
 
 class TestDatabaseStore(StoreContract, IsolatedAsyncioTestCase):
     async def make_store(self):
-        database_path = Path(self.enterContext(tempfile.TemporaryDirectory())) / "cache.sqlite"
-        engine = create_async_engine(f"sqlite+aiosqlite:///{database_path}")
+        config = SQLiteConfig(database=str(Path(self.enterContext(tempfile.TemporaryDirectory())) / "cache.sqlite"))
+        engine = create_async_engine(config.build_url(), **config.engine_options())
         self.addAsyncCleanup(engine.dispose)
-        connection = SQliteConnection(engine, SQLiteConfig(database=str(database_path)))
+        connection = SQliteConnection(engine, config)
         database = mock.Mock(connection=lambda name=None: connection)
         database.get_schema_builder = lambda: Schema(database)
 

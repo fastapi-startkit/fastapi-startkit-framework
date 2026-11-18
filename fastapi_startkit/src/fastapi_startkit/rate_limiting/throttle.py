@@ -61,13 +61,16 @@ def throttle(
 
         keyed = [(signature(prefix, name or "", limit), limit) for limit in limits if not isinstance(limit, Unlimited)]
         async with rate_limiter.locked(*(key for key, _ in keyed)):
-            for key, limit in keyed:
-                if await rate_limiter.too_many_attempts(key, limit.max_attempts):
-                    raise await limited(request, rate_limiter, key, limit)
+            exceeded = [
+                (key, limit) for key, limit in keyed if await rate_limiter.too_many_attempts(key, limit.max_attempts)
+            ]
+            if not exceeded:
+                for key, limit in keyed:
+                    hits = await rate_limiter.record(key, limit.decay_seconds)
+                    response.headers["X-RateLimit-Limit"] = str(limit.max_attempts)
+                    response.headers["X-RateLimit-Remaining"] = str(max(0, limit.max_attempts - hits))
 
-            for key, limit in keyed:
-                hits = await rate_limiter.record(key, limit.decay_seconds)
-                response.headers["X-RateLimit-Limit"] = str(limit.max_attempts)
-                response.headers["X-RateLimit-Remaining"] = str(max(0, limit.max_attempts - hits))
+        if exceeded:
+            raise await limited(request, rate_limiter, *exceeded[0])
 
     return dependency

@@ -74,12 +74,10 @@ class DatabaseLock(Lock):
     async def acquire(self) -> bool:
         expiration = expires_at(self.ttl)
         record = {"value": encode(self.owner), "expiration": None if expiration is None else math.ceil(expiration)}
-        try:
-            await self.store.query().insert({"key": self.key, **record})
-        except IntegrityError:
-            expired_lock = self.store.query().where("key", self.key).where("expiration", "<=", time.time())
-            return bool(await expired_lock.update(record))
-        return True
+        if await self.store.query().insert_or_ignore({"key": self.key, **record}, unique_by="key"):
+            return True
+        expired_lock = self.store.query().where("key", self.key).where("expiration", "<=", time.time())
+        return bool(await expired_lock.update(record))
 
     async def release(self) -> bool:
         held = (

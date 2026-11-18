@@ -1,10 +1,12 @@
+import asyncio
 import inspect
 import time
 from collections.abc import AsyncIterator, Callable
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from typing import Any, Self
+from weakref import WeakValueDictionary
 
-from fastapi_startkit.cache import Lock, Repository
+from fastapi_startkit.cache import Repository
 
 from .exceptions import LimiterNotDefinedException
 
@@ -19,6 +21,7 @@ class RateLimiter:
         self.resolve_cache = cache
         self.repository: Repository | None = None
         self.limiters: dict[str, LimiterCallback] = {}
+        self.local_locks: WeakValueDictionary[str, asyncio.Lock] = WeakValueDictionary()
 
     @property
     def cache(self) -> Repository:
@@ -58,17 +61,20 @@ class RateLimiter:
 
     @asynccontextmanager
     async def locked(self, *keys: str) -> AsyncIterator[None]:
-        acquired: list[Lock] = []
-        try:
+        async with AsyncExitStack() as stack:
             for key in sorted(set(keys)):
+                await stack.enter_async_context(self.local_lock(key))
                 lock = self.cache.lock(self.lock_key(key), self.lock_seconds)
                 lock.sleep = self.lock_sleep
                 await lock.block(self.lock_seconds)
-                acquired.append(lock)
+                stack.push_async_callback(lock.release)
             yield
-        finally:
-            for lock in reversed(acquired):
-                await lock.release()
+
+    def local_lock(self, key: str) -> asyncio.Lock:
+        lock = self.local_locks.get(key)
+        if lock is None:
+            lock = self.local_locks[key] = asyncio.Lock()
+        return lock
 
     async def record(self, key: str, decay_seconds: int = 60, amount: int = 1) -> int:
         now = self.now()

@@ -31,11 +31,36 @@ def test_config_uses_explicit_url():
     assert config.build_url() == config.url
 
 
-def test_engine_options():
-    assert SQLiteConfig().engine_options() == {
+@pytest.mark.parametrize(
+    "config",
+    [
+        SQLiteConfig(database=":memory:"),
+        SQLiteConfig(url="sqlite+aiosqlite://"),
+        SQLiteConfig(url="sqlite+aiosqlite:///:memory:"),
+        SQLiteConfig(url="sqlite+aiosqlite:///file::memory:?cache=shared&uri=true"),
+        SQLiteConfig(url="sqlite+aiosqlite:///file:shared?mode=memory&cache=shared&uri=true"),
+    ],
+)
+def test_in_memory_sqlite_shares_one_connection(config):
+    assert config.engine_options() == {
         "connect_args": {"check_same_thread": False},
         "poolclass": StaticPool,
     }
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        SQLiteConfig(database="database.sqlite"),
+        SQLiteConfig(database="/var/lib/app/database.sqlite"),
+        SQLiteConfig(url="sqlite+aiosqlite:///storage/app.sqlite"),
+    ],
+)
+def test_file_sqlite_uses_the_default_pool(config):
+    assert config.engine_options() == {"connect_args": {"check_same_thread": False}}
+
+
+def test_engine_options():
     assert MySQLConfig().engine_options() == {}
     assert PostgresConfig().engine_options() == {}
 
