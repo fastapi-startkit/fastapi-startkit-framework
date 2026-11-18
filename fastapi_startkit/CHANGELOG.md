@@ -8,12 +8,13 @@
 
 - **Breaking:** an MCP tool whose `schema()` is a `FormRequest` now receives the validated instance in `handle`, not a JSON dump. Enums, dates, `model_fields_set` and request methods survive, and nothing is parsed twice. Read fields as attributes (`arguments.title`), or call `arguments.model_dump(mode="json", exclude_unset=True)` for the old dict. Tools without a `FormRequest` schema still receive the raw arguments. `Tool.handle` is typed `arguments: Any`.
 
-- **Breaking:** `fastapi_startkit.mcp.JsonRpcRequest` is renamed to `MCPRequest`. Import `from fastapi_startkit.mcp import MCPRequest`.
+- `fastapi_startkit.mcp.JsonRpcRequest` is renamed to `MCPRequest`. Use `from fastapi_startkit.mcp import MCPRequest`; the behaviour is unchanged.
 
 - `fastapi_startkit.logging.Logger` is renamed to `Log`. Use `from fastapi_startkit.logging import Log`; the behaviour is unchanged.
 
 ### Deprecated
 
+- `JsonRpcRequest` in `fastapi_startkit.mcp` and `fastapi_startkit.mcp.request`. Importing it emits a `DeprecationWarning` and returns `MCPRequest`, so existing code and subclasses keep working. It will be removed in a future major release.
 - `Logger` in `fastapi_startkit.logging` and `fastapi_startkit.logging.logger`. Importing it emits a `DeprecationWarning` and returns `Log`, so existing code, subclasses and `isinstance` checks keep working. It will be removed in a future major release.
 
 ### Fixed

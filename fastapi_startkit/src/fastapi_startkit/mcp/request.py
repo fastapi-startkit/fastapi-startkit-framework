@@ -1,5 +1,6 @@
 """MCP JSON-RPC 2.0 request model."""
 
+import warnings
 from typing import Annotated, Any, override
 
 from fastapi_startkit.validation import Field, FormRequest, Validator
@@ -26,3 +27,10 @@ class MCPRequest(FormRequest):
     def is_notification(self) -> bool:
         """Return True when the request has no id (i.e. it is a notification)."""
         return self.id is None
+
+
+def __getattr__(name: str):
+    if name == "JsonRpcRequest":
+        warnings.warn("JsonRpcRequest is deprecated; use MCPRequest instead", DeprecationWarning, stacklevel=2)
+        return MCPRequest
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
