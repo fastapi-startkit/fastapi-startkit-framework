@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from .embeddings import Embeddings
-from .lab import Lab
+from .lab import LabConfig
 
 if TYPE_CHECKING:
     from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
@@ -69,13 +69,13 @@ class Ai:
     ) -> Any:
         from langchain.chat_models import init_chat_model  # noqa: PLC0415
 
-        lab = Lab.get_provider(agent.provider)
-        kwargs: dict[str, Any] = {"model_provider": lab.get_provider_key()}
+        provider = LabConfig.resolve(agent.provider)
+        kwargs: dict[str, Any] = {"model_provider": provider.get_provider_key()}
 
-        api_key = lab.get_api_key()
+        api_key = provider.get_api_key()
         if api_key:
             kwargs["api_key"] = api_key
-        kwargs.update(lab.get_client_options())
+        kwargs.update(provider.get_chat_options())
         if agent.max_tokens:
             kwargs["max_tokens"] = agent.max_tokens
         if agent.top_p != 1.0:
@@ -103,7 +103,7 @@ class Ai:
         return chat_model
 
     def _resolve_model(self, agent: "Agent", override: str | None = None) -> str:
-        return Lab.get_provider(agent.provider).get_model(override or agent.model or None)
+        return LabConfig.resolve(agent.provider).get_model(override or agent.model or None)
 
     def _resolve_provider_options(self, agent: "Agent", override: dict | None = None) -> dict:
         options = dict(agent.provider_options().get(agent.provider, {}))

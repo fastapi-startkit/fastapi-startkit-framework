@@ -89,3 +89,25 @@ class BedrockConfig(Config):
             "default_embeddings": "amazon.titan-embed-text-v2:0",
         }
     )
+
+
+@dataclass
+class OpenAICompatibleConfig(Config):
+    driver: str = "openai-compatible"
+    key: str = ""
+    url: str = ""
+
+    models: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class OllamaConfig(Config):
+    driver: str = "ollama"
+    url: str = env("OLLAMA_BASE_URL", "http://localhost:11434")
+
+    models: dict[str, str] = field(
+        default_factory=lambda: {
+            "default": "llama3.1",
+            "default_embeddings": "nomic-embed-text",
+        }
+    )

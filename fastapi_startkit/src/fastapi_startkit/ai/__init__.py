@@ -3,7 +3,15 @@ from .pipeline import Middleware
 from .audio import Audio, AudioResponse
 from .audio_factory import AudioFactory
 from .classification import Classification
-from .config.config import AnthropicConfig, BedrockConfig, ElevenLabsConfig, GoogleConfig, OpenAIConfig
+from .config.config import (
+    AnthropicConfig,
+    BedrockConfig,
+    ElevenLabsConfig,
+    GoogleConfig,
+    OllamaConfig,
+    OpenAICompatibleConfig,
+    OpenAIConfig,
+)
 from .config.ai import AIConfig
 from .decorators import max_steps, max_tokens, model, provider, timeout, top_p
 from .document import Document
@@ -48,6 +56,8 @@ __all__ = [
     "Image",
     "ImageFactory",
     "ImageResponse",
+    "OllamaConfig",
+    "OpenAICompatibleConfig",
     "OpenAIConfig",
     "max_steps",
     "max_tokens",
