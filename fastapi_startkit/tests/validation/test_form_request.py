@@ -239,6 +239,23 @@ async def test_rules_on_nested_form_requests():
     assert await errors_of({"customer": {}}, Account) == {"customer.nickname": ["The nickname field is required."]}
 
 
+class Badge(BaseModel):
+    code: Annotated[str, Field().required().min(3)]
+
+
+class Board(FormRequest):
+    badges: list[Annotated[Badge, "meta"]] = []
+
+
+async def test_rules_apply_to_nested_models_wrapped_in_annotated_container_members():
+    board = await Board.validate_input({"badges": [{"code": "abc"}]})
+
+    assert board.badges[0].code == "abc"
+    assert await errors_of({"badges": [{"code": "ab"}]}, Board) == {
+        "badges.0.code": ["The code field must be at least 3 characters."]
+    }
+
+
 async def test_stop_on_first_failure_covers_nested_rules():
     class Strict(Order):
         stop_on_first_failure = True
