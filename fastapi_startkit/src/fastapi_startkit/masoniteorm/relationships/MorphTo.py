@@ -65,7 +65,10 @@ class MorphTo(BaseRelationship[TModel, SingleResult[TModel]]):
     def register_related(self, key, model, collection):
         morphed_model = registry.Registry.get_morph_model(getattr(model, self.morph_key))
 
-        related = collection.where(morphed_model.__primary_key__, getattr(model, self.morph_id)).first()
+        morph_id = getattr(model, self.morph_id)
+        related = collection.first(
+            lambda item: type(item) is morphed_model and getattr(item, morphed_model.__primary_key__) == morph_id
+        )
 
         model.add_relation({key: related})
 

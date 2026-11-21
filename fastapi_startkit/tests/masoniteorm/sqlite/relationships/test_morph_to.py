@@ -54,3 +54,17 @@ class TestRegistryGetMorphModel(TestCase):
     def test_raises_for_unmapped_name(self):
         with self.assertRaisesRegex(ValueError, "not_mapped"):
             Registry.get_morph_model("not_mapped")
+
+
+class TestMorphToEagerLoadSharedIds(TestCase):
+    async def test_eager_load_matches_type_and_id_when_ids_collide(self):
+        article = await Articles.first()
+        product = await Product.first()
+        self.assertEqual(article.id, product.id)
+
+        likes = await Like.with_("record").get()
+
+        self.assertEqual(
+            sorted((like.likeable_type, type(like.record).__name__, like.record.id) for like in likes),
+            [("article", "Articles", article.id), ("product", "Product", product.id)],
+        )
