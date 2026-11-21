@@ -8,7 +8,7 @@ from pathlib import Path
 import typing
 from typing import Literal, TypeVar, overload
 
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 
 
 T = TypeVar("T")
@@ -16,6 +16,7 @@ U = TypeVar("U")
 EnvValue = str | int | bool
 _UNSET = object()
 _BOOLEANS: dict[str, bool] = {"true": True, "True": True, "false": False, "False": False}
+_loaded_from_files: dict[str, str] = {}
 
 
 class Environment:
@@ -26,7 +27,6 @@ class Environment:
         if "PYTEST_CURRENT_TEST" in os.environ:
             return "testing"
 
-        # Explicit env parameter takes priority over os.environ APP_ENV
         if env:
             return env
 
@@ -37,7 +37,7 @@ class Environment:
         if not path.exists():
             raise ValueError("Unable to determine environment.")
 
-        _ = load_dotenv(path, override=True)
+        Environment._apply(path)
 
         env = os.environ.get("APP_ENV")
         if not env:
@@ -47,24 +47,39 @@ class Environment:
 
     @staticmethod
     def _require_base_path(base_path: Path | None) -> Path:
-        # Keeps the TypeError the old unguarded `None / ".env"` raised, with a clearer message.
         if base_path is None:
             raise TypeError("base_path is required to locate .env files")
         return base_path
 
     @staticmethod
     def load_base(base_path: Path | None = None):
-        """Load the base .env file, resetting vars to their default values."""
         path = Environment._require_base_path(base_path) / ".env"
-        if path.exists():
-            _ = load_dotenv(path, override=True)
+        Environment._apply(path)
 
     @staticmethod
-    def load(env: str, override: bool = True, base_path: Path | None = None):
+    def load(env: str, base_path: Path | None = None):
         path = Environment._require_base_path(base_path) / f".env.{env}"
+        Environment._apply(path)
+
+    @staticmethod
+    def pin(key: str, value: str):
+        os.environ[key] = value
+        _ = _loaded_from_files.pop(key, None)
+
+    @staticmethod
+    def _apply(path: Path):
         if not path.exists():
             return
-        _ = load_dotenv(path, override=override)
+        for key, new_value in dotenv_values(path).items():
+            if new_value is None or Environment._is_process_variable(key):
+                continue
+            os.environ[key] = new_value
+            _loaded_from_files[key] = new_value
+
+    @staticmethod
+    def _is_process_variable(key: str) -> bool:
+        current = os.environ.get(key)
+        return current is not None and _loaded_from_files.get(key) != current
 
     @staticmethod
     def resolve_environment_from_argument():
@@ -73,11 +88,11 @@ class Environment:
         args = sys.argv[1:]
         for i, arg in enumerate(args):
             if arg.startswith("--env="):
-                os.environ["APP_ENV"] = arg.split("=", 1)[1]
+                Environment.pin("APP_ENV", arg.split("=", 1)[1])
                 del sys.argv[i + 1]
                 break
             if arg == "--env" and i + 1 < len(args):
-                os.environ["APP_ENV"] = args[i + 1]
+                Environment.pin("APP_ENV", args[i + 1])
                 del sys.argv[i + 1 : i + 3]
                 break
 

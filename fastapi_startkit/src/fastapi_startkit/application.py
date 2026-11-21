@@ -87,9 +87,8 @@ class Application(Container, Generic[TConfig]):
         return self
 
     def load_environment(self):
-        """Reload environment variables for the current self.env."""
-        # resolve_environment() runs during __init__, so env is always set here.
         assert self.env is not None
+        Environment.pin("APP_ENV", self.env)
         Environment.load_base(base_path=self.base_path)
         Environment.load(self.env, base_path=self.base_path)
         return self
@@ -203,8 +202,7 @@ class Application(Container, Generic[TConfig]):
 
     def resolve_environment(self):
         self.env = Environment.resolve_environment(base_path=self.base_path, env=self.env)
-        Environment.load_base(base_path=self.base_path)
-        Environment.load(self.env, base_path=self.base_path)
+        self.load_environment()
 
     def is_debug(self) -> bool:
         return (

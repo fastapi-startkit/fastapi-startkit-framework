@@ -145,7 +145,7 @@ class RedisConfig:
     port: int = env('REDIS_PORT', 6379)
 ```
 
-`app.load_environment()` applies a two-step merge: `.env` as base, then `.env.{APP_ENV}` on top.
+`app.load_environment()` applies a layered merge: `.env` as base, then `.env.{APP_ENV}` on top, and variables already in the process environment (shell, CI, `--env`) always win over both.
 
 Register in the container for dotted-key access:
 

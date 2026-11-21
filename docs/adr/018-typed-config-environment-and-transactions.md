@@ -83,3 +83,31 @@ Modules inside `masoniteorm` import from their defining modules (for example `ma
 - `tests/masoniteorm/connections/test_transactions.py`, `test_after_commit.py`, `tests/masoniteorm/sqlite/builder/test_sqlite_transaction.py`: record and manager units, and the ADR 006 after-commit behaviour unchanged.
 - `tests/redis/test_config.py`: dataclass attributes, environment overrides and prefix fallback.
 - `uv run pytest --ignore=tests/masoniteorm/postgres`, `basedpyright` and `ruff check` from `fastapi_startkit/`.
+
+## 2026-11-21: Process environment always wins over .env files
+
+### Problem
+
+`Environment` loaded `.env` and `.env.{APP_ENV}` with `load_dotenv(override=True)`, so file values overwrote variables that already existed in the process environment. `APP_ENV=production` or `--env=production` selected `.env.production` correctly, but `.env` then replaced `os.environ["APP_ENV"]` (usually with `local`). `app.env` was right while `env("APP_ENV")` and `AppConfig.env` read the wrong value. The same happened to any exported variable, for example `DB_HOST=x uv run artisan ...`.
+
+### Alternatives
+
+- `load_dotenv(override=False)` for both files: process variables win, but `.env` loads first and would then beat `.env.{APP_ENV}`, breaking the file layering.
+- Snapshot `os.environ` once at startup and skip those keys: wrong for several `Application` instances in one process (tests) and for `set_environment()` followed by `load_environment()`, where values loaded earlier from files must be replaceable.
+- Treat empty values as unset: an exported empty variable would silently lose to a file, which is not what a shell user means.
+- Track which keys the loader itself wrote and treat every other present variable as a process variable.
+
+### Decision
+
+Precedence, highest first: variables in the process environment (shell, CI, container, or set at runtime before loading), then `.env.{APP_ENV}`, then `.env`. `--env=<name>` is runtime: it pins `APP_ENV` before any file is read. The loader remembers the key and value of everything it wrote from files; a present variable is a process variable unless it still holds exactly that remembered value. Files can therefore overwrite each other and be reloaded, but never a real process variable, including an empty one. After the environment is resolved, `APP_ENV` is pinned to `app.env`, so `app.env`, `os.environ["APP_ENV"]`, `env("APP_ENV")` and `AppConfig.env` agree, and no file can change it. Under pytest `testing` is still selected and `.env.testing` loaded.
+
+### Implementation
+
+- `environment/environment.py`: `load_dotenv` is replaced by `dotenv_values` and a private `_apply` that skips process variables and records what it wrote; `Environment.pin(key, value)` sets a variable and forgets it as file-loaded; `--env` handling uses `pin`; the `.env` read used to discover `APP_ENV` goes through the same path. `Environment.load` loses its `override` argument, which no caller used.
+- `application.py`: `resolve_environment()` delegates to `load_environment()`, which pins `APP_ENV` to `self.env` and then loads `.env` and `.env.{env}`.
+
+### Validation
+
+- `tests/environment/test_precedence.py`: shell `APP_ENV` and `--env` (both spellings) beat `.env`, and `--env` beats a shell `APP_ENV`; the four values agree; an arbitrary shell variable beats both files; `.env.{APP_ENV}` beats `.env` for unset variables and cannot change `APP_ENV`; pytest detection loads `.env.testing`; reload keeps shell variables and refreshes file values; `set_environment()` plus reload switches `APP_ENV`.
+- `tests/environment/test_lazy_env.py`: the Application loading test unsets its variables instead of setting them to `""`, since an empty process variable now wins.
+- `uv run pytest --ignore=tests/masoniteorm/postgres --cov` from `fastapi_startkit/`.
