@@ -121,7 +121,7 @@ def test_database_config_reads_environment_on_first_access(monkeypatch):
 
 def test_application_loads_environment_before_database_settings(tmp_path, monkeypatch):
     for key in ("DB_CONNECTION", "DB_DATABASE", "DB_ECHO"):
-        monkeypatch.setenv(key, "")
+        monkeypatch.delenv(key, raising=False)
     (tmp_path / ".env").write_text("DB_CONNECTION=sqlite\nDB_DATABASE=loaded.sqlite\nDB_ECHO=true\n")
     application = Application(base_path=tmp_path, providers=[(DatabaseProvider, DatabaseConfig)])
     config = application.make("db").config
