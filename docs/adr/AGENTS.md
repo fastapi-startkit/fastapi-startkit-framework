@@ -3,7 +3,7 @@ title: Architectural Decision Records
 description: This file contains the index of ADR along with the date with the implementation detail in abstract. So that agent can only read these index without need of reading the whole file.
 ---
 
-Read this index first, then open the records relevant to the change. Before implementation, add or update an ADR explaining the problem, alternatives, decision, implementation, and validation. Keep this index current.
+Read this index first, then open the records relevant to the change. Before implementing a change that makes a new decision, add an ADR explaining the problem, alternatives, decision, implementation, and validation. Bug fixes don't need an ADR unless the fix makes a new decision. If an ADR on the same topic already exists, append a dated section (`## YYYY-MM-DD: <title>`) to it and update its index entry with the new date instead of writing a new file. Keep this index current.
 
 | Index | Date | Title | Abstract (Explain how and why) |
 |-------|------|-------|--------------------------------|
