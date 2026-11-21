@@ -50,7 +50,7 @@ The template users clone when starting a new project. Contains the minimal scaff
 
 1. Do not add explanatory comments or docstrings. Express intent through clear names, arguments, and structure. Behavioural directives required by tooling are allowed.
 2. Before implementing a change that makes a new decision, write an architectural decision record in `docs/adr/`. Explain the problem, alternatives, chosen design, implementation details, and validation plan. Bug fixes don't need an ADR unless the fix makes a new decision.
-3. If an ADR on the same topic already exists, append to that ADR and update its index entry instead of writing a new file.
+3. If an ADR on the same topic already exists, append a dated section (`## YYYY-MM-DD: <title>`) to that ADR and update its index entry with the new date instead of writing a new file.
 4. Add each ADR to `docs/adr/AGENTS.md` with its date, title, and a brief explanation of the decision. Keep the index sufficient to identify relevant records without reading every ADR.
 
 ## Commands
