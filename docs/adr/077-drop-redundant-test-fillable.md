@@ -24,3 +24,23 @@ A search of `fastapi_startkit/tests/` and `example/` found no other model that a
 ## Validation
 
 Run the affected SQLite and Postgres test files, the model tests that assert the derived list, and `ruff check` on the changed files.
+
+## 2026-11-21: `fill()` no longer filters by `__fillable__`
+
+### Problem
+
+`Model.fill()` dropped every key that was not in the derived `__fillable__`. Because that list only holds annotated and descriptor fields, `model.update(...)` and `Model.update_or_create(...)` silently skipped real table columns that a model never declared (for example `title` on a model that annotates only `published_date`, or every column on a model with no annotations). `Model.create(...)` writes every key, so inserts and updates disagreed.
+
+### Alternatives
+
+- **Respect an explicit `__fillable__` / `__guarded__` declared in the class body.** Restores Masonite's opt-in guard, but adds a new mass-assignment API and makes the derived list behave differently depending on how a model was written.
+- **Keep filtering and require every column to be annotated.** Keeps the silent data loss for untyped models.
+- **Assign every key in `fill()`.** (chosen)
+
+### Decision
+
+`fill()` sets every given attribute. This matches Masonite ORM's default (`__fillable__ = ["*"]`, `__guarded__ = []`) and what `create()` already does. The derived `__fillable__` stays as the list of declared fields for typing and introspection; it is no longer a write filter. Input should be validated before it reaches the model (for example through a `FormRequest`).
+
+### Validation
+
+`tests/masoniteorm/sqlite/models/test_sqlite_model_update_undeclared_columns.py` covers `update()` on a partly annotated model, on a model with no annotations, and `update_or_create()` on an existing row.
