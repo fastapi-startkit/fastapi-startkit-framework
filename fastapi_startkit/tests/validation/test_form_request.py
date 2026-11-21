@@ -157,19 +157,112 @@ def test_field_rules_need_a_form_request():
         Plain.model_validate({"name": "jane"})
 
 
-def test_rules_on_nested_models_raise_at_class_definition():
-    class Address(BaseModel):
-        code: Annotated[str, Field().required().min(5)]
+class Address(BaseModel):
+    code: Annotated[str, Field().required().min(5)]
+    code_confirmation: Annotated[str | None, Field().same_as("code")] = None
 
-    with pytest.raises(TypeError, match=r"Order\.address: validation rules on nested model Address"):
 
-        class Order(FormRequest):
-            address: Address
+class Route(BaseModel):
+    stops: list[Address]
 
-    with pytest.raises(TypeError, match=r"Shipment\.stops: validation rules on nested model Address"):
 
-        class Shipment(FormRequest):
-            stops: list[Address] | None = None
+class Order(FormRequest):
+    name: Annotated[str, Field().required()]
+    address: Address | None = None
+    stops: list[Address] = []
+    labelled: dict[str, Address] = {}
+    route: Route | None = None
+
+
+class Customer(FormRequest):
+    nickname: Annotated[str, Field().required().min(3)]
+
+
+class Account(FormRequest):
+    customer: Customer
+
+
+async def test_rules_on_nested_models_pass_valid_input():
+    order = await Order.validate_input(
+        {"name": "x", "address": {"code": "75001"}, "stops": [{"code": "69001", "code_confirmation": "69001"}]}
+    )
+
+    assert order.address is not None and order.address.code == "75001"
+    assert order.stops[0].code_confirmation == "69001"
+
+
+async def test_rules_on_nested_models_report_dotted_keys():
+    errors = await errors_of(
+        {
+            "name": "x",
+            "address": {"code": "750"},
+            "stops": [{"code": "69001"}, {"code": "13001", "code_confirmation": "13002"}],
+            "labelled": {"home": {"code": "44"}},
+            "route": {"stops": [{"code": "1"}]},
+        },
+        Order,
+    )
+
+    assert errors == {
+        "address.code": ["The code field must be at least 5 characters."],
+        "stops.1.code_confirmation": ["The code confirmation field must match code."],
+        "labelled.home.code": ["The code field must be at least 5 characters."],
+        "route.stops.0.code": ["The code field must be at least 5 characters."],
+    }
+
+
+async def test_missing_required_nested_fields_use_rule_messages():
+    errors = await errors_of({"address": {}, "stops": [{}], "route": {"stops": [{}]}}, Order)
+
+    assert errors == {
+        "name": ["The name field is required."],
+        "address.code": ["The code field is required."],
+        "stops.0.code": ["The code field is required."],
+        "route.stops.0.code": ["The code field is required."],
+    }
+
+
+async def test_nested_type_errors_skip_that_fields_rules():
+    errors = await errors_of({"name": "x", "address": {"code": 5}, "stops": [{"code": "1"}]}, Order)
+
+    assert errors == {
+        "address.code": ["Input should be a valid string"],
+        "stops.0.code": ["The code field must be at least 5 characters."],
+    }
+
+
+async def test_rules_on_nested_form_requests():
+    assert (await Account.validate_input({"customer": {"nickname": "jane"}})).customer.nickname == "jane"
+    assert await errors_of({"customer": {"nickname": "ja"}}, Account) == {
+        "customer.nickname": ["The nickname field must be at least 3 characters."]
+    }
+    assert await errors_of({"customer": {}}, Account) == {"customer.nickname": ["The nickname field is required."]}
+
+
+class Badge(BaseModel):
+    code: Annotated[str, Field().required().min(3)]
+
+
+class Board(FormRequest):
+    badges: list[Annotated[Badge, "meta"]] = []
+
+
+async def test_rules_apply_to_nested_models_wrapped_in_annotated_container_members():
+    board = await Board.validate_input({"badges": [{"code": "abc"}]})
+
+    assert board.badges[0].code == "abc"
+    assert await errors_of({"badges": [{"code": "ab"}]}, Board) == {
+        "badges.0.code": ["The code field must be at least 3 characters."]
+    }
+
+
+async def test_stop_on_first_failure_covers_nested_rules():
+    class Strict(Order):
+        stop_on_first_failure = True
+
+    assert await errors_of({"name": "x", "stops": [{"code": "1"}, {"code": "2"}]}, Strict) == {
+        "stops.0.code": ["The code field must be at least 5 characters."]
+    }
 
 
 def test_nested_models_without_rules_are_allowed():

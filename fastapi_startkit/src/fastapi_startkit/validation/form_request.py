@@ -3,7 +3,7 @@ from __future__ import annotations
 import inspect
 from dataclasses import dataclass
 from collections.abc import Awaitable, Iterator, Mapping, Sequence, Set
-from types import UnionType
+from types import NoneType, UnionType
 from typing import TYPE_CHECKING, Annotated, Any, ClassVar, Self, Union, get_args, get_origin
 from weakref import finalize
 
@@ -44,10 +44,6 @@ MULTIPART = "multipart/form-data"
 ABSENT: Any = object()
 
 
-def has_rules(model: type[BaseModel]) -> bool:
-    return any(isinstance(metadata, Field) for info in model.model_fields.values() for metadata in info.metadata)
-
-
 def is_sequence(annotation: Any) -> bool:
     origin = get_origin(annotation) or annotation
     if origin is Annotated:
@@ -73,24 +69,64 @@ def alias_keys(alias: str | AliasPath | AliasChoices | None) -> Iterator[str]:
             yield from alias_keys(choice)
 
 
-def nested_models(annotation: Any) -> Iterator[type[BaseModel]]:
+def defaults_to_none(info: FieldInfo) -> bool:
+    return info.is_required() and any(
+        isinstance(metadata, Field) and metadata.defaults_to_none() for metadata in info.metadata
+    )
+
+
+def filled_input(model: type[BaseModel], data: Mapping[str, Any]) -> dict[str, Any]:
+    filled = dict(data)
+    for name, info in model.model_fields.items():
+        key = info.alias or name
+        if key in filled:
+            filled[key] = filled_value(info.annotation, filled[key])
+        elif defaults_to_none(info):
+            filled[key] = None
+    return filled
+
+
+def filled_value(annotation: Any, value: Any) -> Any:
+    origin = get_origin(annotation)
+    arguments = get_args(annotation)
     if isinstance(annotation, type) and issubclass(annotation, BaseModel):
-        yield annotation
-    for argument in get_args(annotation):
-        yield from nested_models(argument)
+        return filled_input(annotation, value) if isinstance(value, Mapping) else value
+    if origin is Annotated:
+        return filled_value(arguments[0], value)
+    if origin in (Union, UnionType):
+        members = [argument for argument in arguments if argument is not NoneType]
+        return filled_value(members[0], value) if len(members) == 1 else value
+    if isinstance(value, (list, tuple)) and is_sequence(annotation) and arguments:
+        return [filled_value(arguments[0], item) for item in value]
+    if isinstance(value, Mapping) and isinstance(origin, type) and issubclass(origin, Mapping) and len(arguments) == 2:
+        return {key: filled_value(arguments[1], item) for key, item in value.items()}
+    return value
+
+
+def nested_instances(value: Any, path: str) -> Iterator[tuple[str, BaseModel]]:
+    if isinstance(value, BaseModel):
+        yield path, value
+    elif isinstance(value, Mapping):
+        for key, item in value.items():
+            yield from nested_instances(item, f"{path}.{key}")
+    elif isinstance(value, (list, tuple)):
+        for index, item in enumerate(value):
+            yield from nested_instances(item, f"{path}.{index}")
+
+
+def rule_targets(
+    model: type[BaseModel], data: Mapping[str, Any], prefix: str = ""
+) -> Iterator[tuple[str, str, Field, Mapping[str, Any]]]:
+    for name, info in model.model_fields.items():
+        path = f"{prefix}{name}"
+        for metadata in info.metadata:
+            if isinstance(metadata, Field):
+                yield path, name, metadata, data
+        for nested_path, instance in nested_instances(data.get(name), path):
+            yield from rule_targets(type(instance), dict(instance), f"{nested_path}.")
 
 
 class FormRequest(BaseModel):
-    @classmethod
-    def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
-        super().__pydantic_init_subclass__(**kwargs)
-        for name, info in cls.model_fields.items():
-            for model in nested_models(info.annotation):
-                if has_rules(model):
-                    raise TypeError(
-                        f"{cls.__name__}.{name}: validation rules on nested model {model.__name__} are not supported."
-                    )
-
     @classmethod
     def rule_fields(cls) -> Iterator[tuple[str, Field]]:
         for name, info in cls.model_fields.items():
@@ -201,13 +237,7 @@ class FormRequest(BaseModel):
 
     @classmethod
     def fill_missing(cls, data: Mapping[str, Any]) -> Mapping[str, Any]:
-        missing: dict[str, None] = {}
-        for name, field in cls.rule_fields():
-            info = cls.model_fields[name]
-            key = info.alias or name
-            if field.defaults_to_none() and info.is_required() and key not in data:
-                missing[key] = None
-        return {**missing, **data} if missing else data
+        return filled_input(cls, data)
 
     @classmethod
     def partial_data(cls, data: Mapping[str, Any], values: dict[str, Any]) -> dict[str, Any]:
@@ -220,15 +250,14 @@ class FormRequest(BaseModel):
 
     @classmethod
     async def apply_rules(cls, validator: Validator, failed: set[str]) -> None:
-        data = validator.data
-        for name, field in cls.rule_fields():
+        for path, name, field, data in rule_targets(cls, validator.data):
             if cls.stop_on_first_failure and validator.fails():
                 return
-            if name in failed:
+            if path.partition(".")[0] in failed:
                 continue
             message = await field.check(name, data.get(name), data)
             if message is not None:
-                validator.errors.add(name, message)
+                validator.errors.add(path, message)
 
 
 class RawInput:
