@@ -2,10 +2,13 @@ from typing import Any
 
 import dataclasses
 
+from fastapi_startkit.environment import resolve
+
 
 class Dataclass:
     @staticmethod
     def to_dict(obj: Any):
+        obj = resolve(obj) if isinstance(obj, dataclasses.Field) else obj
         if hasattr(obj, "model_dump") and callable(obj.model_dump):
             return obj.model_dump()
         if dataclasses.is_dataclass(obj):
