@@ -114,9 +114,13 @@ class DecimalCast(BaseCast):
     """Casts a value to Decimal for accuracy"""
 
     def get(self, value):
+        if value is None:
+            return None
         return Decimal(str(value))
 
     def set(self, value):
+        if value is None:
+            return None
         return str(value)
 
 
@@ -318,6 +322,8 @@ class Caster:
             return "float"
         if t is bool:
             return "bool"
+        if t is Decimal:
+            return "decimal"
         if t in (dict, list) or get_origin(t) in (dict, list):
             return "json"
         if t is pendulum.DateTime or t is datetime.datetime or t is datetime.date or t is Carbon:

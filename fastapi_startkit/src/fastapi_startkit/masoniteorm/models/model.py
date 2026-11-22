@@ -510,8 +510,7 @@ class Model(Attribute, Relationship, ObservesEvents):
 
     def fill(self, attributes: dict[str, Any]) -> Self:
         for key, value in attributes.items():
-            if key in self.__fillable__:
-                self.set_attribute(key, value)
+            self.set_attribute(key, value)
         return self
 
     async def save(self, options: dict[str, Any] | None = None) -> bool:

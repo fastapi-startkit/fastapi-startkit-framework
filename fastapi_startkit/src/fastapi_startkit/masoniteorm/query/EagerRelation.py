@@ -12,11 +12,8 @@ class EagerRelations:
                 self.eagers += [relation]
             elif isinstance(relation, str) and "." in relation:
                 self.is_nested = True
-                relation_key = relation.split(".")[0]
-                if relation_key not in self.nested_eagers:
-                    self.nested_eagers = {relation_key: relation.split(".")[1:]}
-                else:
-                    self.nested_eagers[relation_key] += relation.split(".")[1:]
+                relation_key, _, nested = relation.partition(".")
+                self.nested_eagers.setdefault(relation_key, []).append(nested)
             elif isinstance(relation, (tuple, list)):
                 for eagers in relations:
                     for eager in eagers:

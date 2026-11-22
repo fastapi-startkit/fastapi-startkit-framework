@@ -1,4 +1,5 @@
 import datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -61,4 +62,6 @@ class SQliteConnection(Connection):
             return pendulum.instance(value).in_timezone("UTC").naive().isoformat(sep=" ")
         if isinstance(value, datetime.date):
             return value.isoformat()
+        if isinstance(value, Decimal):
+            return str(value)
         return value
