@@ -41,6 +41,12 @@ Run the affected SQLite and Postgres test files, the model tests that assert the
 
 `fill()` sets every given attribute. This matches Masonite ORM's default (`__fillable__ = ["*"]`, `__guarded__ = []`) and what `create()` already does. The derived `__fillable__` stays as the list of declared fields for typing and introspection; it is no longer a write filter. Input should be validated before it reaches the model (for example through a `FormRequest`).
 
+### Consequences
+
+- **Class-body `__fillable__` is still discarded.** `Model.__init_subclass__` overwrites any `__fillable__` written in the class body with the derived list. This predates this change and is not fixed here; whether an explicit `__fillable__` / `__guarded__` should act as a write guard is a follow-up pending the user's decision.
+- **Behaviour change for typed models.** On a typed model, `update()` and `update_or_create()` now persist keys that are not annotated on the model. Before, those keys were silently dropped. Callers that relied on the derived list to strip unknown input must now filter that input themselves.
+- **Related, from the same change set: `Decimal` on SQLite.** The SQLite connection binds `Decimal` values as text. A `DECIMAL` column has NUMERIC affinity, so stored values and column comparisons stay numeric, but comparisons without column affinity (for example `where_raw` arithmetic on a bound parameter) compare as TEXT. SQLite NUMERIC storage keeps no precision or scale: values become INTEGER or REAL, so digits beyond double precision are lost and trailing zeros are not preserved.
+
 ### Validation
 
 `tests/masoniteorm/sqlite/models/test_sqlite_model_update_undeclared_columns.py` covers `update()` on a partly annotated model, on a model with no annotations, and `update_or_create()` on an existing row.
