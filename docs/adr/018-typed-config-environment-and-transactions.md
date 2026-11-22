@@ -83,3 +83,38 @@ Modules inside `masoniteorm` import from their defining modules (for example `ma
 - `tests/masoniteorm/connections/test_transactions.py`, `test_after_commit.py`, `tests/masoniteorm/sqlite/builder/test_sqlite_transaction.py`: record and manager units, and the ADR 006 after-commit behaviour unchanged.
 - `tests/redis/test_config.py`: dataclass attributes, environment overrides and prefix fallback.
 - `uv run pytest --ignore=tests/masoniteorm/postgres`, `basedpyright` and `ruff check` from `fastapi_startkit/`.
+
+## 2026-11-21: env() resolves anywhere in config
+
+### Problem
+
+`env()` returns a `dataclasses.Field`, which only a dataclass resolves, and only for a field it declares. Inside a `default_factory` dictionary, a nested config argument or a list, the `Field` stayed in the value, so `Config.get("ai.providers.bedrock.models.default")` and attribute access returned a `Field` instead of a string. The documentation worked around this by telling users to write plain strings or `os.getenv` there.
+
+### Alternatives
+
+- Make `env()` return a lazy wrapper with `__str__`/`__eq__`: leaks a non-primitive into every consumer and breaks type checks such as `isinstance(x, str)`.
+- Resolve at read time in `Configuration.get`: attribute access and direct config objects would still see `Field` objects.
+- Resolve recursively when a `Config` is constructed and when a config value is stored: every reader sees plain values, with no wrapper type.
+
+### Decision
+
+A recursive `resolve()` replaces any `Field` that has a `default_factory` with the factory result, and walks dictionaries, lists and tuples. `_ConfigMeta.__call__` applies it to every dataclass field after construction, so nested `Config` objects resolve when they are built. `Dataclass.to_dict`, used by `Configuration.set` and `Provider.resolve_config`, resolves a `Field` it meets, which covers plain dataclasses and raw dictionaries. `env()` is unchanged, so casting, defaults and the read after `.env` loading stay as decided above. Objects that are not `Config` instances, dictionaries or sequences are left alone.
+
+`resolve()` returns a container untouched when it holds no `Field`, and otherwise copies it with `copy.copy` (or `_make` for named tuples), so `defaultdict`, `OrderedDict` and named tuples keep their type. Class-level access such as `Settings.models` returns the resolved value, and a `field(init=False)` that is never assigned is skipped instead of raising.
+
+### Known limitations
+
+- `__post_init__` runs before resolution, so it still sees unresolved `Field` values inside dictionaries and lists.
+- Plain dataclasses that are not `Config` subclasses and are nested inside a dictionary keep their `Field` values until `Dataclass.to_dict` runs on them.
+- Sets and frozensets are not walked.
+- Configuration written as class attributes instead of dataclass fields is not resolved.
+
+### Implementation
+
+- `environment/resolve.py` holds `resolve()`, re-exported from `environment`.
+- `support/config/base.py`: `_ConfigMeta.__call__` resolves each dataclass field of the new instance.
+- `support/dataclass.py`: `Dataclass.to_dict` resolves a `Field` before converting.
+
+### Validation
+
+`tests/environment/test_env_anywhere.py`: `env()` in `default_factory` dictionaries, nested config objects, constructor arguments, lists and tuples; `int`/`bool` casting inside containers; plain values from `Configuration.get`; the bedrock model read through `AIProvider` after the `.env` file is loaded, with and without the variable set; no read at import time.
