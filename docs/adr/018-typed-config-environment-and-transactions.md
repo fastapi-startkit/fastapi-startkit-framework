@@ -100,6 +100,15 @@ Modules inside `masoniteorm` import from their defining modules (for example `ma
 
 A recursive `resolve()` replaces any `Field` that has a `default_factory` with the factory result, and walks dictionaries, lists and tuples. `_ConfigMeta.__call__` applies it to every dataclass field after construction, so nested `Config` objects resolve when they are built. `Dataclass.to_dict`, used by `Configuration.set` and `Provider.resolve_config`, resolves a `Field` it meets, which covers plain dataclasses and raw dictionaries. `env()` is unchanged, so casting, defaults and the read after `.env` loading stay as decided above. Objects that are not `Config` instances, dictionaries or sequences are left alone.
 
+`resolve()` returns a container untouched when it holds no `Field`, and otherwise copies it with `copy.copy` (or `_make` for named tuples), so `defaultdict`, `OrderedDict` and named tuples keep their type. Class-level access such as `Settings.models` returns the resolved value, and a `field(init=False)` that is never assigned is skipped instead of raising.
+
+### Known limitations
+
+- `__post_init__` runs before resolution, so it still sees unresolved `Field` values inside dictionaries and lists.
+- Plain dataclasses that are not `Config` subclasses and are nested inside a dictionary keep their `Field` values until `Dataclass.to_dict` runs on them.
+- Sets and frozensets are not walked.
+- Configuration written as class attributes instead of dataclass fields is not resolved.
+
 ### Implementation
 
 - `environment/resolve.py` holds `resolve()`, re-exported from `environment`.

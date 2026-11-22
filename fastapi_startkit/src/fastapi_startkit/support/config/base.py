@@ -13,7 +13,9 @@ class _ConfigMeta(type):
         instance = type.__call__(cls, *resolved_args, **resolved_kwargs)
         if is_dataclass(instance):
             for declared in fields(instance):
-                object.__setattr__(instance, declared.name, resolve(getattr(instance, declared.name)))
+                current = getattr(instance, declared.name, MISSING)
+                if current is not MISSING:
+                    object.__setattr__(instance, declared.name, resolve(current))
         return cast(T, instance)
 
     def __getattr__(cls, name: str) -> object:
@@ -23,7 +25,7 @@ class _ConfigMeta(type):
             raise AttributeError(f"{cls.__name__!r} has no attribute {name!r}") from None
         field = fields.get(name)
         if field is not None and field.default_factory is not MISSING:
-            return field.default_factory()
+            return resolve(field.default_factory())
         raise AttributeError(f"{cls.__name__!r} has no attribute {name!r}")
 
 

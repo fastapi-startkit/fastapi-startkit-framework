@@ -1,10 +1,11 @@
+from collections import OrderedDict, defaultdict, namedtuple
 from dataclasses import dataclass, field
 
 from fastapi_startkit.ai import AIConfig, BedrockConfig, GoogleConfig
 from fastapi_startkit.ai.providers.ai_provider import AIProvider
 from fastapi_startkit.application import Application
 from fastapi_startkit.configuration import Configuration
-from fastapi_startkit.environment import env
+from fastapi_startkit.environment import env, resolve
 from fastapi_startkit.support.config import Config
 
 
@@ -41,7 +42,9 @@ def test_env_inside_constructor_arguments(monkeypatch):
 def test_env_inside_lists_and_tuples(monkeypatch):
     @dataclass
     class Settings(Config):
-        hosts: list[object] = field(default_factory=lambda: [env("ANYWHERE_HOST", "localhost"), {"port": env("ANYWHERE_PORT", 80)}])
+        hosts: list[object] = field(
+            default_factory=lambda: [env("ANYWHERE_HOST", "localhost"), {"port": env("ANYWHERE_PORT", 80)}]
+        )
         pair: tuple[object, ...] = field(default_factory=lambda: (env("ANYWHERE_HOST", "localhost"),))
 
     monkeypatch.setenv("ANYWHERE_HOST", "db")
@@ -93,7 +96,9 @@ def test_ai_provider_exposes_resolved_bedrock_model(tmp_path, monkeypatch):
     class AnywhereAIConfig(AIConfig):
         providers: dict[str, Config] = field(
             default_factory=lambda: {
-                "bedrock": BedrockConfig(models={"default": env("ANYWHERE_BEDROCK_MODEL", "global.anthropic.claude-sonnet-5-5")})
+                "bedrock": BedrockConfig(
+                    models={"default": env("ANYWHERE_BEDROCK_MODEL", "global.anthropic.claude-sonnet-5-5")}
+                )
             }
         )
 
@@ -111,7 +116,9 @@ def test_ai_provider_applies_default_when_variable_is_unset(tmp_path, monkeypatc
     class AnywhereAIConfig(AIConfig):
         providers: dict[str, Config] = field(
             default_factory=lambda: {
-                "bedrock": BedrockConfig(models={"default": env("ANYWHERE_BEDROCK_MODEL", "global.anthropic.claude-sonnet-5-5")})
+                "bedrock": BedrockConfig(
+                    models={"default": env("ANYWHERE_BEDROCK_MODEL", "global.anthropic.claude-sonnet-5-5")}
+                )
             }
         )
 
@@ -131,3 +138,47 @@ def test_env_is_read_at_construction_not_import(monkeypatch):
     second = Settings()
     assert first.models["default"] == "first"
     assert second.models["default"] == "second"
+
+
+Endpoint = namedtuple("Endpoint", ["host", "port"])
+
+
+def test_resolve_preserves_container_subclasses(monkeypatch):
+    monkeypatch.setenv("ANYWHERE_HOST", "db")
+    counts = defaultdict(int, {"host": env("ANYWHERE_HOST", "localhost")})
+    ordered = OrderedDict(host=env("ANYWHERE_HOST", "localhost"))
+    endpoint = Endpoint(env("ANYWHERE_HOST", "localhost"), 80)
+
+    resolved_counts = resolve(counts)
+    assert type(resolved_counts) is defaultdict
+    assert resolved_counts.default_factory is int
+    assert resolved_counts["host"] == "db"
+    assert type(resolve(ordered)) is OrderedDict
+    assert resolve(ordered)["host"] == "db"
+    assert resolve(endpoint) == Endpoint("db", 80)
+    assert type(resolve(endpoint)) is Endpoint
+
+
+def test_resolve_returns_original_when_nothing_to_resolve():
+    plain = {"hosts": ["db"], "pair": (1, 2)}
+    assert resolve(plain) is plain
+
+
+def test_class_level_access_returns_resolved_container(monkeypatch):
+    @dataclass
+    class Settings(Config):
+        models: dict[str, str] = field(default_factory=lambda: {"default": env("ANYWHERE_MODEL", "fallback")})
+
+    monkeypatch.setenv("ANYWHERE_MODEL", "from-env")
+    assert Settings.models == {"default": "from-env"}
+
+
+def test_field_without_default_and_init_disabled_may_stay_unassigned():
+    @dataclass
+    class Settings(Config):
+        name: str = "app"
+        computed: str = field(init=False)
+
+    settings = Settings()
+    assert settings.name == "app"
+    assert not hasattr(settings, "computed")
