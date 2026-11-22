@@ -1,9 +1,17 @@
+from fastapi_startkit.masoniteorm import Model
 from fastapi_startkit.masoniteorm.models.registry import Registry
 from fastapi_startkit.masoniteorm.exceptions import LazyLoadingViolation
+from fastapi_startkit.masoniteorm.relationships import MorphTo
 from ...fixtures.model import Articles, Like, Product
 from ..test_case import TestCase
 
 Registry.morph_map({"article": Articles, "product": Product})
+
+
+class StringKeyedTag(Model):
+    __table__ = "string_keyed_tags"
+
+    taggable = MorphTo("StringKeyedTag", "taggable_type", "taggable_id")
 
 
 class TestMorphToRelationship(TestCase):
@@ -67,4 +75,41 @@ class TestMorphToEagerLoadSharedIds(TestCase):
         self.assertEqual(
             sorted((like.likeable_type, type(like.record).__name__, like.record.id) for like in likes),
             [("article", "Articles", article.id), ("product", "Product", product.id)],
+        )
+
+
+class TestMorphToStringMorphIds(TestCase):
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        async with await self.schema.create_table_if_not_exists("string_keyed_tags") as table:
+            table.id()
+            table.string("taggable_type").nullable()
+            table.string("taggable_id").nullable()
+            table.timestamps()
+
+    async def test_eager_load_matches_string_morph_ids_across_types(self):
+        article = await Articles.first()
+        product = await Product.first()
+        self.assertEqual(article.id, product.id)
+        await StringKeyedTag.create({"taggable_type": "product", "taggable_id": str(product.id)})
+        await StringKeyedTag.create({"taggable_type": "article", "taggable_id": str(article.id)})
+
+        tags = await StringKeyedTag.with_("taggable").get()
+
+        self.assertEqual(
+            sorted((tag.taggable_type, type(tag.taggable).__name__, tag.taggable.id) for tag in tags),
+            [("article", "Articles", article.id), ("product", "Product", product.id)],
+        )
+
+    async def test_eager_load_leaves_relation_empty_for_null_morph_columns(self):
+        article = await Articles.first()
+        await StringKeyedTag.create({"taggable_type": "article", "taggable_id": str(article.id)})
+        await StringKeyedTag.create({"taggable_type": None, "taggable_id": None})
+        await StringKeyedTag.create({"taggable_type": "article", "taggable_id": None})
+        await StringKeyedTag.create({"taggable_type": None, "taggable_id": str(article.id)})
+
+        tags = await StringKeyedTag.with_("taggable").order_by("id").get()
+
+        self.assertEqual(
+            [type(tag.taggable).__name__ for tag in tags], ["Articles", "NoneType", "NoneType", "NoneType"]
         )

@@ -48,7 +48,7 @@ class MorphTo(BaseRelationship[TModel, SingleResult[TModel]]):
     async def get_related(self, query, relation, eagers=None, callback=None):
         if isinstance(relation, Collection):
             relations = Collection()
-            for group, items in relation.group_by(self.morph_key).items():
+            for group, items in relation.filter(self._has_morph_target).group_by(self.morph_key).items():
                 morphed_model = registry.Registry.get_morph_model(group)
                 relations.merge(
                     await morphed_model.where_in(
@@ -57,20 +57,27 @@ class MorphTo(BaseRelationship[TModel, SingleResult[TModel]]):
                     ).get()
                 )
             return relations
-        else:
+        elif self._has_morph_target(relation):
             model = self.morph_map().get(getattr(relation, self.morph_key))
             if model:
                 return await model.find(getattr(relation, self.morph_id))
 
     def register_related(self, key, model, collection):
-        morphed_model = registry.Registry.get_morph_model(getattr(model, self.morph_key))
+        if not self._has_morph_target(model):
+            model.add_relation({key: None})
+            return
 
-        morph_id = getattr(model, self.morph_id)
-        related = collection.first(
-            lambda item: type(item) is morphed_model and getattr(item, morphed_model.__primary_key__) == morph_id
+        morphed_model = registry.Registry.get_morph_model(getattr(model, self.morph_key))
+        related = (
+            collection.filter(lambda item: type(item) is morphed_model)
+            .where(morphed_model.__primary_key__, getattr(model, self.morph_id))
+            .first()
         )
 
         model.add_relation({key: related})
+
+    def _has_morph_target(self, model):
+        return getattr(model, self.morph_key) is not None and getattr(model, self.morph_id) is not None
 
     def morph_map(self):
         return registry.Registry.get_morph_map()
