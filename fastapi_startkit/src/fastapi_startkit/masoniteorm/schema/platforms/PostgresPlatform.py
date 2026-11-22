@@ -10,6 +10,7 @@ class PostgresPlatform(Platform):
         "tiny_integer",
         "small_integer",
         "medium_integer",
+        "float",
         "inet",
         "cidr",
         "macaddr",

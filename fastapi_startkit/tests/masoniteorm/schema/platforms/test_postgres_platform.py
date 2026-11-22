@@ -1,5 +1,6 @@
 import unittest
 
+from fastapi_startkit.masoniteorm.schema.Blueprint import Blueprint
 from fastapi_startkit.masoniteorm.schema.Table import Table
 from fastapi_startkit.masoniteorm.schema.TableDiff import TableDiff
 from fastapi_startkit.masoniteorm.schema.platforms import PostgresPlatform
@@ -54,6 +55,24 @@ class TestPostgresPlatformCreate(unittest.TestCase):
         table.add_column("count", "integer", length=11)
         sql = self.platform.compile_create_sql(table)[0]
         self.assertIn('"count" INTEGER NOT NULL', sql)
+
+    def test_blueprint_float_compiles_without_scale(self):
+        blueprint = Blueprint(grammar=None, table=Table("readings"), platform=PostgresPlatform, dry=True)
+        blueprint.float("value")
+        blueprint.float("ratio", 8, 2, nullable=True)
+
+        sql = self.platform.compile_create_sql(blueprint.table)[0]
+
+        self.assertEqual(sql, 'CREATE TABLE "readings" ("value" FLOAT NOT NULL, "ratio" FLOAT NULL)')
+
+    def test_blueprint_float_add_column_compiles_without_scale(self):
+        blueprint = Blueprint(grammar=None, table=TableDiff("readings"), platform=PostgresPlatform, dry=True)
+        blueprint.float("value")
+
+        self.assertEqual(
+            self.platform.compile_alter_sql(blueprint.table),
+            ['ALTER TABLE "readings" ADD COLUMN "value" FLOAT NOT NULL'],
+        )
 
 
 class TestPostgresPlatformAlter(unittest.TestCase):
