@@ -97,7 +97,8 @@ def test_ai_provider_exposes_resolved_bedrock_model(tmp_path, monkeypatch):
             }
         )
 
-    monkeypatch.setenv("ANYWHERE_BEDROCK_MODEL", "")
+    monkeypatch.setenv("ANYWHERE_BEDROCK_MODEL", "restore-marker")
+    monkeypatch.delenv("ANYWHERE_BEDROCK_MODEL")
     (tmp_path / ".env").write_text("ANYWHERE_BEDROCK_MODEL=from-dotenv\n")
     application = Application(base_path=tmp_path, providers=[(AIProvider, AnywhereAIConfig)])
     model = application.make("config").get("ai.providers.bedrock.models.default")
